@@ -1,0 +1,10 @@
+discord.py[voice]>=2.3.2
+Flask>=3.0.0
+python-dotenv>=1.0.0
+yt-dlp>=2024.3.10
+Pillow>=10.2.0
+requests>=2.31.0
+easy-pil>=0.7.1
+pyjokes>=0.6.0
+chat-exporter>=2.6.2
+cryptography>=41.0.0

@@ -1,0 +1,2522 @@
+[
+  {
+    "category": "student",
+    "title": "🎓 College Viva Ka Khauf",
+    "setup": "External Examiner: 'Batao, Ohm's Law kya hota hai?'",
+    "punchline": "Engineering Student: 'Sir, jo Ohm bolta hai wo uska Law hota hai... hum beech me bolne wale kaun hote hain!'\nExaminer: 'Viva se bahar nikal, zero le aur dubara mat dikhna!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Physics vs Maths",
+    "setup": "Teacher: 'Agar 10th floor se Physics aur Maths ki book giraayi jaye, to pehle kaun si giregi?'",
+    "punchline": "Student: 'Physics ki sir!'\nTeacher: 'Kyun?'\nStudent: 'Kyunki Maths me to pehle assume karna padega ki hawa chal rahi hai ya nahi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 DC Motor Viva",
+    "setup": "Examiner: 'Chalo batao, DC motor kaise chalti hai?'",
+    "punchline": "Backbencher: 'Sir aise... (haath ghumate hue) vrrrrrrrr vrrrrrrrr!'\nExaminer: 'Aur band kaise hoti hai?'\nBackbencher: 'Kheeekh... phusssssss!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Syllabus Ka Tension",
+    "setup": "Friend 1: 'Bhai kal exam hai, kitna padha?'",
+    "punchline": "Friend 2: 'Bhai bas syllabus ka font size dekha tha, dekh ke hi BP low ho gaya... ab kal direct guess work pe focus karenge!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Ginti Ka Hisaab",
+    "setup": "Teacher: 'Pappu, 1 se 10 tak ginti sunao.'\nPappu: '1, 2, 3, 4, 5, 7, 8, 9, 10.'\nTeacher: '6 kahan gaya?'",
+    "punchline": "Pappu: 'Sir, kal raat news me dekha tha ki 6 logo ki maut ho gayi... to main kisi marte hue ka naam nahi leta!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Blank Paper Speedrun",
+    "setup": "Professor: 'Jo ladka sabse pehle paper submit karega, use A grade dunga!'",
+    "punchline": "Backbencher 10 second me blank paper deke bola:\n'Sir, placement drive me milte hain, abhi chai peene jaana hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Zero Marks Logic",
+    "setup": "Student: 'Sir, aapne mujhe test me 0 kyu diya?'",
+    "punchline": "Teacher: 'Kyunki marking scheme me minus dene ka button nahi tha!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Attendance Ka Chakkar",
+    "setup": "Professor: 'Tumhari attendance sirf 20% hai, exam me kaise baithoge?'",
+    "punchline": "Student: 'Sir baithunga to bench pe hi, bas admit card sign kar do baaki parchi ka intezam humne kar liya hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Homework Ka Bahana",
+    "setup": "Teacher: 'Homework kyu nahi kiya?'",
+    "punchline": "Pappu: 'Sir light chali gayi thi.'\nTeacher: 'To mombatti jala lete!'\nPappu: 'Matchbox nahi mil raha tha sir.'\nTeacher: 'Kyu?'\nPappu: 'Mandir me rakha tha aur main nahaaya nahi tha!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Formula Sheet",
+    "setup": "Friend: 'Bhai exam me formula yaad nahi aa raha, kya karu?'",
+    "punchline": "Me: 'Simple hai bhai, question hi dubara likh de answer sheet me, bas beech me 'Hence Proved' chipka dena! 1 marks to mil hi jayega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Sharma Ji Ka Beta",
+    "setup": "Papa: 'Sharma ji ke ladke ko dekha? 99% laaya hai board me!'",
+    "punchline": "Beta: 'Haan papa, aur Sharma ji ko dekha? Uske 99% aane pe use iPhone aur Dubai trip dilayi... aap kab leke chal rahe ho?'\n*Flying Chappal detected at Mach 3 speed.*"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Subah Ka Ilaj",
+    "setup": "Mummy: 'Subah 5 baje utha karo, saari bimariyan theek ho jayengi.'",
+    "punchline": "Beta: 'Mummy, par subah 5 baje uthna hi to mere liye sabse badi bimari hai... us waqt to kambal bhi bolta hai 'Ruk ja beta, duniya bohot zalim hai!''"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Rishtedaar Ka Sawal",
+    "setup": "Rishtedaar: 'Beta aage ka kya plan hai? Shaadi ya job?'",
+    "punchline": "Me: 'Uncle, pehle aap chai peeke nikal lo... fir aage ka plan decide karenge!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Phone Silent Par",
+    "setup": "Papa: 'Beta, tumhara phone 24 ghante silent pe kyu rehta hai?'",
+    "punchline": "Beta: 'Papa, taaki padhai me koi disturbance na ho!'\nPapa: 'Aur screen 12 ghante on kyu rehti hai?'\nBeta: 'Digital India hai na papa... sab online padhta hoon!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Bachpan Ka Pyaar",
+    "setup": "Mummy: 'Beta, jab tu chhota tha to kitna pyara lagta tha!'",
+    "punchline": "Beta: 'Aur ab kaisa lagta hoon mummy?'\nMummy: 'Ab tu bolne laga hai na, isliye roz dimaag khata hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Pass Hone Ka Inaam",
+    "setup": "Papa: 'Beta, agar is baar pass ho gaya to tujhe bike dilaunga!'\nBeta: 'Aur fail hua to?'",
+    "punchline": "Papa: 'To bike ka horn dilaunga... poora din mohalle me bajate rehna!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Chai Ka Nasha",
+    "setup": "Doctor: 'Aapko chai kam peeni chahiye, sehat ke liye theek nahi hai.'",
+    "punchline": "Desi Guy: 'Doctor sahab, chai to emotion hai... chai chhoot sakti hai par doctor badla ja sakta hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mehmaan Aur Paise",
+    "setup": "Mehmaan jaate waqt jab 500 ka note nikalte hain:",
+    "punchline": "Desi Kid to Mummy: 'Nahi aunty nahi chahiye...' (aankhon hi aankhon me mummy se permission maangte hue ki 'Mummy agar tune mana kiya to dosti khatam!')"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Gas Cylinder Ka Rule",
+    "setup": "Mummy: 'Beta zara gas cylinder hila ke dekh, kitni bachi hai?'",
+    "punchline": "Beta: (2 bar hilake) 'Mummy aadha bhara hai.'\nMummy: 'Arey dimaag se paidal, cylinder to 2 din pehle hi lagwaya tha!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Tinda Aur Lauki",
+    "setup": "Beta: 'Mummy aaj khane me kya banaya hai?'\nMummy: 'Lauki ki sabzi.'",
+    "punchline": "Beta: 'Mummy bhookh nahi hai!'\nMummy: 'Pata tha mujhe, isliye kal raat ka tinda bhi garam karke rakha hai!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 HR Ka Interview",
+    "setup": "HR: 'Aapki sabse badi strength kya hai?'",
+    "punchline": "Candidate: 'Main bina kaam kiye laptop screen ghoorta reh sakta hoon aur sabko lagta hai main deep code review kar raha hoon!'\nHR: 'Welcome to the team! Team Lead banoge aap!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Ghar Jaisa Mahool",
+    "setup": "Boss: 'Tum roz subah 11 baje office late kyu aate ho?'",
+    "punchline": "Employee: 'Sir, interview me aapne hi bola tha ki humara office ek parivaar jaisa hai... aur ghar pe main 11 baje hi so ke uthta hoon!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 5 Saal Ka Plan",
+    "setup": "HR: 'Aap agle 5 saal me apne aap ko kahan dekhte ho?'",
+    "punchline": "Candidate: 'Aapki kursi pe... par bina candidate se itne faltu sawal pooche!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Sick Leave Ka Sach",
+    "setup": "Employee: 'Sir aaj migraine ho gaya hai, sick leave chahiye.'",
+    "punchline": "Boss: 'Par tumne to WhatsApp status pe Goa beach ki photo lagayi hai!'\nEmployee: 'Sir, vahi dekh ke to sar me dard ho raha hai ki wahan kab jaunga!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Out of the Box",
+    "setup": "Manager: 'Guys, humein is client ke liye out-of-the-box sochna padega!'",
+    "punchline": "Senior Dev: 'Sir, pehle box ke andar to budget daalo... 2 rupaye ke budget me Chandrayaan thodi launch hoga!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Bug Ya Feature?",
+    "setup": "Client: 'Ye website crash kyu ho gayi?'",
+    "punchline": "Developer: 'Sir crash nahi hui, server ne meditation mode activate kar liya hai... release notes me likh diya hai 'Graceful Shutdown Experience'!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Salary Ka Jhatka",
+    "setup": "Employee: 'Sir meri salary me se itna tax kyu kata?'",
+    "punchline": "HR: 'Government taxes beta, desh ki pragati ke liye!'\nEmployee: 'Par meri pragati to Auto ka kiraya dene me hi ruk gayi sir!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Appraisal Time",
+    "setup": "Boss: 'Tumne is saal company ke liye kya kiya?'",
+    "punchline": "Employee: 'Sir poora saal company ka coffee maker chalaye rakha aur bina resign kiye zinda raha, isse bada contribution kya chahiye!'\nBoss: '2% hike approved.'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Monday Motivation",
+    "setup": "Sunday Raat 11:59 PM: 'Agle hafte pura workout karunga aur diet follow karunga!'",
+    "punchline": "Monday Subah 8:00 AM: 'Bhai koi gaadi se takkar maar do, kam se kam 2 din hospital me aaram milega!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Petrol Pump Par",
+    "setup": "Santa petrol pump pe gaya aur bola: 'Bhaiya 10 rupaye ka petrol daal do.'\nAttendant: 'Bhai itne me to bike start bhi nahi hogi!'",
+    "punchline": "Santa: 'Arey chalani kisko hai, bas bike pe chhidak ke smell leni hai taaki mohalle me lage gaadi se aaya hoon!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Ka Bura Sapna",
+    "setup": "Banta: 'Yaar meri biwi ko kal raat bohot bura sapna aaya... keh rahi thi sapne me use diamond ka necklace mil gaya!'\nSanta: 'To isme bura kya hai?'",
+    "punchline": "Banta: 'Subah uthke mujhse uska bill maang rahi hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Mobile Ka Inventor",
+    "setup": "Interviewer: 'Batao Santa, Telephone kisne banaya tha?'\nSanta: 'Alexander Graham Bell ne.'\nInterviewer: 'Good! Aur Mobile phone kisne banaya?'",
+    "punchline": "Santa: 'Unki biwi ne, taaki pata chale ki pati kahan kahan ghoom raha hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Pappu Ki Bus Ride",
+    "setup": "Pappu bus me ek ladki se bola: 'Aapka naam kya hai?'\nLadki: 'Main apna naam anjaano ko nahi batati!'",
+    "punchline": "Pappu: 'Theek hai, jab pehchaan ho jaye to bata dena... main aakhri stop tak baitha hoon, koi jaldi nahi hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Weight Loss Formula",
+    "setup": "Doctor: 'Pappu, tumhara wazan 15 kg badh gaya hai. Roz 5 km daudo!'",
+    "punchline": "Pappu: 'Doctor sahab, 1 mahine baad to main sheher se 150 km door chala jaunga... wapas aane ke liye ola ka kiraya aap doge kya?'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Train Ka Engine",
+    "setup": "Santa train ke engine ke paas khada tha. Driver ne poocha: 'Bhai yahan kya dekh rahe ho?'",
+    "punchline": "Santa: 'Bhaiya ye dekh raha hoon ki aage itna bada engine laga hai, fir bhi peeche ke dabbe itni aawaz kyu kar rahe hain!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Taaza Machli",
+    "setup": "Santa machli bechne wale se bola: 'Bhaiya machli taaza hai kya?'\nDukandar: 'Arey zinda hai bhai, tadap rahi hai!'",
+    "punchline": "Santa: 'Zinda to meri daadi bhi hai, par taaza thodi na hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Golgappe Ki Shart",
+    "setup": "Santa: 'Bhaiya agar main 50 golgappe bina paani ke khaa gaya to kya doge?'\nDukandar: 'Free me dunga!'",
+    "punchline": "Santa 50 golgappe khaa gaya aur bola: 'Bhaiya ab sukha papdi aur thoda meetha paani de do, gale me phas raha hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 English Class",
+    "setup": "Teacher: 'Santa, translate this into English: 'Vidhyarthi school jaa rahe hain.''",
+    "punchline": "Santa: 'Students are heading towards the torture chamber!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Remote Control Boyfriend",
+    "setup": "Ladki: 'Mujhe aisa ladka chahiye jo smart ho, loyal ho, handsome ho aur meri har baat maane bina kisi sawal ke!'",
+    "punchline": "Ladka: 'Didi use ladka nahi bolte... use battery wala khilona bolte hain, D-Mart me 200 rupaye me mil jayega!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Taare Todna",
+    "setup": "Boyfriend: 'Baby, kya tum mere liye aasmaan se taare tod sakti ho?'",
+    "punchline": "Girlfriend: 'Taare ka to pata nahi, par tu zyada hero bana to tera chashma zaroor tod dungi!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ WiFi Wali Mohabbat",
+    "setup": "Ladka: 'Tum meri zindagi ki WiFi router ho!'\nLadki (muskuraate hue): 'Aww, itna strong signal hai kya?'",
+    "punchline": "Ladka: 'Nahi, password ke bina connect hi nahi hoti aur galti se connect ho jao to speed hi gayab ho jaati hai!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Breakup Ki Khushi",
+    "setup": "Dost: 'Bhai break-up ke baad kaisa feel ho raha hai?'",
+    "punchline": "Me: 'Bhai aisa lag raha hai jaise Zomato ka 60% discount coupon achanak redeem ho gaya ho aur phone ka 299 wala recharge 1 mahine chal gaya ho!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Block List",
+    "setup": "Crush: 'Maine tumhe WhatsApp, Instagram, Telegram aur Snapchat sab jagah block kar diya hai!'",
+    "punchline": "Desi Romeo: 'Google Pay to bacha hai na jaanu? Wahan 1 rupaya bhej ke message karunga!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Shaadi Ka Rishta",
+    "setup": "Ladki wale: 'Ladka kya karta hai?'\nLadke ke papa: 'Ji ladka social media influencer hai.'",
+    "punchline": "Ladki wale: 'Matlab berozgaar hai, bas reel banate waqt sharam nahi aati!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Red Light Ka Logic",
+    "setup": "Traffic Police: 'Aapne red light jump kyu ki?'\nDriver: 'Sir mujhe laga aap nahi dekh rahe!'",
+    "punchline": "Police: 'Main to dekh raha tha!'\nDriver: 'Wahi to galti ho gayi sir, aapko dekhne ke chakkar me traffic light dekhna bhool gaya!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Auto Wala Ka Meter",
+    "setup": "Passenger: 'Bhaiya railway station ke 100 rupaye? Station to 500 meter door hai!'",
+    "punchline": "Auto wala: '50 rupaye jaane ke bhaiya, aur 50 rupaye traffic me gaaliyan sunne ke! Rate bilkul fixed hai!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Shopkeeper Ka Guarantee",
+    "setup": "Customer: 'Bhaiya ye phone water-proof hai, drop-proof hai aur fire-proof bhi hai na?'\nDukandar: 'Ji bilkul, isme to helicopter landing ka bhi sensor hai!'",
+    "punchline": "Customer: 'To kami kya hai isme?'\nDukandar: 'Bas phone lagta nahi hai, baaki sab first-class hai!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Operation Ka Twist",
+    "setup": "Doctor: 'Mubarak ho, aapka operation successful raha! Ab aap bilkul khatre se bahar hain.'",
+    "punchline": "Patient: 'Par doctor sahab, main to padosi ko dekhne aaya tha aur aapne mujhe behosh karke appendix nikal diya!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Chai Ki Tapri",
+    "setup": "Tapri wala: 'Bhaiya adrak wali chai banau ya elaichi wali?'",
+    "punchline": "Engineer: 'Bhai bas itni kadak bana de ki pichhle 4 semester ke backlogs ka dukh bhool jaun!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Gym Ka Josh",
+    "setup": "Day 1 at Gym: 'Agle mahine tak Hrithik Roshan ban jaunga!'",
+    "punchline": "Day 2: 'Bhai bed se utha nahi jaa raha... lagta hai Hrithik Roshan banne me abhi 1 janam aur lagega!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Programmer Ka Khauf",
+    "setup": "Why do programmers prefer dark mode?",
+    "punchline": "Because light attracts bugs... and dark mode hides our dark tears when code fails in production!"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Git Commit Message",
+    "setup": "Developer git commit history:",
+    "punchline": "1. 'Initial commit'\n2. 'Fixed bug'\n3. 'Fixed bug in fix'\n4. 'Why god why'\n5. 'Final final fix'\n6. 'Reverting everything, I quit'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 WiFi Ka Naam",
+    "setup": "Neighbor: 'Bhaiya aapke WiFi ka password kya hai?'",
+    "punchline": "Me: 'Paanch rupaye ghanta.'\nNeighbor: 'Maine pucha password kya hai!'\nMe: 'Wahi to password hai: PaanchRupayeGhanta!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Ka Khel",
+    "setup": "External: 'Batao AC aur DC current me kya farak hai?'",
+    "punchline": "Student: 'Sir AC current chhoone se jhunjhunaat hoti hai, aur DC chhoone se direct swarg ke darshan hote hain!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbenchers Ki Strategy",
+    "setup": "Teacher: 'Tum teeno backbenchers hamesha aakhri bench par baith ke kya karte ho?'",
+    "punchline": "Backbencher: 'Sir, hum border par baith ke class ki suraksha karte hain, taaki koi bahar se aake class na disturb kare!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Submission",
+    "setup": "CR: 'Bhai assignment submit kar diya?'",
+    "punchline": "Me: 'Haan bhai, 5 dosto ke assignment se ek-ek paragraph churaya hai... plagiarism tool bhi confuse hoke crash ho gaya!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Engineering Ki Degree",
+    "setup": "Sharma uncle: 'Beta 4 saal me engineering se kya seekha?'",
+    "punchline": "Engineer: 'Uncle, 10 second me Maggi banana, 2 ghante pehle padh ke pass hona, aur subah 8:55 pe uth ke 9:00 baje class me baithna!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 75% Attendance Criteria",
+    "setup": "Dean: 'Aapki attendance 60% hai, hall ticket nahi milega.'",
+    "punchline": "Student: 'Sir, bachi hui 15% attendance mere dosto ne proxy laga ke de to di thi... ab wo pakde gaye to meri kya galti!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Group Study Ka Tamasha",
+    "setup": "Mom: 'Group study karke kitna padha tum logo ne?'",
+    "punchline": "Beta: 'Mummy, 4 ghante me 3 packet chips khaye, 1 ghanta reels dekhi, aur 5 minute decide kiya ki kal subah 4 baje uth ke padhenge!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Hall Ki Khamoshi",
+    "setup": "Exam hall me invigilator ne poocha: 'Koi doubt hai paper me?'",
+    "punchline": "Pappu: 'Sir, poore paper pe doubt hai... lagta hai out of syllabus chhap gaya hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Chemistry Lab Ka Haadsa",
+    "setup": "Lab Assistant: 'Pappu! H2SO4 me paani mat daalna!'",
+    "punchline": "Pappu (dhuan nikalte hue): 'Bhaiya thoda pehle bolte, ab to ceiling ka plaster bhi gir gaya!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Project Partner Ka Dhokha",
+    "setup": "Sir: 'Tum dono ne milke project banaya hai?'",
+    "punchline": "Partner 1: 'Ji sir! Isne banaya aur maine iske sir pe haath rakh ke moral support diya!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Final Year Ka Dard",
+    "setup": "Junior: 'Bhaiya, final year kaisa lag raha hai?'",
+    "punchline": "Senior: 'Bhai, resume me 'Hardworking' likh raha hoon aur yahan bistar se uth ke paani peene ka man nahi kar raha!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Maths Ka Pythagoras",
+    "setup": "Teacher: 'Pythagoras theorem batao!'",
+    "punchline": "Student: 'Sir, wo ek seedhi thi jo deewar se lagi thi... ab wo gir gayi to hum kyu calculate karein?!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 First Benchers Ka Tashan",
+    "setup": "First Bencher: 'Ma'am, aapne kal homework diya tha check nahi kiya!'",
+    "punchline": "Entire Backbench: *Loads loaded chalk and paper missiles with murderous intent.*"
+  },
+  {
+    "category": "student",
+    "title": "🎓 English Speaking Class",
+    "setup": "Teacher: 'Translate: 'Main ped par chadh gaya aur aam tod liye.'",
+    "punchline": "Student: 'I climbed on tree and disco disco with mango!'\nTeacher: 'Oxygen cylinder lao re koi mere liye!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Latecomer Ka Excuse",
+    "setup": "Teacher: 'Class me 20 minute late kyu aaye?'",
+    "punchline": "Student: 'Sir, sapne me exam de raha tha... socha submission ke baad hi uthunga!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Internal Marks Ka Masla",
+    "setup": "Student: 'Sir, internal me 25 me se 24 de do na please!'",
+    "punchline": "Professor: 'Bhai, tune poore semester me meri shakal dekhi thi? Main to socha tha tu college ka delivery boy hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Hostel Mess Food",
+    "setup": "Warden: 'Aaj mess me kya bana hai?'",
+    "punchline": "Cook: 'Sir daal bani hai.'\nWarden: 'Lekin ye to paani lag raha hai?'\nCook: 'Sir daal doob gayi hai, thoda tairne do upar aa jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Pen Chori Gang",
+    "setup": "Friend: 'Bhai kal exam hai, 5 pen leke jaa raha hoon!'",
+    "punchline": "Me: 'Bhai main to bas ek cap leke jaunga... baaki pen to invigilator ke aate hi table se chura lunga!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Supply / Backlog Ka Mela",
+    "setup": "Papa: 'Beta kitne subjects me pass huye?'",
+    "punchline": "Beta: 'Papa result me consistency dekho... 6 me se 6 me supplementary aayi hai, koi bhedbhav nahi kiya maine kisi subject ke sath!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 One Night Before Exam",
+    "setup": "11:00 PM: Aaj to syllabus faad dunga.\n1:00 AM: Bas pass hone layak padh leta hoon.",
+    "punchline": "4:00 AM: Bhagwan bas supplementary na aaye, kal mandir me 50 rupaye ka prasad chadhaunga!"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Canteen Ki Udhaari",
+    "setup": "Canteen Wale Bhaiya: 'Chotu, tera 1200 rupaye udhaar ho gaya hai!'",
+    "punchline": "Chotu: 'Bhaiya placement lagne do, pehla cheque aapke naam hi kaatunga... tab tak 2 samosa aur 1 chai aur laga do!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Online Class Ka Scam",
+    "setup": "Teacher: 'Rahul, screen share karo aur apna assignment dikhao.'",
+    "punchline": "Rahul: *Instantly unplugs Wi-Fi router*\n'Sir... awaaz... ka... cut rahi... hai... reconnecting...'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Practical File Ka Cover",
+    "setup": "External: 'Aapki practical file to bohot sundar lag rahi hai, kisne banayi?'",
+    "punchline": "Student: 'Sir stationary wale bhaiya ne... 200 rupaye liye hain binding ke sath!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Engineering Drawing Sheet",
+    "setup": "Professor: 'Ye isometric view kis angle se banaya hai?'",
+    "punchline": "Student: 'Sir jis angle se mera drafter hil raha tha, usi angle se ban gaya!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Biology Anatomy",
+    "setup": "Teacher: 'Mendhak (Frog) ka dissection karo.'",
+    "punchline": "Student: 'Sir mendhak to behosh ho gaya mujhe dekh ke, ab use CPR du ya class khatam samjhu?'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 History Dates Ka Ratta",
+    "setup": "Teacher: 'Panipat ki teesri ladaai kab hui thi?'",
+    "punchline": "Pappu: 'Sir jab pehli aur doosri ladaai me dono party santusht nahi hui thi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Sanskrit Exam Logic",
+    "setup": "Friend: 'Bhai Sanskrit me kya likh ke aaya?'",
+    "punchline": "Me: 'Hindi ke saare shabdon ke peeche do bindi (: ) laga di... full marks guaranteed!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Monitor Ki Hawabaazi",
+    "setup": "Class Monitor: 'Jo baat karega uska naam board pe likh dunga!'",
+    "punchline": "Backbencher: 'Likhega kaise? Chalk to humne pehle hi dustbin me fek di hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Bunk Karne Ka Masterplan",
+    "setup": "Dost 1: 'Chalo third lecture bunk karte hain!'",
+    "punchline": "Dost 2: 'Bhai pehle do lecture kab attend kiye jo third bunk karoge?'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Placement Aptitude Test",
+    "setup": "Question: A train travels at 120 km/h and reaches Delhi in 3 hours. Find the train driver's age.",
+    "punchline": "Student: 'Train cancel ho gayi thi sir, ticket ka refund claim kar raha hoon!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Class Me Neend",
+    "setup": "Teacher: 'Rohan, class me so kyu rahe ho?'",
+    "punchline": "Rohan: 'Sir so nahi raha tha, aankhein band karke aapka gyaan absorb kar raha tha!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Padhai Ki Dua",
+    "setup": "Student exam hall me paper dekhte hi:",
+    "punchline": "'Ya Allah, ya Bhagwan, ya Jesus... jo bhi online ho bas 33 marks dilwa do!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 College Fest Ki Taiyari",
+    "setup": "Senior: 'Fest ke liye sponsorships lana hai sabko!'",
+    "punchline": "Junior: 'Bhaiya colony ke parchoon wale ne 50 rupaye diye hain aur bola banner pe dukan ka naam sabse bada aana chahiye!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Syllabus vs Dimaag",
+    "setup": "Brain: 'Bhai 5 minute rest karle phir agla chapter shuru karenge.'",
+    "punchline": "Me: *Wakes up 6 hours later on YouTube watching how Japanese swords are forged.*"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Library Me Romance",
+    "setup": "Librarian: 'Shhhh! Yahan aawaz mat karo!'",
+    "punchline": "Couple: 'Arey ma'am hum bol kahan rahe hain, hum to bas aankhon hi aankhon me syllabus discuss kar rahe hain!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Semester Break Ka Sapna",
+    "setup": "Plan: Gym jaunga, nayi skills seekhunga, coding projects banaunga.",
+    "punchline": "Reality: 14 ghante bistar par reels scroll karte karte gardan me sprain aa gaya!"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Lab Record Copying",
+    "setup": "Friend: 'Bhai readings to alag aani chahiye thi na?'",
+    "punchline": "Me: 'Graph same dikhna chahiye, baaki value to examiner bhi apne mood ke hisab se check karta hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Ka Weight",
+    "setup": "Student: 'Sir supplementary sheet aur do!'",
+    "punchline": "Teacher: 'Abhi to 10 page bhare hain tune!'\nStudent: 'Sir writing badi hai meri, ek line me bas do hi shabd aate hain!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Final Year Farewell",
+    "setup": "Teacher: 'Hume bohot dukh hoga tumhare jane ke baad.'",
+    "punchline": "Backbencher: 'Sir hume to zyada hoga... agle saal se itne pyare taane kahan sunne ko milenge!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 College Bus Ka Struggle",
+    "setup": "Conductor: 'Peeche khali hai, thoda aur aage badho!'",
+    "punchline": "Student: 'Bhaiya aage driver ki godi me baith jau kya ab?!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 First Day of College",
+    "setup": "Fresher: 'Sir ye 3rd floor ka room 302 kahan hai?'",
+    "punchline": "Senior: 'Seedha jaake left mudna, wahan ek lift dikhegi... usme mat baithna, 5 saal se kharab padi hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Group Project Chat",
+    "setup": "Group Chat: 'Guys let's divide the work!'",
+    "punchline": "Result: 4 members 'Seen' at 11:42 PM, zero messages till submission day."
+  },
+  {
+    "category": "student",
+    "title": "🎓 Result Day Drama",
+    "setup": "Rishtedaar: 'Beta result kaisa raha?'",
+    "punchline": "Beta: 'Uncle server down chal raha hai 3 din se, lagta hai meri tarah server bhi sadme me hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Mass Bunk Failure",
+    "setup": "CR: 'Kal mass bunk hai, koi nahi aayega!'",
+    "punchline": "Next Day 9:00 AM: First benchers already taking notes in front row with colored pens."
+  },
+  {
+    "category": "student",
+    "title": "🎓 Online Exam Hack",
+    "setup": "Student: 'Google se answer copy karke paste kar diya!'",
+    "punchline": "Professor checking paper: 'Beta 'Click here to read more' bhi copy ho gaya hai tumhare answer sheet me!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Engineering Chemistry",
+    "setup": "Question: 'Explain rusting of iron.'",
+    "punchline": "Student: 'Loha jab baarish me akele rota hai to uske aansuon se rusting ho jaati hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 College ID Card",
+    "setup": "Security Guard: 'ID card kahan hai?'",
+    "punchline": "Student: 'Bhaiya shakal dekh ke pehchano, 4 saal se daily gate pe ladai kar raha hoon aapse!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Preparation Strategy",
+    "setup": "Student: 'Unit 1 easy hai baad me padhunga, Unit 2 hard hai chhod deta hoon, Unit 3 out of syllabus lag raha hai, Unit 4-5 option me nikal jayega!'",
+    "punchline": "Result: 100% syllabus safely eliminated."
+  },
+  {
+    "category": "student",
+    "title": "🎓 Teacher Ka Question",
+    "setup": "Teacher: 'Batao Taj Mahal kisne banwaya?'",
+    "punchline": "Pappu: 'Mistri ne sir! Shah Jahan to bas cement aur eent ka hisaab dekh raha tha!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Class Ki Hasi",
+    "setup": "Teacher: 'Kis baat pe hasi aa rahi hai dono ko, khade ho jao!'",
+    "punchline": "Dost: 'Sir iski shakal hi aisi hai, dekh ke control nahi hota!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Re-evaluation Ka Scam",
+    "setup": "Student: 'Maine 1000 rupaye deke paper re-check karwaya!'",
+    "punchline": "Friend: 'Kya hua phir?'\nStudent: '2 marks aur cut gaye sir ke check karne me!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mummy Ki Bargaining Skills",
+    "setup": "Shopkeeper: 'Bhenji, ye kurti 1500 rupaye ki hai, ek dam fix rate.'",
+    "punchline": "Mummy: '150 me doge ya aage badhu?'\nShopkeeper: 'Bhenji le jao, meri dukan bhi le jao!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Papa Ka Remote Control",
+    "setup": "Papa sofe par aankein band karke so rahe the.\nMaine TV channel badal diya.",
+    "punchline": "Papa (bina aankh khole): 'Dekh raha tha main, wapas wahi channel laga!'\n*Dad's sixth sense is undefeated.*"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Rishtedaar Ka Sawal",
+    "setup": "Door ke fufaji: 'Beta aage ka kya socha hai?'",
+    "punchline": "Me: 'Uncle yahi socha hai ki aapke ghar aane pe chat par chup jana hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mummy Ka Taana Spectrum",
+    "setup": "Me: 'Mummy sir dard ho raha hai bohot.'",
+    "punchline": "Mummy: 'Aur chalao din bhar phone! Phone ko mixer me pees ke uska soup bana ke pee le, sir dard theek ho jayega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 D-Mart Ki Shopping",
+    "setup": "Ghar se nikle the sirf 1 packet namak lene...",
+    "punchline": "D-Mart se wapas aaye 3 trolleys ke sath jisme 4 plastic ke dabbe, 2 bedsheet aur 1 buy-1-get-1 wala mop tha!"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Subah Uthane Ka Formula",
+    "setup": "Mummy (at 7:00 AM): 'Uth jao nalayak! 10 baj gaye hain!'",
+    "punchline": "Clock: 7:02 AM.\nMe: 'Mummy abhi to 7 baje hain!'\nMummy: 'Haan to 10 bajne me der kitni lagti hai?!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Papa Ki Car Driving",
+    "setup": "Speed breaker aane par papa ne speed 5 km/h kardi.",
+    "punchline": "Me: 'Papa itna slow kyu kiya?'\nPapa: 'Car ke shock-up pe zor padta hai beta... teri haddiyan tootengi to theek ho jayengi, car ke parts mehnge aate hain!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Chai Ki Deewangi",
+    "setup": "Doctor: 'Aapko acidity hai, din me 4 baar chai peena band kijiye.'",
+    "punchline": "Desi Papa: 'Doctor sahab, chai chhodne se accha hai main doctor hi badal lu!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Dahi Shakkar Ritual",
+    "setup": "Mummy: 'Exam dene jaa raha hai, ek katori dahi-shakkar kha ke jaa!'",
+    "punchline": "Beta: 'Mummy question paper dekh ke dahi-shakkar ka sara glucose aansu ban ke nikal gaya!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 WhatsApp Family Group",
+    "setup": "Mama ji in Family Group at 5:00 AM: '🌅 Good Morning! Agar ye message 11 logo ko bhejoge to shaam tak khushkhabri milegi!'",
+    "punchline": "Me: 'Mama ji, shaam ko electricity bill aa gaya... yahi khushkhabri thi kya?!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Papa Ka Budget Talk",
+    "setup": "Beta: 'Papa naya phone dilado, puraane wale ki battery phool gayi hai.'",
+    "punchline": "Papa: 'Thoda ice pack laga le phone pe, soojan utar jayegi... naya phone agle janam me milega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mummy Ki Lost Item Radar",
+    "setup": "Me (after searching for 2 hours): 'Mummy meri blue jeans nahi mil rahi!'",
+    "punchline": "Mummy: 'Main aake dhundhu? Agar mil gayi to do thappad marungi!'\n*Mummy enters room, reaches into wardrobe, pulls jeans out in 1.4 seconds.*"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Shaadi Ka Pressure",
+    "setup": "Mummy: 'Sharma ji ke bete ki shaadi ho gayi, Gupta ji ke pote ki bhi shaadi ho gayi... tera kya plan hai?'",
+    "punchline": "Beta: 'Mummy main to akele khush hoon.'\nMummy: 'Khandan ka aakhri chirag bujhane ki kasam kha rakhi hai tune!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mehman Aur Namkeen",
+    "setup": "Ghar par mehmaan aaye to mummy ne dry fruits aur premium biscuit nikale.",
+    "punchline": "Mehmaan ke jate hi mummy ne dabba wapas locker me lock kar diya:\n'Haath mat lagana, agle mehmaan ke liye hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 AC Ka Remote",
+    "setup": "Garmi me temperature 45°C ho gaya.",
+    "punchline": "Papa: 'AC 26 pe chalao aur pankha tez karlo... compressor pe load padega to bill me pura ghar bik jayega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Padosi Ki Chugli",
+    "setup": "Sharma Aunty: 'Bhenji aapka beta kal raat 11 baje bike se ghoom raha tha!'",
+    "punchline": "Mummy: 'Haan bhenji, aapki beti ke balcony se haath hilane ka time wahi hota hai na!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Diwali Ki Safai",
+    "setup": "Diwali se 15 din pehle mummy:",
+    "punchline": "'Chalo sab pankhe saaf karo, jaale nikalo, aur jo saamaan pichle 10 saal se nahi use hua use dustbin me feko... siwaye tere!'\n*Emotional damage 100.*"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Padhai Ka Drama",
+    "setup": "Beta 4 ghante se book khol ke baitha tha.",
+    "punchline": "Papa: 'Beta page to palat le, 3 ghante se introduction padh raha hai kya?!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Dhaniya Free Me Chahiye",
+    "setup": "Sabji wale bhaiya: 'Bhenji 450 rupaye ho gaye aalu, pyaaz aur matar ke.'",
+    "punchline": "Mummy: 'Thoda dhaniya aur 4 hari mirchi upar se daal do bhaiya, tabhi paise nikalungi!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Pocket Money Ka Hisaab",
+    "setup": "Beta: 'Papa 500 rupaye de do na pocket money.'",
+    "punchline": "Papa: 'Pehle pichle mahine ke 100 rupaye ka audited balance sheet dikha, tab baat karenge!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Toothpaste Tube Ka Antim Sanskar",
+    "setup": "Toothpaste khatam hone par normal log naya tube khareedte hain.",
+    "punchline": "Desi family: Tube ko belan se bel ke, kaat ke, 3 hafte aur use karti hai!"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Purani T-shirt Ka Punarjanm",
+    "setup": "Pehle party wear T-shirt bani...\nPhir ghar me pehanne wali bani...\nPhir night suit bani...",
+    "punchline": "Aur aakhir me pochha ban ke farsh saaf kar rahi hai! Desi recycling at its peak!"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Padosi Ka Wi-Fi",
+    "setup": "Beta: 'Papa padosi ne Wi-Fi ka password change kar diya!'",
+    "punchline": "Papa: 'Ja unke ghar aur bol ki inverter ka switch check karein, Wi-Fi band ho gaya hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Shaadi Ka Lifafa",
+    "setup": "Papa: 'Sharma ji ke bete ki shaadi me kitna lifafa dena hai?'",
+    "punchline": "Mummy: 'Pichle saal unhone hamari beti ki shaadi me 501 diya tha... hum 501 hi denge, 1 rupaya bhi zyada nahi!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Ghar Ki Khichdi",
+    "setup": "Beta: 'Mummy aaj Domino's se pizza mangwa lein?'",
+    "punchline": "Mummy: 'Pizza me kachha aata hota hai pet kharab karega, chup chap lauki ki sabzi aur khichdi kha le!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Phone Call Overhearing",
+    "setup": "Me speaking softly on phone in balcony: 'Haan baby...'",
+    "punchline": "Papa suddenly appears with watering can: 'Kisse baat chal rahi hai beta, Zara loudspeaker pe daalna!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Rishtedaar Ka 500 Ka Note",
+    "setup": "Mehmaan jate hue jeb se 500 ka note nikalte hain.",
+    "punchline": "Me acting humble: 'Arey nahi uncle iski kya zaroorat hai...'\nMeanwhile Mummy from kitchen giving death glare to take it instantly!"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Chappal Ka GPS Tracker",
+    "setup": "Papa from 20 meters away:",
+    "punchline": "*Throws hawai chappal around two corners, bounces off sofa, hits directly on forehead with 100% precision.*"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Sunday Ka Morning Routine",
+    "setup": "Sunday 8:00 AM: Sukoon se sona chahta tha.",
+    "punchline": "Mom: *Turns on vacuum cleaner, turns off fan, opens all curtains, plays devotional songs on home theater.*"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Shaadi Ka Dukan",
+    "setup": "Papa: 'Beta shadi ke liye ladki wale dekhne aa rahe hain, seedhe baithna!'",
+    "punchline": "Beta: 'Papa main thodi na showcase ka showpiece hoon jo pose du!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Ghar Ka Kutta vs Beta",
+    "setup": "Mummy to Tommy: 'Mera pyara baccha, doodh peeyega?'",
+    "punchline": "Mummy to Beta: 'Uth ja nalayak, kutto ki tarah pada rehta hai din bhar!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Gas Cylinder Booking",
+    "setup": "Papa: 'Gas cylinder khatam hone se pehle book kyu nahi kiya?'",
+    "punchline": "Beta: 'Papa cylinder transparent thodi na hota hai jo andar dekh saku kitna bacha hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Sabji Ki Shopping Test",
+    "setup": "Mummy: 'Bazaare jaake 2 kilo tamatar la, dekh ke laana tight wale!'",
+    "punchline": "Beta brings soft tomatoes.\nMummy: 'Tujhe bazaar bhejna aur dushman ko hathiyar dena ek barabar hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Padosi Ki Car",
+    "setup": "Sharma ji bought a new Creta.",
+    "punchline": "Papa looking from window: 'Kitna mileage deti hogi? EMI pe hi li hogi pakka, dikhawa karne ki aadat hai!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Light Band Karo Police",
+    "setup": "Papa enters room and sees phone charger plugged in with switch ON.",
+    "punchline": "Papa: 'Bijli ka meter itna tez bhaag raha hai jaise Usain Bolt race me daud raha ho!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Flight Ki Packing",
+    "setup": "Allowed luggage: 15 kg.",
+    "punchline": "Desi luggage: 38 kg with 4 dabbas of homemade thepla, achaar, and papad wrapped in 12 layers of plastic!"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Naya Kapda Pehanne Ka Rule",
+    "setup": "Beta: 'Mummy ye naya shirt aaj pehan lu?'",
+    "punchline": "Mummy: 'Pagal hai kya! Diwali pe pehanna, abhi to sirf 6 mahine bache hain Diwali aane me!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Family Photo Pose",
+    "setup": "Photographer: 'Smile please!'",
+    "punchline": "Family: 10 log khade hain lekin sabke chehre par lag raha hai jaise kachehri me gawaahi dene aaye hon!"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Water Bottle Refill",
+    "setup": "Mummy: 'Fridge me khali botal kisne rakhi?!'",
+    "punchline": "Entire sibling group immediately points fingers at each other like Spider-Man meme."
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Car Ka Plastic Cover",
+    "setup": "Car khareede huye 3 saal ho gaye.",
+    "punchline": "Papa: 'Seats ka plastic cover mat utaarna, nayi car jaisi mehak aati rehti hai!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Standup Meeting Ka Sach",
+    "setup": "Manager: 'Chalo update do sab log, kal kya kiya?'",
+    "punchline": "Dev: 'Sir kal main 'Research & Investigation' kar raha tha... (Code me 1 semicolon missing tha jo 8 ghante baad mila)!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 HR Ka Rangoli Contest",
+    "setup": "Employees: 'Sir appraisal kab aayega, inflation badh gaya hai!'",
+    "punchline": "HR: 'Appraisal to Q4 me sochenge, tab tak chalo sab conference room me Rangoli competition me hissa lo! Winner ko ek diary aur pen milega!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Friday Production Deployment",
+    "setup": "Senior Dev: 'Friday shaam 5 baje production deployment mat karo!'",
+    "punchline": "Junior Dev: *Clicks Merge Pull Request at 5:02 PM*\n*Server on fire, database locked, weekend ruined.*"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Work-Life Balance",
+    "setup": "Job Description: 'We believe in 100% Work-Life Balance.'",
+    "punchline": "Reality: 'Work during office hours, live in the office after hours, and balance your laptop on your chest in bed!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Zoom Call Mute Mishap",
+    "setup": "Boss: 'Team, this quarter hume 200% targets hit karne hain!'",
+    "punchline": "Employee (thinking mic is muted): 'Haan bhai, aur swarg se apsaraayein bhi bulani hain!'\nBoss: 'Ramesh, unmute ho tum!'\nRamesh: *Has left the meeting.*"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Notice Period Ka Tashan",
+    "setup": "Colleague: 'Bhai tu notice period me itna khush kyu ghoom raha hai?'",
+    "punchline": "Employee: 'Kyunki ab boss ke gusse se mujhe darr nahi lagta... ab main 11 baje aata hoon aur 4 baje bag pack kar leta hoon!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Out of Office Email",
+    "setup": "Auto-Reply: 'I am out of office until Monday with limited access to email.'",
+    "punchline": "Actual Translation: 'I am on my couch eating biryani, don't ping me even if the data center explodes!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Appraisal Ka Shock",
+    "setup": "Manager: 'Ramesh, you exceeded all expectations, delivered 5 projects single-handedly!'",
+    "punchline": "Ramesh: 'Thank you sir! To increment kitna mila?'\nManager: '3.2%! Market standards ke hisab se bohot solid hike hai!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Fake Keyboard Typing",
+    "setup": "Manager enters the cabin unexpectedly.",
+    "punchline": "Everyone in the bay suddenly starts aggressively smashing Backspace and typing 140 WPM on empty Notepad windows!"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Client Requirement Ka Chakkar",
+    "setup": "Client: 'Hume project kal morning me live chahiye.'",
+    "punchline": "Dev: 'Sir requirements to finalize kar lo pehle?'\nClient: 'Requirements hum release ke baad dekhenge, pehle live karo!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Monday Morning Blues",
+    "setup": "Sunday 11:59 PM: 'Arey abhi to weekend shuru hua tha...'",
+    "punchline": "Monday 8:00 AM: *Alarm sounds like an air-raid siren calling for emotional destruction.*"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Team Lunch Ka Bill",
+    "setup": "Manager: 'Aaj sabka team lunch meri taraf se!'",
+    "punchline": "Everyone orders lobster, sizzlers and shakes...\nManager at payment counter: 'Chalo Splitwise pe sab log apna apna add karlo!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Resume Exaggeration",
+    "setup": "Resume: 'Skilled in high-level crisis management and dynamic problem resolution.'",
+    "punchline": "Reality: 'Wi-Fi disconnect hone par router ka switch off karke on kar leta hoon!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Sick Leave Ka Jhoot",
+    "setup": "Employee on call: *Coughs violently* 'Sir bohot tez viral fever hai, hospital jaa raha hoon...'",
+    "punchline": "Meanwhile Instagram story 2 hours later: 'Goa beach vibes with squad! 🌴🍹'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Reply All Blunder",
+    "setup": "HR sent company-wide email to 5000 employees.",
+    "punchline": "Intern replied: 'Unsubscribe please.'\nThen 300 more uncles replied: 'Stop replying to all!'\n*Mail server melted.*"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Agile Sprint Planning",
+    "setup": "Scrum Master: 'Is story ko kitne story points doge?'",
+    "punchline": "Developer: 'Bhai isko 8 points do, 3 din to client ko samjhane me lagenge ki ye feature possible hi nahi hai!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Chai Break Ka Time",
+    "setup": "Manager: 'Chai peene gaye the ya chai ki patti ugaane gaye the?'",
+    "punchline": "Team: 'Sir discussion chal raha tha ki company ka revenue kaise badhayein!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 LinkedIn Influencer Cringe",
+    "setup": "LinkedIn Post: 'Today a stray dog came into our office. Here are 5 leadership lessons I learned from him!'",
+    "punchline": "Comments: 'Agree! Truly inspirational insight on corporate synergy!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Weekend Escalation",
+    "setup": "Saturday 2:00 PM: Notification ping from Slack.",
+    "punchline": "Heart rate jumps from 72 to 180 BPM in 0.3 seconds."
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Office Gossip Network",
+    "setup": "HR: 'Hume internal communication improve karna chahiye.'",
+    "punchline": "Employees: 'Office ki pantry me baith jao 10 minute, pure company ke secrets pata chal jayenge!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Virtual Meeting Video On",
+    "setup": "Manager: 'Everyone please turn your camera on for team bonding!'",
+    "punchline": "Developer in dirty banyan with uncombed hair: *Throws laptop under blanket* 'Sir camera hardware driver crash ho gaya!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 1-on-1 Feedback Session",
+    "setup": "Manager: 'I want open and honest feedback from you, don't hesitate.'",
+    "punchline": "Employee (mind): 'Agar sach bol diya to kal severance package bhi nahi milega!'\nEmployee (mouth): 'Sir your leadership is visionary!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Coffee Machine Tragedy",
+    "setup": "Pantry boy: 'Coffee machine kharab ho gayi hai aaj.'",
+    "punchline": "Entire floor productivity drops by 98.6% within 15 minutes."
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Onsite Opportunity Ka Sapna",
+    "setup": "Manager: 'Jo is quarter me best deliver karega use US client onsite bhejenge!'",
+    "punchline": "Next Quarter: 'Budget cut ho gaya, client onsite ki jagah Pune branch me shift kar rahe hain!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 JIRA Ticket Nightmare",
+    "setup": "QA: 'Bug reopen kar diya maine.'",
+    "punchline": "Developer: 'Bhai feature tha wo! Documented feature!'\nQA: 'User manual me to bug jaisa hi lag raha tha!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Overtime Ka Reward",
+    "setup": "Employee worked 16 hours daily for 3 months to deliver release.",
+    "punchline": "Reward: Ek slice pizza aur CEO ka thank you email jisme uska naam Galat likha tha!"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 CTC Breakdown Scam",
+    "setup": "CTC: 12 LPA.",
+    "punchline": "In-hand salary: 42,000 rupaye.\nBaaki 8 lakh gratuity, PF, ESOPs aur cafeteria ke coupons me chala gaya!"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Late Login Fine",
+    "setup": "HR: '9:30 AM ke baad aane par half-day mark hoga.'",
+    "punchline": "Employees leaving at 10:00 PM: 'To sir night stay ka rent doge kya?!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Office Chair Ka Jhagda",
+    "setup": "Colleague 1: 'Meri ergonomic chair kisne badal di?'",
+    "punchline": "Colleague 2 (sitting on it): 'Bhai jo pehle login karta hai chair uski hoti hai, corporate rule hai!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Client Demo Ka Siyapa",
+    "setup": "Demo to 40 stakeholders.\nEverything was working 5 minutes ago.",
+    "punchline": "App on screen: *404 Not Found / Database Connection Timeout.*"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka Bank Loan",
+    "setup": "Bank Manager: 'Santa ji, aapko 50 lakh ka loan chahiye, guarantee me kya denge?'",
+    "punchline": "Santa: 'Ghar ke kaagaz le lo.'\nManager: 'Lekin ye to kiraye ka makaan hai!'\nSanta: 'Haan to loan chukane ke baad mera ho jayega na!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Ka Aeroplane Ticket",
+    "setup": "Banta ticket counter pe gaya: 'Delhi ka ticket do.'",
+    "punchline": "Agent: 'Business class ya Economy?'\nBanta: 'Bhai jisme driver ke peeche window seat mile, wahi wali de do!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Doctor Aur Pappu",
+    "setup": "Doctor: 'Pappu, subah dhoop me ghooma karo, Vitamin D milega.'",
+    "punchline": "Pappu: 'Doctor sahab, dhoop me ghoomne se to rang kaala ho gaya, ab Vitamin D ka shakal pe spray karu kya?!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ki Smart Watch",
+    "setup": "Jeeto: 'Ji ye naya watch kya batata hai?'",
+    "punchline": "Santa: 'Ye batata hai ki main kitne kadam chala.'\nJeeto: 'Kitne chale?'\nSanta: '0 kadam, sofe pe pada hoon subah se!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Police Aur Chor",
+    "setup": "Inspector: 'Tune bank me chori kyu ki?'",
+    "punchline": "Chor: 'Sir wahan likha tha: 'Humari shakha aapki sewa ke liye sada tatpar hai', to maine sewa le li!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Pappu Ka Painting",
+    "setup": "Teacher: 'Pappu, ye blank paper kyu laaye? Painting kahan hai?'",
+    "punchline": "Pappu: 'Sir ye ghaas khati hui gaay ki painting hai!'\nTeacher: 'Ghaas kahan hai?'\nPappu: 'Gaay kha gayi sir!'\nTeacher: 'Aur gaay kahan hai?'\nPappu: 'Ghaas khatam to gaay kyu rukegi, chali gayi!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka Restaurant Order",
+    "setup": "Waiter: 'Sir, soup me makkhi giri hai!'",
+    "punchline": "Santa: 'Chilla kyu raha hai bewaqoof! Chup chap nikal, warna bache hue customer bhi makkhi mangne lagenge!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Ka Helmet",
+    "setup": "Traffic Police: 'Bina helmet ke bike chala rahe ho, 1000 rupaye fine do!'",
+    "punchline": "Banta: 'Sir helmet pehan leta to mohalle walo ko pata kaise chalta ki nayi bike maine kharidi hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Pappu Ka Pariksha Hall",
+    "setup": "Question: 'Akbar ne Birbal se kya kaha?'",
+    "punchline": "Pappu: 'Sir main wahan tha thodi na! Dono ka private matter tha, main beech me kyu taang adaun?!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka Swimming Pool",
+    "setup": "Trainer: 'Santa, swimming pool me doob rahe ho to chillao mat, haath pair maaro!'",
+    "punchline": "Santa: 'Arey haath pair baad me marunga, pehle ye batao paani me sans kaise lete hain?!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka Car Accident",
+    "setup": "Judge: 'Tumne car se 5 logo ko uda diya!'",
+    "punchline": "Santa: 'Judge sahab, break fail ho gaye the! Ek taraf 5 log the aur doosri taraf ek budha aadmi... to maine socha budhe ko maru taaki kam nuksan ho!'\nJudge: 'To phir 5 log kaise mare?'\nSanta: 'Budha bhag ke un 5 logo ke peeche chup gaya!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Aur Train Ka Engine",
+    "setup": "Banta platform pe khada hoke train ke engine ko ghoor raha tha.",
+    "punchline": "Passerby: 'Kya dekh rahe ho bhai?'\nBanta: 'Ye dekh raha hoon ki itne bade engine ko chalane ke liye kitne ghode andar bandh rakhe hain!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Pappu Ka Geography Test",
+    "setup": "Teacher: 'Duniya me kitne continent hain?'",
+    "punchline": "Pappu: 'Sir pehle 7 the, kal raat earthquake ke baad 8 ho gaye honge!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka Mobile Recharge",
+    "setup": "Shopkeeper: 'Kitne ka recharge karu?'",
+    "punchline": "Santa: '10 rupaye ka kardo, bas ek miss call marna hai!'\nShopkeeper: 'Miss call to zero balance pe bhi chali jaati hai!'\nSanta: 'Haan par izzat naam ki bhi to koi cheez hoti hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Ka Post Office",
+    "setup": "Post Master: 'Is lifafe par ticket nahi laga, wapas jayega.'",
+    "punchline": "Banta: 'To bhej do wapas, maine address to apna hi likha hai sender me!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Yamraj Aur Desi Man",
+    "setup": "Yamraj: 'Tumhari aayu samapt ho gayi hai, chalo.'",
+    "punchline": "Desi Man: 'Yamraj ji, 2 minute rukiye... Swiggy wale ka phone aa raha hai, delivery leke aata hoon!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ki English Class",
+    "setup": "Teacher: 'What is the opposite of 'Laugh'?'",
+    "punchline": "Santa: 'Sir, No Laugh!'\nTeacher: 'Aur 'Cry' ka?'\nSanta: 'No Cry!'\nTeacher: 'Aur mera opposite?'\nSanta: 'No Teacher!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Pappu Ka Doctor Se Sawal",
+    "setup": "Pappu: 'Doctor sahab, kya main chasma lagane ke baad padh sakunga?'",
+    "punchline": "Doctor: 'Haan bilkul!'\nPappu: 'Wah doctor sahab kya kamaal ka chasma hai, anpadh ko bhi padhna sikha dega!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Aur Doodh Ka Packet",
+    "setup": "Doodh wala: 'Bhaiya doodh me paani nahi milaya aaj.'",
+    "punchline": "Santa: 'Kyu, aaj baraf milayi hai kya?!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Ka Cinema Hall",
+    "setup": "Cinema hall me Banta baar-baar bahar jaa raha tha aur andar aa raha tha.",
+    "punchline": "Manager: 'Kya problem hai bhai?'\nBanta: 'Gate pe khada aadmi baar baar mera ticket phad deta hai, abhi tak 5 ticket khareed chuka hoon!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Pehla Date Aur Bill",
+    "setup": "Date pe ladki ne 5 Star hotel me pasta, sushi aur exotic wine mangwa li.",
+    "punchline": "Bill aate hi ladka bola: 'Maine ek bohot purani katha suni hai... jo pehle khata hai wo pehle bill deta hai!'\n*Sprint speed 40 km/h.*"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Late Reply Ka Bahana",
+    "setup": "Ladki: '6 ghante baad reply de rahe ho? Kahan the?'",
+    "punchline": "Ladka: 'Baby phone charging pe tha aur charger doosre kamre me tha aur main aalsi hoon!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Valentine's Day Special",
+    "setup": "Single Dost: 'Bhai 14th Feb ko tera kya plan hai?'",
+    "punchline": "Me: 'Bhai subah Bajrang Dal ko donation dunga, shaam ko park me popcorn leke couples ka chase dekhunga!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Bio vs Reality",
+    "setup": "Instagram Bio: 'Wanderlust ✈️ | Dog Lover 🐶 | Sapiosexual 🧠'",
+    "punchline": "Reality: 'Colony ke bahar momos khane paidal nahi jaata, pados ke kutte se darta hai, aur reels me 'Aayein' dekh ke hasta hai!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Friendzone Ki Heights",
+    "setup": "Ladki: 'You are like a brother to me.'",
+    "punchline": "Ladka: 'Theek hai behen, Rakhi pe 5000 rupaye mangne mat aana!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Gussa Hone Ka Reason",
+    "setup": "Ladka: 'Baby kya hua, kyu gussa ho?'",
+    "punchline": "Ladki: 'Mujhe khud nahi pata, lekin tumhara farz banta hai pata lagana aur sorry bolna!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Password Sharing",
+    "setup": "Girlfriend: 'Agar sach me pyaar karte ho to apna Instagram password do!'",
+    "punchline": "Boyfriend: 'Pyaar to mummy se bhi karta hoon, unhe thodi na password de diya!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Long Distance Relationship",
+    "setup": "Girlfriend: 'Baby hum kitne time se nahi mile!'",
+    "punchline": "Boyfriend: 'Haan baby, aur video call pe screen share karke ludo khelte khelte mera data plan bhi khatam ho gaya!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ First Date Conversation",
+    "setup": "Girl: 'Tell me about yourself in 3 words.'",
+    "punchline": "Boy: 'Hungry, Broke, Nervous.'\nGirl: 'Waiter, check please!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Surprise Gift Reaction",
+    "setup": "Girlfriend: 'Aww baby you bought me a rose!'",
+    "punchline": "Boyfriend: 'Traffic signal wale bache ne emotional blackmail kar diya tha, wahi wala hai!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Breakup Ka Reason",
+    "setup": "Girlfriend: 'Humara vibe match nahi kar raha.'",
+    "punchline": "Boyfriend: 'Bhai jab Netflix ka subscription chala rahi thi tab to 4K me vibe match kar rahi thi!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Jealous Girlfriend",
+    "setup": "Girlfriend: 'Us ladki ki photo pe like kyu kiya?'",
+    "punchline": "Boyfriend: 'Baby wo meri cousin sister hai!'\nGirlfriend: 'To kya hua, family me itna pyaar accha nahi hota!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Shopping Date Nightmare",
+    "setup": "Girlfriend: 'Baby bas 5 minute me aayi trail room se!'",
+    "punchline": "Boyfriend looking at watch: *45 minutes, 8 stores, and 3 existential crises later.*"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Ex Ka Message",
+    "setup": "Ex at 2:00 AM: 'Hey, are you awake?'",
+    "punchline": "Me: *Blocks, deletes, changes sim card, relocates to Himalayas.*"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Relationship Status",
+    "setup": "Status: In a relationship with my bed, food, and high-speed Wi-Fi.",
+    "punchline": "Third-wheel status: 'Netflix asks 'Are you still watching?' and I cry.'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Auto Wale Ka Nakhra",
+    "setup": "Me: 'Bhaiya Station chaloge?'",
+    "punchline": "Auto Wala: 'Nahi.'\nMe: 'Kyu?'\nAuto Wala: 'Mood nahi hai.'\n*Auto walas reject riders faster than top tech companies.*"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 SBI Ka Lunch Break",
+    "setup": "Customer (at 11:15 AM): 'Sir cheque clear karwana hai.'",
+    "punchline": "SBI Cashier: 'Counter number 4 pe jao, abhi lunch time shuru hone wala hai 2 ghante baad!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Salon Ka Haircut Regret",
+    "setup": "Me: 'Bhaiya bas thode se baal chote karna, side se trim karna.'",
+    "punchline": "Barber: *Snip snip snip*\nMe looking in mirror: 'Bhaiya army me bharti karwane ka theka liya tha kya tune?!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Gym On 1st January",
+    "setup": "1st January: Gym packed with 200 people doing biceps curl.",
+    "punchline": "15th January: Gym trainer sitting alone on treadmill playing Candy Crush."
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 IRCTC Tatkal Booking",
+    "setup": "10:00:00 AM - Click Tatkal Booking.",
+    "punchline": "10:00:02 AM - Wheel of Death spinning...\n10:00:05 AM - Waiting List 384.\n*Fastest finger first, Indian Railways edition.*"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Golgappe Wale Ka Extra Puri",
+    "setup": "Me: 'Bhaiya sukha puri do na ek.'",
+    "punchline": "Golgappa Bhaiya: 'Arey babu pehle 20 rupaye to do, sukha puri katora bhar ke mangte ho!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Electricity Power Cut",
+    "setup": "Light chali gayi.",
+    "punchline": "Pehle inverter check nahi karte, pehle balcony se bahar sar nikal ke dekhte hain ki padosi ki bhi gayi hai ya nahi!"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Swiggy Delivery Boy GPS",
+    "setup": "Delivery Partner: 'Bhaiya aapka ghar nahi mil raha.'",
+    "punchline": "Me: 'Bhaiya main samne khada hoke haath hila raha hoon!'\nDelivery Guy: 'Arey sir mujhe laga aap subah ki exercise kar rahe ho!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Petrol Price Hike",
+    "setup": "Friend: 'Bhai petrol 110 rupaye ho gaya!'",
+    "punchline": "Me: 'Mujhe kya farak padta hai, main to pehle bhi 100 ka dalwata tha abhi bhi 100 ka dalwata hoon!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Metro Me Seat Ka Jhagda",
+    "setup": "Uncle in Metro: 'Beta khade ho jao, buzurgon ki izzat karni chahiye!'",
+    "punchline": "Student with 15 kg bag and 3 backlogs: 'Uncle izzat to main khud ki nahi karta abhi!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Chai Ki Tapri Debate",
+    "setup": "Topic: Russia-Ukraine war, global inflation, World Cup selection.",
+    "punchline": "Debaters: 4 uncles sitting on wooden bench dipping 5 rupaye biscuit in cutting chai."
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Doctor Ki Hand Writing",
+    "setup": "Chemist reading prescription: 'Beta ye to bohot generic medicine hai.'",
+    "punchline": "Me: 'Bhaiya mujhe to laga ECG report pe lines draw kar di hain!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Online Shopping Return",
+    "setup": "Product ordered: Luxury Italian Leather Jacket.",
+    "punchline": "Delivered: Black plastic garbage bag with zip attached."
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Traffic Police Ka Trap",
+    "setup": "You wearing helmet, carrying license, RC, pollution, insurance.",
+    "punchline": "Police: 'Chalan to banega... tumhari shakal bohot suspicious lag rahi hai!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Momo Wale Bhaiya Ki Teekhi Chutney",
+    "setup": "Me: 'Bhaiya chutney thodi spicy banana!'",
+    "punchline": "First bite: *Ears smoking, tongue melted, soul detached from body.*"
+  },
+  {
+    "category": "tech",
+    "title": "💻 It Works on My Machine",
+    "setup": "QA: 'Bhai login button click karne pe poora app crash ho raha hai!'",
+    "punchline": "Developer: 'Meri machine pe to chal raha hai, client ko mera laptop hi ship kar dete hain!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 StackOverflow Copy Paste",
+    "setup": "Interviewer: 'Explain this 500-line algorithm.'",
+    "punchline": "Candidate: 'Sir iska credit mujhe nahi, user982431 on StackOverflow ko jaata hai jiska answer 2012 me upvote hua tha!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 AI Taking Jobs",
+    "setup": "People: 'AI will replace software engineers!'",
+    "punchline": "Software Engineers: 'Bhai jab client ko khud nahi pata use kya chahiye, to AI kya ghanta samjhega?!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 CSS Center a Div",
+    "setup": "Senior Architect: 'Humne microservices architecture bana diya, distributed caching laga di!'",
+    "punchline": "Junior Frontend Dev: 'Sir wo theek hai, pehle ye card screen ke center me kaise layein wo bata do!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Git Commit Messages",
+    "setup": "Commit 1: Added user authentication\nCommit 2: Fixed minor bug",
+    "punchline": "Commit 3: Final fix\nCommit 4: Actual final fix\nCommit 5: PLEASE WORK BHAGWAN KE LIYE!"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Dark Mode Supremacy",
+    "setup": "Doctor: 'Aapki aankhon me strain hai, brightness kam kijiye.'",
+    "punchline": "Programmer: 'Sir main code, terminal, browser, Discord, aur zindagi sab dark mode me rakhta hoon!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Hacker Movies Reality",
+    "setup": "Hollywood Hacker: *Aggressively types for 4 seconds* 'I am inside the Pentagon mainframe!'",
+    "punchline": "Real Programmer: *Spends 6 hours debugging why npm install failed because of node-sass version.*"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Production Hotfix",
+    "setup": "PM: 'Is hotfix ko bina testing ke deploy kar de?'",
+    "punchline": "Lead Dev: 'Bilkul! Risk lene me hi to asli maza hai... weekend pe waise bhi koun sota hai!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Senior vs Junior Dev",
+    "setup": "Junior Dev: Writes 300 lines of complex nested loops.",
+    "punchline": "Senior Dev: Deletes the whole function and replaces it with built-in library method: 'Done.'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Semicolon Ka Dard",
+    "setup": "Error: SyntaxError at line 412: Unexpected token.",
+    "punchline": "Developer after 4 hours: Line 411 me ek semicolon nahi laga tha... ab main laptop tod raha hoon!"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Tab vs Space Debate",
+    "setup": "Interview Question: 'Do you use 4 spaces or tabs?'",
+    "punchline": "Candidate: 'Sir main to spacebar pe ungli rakh ke so jaata hoon!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Internet Explorer Legacy",
+    "setup": "Friend: 'Bhai tu itna late kyu react karta hai har baat pe?'",
+    "punchline": "Me: 'Bachpan me Internet Explorer use karta tha, dimag ka cache abhi tak update nahi hua!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Cloud Storage Bill",
+    "setup": "AWS: 'Your monthly bill is $14,290.45.'",
+    "punchline": "Dev: 'Arey wo 5 minute ke liye testing server on chhod diya tha bhool ke!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Clean Code Philosophy",
+    "setup": "Comment in code: // Do not touch this line. Even god doesn't know how it works, but if you delete it the server crashes.",
+    "punchline": "Junior Dev: *Deletes line out of curiosity*\n*Nuclear siren sounds.*"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Wi-Fi Troubleshooting",
+    "setup": "Step 1: Check router lights.\nStep 2: Restart router.",
+    "punchline": "Step 3: Pray to fiber optic cable gods.\nStep 4: Hotspot on mobile with 2% battery."
+  },
+  {
+    "category": "student",
+    "title": "🎓 Proxy Attendance Master",
+    "setup": "Teacher: 'Roll number 42!'",
+    "punchline": "Backbencher (heavy voice): 'Present Sir!'\nTeacher: 'Roll number 43!'\nSame Backbencher (thin voice): 'Present Sir!'\nTeacher: 'Tumhara gala kharab hai ya aatma badal gayi?!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Maths Integration",
+    "setup": "Student: 'Sir integration ka real life me kya use hai?'",
+    "punchline": "Teacher: 'Real life me tum sabko integrate karke class se bahar nikalne me use hota hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Last Bench Sleep",
+    "setup": "Teacher: 'Last bench par jo so raha hai use uthao!'",
+    "punchline": "Student: 'Sir sulaya aapne tha, to uthayenge bhi aap hi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Physics Gravity Formula",
+    "setup": "Teacher: 'Agar apple Newton ke sir pe nahi girta to kya hota?'",
+    "punchline": "Student: 'Sir Newton mast aam khata aur hum aazaadi se cricket khelte!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 College Id Card Fine",
+    "setup": "Guard: 'Bina ID card ke andar nahi ja sakte!'",
+    "punchline": "Student: 'Bhaiya 4 saal se padh raha hoon, deewaron pe mera naam likha hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Final Exam Paper Leaked",
+    "setup": "Rumor: 'Kal ka physics paper leak ho gaya!'",
+    "punchline": "Truth: 'Pichle saal ka sample paper tha jo kisi ne Photoshop karke 2026 likh diya tha!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Me Blank Mind",
+    "setup": "External: 'Kuch bhi batao jo tumne semester me seekha ho!'",
+    "punchline": "Student: 'Sir semester 6 mahine ka hota hai, aur attendance 75% honi chahiye... baaki syllabus option me tha!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Group Project Leader",
+    "setup": "Leader: 'Maine PPT bana di, research kar li, presentation de di.'",
+    "punchline": "Team members: 'Aur humne end me ताली बजाई!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 College Bus Race",
+    "setup": "Driver: 'Bhaiya horn kyu baja rahe ho itna?'",
+    "punchline": "Student: 'Arey aage wali ladki mud ke dekh hi nahi rahi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Lab Manual Copying",
+    "setup": "Student: 'Sir reading match nahi ho rahi graph se!'",
+    "punchline": "Teacher: 'Pencil thodi moti chala de, point graph ke andar aa jayega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mummy Ka Tiffin Dabba",
+    "setup": "Me: 'Mummy tiffin dabba kho gaya school me.'",
+    "punchline": "Mummy: 'Tu ghar mat aana aaj! Dabba Tupperware ka tha, teri jaan se zyada keemti tha wo!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Rishtedaar Ka Welcome",
+    "setup": "Mehmaan: 'Arey hum to bas aise hi nikal rahe the to milne aa gaye.'",
+    "punchline": "Mummy: 'Kitni acchi baat hai... (under breath: khane ke time hi nikalna tha inko?!)'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Papa Ka New Phone",
+    "setup": "Papa: 'Ye phone me touch kaam nahi kar raha!'",
+    "punchline": "Me: 'Papa screen guard ka cover to utaaro pehle!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mummy Ka Secret Locker",
+    "setup": "Locker khola to nikla:",
+    "punchline": "Purana chashma, 1998 ka bill, 4 safety pin, aur 500 ke purane note jo demonetization me bhool gayi thi!"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Dukan Se Samaan",
+    "setup": "Mummy: 'Raste se aate hue 1 kilo dhaniya le aana.'",
+    "punchline": "Me: 'Mummy 1 kilo dhaniya me pura mohalla tair jayega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Shaadi Ka Sangeet",
+    "setup": "Uncle after 2 pegs:",
+    "punchline": "*Starts dancing like an electric wire touched by rain water while everyone cheers.*"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Papa Ka TV Volume",
+    "setup": "News Channel on TV: Volume 85.",
+    "punchline": "Anchor: 'KYA DESH KHATRE MEIN HAI?!'\nPapa: 'Shhh! Awaaz kam karo, sunne do!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Dadi Ka Nuska",
+    "setup": "Me: 'Dadi gale me kharash hai.'",
+    "punchline": "Dadi: 'Garam paani me haldi, namak, kali mirch, adrak, tulsi aur laung daal ke pee le... agle janam tak gala saaf rahega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Mummy Ka Scolding Cycle",
+    "setup": "Mummy started scolding for messy room.",
+    "punchline": "Ending topic: 'Tu dekh lena budhape me mujhe paani bhi nahi dega!'"
+  },
+  {
+    "category": "desi_family",
+    "title": "🏠 Sunday Special Sabzi",
+    "setup": "Family: 'Mummy aaj Sunday ko kuch special banao!'",
+    "punchline": "Mummy: 'Theek hai, aaj lauki me thoda extra jeera daal dungi!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Onboarding Day 1",
+    "setup": "HR: 'We are like a big family here!'",
+    "punchline": "Day 3: 'Agar kal subah 7 baje deployment pe nahi aaye to termination notice milega!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Coffee Machine Gossip",
+    "setup": "Employee 1: 'Suna hai VP resign kar raha hai?'",
+    "punchline": "Employee 2: 'Haan, aur uski jagah jo aayega wo Saturday working karne wala hai!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Laptop Hang Drama",
+    "setup": "Dev: 'Sir laptop hang ho gaya, restart hone me 1 ghanta lagega.'",
+    "punchline": "Dev (mind): 'Yes! 1 ghante ki paid chhutti mil gayi!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Exit Interview Truth",
+    "setup": "HR: 'Why are you leaving our wonderful company?'",
+    "punchline": "Employee: 'Kyunki agar 1 mahina aur ruka to mental hospital ka bill company nahi bharegi!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Appraisal Rating 3",
+    "setup": "Rating 3 definition:",
+    "punchline": "'Meets all expectations, saved company $2M, worked on Diwali... but could do better!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Team Outing Ka Reality",
+    "setup": "HR: 'Team building trip to resort!'",
+    "punchline": "Reality: 4 ghante bus me dhoop me baithe, 1 cup chai mili, aur HR ne tug-of-war khilwa ke sabki kamar tod di!"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Late Night Slack Ping",
+    "setup": "Client at 11:30 PM: 'Quick question!'",
+    "punchline": "Dev: *Throws phone into water bucket to avoid seeing the notification.*"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Performance Improvement Plan",
+    "setup": "Manager: 'We are putting you on a 30-day PIP to help you grow!'",
+    "punchline": "Translation: 'Start updating your Naukri profile tonight!'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 Virtual Coffee Chat",
+    "setup": "Calendar Invite: 'Mandatory 15-min Fun Coffee Break!'",
+    "punchline": "Fun level: Zero. Everyone staring awkwardly at webcams while HR asks 'What is your favorite fruit?'"
+  },
+  {
+    "category": "corporate",
+    "title": "💼 IT Support Ticket",
+    "setup": "IT Helpdesk: 'Have you tried turning it off and on again?'",
+    "punchline": "User: 'Mera laptop aag pakad chuka hai!'\nIT: 'Haan to pehle paani daalo phir restart karo!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka English Dhadha",
+    "setup": "Santa: 'I am going to London.'",
+    "punchline": "Banta: 'London me to sab English bolte hain, kaise baat karega?'\nSanta: 'Jaise yahan Hindi bolta hoon, bas aage-peeche 'Oh Yes' bol dunga!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Aur Mobile Torch",
+    "setup": "Santa: 'Banta, raat ko torch kyu jala ke so rahe ho?'",
+    "punchline": "Banta: 'Dekh raha hoon ki sapne me koun koun aata hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Doctor Ka Injection",
+    "setup": "Doctor: 'Injection lagwate hue dard nahi hoga, bas ek chhota sa mosquito bite lagega.'",
+    "punchline": "Patient: 'Doctor sahab, mosquito ke daant 6 inch lambe hote hain kya?!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Pappu Ka English Essay",
+    "setup": "Topic: My Best Friend.",
+    "punchline": "Pappu: 'My best friend is my shadow. But in dark he runs away like a coward!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka Restaurant Bill",
+    "setup": "Manager: 'Aapne 5000 ka khana khaya aur jeb me sirf 50 rupaye hain?!'",
+    "punchline": "Santa: 'Aapne hi to bahar board lagaya tha: 'Ghar jaisa mahol'!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Police Aur Sharabi",
+    "setup": "Police: 'Gaadi se utro, tumne sharaab pee rakhi hai!'",
+    "punchline": "Sharabi: 'Inspector sahab, car me baith ke driving license dikhana asaan hai, neeche utra to ladkhada jaunga!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ki Lottery",
+    "setup": "Santa 1 crore ki lottery jeet gaya.",
+    "punchline": "Reporter: 'Itne paiso ka kya karenge?'\nSanta: 'Pehle to ek cycle khareedunga taaki lottery lene paidal na jana pade!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Banta Ka Passport Photo",
+    "setup": "Photographer: 'Smile kijiye!'",
+    "punchline": "Banta: 'Passport photo me smile karunga to border police ko lagega main kisi ko loot ke bhaag raha hoon!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Pappu Ka Smart Answer",
+    "setup": "Teacher: 'Water ka formula batao!'",
+    "punchline": "Pappu: 'H to O!'\nTeacher: 'Ye kaisa formula hai?'\nPappu: 'Sir H se O tak hi to paani behta hai!'"
+  },
+  {
+    "category": "classics",
+    "title": "🎅 Santa Ka Watch Repair",
+    "setup": "Santa: 'Ghadi kharab ho gayi hai, theek kardo.'",
+    "punchline": "Watchmaker: 'Isme se to mari hui makkhi nikli hai!'\nSanta: 'Tabhi to band ho gayi, driver mar gaya to ghadi kaise chalegi!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Netflix & Chill Reality",
+    "setup": "Expectation: Romantic movie and deep talks.",
+    "punchline": "Reality: 45 minutes spent arguing over what to watch, then falling asleep 10 minutes into the movie."
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Boyfriend Ka Photography Skill",
+    "setup": "Girlfriend: 'Meri achhi si aesthetic photo kheecho!'",
+    "punchline": "Result: 40 photos jisme ladki ka muh aadha cut hai ya aankhein aadhi band hain!"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Coffee Date Bill Sharing",
+    "setup": "Girl: 'We should split the bill!'",
+    "punchline": "Boy: 'Sure, 50-50!'\nGirl's face: *Immediate disgust, blocked everywhere within 3 minutes.*"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ 'Kaha Ho?' Ka Sawal",
+    "setup": "Girlfriend: 'Kahan ho?'",
+    "punchline": "Boyfriend: 'Ghar pe hoon baby.'\nGirlfriend: 'Live location bhejna zara screenshot ke sath!'\nBoyfriend: *Sweating intensely.*"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Relationship Anniversary",
+    "setup": "Boyfriend forgot 3-month anniversary.",
+    "punchline": "Punishment: 4 days of cold silent treatment and sad Arijit Singh status updates."
+  },
+  {
+    "category": "dating",
+    "title": "❤️ First Impression Dressing",
+    "setup": "Date 1: Suit, perfume, styled hair, gentleman posture.",
+    "punchline": "Date 10: Pyjamas, messy bun, eating golgappe with liquid dripping on shirt."
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Couple Reel Cringe",
+    "setup": "Caption: 'He is my world 🌍❤️'",
+    "punchline": "Comments from friends: 'Bhai kal tak to tu bol raha tha singles life is the best!'"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Online Dating Matches",
+    "setup": "Matches: 100.",
+    "punchline": "Conversations that lasted more than 'Hey': 1.\nGhosted after 2 messages: 99."
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Mood Swings Meter",
+    "setup": "Girlfriend: 'Leave me alone!'",
+    "punchline": "Boyfriend: *Leaves room*\nGirlfriend: 'Tumhe meri parwah hi nahi hai!'\nBoyfriend: *Confused screaming.*"
+  },
+  {
+    "category": "dating",
+    "title": "❤️ Shopping Mall Walking Test",
+    "setup": "Boyfriend holding 6 shopping bags:",
+    "punchline": "'Aur kitna chalna hai baby?'\nGirlfriend: 'Bas aakhri 12 dukan aur!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Indian Mom in Elevator",
+    "setup": "Mom presses elevator button 14 times rapidly.",
+    "punchline": "'Jitni baar dabaoge utni jaldi lift aayegi!' *Desi quantum physics.*"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Chai Lover Anthem",
+    "setup": "Summer 48°C: 'Chai peeyenge!'\nWinter 2°C: 'Chai peeyenge!'\nMonsoon flood: 'Chai pakoda peeyenge!'",
+    "punchline": "Doctor: 'Chai chhod do.'\nMe: 'Aap duniya chhod do!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Barber Ka Massage",
+    "setup": "Barber turns neck left... then right...",
+    "punchline": "*CRACK*\nMe: 'Bhaiya aatma shareer se bahar aane wali thi do second ke liye!'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Wi-Fi Password Asking",
+    "setup": "Entering relative's house.",
+    "punchline": "Pehle namaste nahi karte, pehle poochte hain: 'Uncle Wi-Fi ka password kya hai?'"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Panipuri Challenge",
+    "setup": "Me: 'Bhaiya 100 ka panipuri khilao bina ruke!'",
+    "punchline": "Puri number 12: Stomach full, eyes crying, nose running like Niagara Falls."
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Sunday Morning Alarm",
+    "setup": "Alarm at 6:00 AM on Sunday.",
+    "punchline": "Turning it off with a smile and pulling blanket over head is the purest happiness known to mankind."
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Indian Train Upper Berth",
+    "setup": "Climbing to upper berth in sleeper coach:",
+    "punchline": "Gym membership free! Acrobatic skills required to dodge ceiling fan and uncle's feet."
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Rickshaw Bargaining",
+    "setup": "Auto wala: '150 rupaye.'",
+    "punchline": "Me: '80 dunga.'\nAuto wala: 'Chalo 100 me baitho.'\n*The Art of the Deal.*"
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Phone Fall Panic",
+    "setup": "Phone drops face down on marble floor.",
+    "punchline": "Heart stops beating until you slowly pick it up and check if screen is intact."
+  },
+  {
+    "category": "daily_life",
+    "title": "🛵 Gym Diet Struggle",
+    "setup": "Diet plan: Boiled eggs, oats, green salad, protein shake.",
+    "punchline": "Actual diet: 2 plate chole bhature and cold lassi with extra malai."
+  },
+  {
+    "category": "tech",
+    "title": "💻 Senior Architect Meeting",
+    "setup": "Architect: 'We will use Kubernetes, GraphQL, Kafka, and Redis!'",
+    "punchline": "Developer: 'Sir app to bas calculate BMI karta hai!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Console.log Debugging",
+    "setup": "Developer writes 40 lines of:",
+    "punchline": "console.log('HERE 1'), console.log('HERE 2'), console.log('WHY GOD WHY')."
+  },
+  {
+    "category": "tech",
+    "title": "💻 Client Feedback",
+    "setup": "Client: 'Can you make the blue a little more... blueish green with modern vibe?'",
+    "punchline": "Designer: *Changes nothing, sends same file after 2 days*\nClient: 'Perfect! Much better!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Production Bug vs Feature",
+    "setup": "Bug reported in production.",
+    "punchline": "Product Manager: 'It's not a bug, it's an undocumented discovery feature!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Git Merge Conflict",
+    "setup": "Auto-merging failed. 1,420 conflicts detected.",
+    "punchline": "Dev: *Deletes repo, turns off laptop, moves to remote village in Himachal.*"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Dual Monitor Flex",
+    "setup": "Monitor 1: Code editor with 3 lines of code.",
+    "punchline": "Monitor 2: Spotify, Discord, YouTube lo-fi beats, and live cricket score."
+  },
+  {
+    "category": "tech",
+    "title": "💻 Password Requirement Cringe",
+    "setup": "Password must contain: 1 uppercase, 1 lowercase, 1 special character, 1 emoji, and the blood of a dragon.",
+    "punchline": "Forgot password -> Enter old password -> 'New password cannot be same as old password!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Code Review Comment",
+    "setup": "Reviewer: 'LGTM! (Looks Good To Me)'",
+    "punchline": "Translation: 'Maine code bilkul nahi dekha, bas merge kar raha hoon taaki weekend pe kaam na karna pade!'"
+  },
+  {
+    "category": "tech",
+    "title": "💻 Internet Speed Test",
+    "setup": "Speed test: 300 Mbps.",
+    "punchline": "Steam download: 1.2 KB/s.\n*Pain.*"
+  },
+  {
+    "category": "tech",
+    "title": "💻 StackOverflow Down",
+    "setup": "StackOverflow is temporarily offline for maintenance.",
+    "punchline": "Worldwide software development pauses completely for 2 hours."
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Machine Learning ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Quantum Physics ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Blockchain ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Thermodynamics ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Database Sharding ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Agile Framework ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Cloud Migration ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Microservices ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Organic Chemistry ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Differential Equations ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Digital Marketing ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Cryptocurrency ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Smart Home IoT ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Deep Learning ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Stock Market Trading ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Appraisal Cycle ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Cyber Security ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Virtual Reality ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Gym Membership ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Diet Routine ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Traffic Rules ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Wedding Planning ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Apartment Rent ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Income Tax Return ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Credit Card Points ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Flight Booking ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Train Ticket Waiting List ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Hair Fall Treatment ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao Electric Vehicle ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Viva Shock",
+    "setup": "Examiner: 'Batao 5G Network ke baare me kya jaante ho?'",
+    "punchline": "Student: 'Sir bas naam suna tha syllabus me, baki sab bhagwan bharose hai!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Machine Learning equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Quantum Physics equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Blockchain equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Thermodynamics equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Database Sharding equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Agile Framework equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Cloud Migration equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Microservices equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Organic Chemistry equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Differential Equations equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Digital Marketing equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Cryptocurrency equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Smart Home IoT equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Deep Learning equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Stock Market Trading equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Appraisal Cycle equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Cyber Security equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Virtual Reality equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Gym Membership equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Diet Routine equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Traffic Rules equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Wedding Planning equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Apartment Rent equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Income Tax Return equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Credit Card Points equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Flight Booking equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Train Ticket Waiting List equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Hair Fall Treatment equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this Electric Vehicle equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Exam Paper Twist",
+    "setup": "Question: 'Solve this 5G Network equation in 3 steps.'",
+    "punchline": "Student: 'Step 1: Write equation. Step 2: Pray. Step 3: Hence proved!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Machine Learning pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Quantum Physics pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Blockchain pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Thermodynamics pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Database Sharding pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Agile Framework pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Cloud Migration pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Microservices pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Organic Chemistry pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Differential Equations pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Digital Marketing pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Cryptocurrency pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Smart Home IoT pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Deep Learning pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Stock Market Trading pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Appraisal Cycle pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Cyber Security pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Virtual Reality pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Gym Membership pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Diet Routine pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Traffic Rules pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Wedding Planning pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Apartment Rent pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Income Tax Return pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Credit Card Points pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Flight Booking pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Train Ticket Waiting List pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Hair Fall Treatment pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono Electric Vehicle pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Backbench Chronicles",
+    "setup": "Teacher: 'Tum dono 5G Network pe dhyan kyu nahi de rahe?'",
+    "punchline": "Backbencher: 'Sir dhyan diya to samajh aa jayega, aur samajh aa gaya to tension ho jayegi!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Machine Learning ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Quantum Physics ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Blockchain ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Thermodynamics ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Database Sharding ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Agile Framework ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Cloud Migration ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Microservices ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Organic Chemistry ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Differential Equations ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Digital Marketing ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Cryptocurrency ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Smart Home IoT ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Deep Learning ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Stock Market Trading ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Appraisal Cycle ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Cyber Security ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Virtual Reality ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Gym Membership ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Diet Routine ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Traffic Rules ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  },
+  {
+    "category": "student",
+    "title": "🎓 Assignment Copying",
+    "setup": "Friend: 'Tune Wedding Planning ka assignment submit kiya?'",
+    "punchline": "Me: 'Haan bhai, heading change kar di bas, baki handwriting to examiner bhi nahi padh payega!'"
+  }
+]

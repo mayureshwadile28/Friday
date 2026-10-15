@@ -1,0 +1,25 @@
+# Environment and Secrets (CRITICAL: Never commit bot tokens or secrets)
+.env
+.env.*
+*.env
+
+# Sensitive auth/cookie files
+cookies*.txt
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Scratch, temp, and agent files
+scratch/
+.agents/
+.vscode/
+.idea/
+
+# Virtual environments
+venv/
+env/
+.venv/

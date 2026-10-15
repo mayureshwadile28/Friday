@@ -1,0 +1,118 @@
+Friday Bot - Complete Command List
+==================================
+
+🛡️ Moderation
+/ban @member [reason] - Bans a member from the server
+/unban <user> [reason] - Unbans a user by username, tag, or numeric ID (with live autocomplete dropdown)
+/warn @member [reason] [delivery] - Issues formal warning with flexible delivery (Both, DM Only, or Channel Chat)
+/warnings @member - Review active warning history for a member
+/clearwarns @member [warn_id] - Clear all warnings or a specific warning ID for a member
+/timeout @member <minutes> [reason] - Mutes a member for a duration
+/untimeout @member [reason] - Removes an active timeout early
+/purge <amount> - Bulk-deletes messages in the current channel
+@Friday @member <new nickname> - Changes a user's nickname (requires Manage Nicknames perm)
+
+⚙️ Security (Anti-Nuke, Anti-Raid & Command Center)
+/antinuke_toggle <ON/OFF> - Enables or disables the entire master anti-nuke engine
+/antiraid <enable/disable> - Toggle high-speed mass join velocity tracking & auto-quarantine
+/antispam <enable/disable> - Toggle rapid message burst, duplicate flood filter & auto-mute
+/security_status - Comprehensive status overview of all 10 security audit channels & matrices
+/antinuke_limit <action> <limit> - Sets rate-limit thresholds (Bans, Kicks, Channels, Roles)
+/antinuke_refresh - Auto-creates the "Friday Security Logs" category and all 10 audit channels:
+  #audit-antiraid, #audit-antispam, #audit-roles, #audit-channels, #audit-antinuke,
+  #audit-banned, #audit-deleted, #audit-timeouts, #audit-whitelisted, #audit-abuse
+/antinuke_sync - Auto-scans and re-links existing security audit channels across the server
+/whitelist_add @user - Makes a user immune to anti-nuke, anti-raid, and anti-spam detection
+/whitelist_remove @user - Removes a user's security immunity
+
+🔒 Channel Privacy & Lockdown
+/private [channel] - Makes a specific channel private
+/unprivate [channel] [all_channels] - Unprivates a specific channel or ALL channels (Protects Security Logs)
+/private_category <category> - Makes an entire category and all its channels private
+/unprivate_category <category> - Unprivates a category and all its channels (Blocks Security Logs)
+/ignore_private_add <channel> - Adds a channel to the ignore list (won't be fully hidden by lockdown)
+/ignore_private_remove <channel> - Removes a channel from the ignore list
+/force_private - Initiates Lockdown: Makes all channels private EXCEPT ignored channels, which become Read-Only.
+
+🤬 Anti-Abuse Chat Filter
+/anti_abuse <words> - Add words to the filter (comma-separated)
+/anti_abuse_remove <word> - Remove a specific word from the filter
+/anti_abuse_list - View all currently banned words
+/anti_abuse_whitelist_add @user - Make a user immune to the word filter
+/anti_abuse_whitelist_remove @user - Remove a user's immunity
+
+🎉 Community & Leveling
+/level_setup #channel - Activates leveling and sets the notification channel
+/level_mode <text/image/both> - Choose level-up notification dispatch: Text Only, Graphical Image Card, or Both
+/rank [@user] - Shows a visual rank card (custom generated image)
+/leaderboard - Displays the top 10 most active members
+/joke [category] - Returns a hilarious Hinglish, Desi, or tech joke from a library of 420 jokes with an interactive 'Next Joke 🔄' button
+
+🎨 Expressions & Automations (Emojis, Reactions & Mention Responders)
+/emoji_steal <emojis> - Paste one or more custom emojis to bulk-steal them
+Right-Click -> Apps -> Steal Sticker - Steal a sticker from a message
+/autoreact add @member <emoji> - Automatically reacts with an emoji when @member is mentioned
+/autoreact remove @member - Removes the auto-reaction rule for @member
+/autoreact list - Lists all active auto-reaction mention rules
+/autoresponder add @member <response> - Automatically replies with a message when @member is mentioned ({author} and {user} supported)
+/autoresponder remove @member - Removes the auto-responder rule for @member
+/autoresponder list - Lists all active auto-responder rules and ignored channels
+/autoresponder ignore_channel #channel - Disables auto-responses in the specified channel
+/autoresponder unignore_channel #channel - Re-enables auto-responses in an ignored channel
+
+🎭 Reaction Roles
+/reaction_panel - Creates an embed panel with up to 3 emoji-role pairs
+
+📢 Self Announcements Dispatcher
+/announcement <channel> - Configures or overwrites the official announcement destination channel
+Reply shortcut: In any staff/chat channel, reply to your draft announcement and tag "@Friday announcement kardo" / "@Friday announcement do it" - Friday retrieves the draft message, embeds, and attachments, and immediately broadcasts them to the destination channel. (If not configured yet, Friday prompts to set up with /announcement first).
+
+📊 Utility
+/bot_status - Staff Dashboard: View Friday's current security and system status
+/ping - Shows bot latency confirmation
+/serverinfo - Displays server info, member counts, and creation date
+/help - Full command reference organized by category
+/sync - Force-syncs global slash commands to the server
+
+🌐 Friday Web Control Center (http://localhost:5000)
+- Security Command Center: Master Anti-Nuke toggle, Anti-Raid system hero card (velocity tracking & thresholds), Anti-Spam system hero card (rate limits & flood control), 10 live security channel status pills, Limit & Punish matrix, Instant Punishment matrix, Detect Only matrix, immunity whitelist, and one-click channel creation.
+- Leveling: 3 notification modes (Text Only, Image Card Only, Both), channel selector, markdown template editor (#, ##, -#, **, *, etc.), server animated/static emoji picker, simulated Discord card preview, live chat simulator, real-time Discord test dispatch.
+- @ Mention Autocomplete: Live popup popover in all text editors typing '@' searching members (<@ID>) and roles (<@&ID>) with Discord-styled live badges.
+- Anti-Abuse: Real-time blacklist tag manager, immunity whitelist.
+- Channel & Category Privacy: Global lockdown button, unlock all button, individual channel lock/unlock, whole category lock/unlock, lockdown exempt channels list.
+- Reaction Roles: Target channel selector, title, markdown description with server & standard emojis, interactive role-emoji pairing builder, live authentic Discord embed simulator with reaction buttons, one-click server deployment, state restoration.
+- Announcements: Destination channel selector & save, title, audience notification ping (@everyone/@here/none), Discord markdown chips & server emojis, embed theme colors, thumbnail & footer controls, live simulator, one-click web broadcasting.
+- Ticket System: Interactive studio with live Discord simulator, panel channel and ticket category routing, support staff role, soft rounded secondary action buttons (border-radius: 8px), direct transcript destination text channel, optional transcript category, private ticket toggle, draft save button, one-click deploy.
+- State Persistence: Complete multi-module synchronization ensuring no configurations or drafts are reset upon clicking "Sync State".
+
+🎫 Ticket System
+/ticket create_ticket_panel <channel> <title> <desc> <btn1> <cat> ... - Deploys an interactive support panel
+/ticket handle_role <role> - Designates a staff role to be pinged and given access when a ticket opens
+/ticket add @user - Temporarily grants a specific user access to an active ticket channel
+/ticket remove @user - Revokes access for a specific user from an active ticket channel
+
+🎵 Music & High-Fidelity Audio (Pure YouTube Engine)
+/join - Connect Friday to your current voice channel
+/leave - Stop playback, clear queue, and disconnect Friday from voice channel
+/play <music> - Search & stream official tracks strictly from YouTube with live autocomplete, high-fidelity 48kHz audio, balanced grid controls (Row 0: Pause, Skip, Shuffle, Loop, Stop [Danger]; Row 1: Queue, Like [Success], Vol -, Vol +), and an interactive DSP Equalizer dropdown
+/soundtest - Play a 2-second studio test chime to verify voice channel audio output
+/pause - Pause currently active music playback
+/resume - Resume paused music playback
+/skip - Skip current track to the next song in the queue
+/shuffle - Randomly shuffle upcoming songs in the queue
+/volume <1-200> - Adjust master playback volume percentage
+/queue - View active playlist and upcoming queued tracks in clean box embed format
+/likes - View your personal saved favorite tracks
+/filter <preset> - Set audio mastering & EQ profiles in real time without restarting the track (🎧 Studio Master, 🔊 Bass Boost, 🎙️ Vocal Boost, 🌙 Nightcore, ☕ Lo-Fi, 🎼 Treble Boost, 🌀 8D Spatial Audio, ⚡ Flat)
+/stop - Stop playback immediately and clear the entire music queue
+
+@Friday - Tagging Friday prompts a sweet girl-speak greeting that tags the user from 300 non-conversational greetings in data/greetings.json
+
+🖼️ Media Only Channels
+/media <action> [channel] [user] [role] - Configure media-only channels (Set, Remove, List) or manage exemptions
+/media_whitelist_add [user] [role] - Exempt a member or role from media-only channel chat deletion
+/media_whitelist_remove [user] [role] - Remove media-only chat exemption for a member or role
+/media_whitelist_list - View all members and roles exempt from media-only channel deletion
+*(Note: Server Owner & Administrators have automatic immunity by default)*
+
+

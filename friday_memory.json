@@ -1,0 +1,681 @@
+{
+    "nuke_settings": {
+        "1543138596045717545": {
+            "channel": 3,
+            "ban": 5,
+            "kick": 3,
+            "role": 1,
+            "role_create": 4,
+            "role_delete": 3,
+            "channel_create": 2,
+            "channel_delete": 2,
+            "mention": 5
+        },
+        "1507771870311612537": {
+            "channel": 5,
+            "ban": 5,
+            "kick": 3,
+            "role": 5,
+            "role_create": 5,
+            "role_delete": 3,
+            "channel_create": 4,
+            "channel_delete": 3,
+            "mention": 5
+        }
+    },
+    "whitelist": {
+        "1543138596045717545": [
+            1179633364358156490
+        ]
+    },
+    "antinuke_active": {
+        "1543138596045717545": true,
+        "1507771870311612537": true
+    },
+    "server_logs": {
+        "1543138596045717545": {
+            "audit-deleted": 1543167448017276991,
+            "audit-banned": 1543167450638589992,
+            "audit-timeouts": 1543167453662679161,
+            "audit-whitelisted": 1543167455935856721,
+            "audit-antinuke": 1543167458171691093,
+            "audit-abuse": 1543172390450761792
+        },
+        "1515701692543406220": {
+            "audit-deleted": 1558458852629028926,
+            "audit-banned": 1558458854738501722,
+            "audit-timeouts": 1558458857083117679,
+            "audit-whitelisted": 1558458859578855464,
+            "audit-antinuke": 1558458862846218272,
+            "audit-abuse": 1558458866155393048,
+            "audit-antiraid": 1558458868806328340,
+            "audit-antispam": 1558458871322910888,
+            "audit-roles": 1558458873730433094,
+            "audit-channels": 1558458876205076570
+        },
+        "1507771870311612537": {
+            "audit-deleted": 1558437512530362411,
+            "audit-banned": 1558437515432689695,
+            "audit-timeouts": 1558437517756469348,
+            "audit-whitelisted": 1558437519710756875,
+            "audit-antinuke": 1558437521720082483,
+            "audit-abuse": 1558437523607523351,
+            "audit-antiraid": 1558437525989630042,
+            "audit-antispam": 1558437528032383116,
+            "audit-roles": 1558437530016157698,
+            "audit-channels": 1558437532415299674
+        }
+    },
+    "banned_words": {
+        "1543138596045717545": [
+            "fuck",
+            "nigga"
+        ],
+        "1507771870311612537": [
+            "fuck",
+            "nigga",
+            "laude",
+            "nuke",
+            "lauwde",
+            "bsdk",
+            "bkl",
+            "tmkc"
+        ]
+    },
+    "abuse_whitelist": {
+        "1543138596045717545": [
+            1496123235799138304
+        ]
+    },
+    "xp_data": {
+        "1543138596045717545": {
+            "1473540037864849472": {
+                "xp": 149,
+                "level": 2
+            },
+            "1437092585796665477": {
+                "xp": 321,
+                "level": 3
+            },
+            "1496123235799138304": {
+                "xp": 103,
+                "level": 1
+            }
+        },
+        "1507771870311612537": {
+            "1427287701442269236": {
+                "xp": 54,
+                "level": 1
+            },
+            "1345444850488840223": {
+                "xp": 92,
+                "level": 6
+            },
+            "1437092585796665477": {
+                "xp": 246,
+                "level": 5
+            },
+            "1238428669660102688": {
+                "xp": 45,
+                "level": 2
+            },
+            "1355087168162500729": {
+                "xp": 234,
+                "level": 3
+            },
+            "1558108143521636492": {
+                "xp": 23,
+                "level": 3
+            },
+            "1277448019540967530": {
+                "xp": 51,
+                "level": 0
+            },
+            "1472643368856191242": {
+                "xp": 275,
+                "level": 3
+            },
+            "1529157072174841988": {
+                "xp": 9,
+                "level": 2
+            },
+            "1373575685855121490": {
+                "xp": 188,
+                "level": 1
+            },
+            "1517052781150601226": {
+                "xp": 88,
+                "level": 1
+            }
+        },
+        "1515701692543406220": {
+            "1473540037864849472": {
+                "xp": 16,
+                "level": 0
+            },
+            "1142082972191838208": {
+                "xp": 24,
+                "level": 0
+            },
+            "1131984075041820783": {
+                "xp": 32,
+                "level": 0
+            }
+        }
+    },
+    "level_channels": {
+        "1543138596045717545": "1543191468649484288"
+    },
+    "level_messages": {
+        "1543138596045717545": "# Level up! <a:spider_white_heart:1543197707856781333>\n*Congratulations <a:SpinSpin:1543197695521333349> * {user} \n## Your current level {level} "
+    },
+    "reaction_roles": {
+        "1558113017038766081": {
+            "<:darktroll:1543197690949799937>": 1543152763742195823,
+            "<a:AmongusShy:1543197711862333442>": 1543237042094350417
+        }
+    },
+    "ignored_private": {
+        "1543138596045717545": [
+            1543138596721139734
+        ]
+    },
+    "lockdown_active": {
+        "1543138596045717545": false
+    },
+    "announcement_channels": {
+        "1543138596045717545": "1558128958187503729",
+        "1515701692543406220": "1533072913014718686"
+    },
+    "tickets": {
+        "1543138596045717545": {
+            "panels": {
+                "1558400277806317619": {
+                    "channel_id": 1558399351947264051,
+                    "title": "Create ticket here <:Okieee:1535244705502208061>",
+                    "description": "Koi be gadbad ho report ya koi general kaam tho ticket add karo",
+                    "buttons": [
+                        "General \ud83d\udc40",
+                        "Report <a:dil_flyheart:1558131409028124872>",
+                        "Give away <:darktroll:1543197690949799937>",
+                        "Timepass <a:ANGRY:1543197699527016518>"
+                    ],
+                    "category_id": 1558399269164028025,
+                    "private": true,
+                    "transcription": true,
+                    "transcript_category_id": 1558400206566072390
+                },
+                "1558412314632527923": {
+                    "channel_id": 1558399351947264051,
+                    "title": "\ud83c\udfab Server Support & Help Desk :1261hackerbongocat: ",
+                    "description": "# Need Assistance?\nClick an inquiry button below to open a confidential support ticket with our team.\n-# Please do not ping staff directly in public channels. :pkd_achha:",
+                    "buttons": [
+                        "\ud83d\udcac General Support",
+                        "\ud83c\udf81 Giveaway Claim",
+                        "\ud83d\udee1\ufe0f Report User",
+                        "\ud83d\udcbc Partnerships"
+                    ],
+                    "category_id": 1558399269164028025,
+                    "private": true,
+                    "transcription": true,
+                    "transcript_category_id": 1558400206566072390,
+                    "color": 16096779
+                },
+                "1558419619817988100": {
+                    "channel_id": 1558399351947264051,
+                    "title": "\ud83c\udfab Server Support & Help Desk",
+                    "description": "# :pkd_achha: Need Assistance?\nClick an inquiry button below to open a confidential support ticket with our team.\n-# Please do not ping staff directly in public channels.",
+                    "buttons": [
+                        "\ud83d\udcac General Support:dil_flyheart:",
+                        "\ud83c\udf81 Giveaway Claim:pkd_marooo:",
+                        "\ud83d\udee1\ufe0f Report User:pkd_creepysmile:",
+                        "\ud83d\udcbc Partnerships:emoji_20:"
+                    ],
+                    "category_id": 1558399269164028025,
+                    "private": true,
+                    "transcription": true,
+                    "transcript_category_id": 1558400206566072390,
+                    "color": 3003583
+                },
+                "1558427489083199509": {
+                    "channel_id": 1558399351947264051,
+                    "title": "\ud83c\udfab Server Support & Help Desk",
+                    "description": "# :pkd_achha: Need Assistance?\nClick an inquiry button below to open a confidential support ticket with our team.\n-# Please do not ping staff directly in public channels.",
+                    "buttons": [
+                        "\ud83d\udcac General Support:dil_flyheart:",
+                        "\ud83c\udf81 Giveaway Claim:pkd_marooo:",
+                        "\ud83d\udee1\ufe0f Report User:pkd_creepysmile:",
+                        "\ud83d\udcbc Partnerships:emoji_20:"
+                    ],
+                    "category_id": 1558399269164028025,
+                    "private": true,
+                    "transcription": true,
+                    "transcript_category_id": 1558400206566072390,
+                    "color": 3003583
+                }
+            },
+            "active_tickets": {},
+            "ticket_counter": 3,
+            "support_role_id": 1543237042094350417
+        }
+    },
+    "level_modes": {},
+    "security_settings": {
+        "1507771870311612537": {
+            "limits": {
+                "ban": {
+                    "limit": 5,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "kick": {
+                    "limit": 3,
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "role_create": {
+                    "limit": 5,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "role_delete": {
+                    "limit": 3,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "channel_create": {
+                    "limit": 4,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "channel_delete": {
+                    "limit": 3,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "mention": {
+                    "limit": 5,
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                }
+            },
+            "instant": {
+                "bot_add": {
+                    "punishment": "timeout",
+                    "timeout_mins": 15,
+                    "enabled": true
+                },
+                "prune": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "dangerous_perms": {
+                    "punishment": "strip_roles",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "dangerous_role_add": {
+                    "punishment": "strip_roles",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "vanity_change": {
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": false
+                },
+                "server_rename": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "server_icon": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "role_rename": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": false
+                },
+                "channel_rename": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": false
+                },
+                "emoji_delete": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": false
+                },
+                "emoji_rename": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": false
+                },
+                "invite_delete": {
+                    "punishment": "kick",
+                    "timeout_mins": 10,
+                    "enabled": false
+                }
+            },
+            "detect": {
+                "invite_link": {
+                    "enabled": true
+                },
+                "anti_link": {
+                    "enabled": true
+                },
+                "ghost_ping": {
+                    "enabled": true
+                }
+            },
+            "antiraid": {
+                "enabled": true,
+                "join_threshold": 5,
+                "time_window": 10,
+                "action": "kick",
+                "timeout_mins": 10
+            },
+            "antispam": {
+                "enabled": true,
+                "rate_limit": 5,
+                "time_window": 4,
+                "duplicate_limit": 3,
+                "action": "timeout",
+                "timeout_mins": 2
+            }
+        },
+        "1543138596045717545": {
+            "limits": {
+                "ban": {
+                    "limit": 5,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "kick": {
+                    "limit": 3,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "role_create": {
+                    "limit": 4,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "role_delete": {
+                    "limit": 3,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "channel_create": {
+                    "limit": 2,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "channel_delete": {
+                    "limit": 2,
+                    "punishment": "ban",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "mention": {
+                    "limit": 5,
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                }
+            },
+            "instant": {
+                "bot_add": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "prune": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "dangerous_perms": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "dangerous_role_add": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "vanity_change": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "server_rename": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "server_icon": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "role_rename": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "channel_rename": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "emoji_delete": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "emoji_rename": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                },
+                "invite_delete": {
+                    "punishment": "timeout",
+                    "timeout_mins": 10,
+                    "enabled": true
+                }
+            },
+            "detect": {
+                "invite_link": {
+                    "enabled": true
+                },
+                "anti_link": {
+                    "enabled": true
+                },
+                "ghost_ping": {
+                    "enabled": true
+                }
+            },
+            "antiraid": {
+                "enabled": true,
+                "join_threshold": 5,
+                "time_window": 10,
+                "action": "kick",
+                "timeout_mins": 10
+            },
+            "antispam": {
+                "enabled": true,
+                "rate_limit": 5,
+                "time_window": 4,
+                "duplicate_limit": 3,
+                "action": "timeout",
+                "timeout_mins": 2
+            }
+        },
+        "1515701692543406220": {
+            "limits": {
+                "ban": {
+                    "limit": 5,
+                    "punishment": "ban",
+                    "enabled": true
+                },
+                "kick": {
+                    "limit": 3,
+                    "punishment": "kick",
+                    "enabled": true
+                },
+                "role_create": {
+                    "limit": 1,
+                    "punishment": "ban",
+                    "enabled": true
+                },
+                "role_delete": {
+                    "limit": 1,
+                    "punishment": "ban",
+                    "enabled": true
+                },
+                "channel_create": {
+                    "limit": 1,
+                    "punishment": "ban",
+                    "enabled": true
+                },
+                "channel_delete": {
+                    "limit": 1,
+                    "punishment": "ban",
+                    "enabled": true
+                },
+                "mention": {
+                    "limit": 5,
+                    "punishment": "timeout",
+                    "enabled": true
+                }
+            },
+            "instant": {
+                "bot_add": {
+                    "punishment": "kick",
+                    "enabled": true
+                },
+                "prune": {
+                    "punishment": "ban",
+                    "enabled": true
+                },
+                "dangerous_perms": {
+                    "punishment": "strip_roles",
+                    "enabled": true
+                },
+                "dangerous_role_add": {
+                    "punishment": "strip_roles",
+                    "enabled": true
+                },
+                "vanity_change": {
+                    "punishment": "ban",
+                    "enabled": false
+                },
+                "server_rename": {
+                    "punishment": "kick",
+                    "enabled": true
+                },
+                "server_icon": {
+                    "punishment": "kick",
+                    "enabled": true
+                },
+                "role_rename": {
+                    "punishment": "kick",
+                    "enabled": false
+                },
+                "channel_rename": {
+                    "punishment": "kick",
+                    "enabled": false
+                },
+                "emoji_delete": {
+                    "punishment": "kick",
+                    "enabled": false
+                },
+                "emoji_rename": {
+                    "punishment": "kick",
+                    "enabled": false
+                },
+                "invite_delete": {
+                    "punishment": "kick",
+                    "enabled": false
+                }
+            },
+            "detect": {
+                "invite_link": {
+                    "enabled": true
+                },
+                "anti_link": {
+                    "enabled": true
+                },
+                "ghost_ping": {
+                    "enabled": true
+                }
+            },
+            "antiraid": {
+                "enabled": true,
+                "join_threshold": 5,
+                "time_window": 10,
+                "action": "lockdown"
+            },
+            "antispam": {
+                "enabled": true,
+                "rate_limit": 5,
+                "time_window": 4,
+                "duplicate_limit": 3,
+                "action": "timeout"
+            }
+        }
+    },
+    "custom_responses": {
+        "1507771870311612537": {
+            "ban_success": "\ud83d\udd28 Banned {member}",
+            "nick_success": "<:zzz_kaamkibaat:1537097213023621120> Nickname of member {member} has successfully changed to {nick}"
+        }
+    },
+    "feature_whitelists": {
+        "12345": {
+            "dangerous_perms": []
+        }
+    },
+    "autoreact": {},
+    "autoresponder": {
+        "1507771870311612537": {
+            "rules": [
+                {
+                    "user_id": "1437092585796665477",
+                    "user_name": "Tharkimon.exe",
+                    "response": "Ping karne keleye dhanyawad, Dev aapko jald he response karege.. <a:1261hackerbongocat:1557692061526917163>"
+                }
+            ],
+            "ignored_channels": []
+        }
+    },
+    "media_channels": {},
+    "liked_songs": {},
+    "media_whitelist": {},
+    "warnings": {
+        "8888": {
+            "3333": []
+        }
+    },
+    "first_welcome": {},
+    "first_chat_welcomes": {},
+    "afk_data": {}
+}
