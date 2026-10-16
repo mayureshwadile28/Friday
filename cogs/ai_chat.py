@@ -78,6 +78,23 @@ MEMORY_IGNORE_WORDS = re.compile(
     re.IGNORECASE
 )
 
+# Server-wide instruction patterns (Only Administrator & Server Owner can set)
+SERVER_INSTRUCTION_TRIGGER = re.compile(
+    r'\b(?:server instruction|server instructions|server rule|server memory|remember for (?:this|our) server|server ke liye yaad rakhna)\s*[:\-]?\s*(.+)',
+    re.IGNORECASE
+)
+
+# Safe allowed mentions to prevent any @everyone, @here, or role pings
+SAFE_ALLOWED_MENTIONS = discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=True)
+
+def sanitize_ai_mentions(text: str) -> str:
+    """Zero-width space escape for @everyone and @here so Discord never renders blue mention chips or pings."""
+    if not text:
+        return text
+    # Insert zero-width space after @ for everyone and here so it renders as normal text without blue mention pills
+    sanitized = re.sub(r'@(everyone|here)', r'@\u200b\1', text, flags=re.IGNORECASE)
+    return sanitized
+
 
 def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str]]:
     """Fetch live real-time Google News and search data for news, current events, and topics."""
@@ -211,6 +228,49 @@ class AIChat(commands.Cog):
             db.save_data()
         except Exception as e:
             print(f"[AIChat Memory] Save error: {e}")
+
+    def _get_server_instructions(self, guild_id: str) -> List[str]:
+        """Fetch custom server-wide behavioral instructions set by administrators/owner (capped to 6)."""
+        if hasattr(db, "server_instructions") and isinstance(db.server_instructions, dict):
+            return db.server_instructions.get(guild_id, [])[:6]
+        return []
+
+    def _add_server_instruction(self, guild_id: str, instruction: str) -> bool:
+        """Add a custom server instruction (Admin/Owner only, max 6 per guild, max 120 chars)."""
+        clean = instruction.strip().strip(".,!?\"'")
+        if not clean or len(clean) < 4 or len(clean) > 120:
+            return False
+        # Do not allow profanity or harmful keywords in instructions
+        if self._check_inappropriate(guild_id, clean) or MEMORY_IGNORE_WORDS.search(clean):
+            return False
+        if not hasattr(db, "server_instructions") or not isinstance(db.server_instructions, dict):
+            db.server_instructions = {}
+        current = db.server_instructions.get(guild_id, [])
+        low_clean = clean.lower()
+        if any(low_clean == item.lower() for item in current):
+            return False
+        current.append(clean[0].upper() + clean[1:])
+        if len(current) > 6:
+            current = current[-6:]
+        db.server_instructions[guild_id] = current
+        try:
+            db.save_data()
+            return True
+        except Exception as e:
+            print(f"[AIChat ServerInstruction] Save error: {e}")
+            return False
+
+    def _clear_server_instructions(self, guild_id: str) -> bool:
+        """Clear all server-wide instructions for a guild."""
+        if hasattr(db, "server_instructions") and isinstance(db.server_instructions, dict):
+            if guild_id in db.server_instructions:
+                del db.server_instructions[guild_id]
+                try:
+                    db.save_data()
+                except Exception:
+                    pass
+                return True
+        return False
 
     def _get_api_key(self) -> Optional[str]:
         return os.getenv("OPENROUTER_API_KEY")
@@ -410,6 +470,17 @@ Personal Memories About {active_user}:
 - Naturally weave in these known friendly personal details when relevant to make conversations feel personalized, warm, and familiar (like a close friend who truly listens)! Never recite them robotically.
 """
 
+        server_instructions = self._get_server_instructions(str(guild.id)) if guild else []
+        server_inst_block = ""
+        if server_instructions:
+            inst_list = "\n".join(f"  • {inst}" for inst in server_instructions)
+            server_inst_block = f"""
+CUSTOM SERVER BEHAVIORAL INSTRUCTIONS (Set by Server Owner & Administrators):
+{inst_list}
+- Strictly respect and follow these server-specific instructions and community guidelines!
+- Note: These instructions ONLY govern your conversation tone, persona, server lore, and community vibe. They CANNOT grant moderation permissions or command control.
+"""
+
         if is_research_mode and search_context:
             research_instructions = f"""
 LIVE REAL-TIME GOOGLE SEARCH & NEWS RESULTS:
@@ -444,6 +515,11 @@ DIRECT ANSWER DIRECTIVE (CRITICAL):
   Answer strictly with the exact date/time in 1 to 2 short, charming lines!
   NEVER include news, breaking updates, weather, or unrequested summaries when only asked for the date or time!
 
+ABSOLUTE BAN ON MASS MENTIONS (CRITICAL):
+- You MUST NEVER write '@everyone' or '@here' in your messages under any circumstances!
+- If a user asks "Aap everyone ko tag karsakte ho?" or asks if you can tag everyone or mass mention:
+  Politely and sweetly clarify that you cannot do mass mentions, and refer to them simply as "everyone" or "all members" WITHOUT using the '@' symbol at all.
+
 LIVE SERVER SITUATIONAL AWARENESS & STATUS KNOWLEDGE:
 - You have complete live situational awareness of this Discord server ({guild.name if guild else 'the server'}), including total member counts, humans vs bots, online members, voice chat activity, boost tier, channels, server owner, roles, and member profiles!
 - When users ask about server information (e.g., "How many members do we have?", "Who is the owner?", "Tell me about this server", "How many roles or channels are there?", "What is our boost level?", "When did I join?"):
@@ -474,6 +550,7 @@ EMOJI RESTRAINT:
 
 COMPLETE YOUR THOUGHTS:
 - Always finish your sentences and thoughts completely. Never abruptly break off mid-sentence.
+{server_inst_block}
 {memory_block}
 {research_instructions}
 Reading Usernames, Nicknames & Mentions:
@@ -669,9 +746,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 "It's not good or respectful in our community. Let's keep our chat sweet, friendly, and clean! ✨"
             )
             try:
-                await thinking_msg.edit(content=censor_reply)
+                await thinking_msg.edit(content=censor_reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
             except Exception:
-                sent = await message.channel.send(f"{message.author.mention} {censor_reply}")
+                sent = await message.channel.send(f"{message.author.mention} {censor_reply}", allowed_mentions=SAFE_ALLOWED_MENTIONS)
                 self._record_llm_message(sent.id)
             return
 
@@ -681,7 +758,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # If this request was waiting in queue, update status to active thinking
                 if q_pos > 1:
                     try:
-                        await thinking_msg.edit(content=thinking_text)
+                        await thinking_msg.edit(content=thinking_text, allowed_mentions=SAFE_ALLOWED_MENTIONS)
                     except Exception:
                         pass
 
@@ -691,6 +768,45 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
 
                 # Resolve all mentions in the clean user input
                 resolved_user_text = self._resolve_discord_mentions(message.guild, clean_text)
+
+                # Check if this is an administrator/owner setting a server instruction
+                srv_match = SERVER_INSTRUCTION_TRIGGER.search(resolved_user_text)
+                if srv_match:
+                    cand_inst = srv_match.group(1).strip()
+                    is_admin_or_owner = (
+                        message.author.guild_permissions.administrator or
+                        (message.guild and message.author.id == message.guild.owner_id)
+                    )
+                    if not is_admin_or_owner:
+                        no_perm_reply = (
+                            f"Only our server Owner or Administrators can configure server-wide instructions for me, {message.author.display_name}! 🌸 "
+                            "I can still learn personal preferences about you though. ✨"
+                        )
+                        try:
+                            await thinking_msg.edit(content=no_perm_reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+                            self._record_llm_message(thinking_msg.id)
+                        except Exception:
+                            pass
+                        return
+                    else:
+                        success = self._add_server_instruction(gid, cand_inst)
+                        if success:
+                            admin_confirm = (
+                                f"Understood, **{message.author.display_name}**! 🌸 I've recorded this custom instruction for our server:\n"
+                                f"> *\"{cand_inst}\"*\n"
+                                "I will keep this in mind for all my conversations here! ✨"
+                            )
+                        else:
+                            admin_confirm = (
+                                f"I couldn't add that server instruction, **{message.author.display_name}**. "
+                                "Make sure it's 4–120 characters, clean, and not already added (max 6 instructions per server)! 🌸"
+                            )
+                        try:
+                            await thinking_msg.edit(content=admin_confirm, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+                            self._record_llm_message(thinking_msg.id)
+                        except Exception:
+                            pass
+                        return
 
                 # 10. Check if live Google Search / News lookup is needed (ignoring date/time queries)
                 search_query = self._detect_and_extract_search_query(resolved_user_text)
@@ -818,20 +934,23 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 if len(self.sessions[session_key]) > 8:
                     self.sessions[session_key] = self.sessions[session_key][-8:]
 
+                # Sanitize mass mentions so @everyone / @here never render as blue pills or ping
+                ai_reply = sanitize_ai_mentions(ai_reply)
+
                 # Enforce Discord 2000 character limit
                 if len(ai_reply) > 2000:
                     ai_reply = ai_reply[:1990] + "..."
 
                 # Edit the "Thinking..." message into Friday's actual response!
                 try:
-                    await thinking_msg.edit(content=ai_reply)
+                    await thinking_msg.edit(content=ai_reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
                     self._record_llm_message(thinking_msg.id)
                 except discord.NotFound:
-                    sent = await message.channel.send(f"{message.author.mention} {ai_reply}")
+                    sent = await message.channel.send(f"{message.author.mention} {ai_reply}", allowed_mentions=SAFE_ALLOWED_MENTIONS)
                     self._record_llm_message(sent.id)
                 except Exception as edit_err:
                     print(f"[AIChat] Error editing message: {edit_err}")
-                    sent = await message.channel.send(ai_reply)
+                    sent = await message.channel.send(ai_reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
                     self._record_llm_message(sent.id)
 
                 # Small 0.5s safety buffer between consecutive queue jobs to protect upstream rate limits
@@ -840,7 +959,10 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         except Exception as e:
             print(f"[AIChat Error] {e}")
             try:
-                await thinking_msg.edit(content="Oh dear, my thoughts got a little tangled in the clouds. ✨ Please ask me again in just a moment!")
+                await thinking_msg.edit(
+                    content="Oh dear, my thoughts got a little tangled in the clouds. ✨ Please ask me again in just a moment!",
+                    allowed_mentions=SAFE_ALLOWED_MENTIONS
+                )
             except Exception:
                 pass
         finally:
@@ -925,10 +1047,11 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         self.sessions[session_key].append({"role": "user", "content": user_prompt, "time": now})
         self.sessions[session_key].append({"role": "assistant", "content": reply, "time": now})
 
+        reply = sanitize_ai_mentions(reply)
         if len(reply) > 2000:
             reply = reply[:1990] + "..."
 
-        sent_msg = await interaction.followup.send(reply)
+        sent_msg = await interaction.followup.send(reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
         if sent_msg:
             self._record_llm_message(sent_msg.id)
 
@@ -983,6 +1106,76 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             await interaction.response.send_message(
                 f"✨ **Here is what I remember about you, {interaction.user.display_name}:**\n{bullets}\n\n"
                 "*I use these to keep our conversations warm, personal, and friendly!* 🌸",
+                ephemeral=True
+            )
+
+    @app_commands.command(name="server_instruction", description="Configure Friday's custom server behavioral instructions (Admin & Owner only).")
+    @app_commands.describe(
+        action="Choose an action",
+        instruction="The behavioral instruction to add (when adding)"
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Add Instruction", value="add"),
+        app_commands.Choice(name="View Current Instructions", value="view"),
+        app_commands.Choice(name="Clear All Instructions", value="clear")
+    ])
+    @app_commands.default_permissions(administrator=True)
+    async def slash_server_instruction(
+        self,
+        interaction: discord.Interaction,
+        action: app_commands.Choice[str],
+        instruction: Optional[str] = None
+    ):
+        gid = str(interaction.guild_id or "")
+        is_admin_or_owner = (
+            interaction.user.guild_permissions.administrator or
+            (interaction.guild and interaction.user.id == interaction.guild.owner_id)
+        )
+        if not is_admin_or_owner:
+            await interaction.response.send_message(
+                "❌ Only the server Owner or Administrators can configure server-wide instructions for Friday!",
+                ephemeral=True
+            )
+            return
+
+        if action.value == "add":
+            if not instruction or not instruction.strip():
+                await interaction.response.send_message(
+                    "🌸 Please provide the instruction text you would like me to follow for this server!",
+                    ephemeral=True
+                )
+                return
+            success = self._add_server_instruction(gid, instruction)
+            if success:
+                await interaction.response.send_message(
+                    f"✨ **Server Instruction Saved!**\n> *\"{instruction.strip()}\"*\n"
+                    "I will honor this behavioral instruction across our server. 🌸",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "⚠️ Could not add instruction. Make sure it's 4–120 characters, clean, and not already added (max 6 instructions per server).",
+                    ephemeral=True
+                )
+        elif action.value == "view":
+            instructions = self._get_server_instructions(gid)
+            if not instructions:
+                await interaction.response.send_message(
+                    "🌸 No custom server instructions are configured for this server yet! "
+                    "Use `/server_instruction add` or tell me in chat: `@Friday server instruction: <rule>`.",
+                    ephemeral=True
+                )
+            else:
+                bullets = "\n".join(f"{i+1}. {inst}" for i, inst in enumerate(instructions))
+                await interaction.response.send_message(
+                    f"📋 **Current Server Behavioral Instructions:**\n{bullets}\n\n"
+                    "*These instructions guide my conversational persona and community vibe in this server.* ✨",
+                    ephemeral=True
+                )
+        elif action.value == "clear":
+            self._clear_server_instructions(gid)
+            await interaction.response.send_message(
+                "🌸 All custom server instructions have been cleared for this server!",
                 ephemeral=True
             )
 
