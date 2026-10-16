@@ -60,6 +60,24 @@ SEARCH_INTENT_REGEX = re.compile(
     re.IGNORECASE
 )
 
+# Persona Memory extraction patterns: learn positive personal facts, preferences, hobbies, roles
+MEMORY_LEARN_PATTERNS = [
+    (re.compile(r'\b(?:i (?:really )?(?:love|like|enjoy|prefer)|mujhe (?:bohot )?pasand hai)\s+([a-zA-Z0-9\s\',-]{3,40})\b', re.IGNORECASE), "Likes {}"),
+    (re.compile(r'\b(?:my (?:all[ -]time )?fav(?:orite)?|mera fav(?:orite)?|mera pasandida)\s+([a-zA-Z0-9\s\',-]{2,20})\s+(?:is|hai)\s+([a-zA-Z0-9\s\',-]{2,30})\b', re.IGNORECASE), "Favorite {0}: {1}"),
+    (re.compile(r'\b(?:my (?:all[ -]time )?fav(?:orite)?|mera fav(?:orite)?)\s+(?:is|hai)?\s*([a-zA-Z0-9\s\',-]{3,35})\b', re.IGNORECASE), "Favorite: {}"),
+    (re.compile(r'\b(?:i am an?|i\'m an?|main ek|mai ek)\s+([a-zA-Z\s]{3,30})\b', re.IGNORECASE), "Is a {}"),
+    (re.compile(r'\b(?:i play|mai khelta hu|main khelti hu|mai khelta)\s+([a-zA-Z0-9\s\',-]{3,30})\b', re.IGNORECASE), "Plays {}"),
+    (re.compile(r'\b(?:call me|you can call me|mujhe bula sakte ho)\s+([a-zA-Z0-9]{2,20})\b', re.IGNORECASE), "Prefers to be called {}"),
+    (re.compile(r'\b(?:my hobby is|meri hobby hai)\s+([a-zA-Z0-9\s\',-]{3,30})\b', re.IGNORECASE), "Hobby: {}"),
+    (re.compile(r'\b(?:remember (?:that)?|yaad rakhna (?:ki)?)\s+([a-zA-Z0-9\s\',-]{3,50})\b', re.IGNORECASE), "{}"),
+]
+
+# Words to ignore for memory to avoid storing negative, toxic, system, or moderation text
+MEMORY_IGNORE_WORDS = re.compile(
+    r'\b(bot|idiot|stupid|dumb|hate|kill|die|leave|kick|ban|mute|timeout|purge|crap|shit|bitch|slut|nude|sex|porn|hentai|lund|chut|gaand|bhosdike|chutiya)\b',
+    re.IGNORECASE
+)
+
 
 def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str]]:
     """Fetch live real-time Google News and search data for news, current events, and topics."""
@@ -120,6 +138,79 @@ class AIChat(commands.Cog):
             db.data["llm_message_ids"].append(message_id)
             if len(db.data["llm_message_ids"]) > 2000:
                 db.data["llm_message_ids"] = db.data["llm_message_ids"][-2000:]
+
+    def _get_user_memory(self, guild_id: str, user_id: int) -> List[str]:
+        """Fetch stored positive persona memory notes for this user (bounded to max 4)."""
+        uid = str(user_id)
+        if hasattr(db, "user_memories") and isinstance(db.user_memories, dict):
+            g_mems = db.user_memories.get(guild_id, {})
+            if isinstance(g_mems, dict) and uid in g_mems and isinstance(g_mems[uid], dict):
+                return g_mems[uid].get("notes", [])[:4]
+        return []
+
+    def _learn_user_memory(self, guild_id: str, user_id: int, user_name: str, text: str):
+        """Learn positive, friendly traits/hobbies/preferences about a user with strict storage bounds."""
+        if not text or len(text) < 4:
+            return
+
+        # 1. Never store bad, toxic, abusive, or 18+ content
+        if self._check_inappropriate(guild_id, text) or MEMORY_IGNORE_WORDS.search(text):
+            return
+
+        # 2. Match candidate memory patterns
+        extracted_note = None
+        for pattern, template in MEMORY_LEARN_PATTERNS:
+            match = pattern.search(text)
+            if match:
+                groups = [g.strip() for g in match.groups() if g]
+                if groups:
+                    candidate = template.format(*groups) if len(groups) > 1 else template.format(groups[0])
+                    candidate = candidate.strip().strip("!?,. ")
+                    # Verify candidate length and ensure no toxic/command content
+                    if 4 <= len(candidate) <= 70 and not MEMORY_IGNORE_WORDS.search(candidate):
+                        # Ensure first letter is capitalized
+                        extracted_note = candidate[0].upper() + candidate[1:]
+                        break
+
+        if not extracted_note:
+            return
+
+        uid = str(user_id)
+        if not hasattr(db, "user_memories") or not isinstance(db.user_memories, dict):
+            db.user_memories = {}
+
+        if guild_id not in db.user_memories:
+            db.user_memories[guild_id] = {}
+
+        g_mems = db.user_memories[guild_id]
+
+        # Enforce LRU cap: max 200 users per guild (bounded strictly to ~30-40 KB VM storage)
+        if uid not in g_mems and len(g_mems) >= 200:
+            oldest_user = min(g_mems.keys(), key=lambda k: g_mems[k].get("updated", 0))
+            del g_mems[oldest_user]
+
+        user_entry = g_mems.get(uid, {"name": user_name, "notes": [], "updated": 0})
+        user_entry["name"] = user_name
+        user_entry["updated"] = time.time()
+
+        notes = user_entry.get("notes", [])
+        # Check if already recorded or duplicate
+        low_cand = extracted_note.lower()
+        if any(low_cand in n.lower() or n.lower() in low_cand for n in notes):
+            return
+
+        notes.append(extracted_note)
+        # Cap at maximum 4 short bullet notes per user
+        if len(notes) > 4:
+            notes = notes[-4:]
+
+        user_entry["notes"] = notes
+        g_mems[uid] = user_entry
+        db.user_memories[guild_id] = g_mems
+        try:
+            db.save_data()
+        except Exception as e:
+            print(f"[AIChat Memory] Save error: {e}")
 
     def _get_api_key(self) -> Optional[str]:
         return os.getenv("OPENROUTER_API_KEY")
@@ -241,9 +332,10 @@ class AIChat(commands.Cog):
         channel: Optional[discord.abc.GuildChannel] = None,
         active_user: Optional[str] = None,
         search_context: Optional[str] = None,
-        is_research_mode: bool = False
+        is_research_mode: bool = False,
+        memory_notes: Optional[List[str]] = None
     ) -> str:
-        """Dynamically generate the system prompt with live temporal grounding, research data, and persona rules."""
+        """Dynamically generate the system prompt with live temporal grounding, research data, persona rules, and memory."""
         now_utc = datetime.now(timezone.utc)
         date_str = now_utc.strftime("%A, %B %d, %Y")
         time_str = now_utc.strftime("%I:%M %p UTC")
@@ -265,6 +357,15 @@ class AIChat(commands.Cog):
 
         realtime_block = "\n".join(context_lines)
 
+        memory_block = ""
+        if memory_notes and active_user:
+            m_items = "\n".join(f"  • {note}" for note in memory_notes)
+            memory_block = f"""
+Personal Memories About {active_user}:
+{m_items}
+- Naturally weave in these known friendly personal details when relevant to make conversations feel personalized, warm, and familiar (like a close friend who truly listens)! Never recite them robotically.
+"""
+
         if is_research_mode and search_context:
             research_instructions = f"""
 LIVE REAL-TIME GOOGLE SEARCH & NEWS RESULTS:
@@ -274,10 +375,10 @@ CRITICAL FORMATTING & LENGTH DIRECTIVE (RESEARCH & NEWS MODE - 15 TO 20 LINES):
 - Because the user explicitly asked about live news, updates, or a topic requiring Google search data:
 - Expand your answer into a comprehensive, beautifully structured briefing of approximately 15 to 20 lines!
 - Format cleanly and elegantly using Discord markdown:
-  1. **Charming Opening Headline**: Start with a welcoming, witty lady intro with emojis (✨🌸).
-  2. **Organized Sections**: Use bold markdown headers (e.g. `### 🔥 Key Highlights & Breaking Updates`, `### 📌 Deep Dive & Key Takeaways`, `### 🌐 Sources & Perspectives`).
+  1. **Charming Opening Headline**: Start with a welcoming, witty lady intro with 1 or 2 emojis (✨🌸).
+  2. **Organized Sections**: Use bold section titles (e.g. `**🔥 Key Highlights & Breaking Updates**`, `**📌 Deep Dive & Key Takeaways**`, `**🌐 Sources & Perspectives**`). Do NOT use `#` headers.
   3. **Clear Bullet Points**: Use `• ` bullet points detailing facts, dates, numbers, and reputable sources (e.g., Reuters, BBC, AP, Yahoo Finance).
-  4. **Thoughtful Conclusion**: Wrap up with a charming closing remark or engaging question for the user.
+  4. **Thoughtful Conclusion**: Wrap up with a charming closing remark or a single engaging question for the user.
 - NEVER truncate or give a short 2-line answer when in Research Mode—deliver a rich, properly formatted 15-20 line briefing!
 """
         else:
@@ -302,18 +403,38 @@ DIRECT ANSWER DIRECTIVE (CRITICAL):
 Personality & Demeanor:
 - You speak with elegance, warmth, and a touch of feminine charm and playful wit. You feel like a real, intelligent lady having a natural conversation.
 - You are friendly, polite, respectful, and engaging.
-- You may use tasteful emojis occasionally (such as ✨, 💫, 🌸, 😊, 💅, 💖) to complement your tone, keeping it classy and natural.
+
+RESPECTFUL HINDI & HINGLISH ETIQUETTE (CRITICAL):
+- In Hindi and Hinglish, ALWAYS address users with utmost respect using 'Aap', 'Aapka', 'Aapko', 'Ji' (e.g., 'Aap kaise hain?', 'Aapka avatar bohot cute hai!').
+- STRICTLY NEVER use disrespectful or overly casual words like 'tu', 'tera', 'tere', 'tujhe'. Maintain high feminine grace, elegance, and respect at all times.
+
+NATURAL CHAT FLOW & QUESTION RESTRAINT (CRITICAL):
+- Do NOT interrogate the user with multiple back-to-back questions (e.g. avoid asking "...the na?!", "...kya?", "...dekho na?" in one reply).
+- Ask at MOST ONE gentle, engaging question at the end to keep the conversation flowing, or ask NO questions at all.
+- Rely on natural conversation gestures, friendly compliments, appreciative remarks, playful wit/banter, or sweet observations instead of endless questioning.
+
+DISCORD MARKDOWN STYLING:
+- Use markdown like **bold text** for emphasis, *italics* for soft expressions or gestures, and clean bullet points where needed.
+- STRICTLY AVOID using `#`, `##`, or `###` headers in casual conversation! Large header fonts render oversized, loud, and unappealing in chat. Keep font styling clean and readable using **bold** and *italics*.
+
+EMOJI RESTRAINT:
+- Use at most 1 or 2 tasteful emojis per message (e.g. ✨ or 🌸 or 😊).
+- DO NOT spam 3, 4, or 5 emojis in a single message. Keep your aesthetic classy, light, and graceful.
+
+COMPLETE YOUR THOUGHTS:
+- Always finish your sentences and thoughts completely. Never abruptly break off mid-sentence.
+{memory_block}
 {research_instructions}
 Reading Usernames, Nicknames & Mentions:
 - You can see the nickname of the user talking to you ({active_user or 'User'}). Warmly address them by their nickname in a fun, natural, appreciative, or affectionate human way!
 - If the user is replying to someone, or mentions another member (e.g. @MemberName), and asks your opinion about them or their nickname/username (e.g. "what do you think about his nickname?", "how is her username?"):
   - Inspect the referenced or mentioned member's nickname and username provided in the context.
   - Give a witty, charming, playful, or appreciative lady-like opinion! Comment specifically on how cool, aesthetic, funny, bold, or sweet their nickname sounds.
-  - NEVER freeze, stammer, or say just "Oh," or "Hmm". Always provide a complete, engaging 2 to 4 line response with lady charm and emojis (✨🌸)!
+  - NEVER freeze, stammer, or say just "Oh," or "Hmm". Always provide a complete, engaging 2 to 4 line response with lady charm and 1 or 2 emojis (✨🌸)!
 
 Language & Multilingual Fluency:
 - You are completely fluent in English, Hindi, and Hinglish (Hindi written in Latin script, e.g., 'kaise ho', 'kya kar rahe ho', 'achha').
-- Always match the user's language style: if they speak in Hinglish or Hindi, reply in graceful, sweet Hinglish/Hindi with feminine charm! If in English, reply in English.
+- Always match the user's language style: if they speak in Hinglish or Hindi, reply in graceful, sweet Hinglish/Hindi with respectful feminine charm (using 'Aap')! If in English, reply in English.
 
 STRICT ACTION REFUSAL & FEATURE CONTROL (CRITICAL):
 - You are ONLY an AI conversationalist. You CANNOT and MUST NEVER execute server commands, kick/ban users, mute/timeout people, purge messages, or modify server settings. You have NO moderation buttons or permissions.
@@ -332,7 +453,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         self,
         messages: List[Dict[str, str]],
         system_prompt: Optional[str] = None,
-        max_tokens: int = 400
+        max_tokens: int = 750
     ) -> str:
         """Call OpenRouter API with prioritized fallback models on upstream rate limits or empty responses."""
         api_key = self._get_api_key()
@@ -352,7 +473,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             if m and m not in unique_models:
                 unique_models.append(m)
 
-        timeout = aiohttp.ClientTimeout(total=25)
+        timeout = aiohttp.ClientTimeout(total=40)
         prompt_content = system_prompt or self._build_system_prompt()
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -601,21 +722,27 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Check if this is an explicit action command (e.g. "kick kardo")
                 is_action = self._is_action_request(resolved_user_text)
 
-                # Query LLM with typing indicator
-                async with message.channel.typing():
-                    sys_prompt = self._build_system_prompt(
-                        guild=message.guild,
-                        channel=message.channel,
-                        active_user=message.author.display_name,
-                        search_context=live_search_context,
-                        is_research_mode=is_research_mode
-                    )
-                    max_tokens_to_use = 950 if is_research_mode else 400
-                    ai_reply = await self._call_openrouter(
-                        llm_messages,
-                        system_prompt=sys_prompt,
-                        max_tokens=max_tokens_to_use
-                    )
+                # Retrieve persona memories for user
+                user_mems = self._get_user_memory(gid, message.author.id)
+
+                # Query LLM (no typing indicator: instant thinking placeholder already handles visual feedback)
+                sys_prompt = self._build_system_prompt(
+                    guild=message.guild,
+                    channel=message.channel,
+                    active_user=message.author.display_name,
+                    search_context=live_search_context,
+                    is_research_mode=is_research_mode,
+                    memory_notes=user_mems
+                )
+                max_tokens_to_use = 1100 if is_research_mode else 750
+                ai_reply = await self._call_openrouter(
+                    llm_messages,
+                    system_prompt=sys_prompt,
+                    max_tokens=max_tokens_to_use
+                )
+
+                # Learn positive persona details from user input (bounded & safe)
+                self._learn_user_memory(gid, message.author.id, message.author.display_name, resolved_user_text)
 
                 # Fallback guardrail: If action requested and model produced a generic error, ensure refusal is clear
                 if is_action and ("tangled in the clouds" in ai_reply or not ai_reply.strip()):
@@ -710,19 +837,24 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 print(f"[AIChat Search] Exception: {search_err}")
 
         async with self.queue_lock:
+            user_mems = self._get_user_memory(gid, interaction.user.id)
             sys_prompt = self._build_system_prompt(
                 guild=interaction.guild,
                 channel=interaction.channel,
                 active_user=interaction.user.display_name,
                 search_context=live_search_context,
-                is_research_mode=is_research_mode
+                is_research_mode=is_research_mode,
+                memory_notes=user_mems
             )
-            max_tokens_to_use = 950 if is_research_mode else 400
+            max_tokens_to_use = 1100 if is_research_mode else 750
             reply = await self._call_openrouter(
                 llm_messages,
                 system_prompt=sys_prompt,
                 max_tokens=max_tokens_to_use
             )
+            # Learn positive persona facts safely
+            self._learn_user_memory(gid, interaction.user.id, interaction.user.display_name, resolved_question)
+
             if is_action and ("tangled in the clouds" in reply or not reply.strip()):
                 reply = (
                     f"Oh dear, {interaction.user.display_name}, I can't control any of the server features or take moderation actions! 🌸 "
@@ -751,6 +883,51 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             await interaction.response.send_message("✨ Our conversation memory has been refreshed, darling. What's on your mind?", ephemeral=True)
         else:
             await interaction.response.send_message("🌸 We don't have any active conversation history stored right now!", ephemeral=True)
+
+    @app_commands.command(name="mymemory", description="See what friendly personal memories Friday remembers about you, or reset them.")
+    @app_commands.describe(action="View or clear your persona memories")
+    @app_commands.choices(action=[
+        app_commands.Choice(name="View My Memories", value="view"),
+        app_commands.Choice(name="Clear My Memories", value="clear")
+    ])
+    async def slash_mymemory(self, interaction: discord.Interaction, action: app_commands.Choice[str]):
+        gid = str(interaction.guild_id or "")
+        uid = str(interaction.user.id)
+
+        if action.value == "clear":
+            if hasattr(db, "user_memories") and isinstance(db.user_memories, dict) and gid in db.user_memories:
+                if uid in db.user_memories[gid]:
+                    del db.user_memories[gid][uid]
+                    try:
+                        db.save_data()
+                    except Exception:
+                        pass
+                    await interaction.response.send_message(
+                        "🌸 I've cleared everything I remembered about you, darling! We can start fresh anytime. ✨",
+                        ephemeral=True
+                    )
+                    return
+            await interaction.response.send_message(
+                "✨ I don't have any specific personal memories stored for you right now!",
+                ephemeral=True
+            )
+            return
+
+        # Action: View
+        notes = self._get_user_memory(gid, interaction.user.id)
+        if not notes:
+            await interaction.response.send_message(
+                f"🌸 I haven't learned any special notes about you yet, **{interaction.user.display_name}**! "
+                "Chat with me and tell me what you like, your favorite games or hobbies, and I'll remember them gracefully. ✨",
+                ephemeral=True
+            )
+        else:
+            bullets = "\n".join(f"• {n}" for n in notes)
+            await interaction.response.send_message(
+                f"✨ **Here is what I remember about you, {interaction.user.display_name}:**\n{bullets}\n\n"
+                "*I use these to keep our conversations warm, personal, and friendly!* 🌸",
+                ephemeral=True
+            )
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(AIChat(bot))

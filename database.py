@@ -36,6 +36,7 @@ class Database:
         self.first_welcome = self.data.get("first_welcome", {})
         self.first_chat_welcomes = self.data.get("first_chat_welcomes", {})
         self.afk_data = self.data.get("afk_data", {})
+        self.user_memories = self.data.get("user_memories", {})
 
     def load_data(self):
         try:
@@ -69,7 +70,8 @@ class Database:
                 "warnings": {},
                 "first_welcome": {},
                 "first_chat_welcomes": {},
-                "afk_data": {}
+                "afk_data": {},
+                "user_memories": {}
             }
 
     def __getattr__(self, name):
