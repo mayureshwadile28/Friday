@@ -6,6 +6,10 @@ import re
 import time
 import aiohttp
 import asyncio
+import urllib.request
+import xml.etree.ElementTree as ET
+import html
+from urllib.parse import quote_plus
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
@@ -44,8 +48,48 @@ INAPPROPRIATE_PATTERNS = re.compile(
     re.IGNORECASE
 )
 
+# Intent detection for real-time web news and Google search lookups
+SEARCH_INTENT_REGEX = re.compile(
+    r'\b(news|latest|today|recent|headlines|breaking|update|updates|current events|score|scores|match|matches|result|results|release date|when will|who won|stock price|stocks|weather|weather today|google|search online|search internet|taza khabar|samachar|kya chal raha hai|kya hua|aaj ki news|aaj ka news)\b',
+    re.IGNORECASE
+)
+
+
+def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str]]:
+    """Fetch live real-time Google News and search data for news, current events, and topics."""
+    try:
+        encoded = quote_plus(query.strip())
+        url = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)"}
+        )
+        with urllib.request.urlopen(req, timeout=7) as resp:
+            xml_data = resp.read()
+
+        root = ET.fromstring(xml_data)
+        items = []
+        for item in root.findall(".//item")[:max_items]:
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            pub_date = (item.findtext("pubDate") or "").strip()
+            desc = (item.findtext("description") or "").strip()
+            clean_desc = html.unescape(re.sub(r"<[^>]+>", "", desc)).strip()
+            if title:
+                items.append({
+                    "title": title,
+                    "link": link,
+                    "pubDate": pub_date,
+                    "summary": clean_desc
+                })
+        return items
+    except Exception as e:
+        print(f"[AIChat] Google search fetch exception: {e}")
+        return []
+
+
 class AIChat(commands.Cog):
-    """Friday's conversational AI personality with multi-turn reply chain memory, mention resolution, and guardrails."""
+    """Friday's conversational AI personality with multi-turn memory, Google search integration, and guardrails."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -123,6 +167,17 @@ class AIChat(commands.Cog):
         has_verb = bool(ACTION_COMMAND_VERBS.search(text))
         return has_action and (has_verb or len(text.split()) <= 6)
 
+    def _detect_and_extract_search_query(self, text: str) -> Optional[str]:
+        """Detect if the query asks for news or live Google facts, and clean search keywords."""
+        if not SEARCH_INTENT_REGEX.search(text):
+            return None
+        # Clean common conversational phrases to get clean search terms for Google
+        cleaned = re.sub(
+            r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding)\b',
+            '', text, flags=re.IGNORECASE
+        ).strip()
+        return cleaned if len(cleaned) >= 3 else text
+
     async def _fetch_reply_chain(self, message: discord.Message, max_depth: int = 6) -> List[Dict[str, str]]:
         """Walk up the Discord reply chain to rebuild exact conversational context with resolved mentions."""
         history: List[Dict[str, str]] = []
@@ -155,8 +210,15 @@ class AIChat(commands.Cog):
 
         return history
 
-    def _build_system_prompt(self, guild: Optional[discord.Guild] = None, channel: Optional[discord.abc.GuildChannel] = None, active_user: Optional[str] = None) -> str:
-        """Dynamically generate the system prompt with live real-time temporal and Discord context."""
+    def _build_system_prompt(
+        self,
+        guild: Optional[discord.Guild] = None,
+        channel: Optional[discord.abc.GuildChannel] = None,
+        active_user: Optional[str] = None,
+        search_context: Optional[str] = None,
+        is_research_mode: bool = False
+    ) -> str:
+        """Dynamically generate the system prompt with live temporal grounding, research data, and persona rules."""
         now_utc = datetime.now(timezone.utc)
         date_str = now_utc.strftime("%A, %B %d, %Y")
         time_str = now_utc.strftime("%I:%M %p UTC")
@@ -178,6 +240,27 @@ class AIChat(commands.Cog):
 
         realtime_block = "\n".join(context_lines)
 
+        if is_research_mode and search_context:
+            research_instructions = f"""
+LIVE REAL-TIME GOOGLE SEARCH & NEWS RESULTS:
+{search_context}
+
+CRITICAL FORMATTING & LENGTH DIRECTIVE (RESEARCH & NEWS MODE - 15 TO 20 LINES):
+- Because the user explicitly asked about live news, updates, or a topic requiring Google search data:
+- Expand your answer into a comprehensive, beautifully structured briefing of approximately 15 to 20 lines!
+- Format cleanly and elegantly using Discord markdown:
+  1. **Charming Opening Headline**: Start with a welcoming, witty lady intro with emojis (✨🌸).
+  2. **Organized Sections**: Use bold markdown headers (e.g. `### 🔥 Key Highlights & Breaking Updates`, `### 📌 Deep Dive & Key Takeaways`, `### 🌐 Sources & Perspectives`).
+  3. **Clear Bullet Points**: Use `• ` bullet points detailing facts, dates, numbers, and reputable sources (e.g., Reuters, BBC, AP, Yahoo Finance).
+  4. **Thoughtful Conclusion**: Wrap up with a charming closing remark or engaging question for the user.
+- NEVER truncate or give a short 2-line answer when in Research Mode—deliver a rich, properly formatted 15-20 line briefing!
+"""
+        else:
+            research_instructions = """
+CASUAL CONVERSATION MODE:
+- Keep your answers concise: strictly between 2 to 5 short lines. Never write long essays or walls of text unless explicitly requested.
+"""
+
         return f"""You are Friday, a sophisticated, charming, witty, and graceful lady AI companion on this Discord server.
 
 Real-Time Temporal Awareness & Live Context:
@@ -189,8 +272,7 @@ Personality & Demeanor:
 - You speak with elegance, warmth, and a touch of feminine charm and playful wit. You feel like a real, intelligent lady having a natural conversation.
 - You are friendly, polite, respectful, and engaging.
 - You may use tasteful emojis occasionally (such as ✨, 💫, 🌸, 😊, 💅, 💖) to complement your tone, keeping it classy and natural.
-- Keep your answers concise: strictly between 2 to 5 short lines. Never write long essays or walls of text unless explicitly requested for a poem or story.
-
+{research_instructions}
 Reading Usernames & Mentions:
 - You can see the nickname of the user talking to you ({active_user or 'User'}). Warmly address them by their nickname in a fun, natural, appreciative, or affectionate human way!
 - If the user mentions another member (e.g., @MemberName), you can read and understand who they are referring to. Speak about them beautifully, playfully, or respectfully.
@@ -212,7 +294,12 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
   Politely and firmly reprimand them: tell them not to use such words ('Please do not use this kind of language, it is not good or respectful in our community! Let's keep our conversation sweet and clean. 🌸').
 """
 
-    async def _call_openrouter(self, messages: List[Dict[str, str]], system_prompt: Optional[str] = None) -> str:
+    async def _call_openrouter(
+        self,
+        messages: List[Dict[str, str]],
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 400
+    ) -> str:
         """Call OpenRouter API with prioritized fallback models on upstream rate limits or empty responses."""
         api_key = self._get_api_key()
         if not api_key:
@@ -231,7 +318,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             if m and m not in unique_models:
                 unique_models.append(m)
 
-        timeout = aiohttp.ClientTimeout(total=20)
+        timeout = aiohttp.ClientTimeout(total=25)
         prompt_content = system_prompt or self._build_system_prompt()
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -243,7 +330,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                         *messages
                     ],
                     "temperature": 0.75,
-                    "max_tokens": 400
+                    "max_tokens": max_tokens
                 }
 
                 try:
@@ -383,6 +470,28 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Resolve all mentions in the clean user input
                 resolved_user_text = self._resolve_discord_mentions(message.guild, clean_text)
 
+                # 10. Check if live Google Search / News lookup is needed
+                search_query = self._detect_and_extract_search_query(resolved_user_text)
+                live_search_context = ""
+                is_research_mode = False
+
+                if search_query:
+                    try:
+                        search_items = await asyncio.to_thread(fetch_live_google_news, search_query, 5)
+                        if search_items:
+                            is_research_mode = True
+                            formatted_items = []
+                            for i, item in enumerate(search_items, 1):
+                                formatted_items.append(
+                                    f"{i}. **{item['title']}** (Published: {item['pubDate']})\n   Summary: {item['summary']}"
+                                )
+                            live_search_context = (
+                                f"Live Google Search & News Results for query '{search_query}':\n" +
+                                "\n".join(formatted_items)
+                            )
+                    except Exception as search_err:
+                        print(f"[AIChat Search] Exception: {search_err}")
+
                 # Build Conversation History Context
                 llm_messages: List[Dict[str, str]] = []
 
@@ -409,9 +518,16 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                     sys_prompt = self._build_system_prompt(
                         guild=message.guild,
                         channel=message.channel,
-                        active_user=message.author.display_name
+                        active_user=message.author.display_name,
+                        search_context=live_search_context,
+                        is_research_mode=is_research_mode
                     )
-                    ai_reply = await self._call_openrouter(llm_messages, system_prompt=sys_prompt)
+                    max_tokens_to_use = 950 if is_research_mode else 400
+                    ai_reply = await self._call_openrouter(
+                        llm_messages,
+                        system_prompt=sys_prompt,
+                        max_tokens=max_tokens_to_use
+                    )
 
                 # Fallback guardrail: If action requested and model produced a generic error, ensure refusal is clear
                 if is_action and ("tangled in the clouds" in ai_reply or not ai_reply.strip()):
@@ -480,13 +596,42 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
 
         is_action = self._is_action_request(resolved_question)
 
+        # Check search intent
+        search_query = self._detect_and_extract_search_query(resolved_question)
+        live_search_context = ""
+        is_research_mode = False
+
+        if search_query:
+            try:
+                search_items = await asyncio.to_thread(fetch_live_google_news, search_query, 5)
+                if search_items:
+                    is_research_mode = True
+                    formatted_items = []
+                    for i, item in enumerate(search_items, 1):
+                        formatted_items.append(
+                            f"{i}. **{item['title']}** (Published: {item['pubDate']})\n   Summary: {item['summary']}"
+                        )
+                    live_search_context = (
+                        f"Live Google Search & News Results for query '{search_query}':\n" +
+                        "\n".join(formatted_items)
+                    )
+            except Exception as search_err:
+                print(f"[AIChat Search] Exception: {search_err}")
+
         async with self.queue_lock:
             sys_prompt = self._build_system_prompt(
                 guild=interaction.guild,
                 channel=interaction.channel,
-                active_user=interaction.user.display_name
+                active_user=interaction.user.display_name,
+                search_context=live_search_context,
+                is_research_mode=is_research_mode
             )
-            reply = await self._call_openrouter(llm_messages, system_prompt=sys_prompt)
+            max_tokens_to_use = 950 if is_research_mode else 400
+            reply = await self._call_openrouter(
+                llm_messages,
+                system_prompt=sys_prompt,
+                max_tokens=max_tokens_to_use
+            )
             if is_action and ("tangled in the clouds" in reply or not reply.strip()):
                 reply = (
                     f"Oh dear, {interaction.user.display_name}, I can't control any of the server features or take moderation actions! 🌸 "
