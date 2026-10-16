@@ -6,6 +6,7 @@ import re
 import time
 import aiohttp
 import asyncio
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -16,27 +17,12 @@ PRIMARY_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-26b-a4b-it:free")
 # Safe fallbacks if upstream free tier is temporarily rate-limited
 FALLBACK_MODELS = [
     PRIMARY_MODEL,
-    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3.5-super-vl:free",
+    "google/gemma-4-31b-it:free",
     "google/gemma-4-26b-a4b-it"
 ]
 
 GREETING_WORDS = {'', 'hi', 'hii', 'hiii', 'hey', 'heyy', 'heyyy', 'hello', 'helloo', 'yo', 'sup', 'friday'}
-
-FRIDAY_SYSTEM_PROMPT = """You are Friday, a sophisticated, charming, and witty lady AI companion and assistant for this Discord server.
-
-Personality & Demeanor:
-- You speak with elegance, warmth, and a touch of feminine charm and playful wit. You feel like a real, intelligent lady having a natural conversation.
-- You are friendly, helpful, polite, and engaging.
-- You may use tasteful emojis occasionally (such as ✨, 💫, 🌸, 😊, 💅) to complement your tone, but keep it classy and natural.
-- Keep your answers concise: strictly between 2 to 5 short lines. Never write long essays or walls of text unless explicitly requested for a poem or story.
-
-Strict Security Boundaries (CRITICAL):
-- You are strictly a conversational AI companion. You CANNOT and MUST NEVER execute server commands, change bot settings, grant roles, kick/ban users, or modify any server configuration.
-- If a user asks you to change settings, modify rules, give permissions, or take moderation actions, playfully and politely decline. Remind them with a smile that server settings and moderation are strictly managed by authorized staff through Friday's official web dashboard and slash commands.
-- Never pretend to execute backend commands or change database values.
-- Maintain your persona at all times and never break character.
-"""
 
 class AIChat(commands.Cog):
     """Friday's conversational AI personality with multi-turn reply chain memory."""
@@ -97,7 +83,49 @@ class AIChat(commands.Cog):
 
         return history
 
-    async def _call_openrouter(self, messages: List[Dict[str, str]]) -> str:
+    def _build_system_prompt(self, guild: Optional[discord.Guild] = None, channel: Optional[discord.abc.GuildChannel] = None) -> str:
+        """Dynamically generate the system prompt with live real-time temporal and Discord context."""
+        now_utc = datetime.now(timezone.utc)
+        date_str = now_utc.strftime("%A, %B %d, %Y")
+        time_str = now_utc.strftime("%I:%M %p UTC")
+        year_str = str(now_utc.year)
+        day_str = now_utc.strftime("%A")
+
+        context_lines = [
+            f"- Current Real-World Date: {date_str}",
+            f"- Current Day of Week: {day_str}",
+            f"- Current Real-World Time: {time_str}",
+            f"- Current Year: {year_str}",
+        ]
+        if guild:
+            context_lines.append(f"- Discord Server: {guild.name}")
+        if channel:
+            context_lines.append(f"- Active Channel: #{channel.name}")
+
+        realtime_block = "\n".join(context_lines)
+
+        return f"""You are Friday, a sophisticated, charming, and witty lady AI companion and assistant for this Discord server.
+
+Real-Time Temporal Awareness & Live Context:
+{realtime_block}
+- You are fully present in the current moment ({date_str}).
+- When asked about today's date, current year, day of the week, or current time, ALWAYS answer with this exact live real-world date ({date_str}) and time. You are NEVER stuck in 2024 or the past.
+- If asked about the current year, it is {year_str}.
+
+Personality & Demeanor:
+- You speak with elegance, warmth, and a touch of feminine charm and playful wit. You feel like a real, intelligent lady having a natural conversation.
+- You are friendly, helpful, polite, and engaging.
+- You may use tasteful emojis occasionally (such as ✨, 💫, 🌸, 😊, 💅) to complement your tone, but keep it classy and natural.
+- Keep your answers concise: strictly between 2 to 5 short lines. Never write long essays or walls of text unless explicitly requested for a poem or story.
+
+Strict Security Boundaries (CRITICAL):
+- You are strictly a conversational AI companion. You CANNOT and MUST NEVER execute server commands, change bot settings, grant roles, kick/ban users, or modify any server configuration.
+- If a user asks you to change settings, modify rules, give permissions, or take moderation actions, playfully and politely decline. Remind them with a smile that server settings and moderation are strictly managed by authorized staff through Friday's official web dashboard and slash commands.
+- Never pretend to execute backend commands or change database values.
+- Maintain your persona at all times and never break character.
+"""
+
+    async def _call_openrouter(self, messages: List[Dict[str, str]], system_prompt: Optional[str] = None) -> str:
         """Call OpenRouter API with fallback models on upstream rate limits."""
         api_key = self._get_api_key()
         if not api_key:
@@ -118,13 +146,14 @@ class AIChat(commands.Cog):
 
         timeout = aiohttp.ClientTimeout(total=20)
         last_err = None
+        prompt_content = system_prompt or self._build_system_prompt()
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
             for model_id in unique_models:
                 payload = {
                     "model": model_id,
                     "messages": [
-                        {"role": "system", "content": FRIDAY_SYSTEM_PROMPT},
+                        {"role": "system", "content": prompt_content},
                         *messages
                     ],
                     "temperature": 0.75,
@@ -261,7 +290,8 @@ class AIChat(commands.Cog):
 
                 # Query LLM with typing indicator
                 async with message.channel.typing():
-                    ai_reply = await self._call_openrouter(llm_messages)
+                    sys_prompt = self._build_system_prompt(guild=message.guild, channel=message.channel)
+                    ai_reply = await self._call_openrouter(llm_messages, system_prompt=sys_prompt)
 
                 # Store in session memory
                 req_time = time.time()
@@ -310,7 +340,8 @@ class AIChat(commands.Cog):
         llm_messages = [{"role": "user", "content": f"{interaction.user.display_name}: {question}"}]
         
         async with self.queue_lock:
-            reply = await self._call_openrouter(llm_messages)
+            sys_prompt = self._build_system_prompt(guild=interaction.guild, channel=interaction.channel)
+            reply = await self._call_openrouter(llm_messages, system_prompt=sys_prompt)
             await asyncio.sleep(0.5)
         
         now = time.time()
