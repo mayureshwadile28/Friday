@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from datetime import datetime, timezone
 from database import db
 from response_utils import make_box_embed, reply_box
 
@@ -173,6 +174,34 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
             ephemeral=True
         )
 
+    @first_welcome_group.command(name="reset", description="Reset first-welcome history for a member or all members to re-test greetings.")
+    @app_commands.describe(member="Member to reset (leave empty to reset all members in this server)")
+    @commands.has_permissions(administrator=True)
+    async def reset_history(self, interaction: discord.Interaction, member: discord.Member = None):
+        gid = str(interaction.guild.id)
+        if member:
+            uid = str(member.id)
+            if gid in db.first_chat_welcomes and uid in db.first_chat_welcomes[gid]:
+                db.first_chat_welcomes[gid].remove(uid)
+                db.save_data()
+            await reply_box(
+                interaction,
+                f"• First-chat welcome status has been **reset** for {member.mention}! Their next message will trigger the welcome greeting.",
+                title="MEMBER WELCOME RESET",
+                status="success",
+                ephemeral=True
+            )
+        else:
+            db.first_chat_welcomes[gid] = []
+            db.save_data()
+            await reply_box(
+                interaction,
+                "• First-chat welcome history for this server has been **cleared**! Recent new members will be greeted on their next message.",
+                title="ALL WELCOMES RESET",
+                status="warning",
+                ephemeral=True
+            )
+
     # ──────────────── Convenience Shortcut Commands ────────────────
 
     @app_commands.command(
@@ -221,13 +250,35 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         if not cfg.get("enabled"):
             return
 
-        # Check channel restriction
-        target_channel_id = cfg.get("channel_id")
-        if target_channel_id and str(message.channel.id) != str(target_channel_id):
+        guild_history = db.first_chat_welcomes.setdefault(gid, [])
+
+        # 1. Guard against welcoming existing/veteran members or staff
+        # Check join date: if member joined > 7 days ago, they are an existing member!
+        now = datetime.now(timezone.utc)
+        if message.author.joined_at:
+            join_age_days = (now - message.author.joined_at).total_seconds() / 86400.0
+            if join_age_days > 7.0:
+                if uid not in guild_history:
+                    guild_history.append(uid)
+                    db.save_data()
+                return
+
+        # Check if member has administrator/moderator permissions or pre-existing XP
+        is_staff = getattr(message.author.guild_permissions, "administrator", False) or getattr(message.author.guild_permissions, "manage_guild", False)
+        has_xp = (
+            hasattr(db, "xp_data") and
+            isinstance(db.xp_data, dict) and
+            gid in db.xp_data and
+            uid in db.xp_data[gid] and
+            (db.xp_data[gid][uid].get("xp", 0) > 0 or db.xp_data[gid][uid].get("level", 0) > 0)
+        )
+        if is_staff or has_xp:
+            if uid not in guild_history:
+                guild_history.append(uid)
+                db.save_data()
             return
 
-        # Check if user has already spoken their first message
-        guild_history = db.first_chat_welcomes.setdefault(gid, [])
+        # 2. Check if user has already spoken their first message
         if uid in guild_history:
             return
 
@@ -235,15 +286,49 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         guild_history.append(uid)
         db.save_data()
 
-        # Build and send the welcome card
-        embed = build_welcome_embed(message.author, message.guild, cfg, message.channel)
-        try:
-            await message.reply(embed=embed, mention_author=True)
-        except Exception:
+        # 3. Determine destination channel
+        target_channel_id = cfg.get("channel_id")
+        destination_channel = None
+        if target_channel_id:
             try:
-                await message.channel.send(embed=embed)
-            except Exception as e:
-                print(f"[FirstWelcome] Error sending welcome card: {e}")
+                destination_channel = message.guild.get_channel(int(target_channel_id))
+            except (ValueError, TypeError):
+                destination_channel = None
+
+        embed = build_welcome_embed(
+            message.author,
+            message.guild,
+            cfg,
+            destination_channel or message.channel
+        )
+
+        # Case A: Same channel (or no specific target channel set) -> Reply directly in chat
+        if not destination_channel or destination_channel.id == message.channel.id:
+            try:
+                await message.reply(embed=embed, mention_author=True)
+                return
+            except Exception:
+                try:
+                    await message.channel.send(content=f"🎉 Welcome {message.author.mention}!", embed=embed)
+                    return
+                except Exception as e:
+                    print(f"[FirstWelcome] Error sending in current channel: {e}")
+
+        # Case B: Dedicated target channel configured (e.g. #welcome or #general)
+        if destination_channel:
+            try:
+                await destination_channel.send(
+                    content=f"🎉 Welcome {message.author.mention} to **{message.guild.name}**! Glad to see your first message!",
+                    embed=embed
+                )
+                return
+            except Exception as dest_err:
+                print(f"[FirstWelcome] Failed sending to dedicated channel {destination_channel.id}: {dest_err}")
+                # Fallback to replying in the current channel where they actually typed
+                try:
+                    await message.reply(embed=embed, mention_author=True)
+                except Exception:
+                    await message.channel.send(content=f"🎉 Welcome {message.author.mention}!", embed=embed)
 
 async def setup(bot):
     await bot.add_cog(FirstWelcomeCog(bot))

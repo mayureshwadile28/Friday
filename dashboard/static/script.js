@@ -1552,6 +1552,8 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('resp_ai_thinking', true);
     attachRichEmojiEditor('autoAiThinkingInput', true);
     attachRichEmojiEditor('autoRespTextInput', true);
+    attachRichEmojiEditor('firstWelcomeTitleInput', true);
+    attachRichEmojiEditor('firstWelcomeMsgInput');
 
     document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
         attachRichEmojiEditor(inp.id, true);
@@ -1565,7 +1567,8 @@ function syncAllRichEmojiEditors() {
         'levelMessageInput',
         'rrDescInput', 'rrTitleInput',
         'annContentInput', 'annTitleInput',
-        'resp_ai_thinking', 'autoAiThinkingInput', 'autoRespTextInput'
+        'resp_ai_thinking', 'autoAiThinkingInput', 'autoRespTextInput',
+        'firstWelcomeTitleInput', 'firstWelcomeMsgInput'
     ];
     document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
         if (!ids.includes(inp.id)) ids.push(inp.id);
@@ -4745,6 +4748,8 @@ async function loadFirstWelcomeSettings() {
             const color = cfg.custom_hex || "#10b981";
             setFirstWelcomeColor(color);
             updateFirstWelcomePreview();
+            initAllRichEmojiEditors();
+            syncAllRichEmojiEditors();
         }
     } catch (e) {
         console.error("Error loading first welcome settings:", e);
@@ -4950,6 +4955,16 @@ function setupFirstWelcomeAndAfkEvents() {
         titleEmojiBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            const richEl = document.getElementById('firstWelcomeTitleInput_rich');
+            if (richEl) {
+                openEmojiPicker(titleEmojiBtn, (emojiVal) => {
+                    if (!emojiVal) return;
+                    insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                    titleEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 20);
+                    updateFirstWelcomePreview();
+                });
+                return;
+            }
             openEmojiPicker(titleEmojiBtn, (emojiVal) => {
                 if (!emojiVal) return;
                 const start = titleInput.selectionStart ?? titleInput.value.length;
@@ -4971,6 +4986,15 @@ function setupFirstWelcomeAndAfkEvents() {
         msgEmojiBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            const richEl = document.getElementById('firstWelcomeMsgInput_rich');
+            if (richEl) {
+                openEmojiPicker(msgEmojiBtn, (emojiVal) => {
+                    if (!emojiVal) return;
+                    insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                    updateFirstWelcomePreview();
+                });
+                return;
+            }
             openEmojiPicker(msgEmojiBtn, (emojiVal) => {
                 if (!emojiVal) return;
                 const start = msgInput.selectionStart ?? msgInput.value.length;
