@@ -331,11 +331,12 @@ class AIChat(commands.Cog):
         guild: Optional[discord.Guild] = None,
         channel: Optional[discord.abc.GuildChannel] = None,
         active_user: Optional[str] = None,
+        active_member: Optional[discord.Member] = None,
         search_context: Optional[str] = None,
         is_research_mode: bool = False,
         memory_notes: Optional[List[str]] = None
     ) -> str:
-        """Dynamically generate the system prompt with live temporal grounding, research data, persona rules, and memory."""
+        """Dynamically generate the system prompt with live temporal grounding, server stats, persona rules, and memory."""
         now_utc = datetime.now(timezone.utc)
         date_str = now_utc.strftime("%A, %B %d, %Y")
         time_str = now_utc.strftime("%I:%M %p UTC")
@@ -348,11 +349,54 @@ class AIChat(commands.Cog):
             f"- Current Real-World Time: {time_str}",
             f"- Current Year: {year_str}",
         ]
+
+        # Live Discord Server Environment & Statistics
         if guild:
-            context_lines.append(f"- Discord Server: {guild.name}")
+            owner_name = guild.owner.display_name if guild.owner else "Server Owner"
+            created_str = guild.created_at.strftime("%B %d, %Y")
+            total_members = guild.member_count or len(guild.members)
+
+            if guild.members:
+                humans = sum(1 for m in guild.members if not m.bot)
+                bots = sum(1 for m in guild.members if m.bot)
+                online_members = sum(1 for m in guild.members if hasattr(m, "status") and m.status != discord.Status.offline)
+            else:
+                humans = total_members
+                bots = 0
+                online_members = 0
+
+            vc_active_count = sum(len(vc.members) for vc in guild.voice_channels)
+            prominent_roles = [r.name for r in reversed(guild.roles) if r.name != "@everyone" and not r.managed][:8]
+            roles_summary = ", ".join(prominent_roles) if prominent_roles else "Standard server roles"
+
+            context_lines.extend([
+                f"- Discord Server: {guild.name} (Created: {created_str})",
+                f"- Server Owner: {owner_name}",
+                f"- Total Members: {total_members} (Humans: {humans}, Bots: {bots})",
+            ])
+            if online_members > 0:
+                context_lines.append(f"- Members Online / Active: {online_members}")
+            if vc_active_count > 0:
+                context_lines.append(f"- Members Active in Voice Channels (VC): {vc_active_count}")
+            context_lines.extend([
+                f"- Server Boost Tier: Level {guild.premium_tier} ({guild.premium_subscription_count} boosts)",
+                f"- Channel Counts: {len(guild.text_channels)} text, {len(guild.voice_channels)} voice, {len(guild.categories)} categories",
+                f"- Server Roles: {len(guild.roles)} total (Top Roles: {roles_summary})",
+            ])
+
         if channel:
             context_lines.append(f"- Active Channel: #{channel.name}")
-        if active_user:
+
+        if active_member and isinstance(active_member, discord.Member):
+            user_roles = [r.name for r in active_member.roles if r.name != "@everyone" and not r.managed]
+            roles_text = ", ".join(user_roles) if user_roles else "Member"
+            joined_str = active_member.joined_at.strftime("%B %d, %Y") if active_member.joined_at else "Unknown"
+            context_lines.extend([
+                f"- User Speaking With You: {active_member.display_name} (Username: @{active_member.name})",
+                f"  • User's Server Roles: {roles_text}",
+                f"  • User Joined This Server On: {joined_str}",
+            ])
+        elif active_user:
             context_lines.append(f"- User Speaking With You: {active_user} (their server nickname/display name)")
 
         realtime_block = "\n".join(context_lines)
@@ -399,6 +443,13 @@ DIRECT ANSWER DIRECTIVE (CRITICAL):
 - If the user asks for the date, day of week, year, or time (e.g. "What's today's date?"):
   Answer strictly with the exact date/time in 1 to 2 short, charming lines!
   NEVER include news, breaking updates, weather, or unrequested summaries when only asked for the date or time!
+
+LIVE SERVER SITUATIONAL AWARENESS & STATUS KNOWLEDGE:
+- You have complete live situational awareness of this Discord server ({guild.name if guild else 'the server'}), including total member counts, humans vs bots, online members, voice chat activity, boost tier, channels, server owner, roles, and member profiles!
+- When users ask about server information (e.g., "How many members do we have?", "Who is the owner?", "Tell me about this server", "How many roles or channels are there?", "What is our boost level?", "When did I join?"):
+  Answer directly, proudly, and accurately using the live server statistics provided above!
+- Present server facts gracefully with elegant formatting (using **bold** for numbers and key stats).
+- STRICT PERMISSION BOUNDARY: You have full permission to VIEW, MONITOR, and DISCUSS all server info, statistics, and member statuses. However, you CANNOT execute destructive or moderation commands (kick, ban, mute, timeout, purge, or server reconfiguration). You are an all-seeing companion, not an executor of moderation actions.
 
 Personality & Demeanor:
 - You speak with elegance, warmth, and a touch of feminine charm and playful wit. You feel like a real, intelligent lady having a natural conversation.
@@ -677,6 +728,8 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                             ref_disp = getattr(ref_author, "display_name", ref_author.name)
                             ref_uname = getattr(ref_author, "name", ref_disp)
                             ref_nick = getattr(ref_author, "nick", None) or ref_disp
+                            ref_roles = [r.name for r in ref_author.roles if r.name != "@everyone" and not r.managed][:4] if isinstance(ref_author, discord.Member) else []
+                            ref_roles_str = f", Roles: {', '.join(ref_roles)}" if ref_roles else ""
                             ref_body = self._resolve_discord_mentions(message.guild, ref_msg.clean_content or ref_msg.content or "")
                             
                             media_notes = []
@@ -687,7 +740,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                             media_str = f" [{'; '.join(media_notes)}]" if media_notes else ""
                             
                             ref_context_header = (
-                                f"[In reply to member: {ref_disp} (Server Nickname: \"{ref_nick}\", Discord Username: @{ref_uname}). "
+                                f"[In reply to member: {ref_disp} (Server Nickname: \"{ref_nick}\", Discord Username: @{ref_uname}{ref_roles_str}). "
                                 f"Their message was: \"{ref_body}\"{media_str}]\n"
                             )
                     except Exception as ref_err:
@@ -700,7 +753,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                     m_details = []
                     for m in other_mentions:
                         m_nick = getattr(m, "nick", None) or m.display_name
-                        m_details.append(f"@{m.display_name} (Nickname: \"{m_nick}\", Username: @{m.name})")
+                        m_roles = [r.name for r in m.roles if r.name != "@everyone" and not r.managed][:4] if isinstance(m, discord.Member) else []
+                        m_roles_str = f", Roles: {', '.join(m_roles)}" if m_roles else ""
+                        m_details.append(f"@{m.display_name} (Nickname: \"{m_nick}\", Username: @{m.name}{m_roles_str})")
                     mention_context_header = f"[Other members mentioned: {', '.join(m_details)}]\n"
 
                 if is_reply_to_friday_llm:
@@ -730,6 +785,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                     guild=message.guild,
                     channel=message.channel,
                     active_user=message.author.display_name,
+                    active_member=message.author if isinstance(message.author, discord.Member) else None,
                     search_context=live_search_context,
                     is_research_mode=is_research_mode,
                     memory_notes=user_mems
@@ -842,6 +898,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 guild=interaction.guild,
                 channel=interaction.channel,
                 active_user=interaction.user.display_name,
+                active_member=interaction.user if isinstance(interaction.user, discord.Member) else None,
                 search_context=live_search_context,
                 is_research_mode=is_research_mode,
                 memory_notes=user_mems
