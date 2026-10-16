@@ -16,6 +16,7 @@ from typing import List, Dict, Any, Optional
 from database import db
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Primary model requested: Gemma 4 26B A4B
 PRIMARY_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-26b-a4b-it:free")
@@ -28,6 +29,11 @@ FALLBACK_MODELS = [
     "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3.5-super-vl:free",
     "google/gemma-4-26b-a4b-it"
+]
+
+GROQ_FALLBACK_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant"
 ]
 
 GREETING_WORDS = {'', 'hi', 'hii', 'hiii', 'hey', 'heyy', 'heyyy', 'hello', 'helloo', 'yo', 'sup', 'friday'}
@@ -272,8 +278,13 @@ class AIChat(commands.Cog):
                 return True
         return False
 
+    def _get_api_keys(self) -> List[str]:
+        raw = os.getenv("OPENROUTER_API_KEY", "")
+        return [k.strip() for k in raw.split(",") if k.strip()]
+
     def _get_api_key(self) -> Optional[str]:
-        return os.getenv("OPENROUTER_API_KEY")
+        keys = self._get_api_keys()
+        return keys[0] if keys else None
 
     def _cleanup_old_sessions(self):
         """Remove sessions inactive for more than session_timeout seconds."""
@@ -583,65 +594,112 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         system_prompt: Optional[str] = None,
         max_tokens: int = 750
     ) -> str:
-        """Call OpenRouter API with prioritized fallback models on upstream rate limits or empty responses."""
-        api_key = self._get_api_key()
-        if not api_key:
-            return "My AI key is not configured in `.env` yet, darling. Please add `OPENROUTER_API_KEY`!"
+        """Call OpenRouter API with prioritized fallback models, multi-key pooling, and Groq fallback."""
+        openrouter_keys = self._get_api_keys()
+        groq_key = os.getenv("GROQ_API_KEY")
 
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://github.com/mayureshwadile28/Friday",
-            "X-Title": "Friday Discord Bot"
-        }
+        if not openrouter_keys and not groq_key:
+            return "My AI key is not configured in `.env` yet, darling. Please add `OPENROUTER_API_KEY` or `GROQ_API_KEY`!"
 
-        # Deduplicate models while keeping priority order
-        unique_models = []
-        for m in FALLBACK_MODELS:
-            if m and m not in unique_models:
-                unique_models.append(m)
-
-        timeout = aiohttp.ClientTimeout(total=40)
+        timeout = aiohttp.ClientTimeout(total=35)
         prompt_content = system_prompt or self._build_system_prompt()
+        daily_limit_hit = False
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
-            for model_id in unique_models:
-                payload = {
-                    "model": model_id,
-                    "messages": [
-                        {"role": "system", "content": prompt_content},
-                        *messages
-                    ],
-                    "temperature": 0.75,
-                    "max_tokens": max_tokens
+            # 1. Try OpenRouter keys (supports multiple comma-separated keys: key1,key2)
+            for api_key in openrouter_keys:
+                headers = {
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": "https://github.com/mayureshwadile28/Friday",
+                    "X-Title": "Friday Discord Bot"
                 }
 
-                try:
-                    async with session.post(OPENROUTER_URL, headers=headers, json=payload) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            choices = data.get("choices", [])
-                            if choices and "message" in choices[0]:
-                                content = choices[0]["message"].get("content")
-                                if content:
-                                    content_str = str(content).strip()
-                                    cleaned_lower = content_str.lower().strip(" .,!?:-")
-                                    # Discard stubs (< 15 characters or single interjections like "oh", "hmm", "well", etc.)
-                                    if len(content_str) < 15 or cleaned_lower in ("oh", "hmm", "well", "ah", "uh", "um", "yes", "no", "ok", "hey"):
-                                        print(f"[AIChat] Model {model_id} returned stub/incomplete completion: {content_str!r}. Trying next model...")
-                                        continue
-                                    return content_str
-                            # If content was empty or None (e.g. reasoning model hit token limit), try next model
-                            continue
-                        elif resp.status in (429, 502, 503, 504):
-                            # Upstream pool rate limit or server error -> try next candidate model
-                            continue
-                        else:
-                            continue
-                except asyncio.TimeoutError:
-                    continue
-                except Exception:
-                    continue
+                unique_models = []
+                for m in FALLBACK_MODELS:
+                    if m and m not in unique_models:
+                        unique_models.append(m)
+
+                key_exhausted = False
+                for model_id in unique_models:
+                    if key_exhausted:
+                        break
+
+                    payload = {
+                        "model": model_id,
+                        "messages": [
+                            {"role": "system", "content": prompt_content},
+                            *messages
+                        ],
+                        "temperature": 0.75,
+                        "max_tokens": max_tokens
+                    }
+
+                    try:
+                        async with session.post(OPENROUTER_URL, headers=headers, json=payload) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                choices = data.get("choices", [])
+                                if choices and "message" in choices[0]:
+                                    content = choices[0]["message"].get("content")
+                                    if content:
+                                        content_str = str(content).strip()
+                                        cleaned_lower = content_str.lower().strip(" .,!?:-")
+                                        if len(content_str) < 15 or cleaned_lower in ("oh", "hmm", "well", "ah", "uh", "um", "yes", "no", "ok", "hey"):
+                                            print(f"[AIChat] Model {model_id} returned stub completion: {content_str!r}. Trying next model...")
+                                            continue
+                                        return content_str
+                                continue
+                            elif resp.status == 429:
+                                err_body = await resp.text()
+                                if "free-models-per-day" in err_body:
+                                    print(f"[AIChat Quota] OpenRouter daily free limit (50 requests/day) reached for key {api_key[:10]}... Resets at midnight UTC.")
+                                    daily_limit_hit = True
+                                    key_exhausted = True
+                                    break
+                                continue
+                            else:
+                                continue
+                    except asyncio.TimeoutError:
+                        continue
+                    except Exception as req_err:
+                        print(f"[AIChat] Request error on {model_id}: {req_err}")
+                        continue
+
+            # 2. Try Groq fallback if configured (free 14,400 requests/day, lightning fast)
+            if groq_key:
+                groq_headers = {
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json"
+                }
+                for g_model in GROQ_FALLBACK_MODELS:
+                    g_payload = {
+                        "model": g_model,
+                        "messages": [
+                            {"role": "system", "content": prompt_content},
+                            *messages
+                        ],
+                        "temperature": 0.75,
+                        "max_tokens": max_tokens
+                    }
+                    try:
+                        async with session.post(GROQ_URL, headers=groq_headers, json=g_payload) as g_resp:
+                            if g_resp.status == 200:
+                                g_data = await g_resp.json()
+                                g_choices = g_data.get("choices", [])
+                                if g_choices and "message" in g_choices[0]:
+                                    g_content = g_choices[0]["message"].get("content")
+                                    if g_content and len(str(g_content).strip()) >= 15:
+                                        return str(g_content).strip()
+                    except Exception as g_err:
+                        print(f"[AIChat Groq Fallback] Error on {g_model}: {g_err}")
+                        continue
+
+        if daily_limit_hit:
+            return (
+                "Oh dear, my daily free thought quota on OpenRouter (50 requests/day) has been reached! 🌸 "
+                "It resets automatically at midnight UTC. You can also add credits on OpenRouter or add a free `GROQ_API_KEY` in `.env` for unlimited chat! ✨"
+            )
 
         return (
             "Oh dear, my thoughts got a little tangled in the clouds just now. ✨ "
