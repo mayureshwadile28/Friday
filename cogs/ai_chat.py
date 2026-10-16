@@ -48,6 +48,9 @@ class AIChat(commands.Cog):
         # Per-user cooldown tracker to prevent spam
         self.cooldowns: Dict[int, float] = {}
         self.session_timeout = 900  # 15 minutes of inactivity clears session
+        # Sequential bumper queue: ensures one-by-one safe processing
+        self.queue_lock = asyncio.Lock()
+        self.queue_size = 0
 
     def _get_api_key(self) -> Optional[str]:
         return os.getenv("OPENROUTER_API_KEY")
@@ -205,60 +208,97 @@ class AIChat(commands.Cog):
         if not is_reply_to_friday and (not clean_text or clean_lower in GREETING_WORDS):
             return
 
-        # 5. Cooldown check (prevent spamming API, 2.5s cooldown per user)
+        # 5. Cooldown check (prevent spamming API, 1.5s cooldown per user)
         now = time.time()
         last_used = self.cooldowns.get(message.author.id, 0)
-        if (now - last_used) < 2.5:
+        if (now - last_used) < 1.5:
             return
         self.cooldowns[message.author.id] = now
 
-        # Clean session cache occasionally
-        self._cleanup_old_sessions()
+        # 6. Immediate "Thinking..." reply with bumper queue tracking
+        self.queue_size += 1
+        q_pos = self.queue_size
+        placeholder = "Thinking... 💭" if q_pos <= 1 else f"Thinking... (Queue #{q_pos}) 💭"
 
-        session_key = (message.channel.id, message.author.id)
-
-        # 6. Build Conversation History Context
-        llm_messages: List[Dict[str, str]] = []
-
-        if is_reply_to_friday:
-            # Traverses Discord's native reply hierarchy
-            reply_chain = await self._fetch_reply_chain(message, max_depth=6)
-            llm_messages.extend(reply_chain)
-        else:
-            # Use recent in-memory session if user is in an ongoing conversation
-            recent = self.sessions.get(session_key, [])
-            if recent and (now - recent[-1].get("time", 0)) < 300:
-                for turn in recent[-4:]:
-                    llm_messages.append({"role": turn["role"], "content": turn["content"]})
-
-        # Append current user prompt
-        user_prompt = f"{message.author.display_name}: {clean_text}" if clean_text else message.author.display_name
-        llm_messages.append({"role": "user", "content": user_prompt})
-
-        # 7. Generate response with typing indicator
         try:
-            async with message.channel.typing():
-                ai_reply = await self._call_openrouter(llm_messages)
+            thinking_msg = await message.reply(placeholder, mention_author=True)
+        except Exception as send_err:
+            print(f"[AIChat] Could not send initial thinking message: {send_err}")
+            self.queue_size = max(0, self.queue_size - 1)
+            return
 
-            # Store in session memory
-            if session_key not in self.sessions:
-                self.sessions[session_key] = []
+        # 7. Process sequentially through the bumper queue lock
+        try:
+            async with self.queue_lock:
+                # If this request was waiting in queue, update status to active thinking
+                if q_pos > 1:
+                    try:
+                        await thinking_msg.edit(content="Thinking... 💭")
+                    except Exception:
+                        pass
 
-            self.sessions[session_key].append({"role": "user", "content": user_prompt, "time": now})
-            self.sessions[session_key].append({"role": "assistant", "content": ai_reply, "time": now})
+                # Clean session cache occasionally
+                self._cleanup_old_sessions()
+                session_key = (message.channel.id, message.author.id)
 
-            # Keep session memory limited to last 8 turns
-            if len(self.sessions[session_key]) > 8:
-                self.sessions[session_key] = self.sessions[session_key][-8:]
+                # Build Conversation History Context
+                llm_messages: List[Dict[str, str]] = []
 
-            # 8. Reply back directly to user's message
-            if len(ai_reply) > 2000:
-                ai_reply = ai_reply[:1990] + "..."
+                if is_reply_to_friday:
+                    # Traverses Discord's native reply hierarchy
+                    reply_chain = await self._fetch_reply_chain(message, max_depth=6)
+                    llm_messages.extend(reply_chain)
+                else:
+                    # Use recent in-memory session if user is in an ongoing conversation
+                    recent = self.sessions.get(session_key, [])
+                    if recent and (time.time() - recent[-1].get("time", 0)) < 300:
+                        for turn in recent[-4:]:
+                            llm_messages.append({"role": turn["role"], "content": turn["content"]})
 
-            await message.reply(ai_reply, mention_author=True)
+                # Append current user prompt
+                user_prompt = f"{message.author.display_name}: {clean_text}" if clean_text else message.author.display_name
+                llm_messages.append({"role": "user", "content": user_prompt})
+
+                # Query LLM with typing indicator
+                async with message.channel.typing():
+                    ai_reply = await self._call_openrouter(llm_messages)
+
+                # Store in session memory
+                req_time = time.time()
+                if session_key not in self.sessions:
+                    self.sessions[session_key] = []
+
+                self.sessions[session_key].append({"role": "user", "content": user_prompt, "time": req_time})
+                self.sessions[session_key].append({"role": "assistant", "content": ai_reply, "time": req_time})
+
+                if len(self.sessions[session_key]) > 8:
+                    self.sessions[session_key] = self.sessions[session_key][-8:]
+
+                # Enforce Discord 2000 character limit
+                if len(ai_reply) > 2000:
+                    ai_reply = ai_reply[:1990] + "..."
+
+                # Edit the "Thinking..." message into Friday's actual response!
+                try:
+                    await thinking_msg.edit(content=ai_reply)
+                except discord.NotFound:
+                    # In case the user deleted the thinking message, send a fresh reply
+                    await message.channel.send(f"{message.author.mention} {ai_reply}")
+                except Exception as edit_err:
+                    print(f"[AIChat] Error editing message: {edit_err}")
+                    await message.channel.send(ai_reply)
+
+                # Small 0.5s safety buffer between consecutive queue jobs to protect upstream rate limits
+                await asyncio.sleep(0.5)
 
         except Exception as e:
             print(f"[AIChat Error] {e}")
+            try:
+                await thinking_msg.edit(content="Oh dear, my thoughts got a little tangled in the clouds. ✨ Please ask me again in just a moment!")
+            except Exception:
+                pass
+        finally:
+            self.queue_size = max(0, self.queue_size - 1)
 
     # ───────────────────── Slash Commands: /ask & /clearchat ─────────────────────
     @app_commands.command(name="ask", description="Ask Friday anything directly with her charming lady personality!")
@@ -269,7 +309,9 @@ class AIChat(commands.Cog):
         session_key = (interaction.channel_id, interaction.user.id)
         llm_messages = [{"role": "user", "content": f"{interaction.user.display_name}: {question}"}]
         
-        reply = await self._call_openrouter(llm_messages)
+        async with self.queue_lock:
+            reply = await self._call_openrouter(llm_messages)
+            await asyncio.sleep(0.5)
         
         now = time.time()
         if session_key not in self.sessions:
