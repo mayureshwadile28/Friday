@@ -1661,23 +1661,22 @@ function renderDiscordMarkdown(rawText) {
         processed = processed.replace(/\{user\}/g, '<span class="discord-mention">@User</span>');
         processed = processed.replace(/\{level\}/g, '<span class="discord-level-badge">5</span>');
 
-        // 2. Custom & Animated Discord Emojis
-        // Animated: <a:name:id>
-        processed = processed.replace(/(?:&lt;|<)a:([a-zA-Z0-9_]+):([0-9]+)(?:&gt;|>)/g, (match, name, id) => {
-            return `<img class="discord-custom-emoji animated" src="https://cdn.discordapp.com/emojis/${id}.gif?size=48&quality=lossless" alt="${name}" title=":${name}:">`;
-        });
-        // Static: <:name:id>
-        processed = processed.replace(/(?:&lt;|<):([a-zA-Z0-9_]+):([0-9]+)(?:&gt;|>)/g, (match, name, id) => {
-            return `<img class="discord-custom-emoji" src="https://cdn.discordapp.com/emojis/${id}.png?size=48" alt="${name}" title=":${name}:">`;
-        });
-        
-        // Plain text server emojis: :name:
-        processed = processed.replace(/:([a-zA-Z0-9_]+):/g, (match, name) => {
-            if (typeof currentServerEmojis !== 'undefined') {
-                const found = currentServerEmojis.find(e => e.name.toLowerCase() === name.toLowerCase());
+        // 2. Custom & Server Discord Emojis (Unified single pass to prevent nested attribute corruption)
+        const emojiUnifiedRegex = /(?:&lt;|<)a:([a-zA-Z0-9_]+):([0-9]+)(?:&gt;|>)|(?:&lt;|<):([a-zA-Z0-9_]+):([0-9]+)(?:&gt;|>)|:([a-zA-Z0-9_]+):/g;
+        processed = processed.replace(emojiUnifiedRegex, (match, animName, animId, staticName, staticId, colonName) => {
+            if (animName && animId) {
+                return `<img class="discord-custom-emoji animated" src="https://cdn.discordapp.com/emojis/${animId}.gif?size=48&quality=lossless" alt="${animName}" title="${animName}">`;
+            }
+            if (staticName && staticId) {
+                return `<img class="discord-custom-emoji" src="https://cdn.discordapp.com/emojis/${staticId}.png?size=48" alt="${staticName}" title="${staticName}">`;
+            }
+            if (colonName && typeof currentServerEmojis !== 'undefined' && Array.isArray(currentServerEmojis) && currentServerEmojis.length) {
+                const found = currentServerEmojis.find(e => e.name && e.name.toLowerCase() === colonName.toLowerCase());
                 if (found) {
                     const clazz = found.animated ? 'discord-custom-emoji animated' : 'discord-custom-emoji';
-                    return `<img class="${clazz}" src="${found.url}" alt="${name}" title="${name}">`;
+                    const ext = found.animated ? 'gif?size=48&quality=lossless' : 'png?size=48';
+                    const url = found.url || `https://cdn.discordapp.com/emojis/${found.id}.${ext}`;
+                    return `<img class="${clazz}" src="${url}" alt="${found.name}" title="${found.name}">`;
                 }
             }
             return match;
@@ -2162,7 +2161,7 @@ function renderEmojiHtmlOrChar(val, size = 22) {
     if (animMatch) {
         const name = animMatch[1];
         const id = animMatch[2];
-        return `<img class="discord-custom-emoji animated" src="https://cdn.discordapp.com/emojis/${id}.gif?size=48&quality=lossless" alt=":${name}:" title=":${name}:" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
+        return `<img class="discord-custom-emoji animated" src="https://cdn.discordapp.com/emojis/${id}.gif?size=48&quality=lossless" alt="${name}" title="${name}" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
     }
 
     // 3. Custom static Discord emoji: <:name:id> or :name:id or name:id
@@ -2170,7 +2169,7 @@ function renderEmojiHtmlOrChar(val, size = 22) {
     if (staticMatch) {
         const name = staticMatch[1];
         const id = staticMatch[2];
-        return `<img class="discord-custom-emoji" src="https://cdn.discordapp.com/emojis/${id}.png?size=48" alt=":${name}:" title=":${name}:" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
+        return `<img class="discord-custom-emoji" src="https://cdn.discordapp.com/emojis/${id}.png?size=48" alt="${name}" title="${name}" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
     }
 
     // 4. Pure Snowflake ID (15-22 digits)
@@ -2185,7 +2184,7 @@ function renderEmojiHtmlOrChar(val, size = 22) {
             }
         }
         const ext = isAnimated ? 'gif?size=48&quality=lossless' : 'png?size=48';
-        return `<img class="discord-custom-emoji${isAnimated ? ' animated' : ''}" src="https://cdn.discordapp.com/emojis/${val}.${ext}" alt=":${emName}:" title=":${emName}:" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
+        return `<img class="discord-custom-emoji${isAnimated ? ' animated' : ''}" src="https://cdn.discordapp.com/emojis/${val}.${ext}" alt="${emName}" title="${emName}" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
     }
 
     // 5. Server emoji by colon name or plain name (:name: or name)
@@ -2195,7 +2194,7 @@ function renderEmojiHtmlOrChar(val, size = 22) {
         if (found) {
             const ext = found.animated ? 'gif?size=48&quality=lossless' : 'png?size=48';
             const url = found.url || `https://cdn.discordapp.com/emojis/${found.id}.${ext}`;
-            return `<img class="discord-custom-emoji${found.animated ? ' animated' : ''}" src="${url}" alt=":${found.name}:" title=":${found.name}:" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
+            return `<img class="discord-custom-emoji${found.animated ? ' animated' : ''}" src="${url}" alt="${found.name}" title="${found.name}" style="width:${size}px; height:${size}px; vertical-align:middle; object-fit:contain; border-radius:3px;">`;
         }
     }
 
