@@ -325,6 +325,25 @@ function setupEventListeners() {
     if (saveRespBtn) {
         saveRespBtn.addEventListener('click', saveResponsesSettings);
     }
+
+    const saveAiThinkingBtn = document.getElementById('saveAiThinkingBtn');
+    if (saveAiThinkingBtn) {
+        saveAiThinkingBtn.addEventListener('click', async () => {
+            const autoVal = document.getElementById('autoAiThinkingInput')?.value?.trim();
+            const respInput = document.getElementById('resp_ai_thinking');
+            if (respInput && autoVal !== undefined) {
+                respInput.value = autoVal;
+            }
+            await saveResponsesSettings();
+        });
+    }
+
+    const autoAiInput = document.getElementById('autoAiThinkingInput');
+    const respAiInput = document.getElementById('resp_ai_thinking');
+    if (autoAiInput && respAiInput) {
+        autoAiInput.addEventListener('input', () => { respAiInput.value = autoAiInput.value; });
+        respAiInput.addEventListener('input', () => { autoAiInput.value = respAiInput.value; });
+    }
     
     const topSaveBtn = document.getElementById('topSaveSecurityBtn');
     if (topSaveBtn) {
@@ -3515,6 +3534,10 @@ async function loadResponsesSettings() {
                     input.value = data.config[key];
                 }
             });
+            const autoAiInput = document.getElementById('autoAiThinkingInput');
+            if (autoAiInput && data.config['ai_thinking'] !== undefined) {
+                autoAiInput.value = data.config['ai_thinking'];
+            }
         }
     } catch(e) {
         console.error("Failed to load custom responses", e);
@@ -3572,7 +3595,8 @@ const CUSTOM_RESPONSES_SCHEMA = [
     {"id": "music_resumed", "label": "Playback Resumed Notice", "category": "Music & Audio", "vars": []},
     {"id": "music_skipped", "label": "Track Skipped Notice", "category": "Music & Audio", "vars": []},
     {"id": "music_stopped", "label": "Playback Stopped Notice", "category": "Music & Audio", "vars": []},
-    {"id": "music_queue_empty", "label": "Queue Empty Alert", "category": "Music & Audio", "vars": []}
+    {"id": "music_queue_empty", "label": "Queue Empty Alert", "category": "Music & Audio", "vars": []},
+    {"id": "ai_thinking", "label": "AI Processing / Thinking Message", "category": "AI Assistant & Conversation", "vars": ["{user}"]}
 ];
 
 function initCustomResponsesControls() {
@@ -3660,6 +3684,10 @@ async function loadCustomResponsesSettings() {
                 input.value = conf[cr.id] !== undefined ? conf[cr.id] : (conf[`resp_${cr.id}`] || '');
             }
         });
+        const autoAiInput = document.getElementById('autoAiThinkingInput');
+        if (autoAiInput && (conf['ai_thinking'] !== undefined || conf['resp_ai_thinking'] !== undefined)) {
+            autoAiInput.value = conf['ai_thinking'] !== undefined ? conf['ai_thinking'] : (conf['resp_ai_thinking'] || '');
+        }
     } catch (e) {
         console.error("Failed to load custom responses", e);
     }
@@ -3694,6 +3722,11 @@ async function saveResponsesSettings() {
         const key = input.id.replace('resp_', '');
         payload[key] = input.value.trim();
     });
+
+    if (document.getElementById('autoAiThinkingInput')) {
+        const autoVal = document.getElementById('autoAiThinkingInput').value.trim();
+        if (autoVal) payload['ai_thinking'] = autoVal;
+    }
     
     try {
         const res = await fetch(`/api/guild/${currentGuildId}/custom_responses/update`, {
@@ -4309,6 +4342,16 @@ async function loadAutomationsSettings() {
             renderAutoReactRules();
             renderAutoResponderRules();
             renderIgnoredChannels();
+
+            try {
+                const crResp = await fetch(`/api/guild/${currentGuildId}/custom_responses`);
+                const crData = await crResp.json();
+                const crConf = crData.config || crData || {};
+                const autoAiInput = document.getElementById('autoAiThinkingInput');
+                if (autoAiInput && crConf['ai_thinking'] !== undefined) {
+                    autoAiInput.value = crConf['ai_thinking'];
+                }
+            } catch (err) {}
         }
     } catch (e) {
         console.error("Failed to load automations", e);

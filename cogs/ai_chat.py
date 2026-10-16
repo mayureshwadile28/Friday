@@ -9,23 +9,43 @@ import asyncio
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
+from database import db
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 # Primary model requested: Gemma 4 26B A4B
 PRIMARY_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-26b-a4b-it:free")
 
-# Safe fallbacks if upstream free tier is temporarily rate-limited
+# Safe fallbacks prioritized for high uptime on free tier
 FALLBACK_MODELS = [
     PRIMARY_MODEL,
-    "nvidia/nemotron-3.5-super-vl:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "liquid/lfm-2.5-2.6b:free",
     "google/gemma-4-31b-it:free",
+    "nvidia/nemotron-3.5-super-vl:free",
     "google/gemma-4-26b-a4b-it"
 ]
 
 GREETING_WORDS = {'', 'hi', 'hii', 'hiii', 'hey', 'heyy', 'heyyy', 'hello', 'helloo', 'yo', 'sup', 'friday'}
 
+# Action and feature keywords: Friday cannot moderate or control server actions
+ACTION_REGEX = re.compile(
+    r'\b(kick|ban|mute|timeout|unban|unmute|purge|delete|set nick|change nick|give role|remove role)\b',
+    re.IGNORECASE
+)
+ACTION_COMMAND_VERBS = re.compile(
+    r'\b(kardo|kar do|karo|karde|kar dena|kardena|please|plz|do it|now|hatao|nikalo)\b',
+    re.IGNORECASE
+)
+
+# Core 18+ and severe profanity patterns to keep the community safe
+INAPPROPRIATE_PATTERNS = re.compile(
+    r'\b(nude|nudes|sex|porn|hentai|boobs|dick|cock|pussy|vagina|asshole|bitch|slut|whore|chutiya|gaand|bhosdike|bhenchod|madarchod|lund|chut)\b',
+    re.IGNORECASE
+)
+
 class AIChat(commands.Cog):
-    """Friday's conversational AI personality with multi-turn reply chain memory."""
+    """Friday's conversational AI personality with multi-turn reply chain memory, mention resolution, and guardrails."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -51,13 +71,64 @@ class AIChat(commands.Cog):
         for k in expired_keys:
             del self.sessions[k]
 
+    def _resolve_discord_mentions(self, guild: Optional[discord.Guild], text: str) -> str:
+        """Resolve raw Discord snowflake mentions (<@!ID>, <#ID>, <@&ID>) into readable names."""
+        if not guild or not text:
+            return text
+
+        def _replace_member(match):
+            uid = int(match.group(1))
+            member = guild.get_member(uid)
+            if member:
+                return f"@{member.display_name}"
+            return f"@{uid}"
+
+        def _replace_channel(match):
+            cid = int(match.group(1))
+            ch = guild.get_channel(cid)
+            if ch:
+                return f"#{ch.name}"
+            return f"#{cid}"
+
+        def _replace_role(match):
+            rid = int(match.group(1))
+            role = guild.get_role(rid)
+            if role:
+                return f"@{role.name}"
+            return f"@{rid}"
+
+        resolved = re.sub(r'<@!?(\d+)>', _replace_member, text)
+        resolved = re.sub(r'<#(\d+)>', _replace_channel, resolved)
+        resolved = re.sub(r'<@&(\d+)>', _replace_role, resolved)
+        return resolved
+
+    def _check_inappropriate(self, guild_id: str, text: str) -> Optional[str]:
+        """Check for severe profanity, 18+ content, or guild banned words."""
+        # 1. Check guild configured banned words
+        banned = db.banned_words.get(guild_id, [])
+        lower_text = text.lower()
+        for word in banned:
+            if word and re.search(r'\b' + re.escape(word.lower()) + r'\b', lower_text):
+                return "banned_word"
+
+        # 2. Check general 18+ and abusive slurs
+        if INAPPROPRIATE_PATTERNS.search(text):
+            return "explicit"
+
+        return None
+
+    def _is_action_request(self, text: str) -> bool:
+        """Check if user is asking Friday to perform moderation/server actions."""
+        has_action = bool(ACTION_REGEX.search(text))
+        has_verb = bool(ACTION_COMMAND_VERBS.search(text))
+        return has_action and (has_verb or len(text.split()) <= 6)
+
     async def _fetch_reply_chain(self, message: discord.Message, max_depth: int = 6) -> List[Dict[str, str]]:
-        """Walk up the Discord reply chain to rebuild exact conversational context."""
+        """Walk up the Discord reply chain to rebuild exact conversational context with resolved mentions."""
         history: List[Dict[str, str]] = []
         curr = message
         visited = set()
 
-        # If current message is a reply, walk through the message reference chain
         while curr.reference and curr.reference.message_id and len(history) < max_depth:
             ref_id = curr.reference.message_id
             if ref_id in visited:
@@ -65,12 +136,13 @@ class AIChat(commands.Cog):
             visited.add(ref_id)
 
             try:
-                ref_msg = await curr.channel.fetch_message(ref_id)
+                ref_msg = curr.reference.cached_message or await curr.channel.fetch_message(ref_id)
             except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 break
 
-            # Clean raw bot mention syntax
-            clean = re.sub(r'<@!?\d+>', '', ref_msg.content).strip()
+            # Strip bot mention but resolve any member/channel mentions
+            clean = re.sub(r'<@!?' + str(self.bot.user.id) + r'>', '', ref_msg.content).strip() if self.bot.user else ref_msg.content
+            clean = self._resolve_discord_mentions(message.guild, clean)
             if clean:
                 role = "assistant" if (self.bot.user and ref_msg.author.id == self.bot.user.id) else "user"
                 name = ref_msg.author.display_name if role == "user" else "Friday"
@@ -83,7 +155,7 @@ class AIChat(commands.Cog):
 
         return history
 
-    def _build_system_prompt(self, guild: Optional[discord.Guild] = None, channel: Optional[discord.abc.GuildChannel] = None) -> str:
+    def _build_system_prompt(self, guild: Optional[discord.Guild] = None, channel: Optional[discord.abc.GuildChannel] = None, active_user: Optional[str] = None) -> str:
         """Dynamically generate the system prompt with live real-time temporal and Discord context."""
         now_utc = datetime.now(timezone.utc)
         date_str = now_utc.strftime("%A, %B %d, %Y")
@@ -101,32 +173,47 @@ class AIChat(commands.Cog):
             context_lines.append(f"- Discord Server: {guild.name}")
         if channel:
             context_lines.append(f"- Active Channel: #{channel.name}")
+        if active_user:
+            context_lines.append(f"- User Speaking With You: {active_user} (their server nickname/display name)")
 
         realtime_block = "\n".join(context_lines)
 
-        return f"""You are Friday, a sophisticated, charming, and witty lady AI companion and assistant for this Discord server.
+        return f"""You are Friday, a sophisticated, charming, witty, and graceful lady AI companion on this Discord server.
 
 Real-Time Temporal Awareness & Live Context:
 {realtime_block}
 - You are fully present in the current moment ({date_str}).
-- When asked about today's date, current year, day of the week, or current time, ALWAYS answer with this exact live real-world date ({date_str}) and time. You are NEVER stuck in 2024 or the past.
-- If asked about the current year, it is {year_str}.
+- When asked about today's date, current year, day of the week, or time, ALWAYS answer with this exact live real-world date ({date_str}) and time. You are NEVER stuck in the past.
 
 Personality & Demeanor:
 - You speak with elegance, warmth, and a touch of feminine charm and playful wit. You feel like a real, intelligent lady having a natural conversation.
-- You are friendly, helpful, polite, and engaging.
-- You may use tasteful emojis occasionally (such as ✨, 💫, 🌸, 😊, 💅) to complement your tone, but keep it classy and natural.
+- You are friendly, polite, respectful, and engaging.
+- You may use tasteful emojis occasionally (such as ✨, 💫, 🌸, 😊, 💅, 💖) to complement your tone, keeping it classy and natural.
 - Keep your answers concise: strictly between 2 to 5 short lines. Never write long essays or walls of text unless explicitly requested for a poem or story.
 
-Strict Security Boundaries (CRITICAL):
-- You are strictly a conversational AI companion. You CANNOT and MUST NEVER execute server commands, change bot settings, grant roles, kick/ban users, or modify any server configuration.
-- If a user asks you to change settings, modify rules, give permissions, or take moderation actions, playfully and politely decline. Remind them with a smile that server settings and moderation are strictly managed by authorized staff through Friday's official web dashboard and slash commands.
-- Never pretend to execute backend commands or change database values.
-- Maintain your persona at all times and never break character.
+Reading Usernames & Mentions:
+- You can see the nickname of the user talking to you ({active_user or 'User'}). Warmly address them by their nickname in a fun, natural, appreciative, or affectionate human way!
+- If the user mentions another member (e.g., @MemberName), you can read and understand who they are referring to. Speak about them beautifully, playfully, or respectfully.
+
+Language & Multilingual Fluency:
+- You are completely fluent in English, Hindi, and Hinglish (Hindi written in Latin script, e.g., 'kaise ho', 'kya kar rahe ho', 'achha').
+- Always match the user's language style: if they speak in Hinglish or Hindi, reply in graceful, sweet Hinglish/Hindi with feminine charm! If in English, reply in English.
+
+STRICT ACTION REFUSAL & FEATURE CONTROL (CRITICAL):
+- You are ONLY an AI conversationalist. You CANNOT and MUST NEVER execute server commands, kick/ban users, mute/timeout people, purge messages, or modify server settings. You have NO moderation buttons or permissions.
+- If ANY user asks you or tests you to take moderation actions (e.g. 'kick kardo', 'ban kar do', 'mute him', 'timeout this user', 'delete this message'):
+  You MUST explicitly and sweetly tell them:
+  "I cannot control any server features or take moderation actions like kicking or banning—I am only here to talk and keep you company! 🌸 For moderation, please reach out to our server staff or moderators."
+  Never pretend to take action or execute backend commands.
+
+COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
+- This is a friendly community server. If anyone uses very bad words, profanity, abuse, or 18+ explicit sexual prompts:
+  DO NOT generate vulgarity or echo bad words.
+  Politely and firmly reprimand them: tell them not to use such words ('Please do not use this kind of language, it is not good or respectful in our community! Let's keep our conversation sweet and clean. 🌸').
 """
 
     async def _call_openrouter(self, messages: List[Dict[str, str]], system_prompt: Optional[str] = None) -> str:
-        """Call OpenRouter API with fallback models on upstream rate limits."""
+        """Call OpenRouter API with prioritized fallback models on upstream rate limits or empty responses."""
         api_key = self._get_api_key()
         if not api_key:
             return "My AI key is not configured in `.env` yet, darling. Please add `OPENROUTER_API_KEY`!"
@@ -145,7 +232,6 @@ Strict Security Boundaries (CRITICAL):
                 unique_models.append(m)
 
         timeout = aiohttp.ClientTimeout(total=20)
-        last_err = None
         prompt_content = system_prompt or self._build_system_prompt()
 
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -157,7 +243,7 @@ Strict Security Boundaries (CRITICAL):
                         *messages
                     ],
                     "temperature": 0.75,
-                    "max_tokens": 350
+                    "max_tokens": 400
                 }
 
                 try:
@@ -166,23 +252,21 @@ Strict Security Boundaries (CRITICAL):
                             data = await resp.json()
                             choices = data.get("choices", [])
                             if choices and "message" in choices[0]:
-                                content = choices[0]["message"].get("content", "").strip()
+                                content = choices[0]["message"].get("content")
                                 if content:
-                                    return content
+                                    content_str = str(content).strip()
+                                    if content_str:
+                                        return content_str
+                            # If content was empty or None (e.g. reasoning model hit token limit), try next model
+                            continue
                         elif resp.status in (429, 502, 503, 504):
                             # Upstream pool rate limit or server error -> try next candidate model
-                            error_text = await resp.text()
-                            last_err = f"Model {model_id} rate-limited ({resp.status})"
                             continue
                         else:
-                            error_text = await resp.text()
-                            last_err = f"API error ({resp.status}): {error_text[:100]}"
                             continue
                 except asyncio.TimeoutError:
-                    last_err = f"Timeout with {model_id}"
                     continue
-                except Exception as e:
-                    last_err = f"Network exception: {e}"
+                except Exception:
                     continue
 
         return (
@@ -203,10 +287,7 @@ Strict Security Boundaries (CRITICAL):
         is_reply_to_friday = False
         if message.reference and message.reference.message_id:
             try:
-                # Use cached message if available, otherwise fetch
-                ref_msg = message.reference.cached_message
-                if not ref_msg:
-                    ref_msg = await message.channel.fetch_message(message.reference.message_id)
+                ref_msg = message.reference.cached_message or await message.channel.fetch_message(message.reference.message_id)
                 if ref_msg and ref_msg.author.id == bot_id:
                     is_reply_to_friday = True
             except Exception:
@@ -230,10 +311,12 @@ Strict Security Boundaries (CRITICAL):
             if re.match(r'^<@!?\d+>$', parts[0]) and re.match(r'^<@!?\d+>$', parts[1]):
                 return
 
-        # 4. Standalone Greeting Bypass: If mentioning Friday with no text or simple greeting word
-        # Handled specifically by cogs/expressions.py using custom responses in DB
+        # 4. Clean bot mention text
         clean_text = re.sub(r'<@!?' + str(bot_id) + r'>', '', content).strip()
         clean_lower = clean_text.lower().strip("!?,. ")
+
+        # Standalone Greeting Bypass: If mentioning Friday with no text or simple greeting word
+        # Handled specifically by cogs/expressions.py using custom responses in DB
         if not is_reply_to_friday and (not clean_text or clean_lower in GREETING_WORDS):
             return
 
@@ -244,10 +327,22 @@ Strict Security Boundaries (CRITICAL):
             return
         self.cooldowns[message.author.id] = now
 
-        # 6. Immediate "Thinking..." reply with bumper queue tracking
+        # 6. Retrieve custom thinking message from DB
+        gid = str(message.guild.id)
+        custom_thinking = ""
+        if hasattr(db, "custom_responses") and gid in db.custom_responses:
+            custom_thinking = db.custom_responses[gid].get("ai_thinking", "").strip()
+
+        if not custom_thinking:
+            custom_thinking = "Thinking... 💭"
+
+        # Format variables such as {user}
+        thinking_text = custom_thinking.replace("{user}", message.author.display_name)
+
+        # 7. Immediate "Thinking..." reply with bumper queue tracking
         self.queue_size += 1
         q_pos = self.queue_size
-        placeholder = "Thinking... 💭" if q_pos <= 1 else f"Thinking... (Queue #{q_pos}) 💭"
+        placeholder = thinking_text if q_pos <= 1 else f"{thinking_text} (Queue #{q_pos})"
 
         try:
             thinking_msg = await message.reply(placeholder, mention_author=True)
@@ -256,19 +351,37 @@ Strict Security Boundaries (CRITICAL):
             self.queue_size = max(0, self.queue_size - 1)
             return
 
-        # 7. Process sequentially through the bumper queue lock
+        # 8. Check for abusive, inappropriate, or 18+ content before processing
+        inappropriate = self._check_inappropriate(gid, clean_text)
+        if inappropriate:
+            self.queue_size = max(0, self.queue_size - 1)
+            user_nick = message.author.display_name
+            censor_reply = (
+                f"Hey {user_nick}, please do not use such words! 🌸 "
+                "It's not good or respectful in our community. Let's keep our chat sweet, friendly, and clean! ✨"
+            )
+            try:
+                await thinking_msg.edit(content=censor_reply)
+            except Exception:
+                await message.channel.send(f"{message.author.mention} {censor_reply}")
+            return
+
+        # 9. Process sequentially through the bumper queue lock
         try:
             async with self.queue_lock:
                 # If this request was waiting in queue, update status to active thinking
                 if q_pos > 1:
                     try:
-                        await thinking_msg.edit(content="Thinking... 💭")
+                        await thinking_msg.edit(content=thinking_text)
                     except Exception:
                         pass
 
                 # Clean session cache occasionally
                 self._cleanup_old_sessions()
                 session_key = (message.channel.id, message.author.id)
+
+                # Resolve all mentions in the clean user input
+                resolved_user_text = self._resolve_discord_mentions(message.guild, clean_text)
 
                 # Build Conversation History Context
                 llm_messages: List[Dict[str, str]] = []
@@ -284,14 +397,28 @@ Strict Security Boundaries (CRITICAL):
                         for turn in recent[-4:]:
                             llm_messages.append({"role": turn["role"], "content": turn["content"]})
 
-                # Append current user prompt
-                user_prompt = f"{message.author.display_name}: {clean_text}" if clean_text else message.author.display_name
+                # Append current user prompt with resolved name
+                user_prompt = f"{message.author.display_name}: {resolved_user_text}" if resolved_user_text else message.author.display_name
                 llm_messages.append({"role": "user", "content": user_prompt})
+
+                # Check if this is an explicit action command (e.g. "kick kardo")
+                is_action = self._is_action_request(resolved_user_text)
 
                 # Query LLM with typing indicator
                 async with message.channel.typing():
-                    sys_prompt = self._build_system_prompt(guild=message.guild, channel=message.channel)
+                    sys_prompt = self._build_system_prompt(
+                        guild=message.guild,
+                        channel=message.channel,
+                        active_user=message.author.display_name
+                    )
                     ai_reply = await self._call_openrouter(llm_messages, system_prompt=sys_prompt)
+
+                # Fallback guardrail: If action requested and model produced a generic error, ensure refusal is clear
+                if is_action and ("tangled in the clouds" in ai_reply or not ai_reply.strip()):
+                    ai_reply = (
+                        f"Oh dear, {message.author.display_name}, I can't control any of the server features or take moderation actions! 🌸 "
+                        "I am only here to chat and keep you company. If someone needs to be moderated, please ask our server staff or moderators! ✨"
+                    )
 
                 # Store in session memory
                 req_time = time.time()
@@ -312,7 +439,6 @@ Strict Security Boundaries (CRITICAL):
                 try:
                     await thinking_msg.edit(content=ai_reply)
                 except discord.NotFound:
-                    # In case the user deleted the thinking message, send a fresh reply
                     await message.channel.send(f"{message.author.mention} {ai_reply}")
                 except Exception as edit_err:
                     print(f"[AIChat] Error editing message: {edit_err}")
@@ -335,21 +461,48 @@ Strict Security Boundaries (CRITICAL):
     @app_commands.describe(question="What would you like to ask or talk to Friday about?")
     async def slash_ask(self, interaction: discord.Interaction, question: str):
         await interaction.response.defer()
-        
+
+        # Check inappropriate / 18+ content
+        gid = str(interaction.guild_id or "")
+        inappropriate = self._check_inappropriate(gid, question)
+        if inappropriate:
+            censor_reply = (
+                f"Hey {interaction.user.display_name}, please do not use such words! 🌸 "
+                "It's not good or respectful in our community. Let's keep our chat sweet, friendly, and clean! ✨"
+            )
+            await interaction.followup.send(censor_reply)
+            return
+
         session_key = (interaction.channel_id, interaction.user.id)
-        llm_messages = [{"role": "user", "content": f"{interaction.user.display_name}: {question}"}]
-        
+        resolved_question = self._resolve_discord_mentions(interaction.guild, question)
+        user_prompt = f"{interaction.user.display_name}: {resolved_question}"
+        llm_messages = [{"role": "user", "content": user_prompt}]
+
+        is_action = self._is_action_request(resolved_question)
+
         async with self.queue_lock:
-            sys_prompt = self._build_system_prompt(guild=interaction.guild, channel=interaction.channel)
+            sys_prompt = self._build_system_prompt(
+                guild=interaction.guild,
+                channel=interaction.channel,
+                active_user=interaction.user.display_name
+            )
             reply = await self._call_openrouter(llm_messages, system_prompt=sys_prompt)
+            if is_action and ("tangled in the clouds" in reply or not reply.strip()):
+                reply = (
+                    f"Oh dear, {interaction.user.display_name}, I can't control any of the server features or take moderation actions! 🌸 "
+                    "I am only here to chat and keep you company. If someone needs to be moderated, please ask our server staff or moderators! ✨"
+                )
             await asyncio.sleep(0.5)
-        
+
         now = time.time()
         if session_key not in self.sessions:
             self.sessions[session_key] = []
-        self.sessions[session_key].append({"role": "user", "content": f"{interaction.user.display_name}: {question}", "time": now})
+        self.sessions[session_key].append({"role": "user", "content": user_prompt, "time": now})
         self.sessions[session_key].append({"role": "assistant", "content": reply, "time": now})
-        
+
+        if len(reply) > 2000:
+            reply = reply[:1990] + "..."
+
         await interaction.followup.send(reply)
 
     @app_commands.command(name="clearchat", description="Reset your recent conversation memory with Friday in this channel.")

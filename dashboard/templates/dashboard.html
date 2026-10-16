@@ -2670,6 +2670,30 @@ Click an inquiry button below to open a confidential support ticket with our tea
 </div>
 </div>
 </div>
+
+<!-- CARD 8: AI ASSISTANT & REAL-TIME CONVERSATION -->
+<div class="resp-card">
+<div class="resp-card-header">
+<svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="20"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+<div>
+<div class="resp-card-title"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:text-bottom;margin-right:8px;"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/><polyline points="12 12 12 8 16 8"/></svg>AI Assistant &amp; Real-Time Thinking Status</div>
+<div class="resp-card-desc">Personalize Friday's real-time thinking status indicator and conversation placeholder dispatched when interacting with her in chat.</div>
+</div>
+</div>
+<!-- Thinking Status Placeholder -->
+<div class="resp-field-row">
+<div class="resp-field-label-wrap">
+<span class="resp-field-label">AI Processing / Thinking Message</span>
+<div class="resp-vars-wrap">
+<span class="resp-var-badge" data-target="resp_ai_thinking" data-var="{user}">{user}</span>
+</div>
+</div>
+<div class="resp-input-group">
+<input class="text-input" id="resp_ai_thinking" placeholder="Thinking... 💭" type="text"/>
+<button class="resp-emoji-btn" data-target="resp_ai_thinking" type="button" title="Insert Emoji" style="display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg> Emojis</button>
+</div>
+</div>
+</div>
 </div>
 </div>
 
@@ -2807,6 +2831,38 @@ Click an inquiry button below to open a confidential support ticket with our tea
             <div class="ignored-channels-chips" id="autoRespIgnoredChipsList">
                 <div class="empty-rules-placeholder">No channels ignored. Auto-responder operates server-wide.</div>
             </div>
+        </div>
+    </div>
+
+    <!-- CARD 4: AI CHAT THINKING STATUS & RESPONSE -->
+    <div class="automation-card" style="margin-top: 20px;">
+        <div class="automation-card-header">
+            <div class="automation-header-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">
+                <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="20"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+            </div>
+            <div>
+                <h2 class="automation-card-title">AI Processing Status (Thinking... 💭)</h2>
+                <p class="automation-card-desc">Personalize the real-time thinking cloud indicator Friday posts while generating her conversational AI response.</p>
+            </div>
+        </div>
+
+        <div class="automation-form-box">
+            <div class="form-field-full">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+                    <label class="form-sublabel">Thinking Message Placeholder</label>
+                    <div class="resp-vars-wrap">
+                        <span class="resp-var-badge" data-target="autoAiThinkingInput" data-var="{user}">{user}</span>
+                    </div>
+                </div>
+                <div class="resp-input-group">
+                    <input class="text-input" id="autoAiThinkingInput" placeholder="Thinking... 💭" type="text"/>
+                    <button class="resp-emoji-btn" data-target="autoAiThinkingInput" type="button" title="Insert Emoji" style="display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg> Emojis</button>
+                </div>
+            </div>
+            <button class="btn-action-primary" id="saveAiThinkingBtn" style="margin-top: 10px;" type="button">
+                <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save Thinking Message
+            </button>
         </div>
     </div>
 </div> <!-- End #automationsSection -->
