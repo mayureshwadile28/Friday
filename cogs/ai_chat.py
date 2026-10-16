@@ -17,6 +17,7 @@ from database import db
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+GOOGLE_AI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 
 # Primary model requested: Gemma 4 26B A4B
 PRIMARY_MODEL = os.getenv("OPENROUTER_MODEL", "google/gemma-4-26b-a4b-it:free")
@@ -33,7 +34,15 @@ FALLBACK_MODELS = [
 
 GROQ_FALLBACK_MODELS = [
     "llama-3.3-70b-versatile",
+    "gemma2-9b-it",
     "llama-3.1-8b-instant"
+]
+
+GOOGLE_FALLBACK_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemma-2-27b-it",
+    "gemma-2-9b-it"
 ]
 
 GREETING_WORDS = {'', 'hi', 'hii', 'hiii', 'hey', 'heyy', 'heyyy', 'hello', 'helloo', 'yo', 'sup', 'friday'}
@@ -596,10 +605,11 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
     ) -> str:
         """Call OpenRouter API with prioritized fallback models, multi-key pooling, and Groq fallback."""
         openrouter_keys = self._get_api_keys()
+        gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         groq_key = os.getenv("GROQ_API_KEY")
 
-        if not openrouter_keys and not groq_key:
-            return "My AI key is not configured in `.env` yet, darling. Please add `OPENROUTER_API_KEY` or `GROQ_API_KEY`!"
+        if not openrouter_keys and not gemini_key and not groq_key:
+            return "My AI key is not configured in `.env` yet, darling. Please add `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, or `GROQ_API_KEY`!"
 
         timeout = aiohttp.ClientTimeout(total=35)
         prompt_content = system_prompt or self._build_system_prompt()
@@ -666,7 +676,36 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                         print(f"[AIChat] Request error on {model_id}: {req_err}")
                         continue
 
-            # 2. Try Groq fallback if configured (free 14,400 requests/day, lightning fast)
+            # 2. Try Google AI Studio (Gemini & Gemma models) if configured (up to 14,400 free requests/day)
+            if gemini_key:
+                gemini_headers = {
+                    "Authorization": f"Bearer {gemini_key}",
+                    "Content-Type": "application/json"
+                }
+                for gm in GOOGLE_FALLBACK_MODELS:
+                    gm_payload = {
+                        "model": gm,
+                        "messages": [
+                            {"role": "system", "content": prompt_content},
+                            *messages
+                        ],
+                        "temperature": 0.75,
+                        "max_tokens": max_tokens
+                    }
+                    try:
+                        async with session.post(GOOGLE_AI_URL, headers=gemini_headers, json=gm_payload) as gm_resp:
+                            if gm_resp.status == 200:
+                                gm_data = await gm_resp.json()
+                                gm_choices = gm_data.get("choices", [])
+                                if gm_choices and "message" in gm_choices[0]:
+                                    gm_content = gm_choices[0]["message"].get("content")
+                                    if gm_content and len(str(gm_content).strip()) >= 15:
+                                        return str(gm_content).strip()
+                    except Exception as gm_err:
+                        print(f"[AIChat Google AI Studio Fallback] Error on {gm}: {gm_err}")
+                        continue
+
+            # 3. Try Groq fallback if configured (free 14,400 requests/day, lightning fast)
             if groq_key:
                 groq_headers = {
                     "Authorization": f"Bearer {groq_key}",
@@ -698,7 +737,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         if daily_limit_hit:
             return (
                 "Oh dear, my daily free thought quota on OpenRouter (50 requests/day) has been reached! 🌸 "
-                "It resets automatically at midnight UTC. You can also add credits on OpenRouter or add a free `GROQ_API_KEY` in `.env` for unlimited chat! ✨"
+                "It resets automatically at midnight UTC. You can also add a free `GEMINI_API_KEY` (Google AI Studio) or `GROQ_API_KEY` in `.env` for thousands of free daily requests! ✨"
             )
 
         return (
