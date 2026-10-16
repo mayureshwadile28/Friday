@@ -304,9 +304,12 @@ Personality & Demeanor:
 - You are friendly, polite, respectful, and engaging.
 - You may use tasteful emojis occasionally (such as ✨, 💫, 🌸, 😊, 💅, 💖) to complement your tone, keeping it classy and natural.
 {research_instructions}
-Reading Usernames & Mentions:
+Reading Usernames, Nicknames & Mentions:
 - You can see the nickname of the user talking to you ({active_user or 'User'}). Warmly address them by their nickname in a fun, natural, appreciative, or affectionate human way!
-- If the user mentions another member (e.g., @MemberName), you can read and understand who they are referring to. Speak about them beautifully, playfully, or respectfully.
+- If the user is replying to someone, or mentions another member (e.g. @MemberName), and asks your opinion about them or their nickname/username (e.g. "what do you think about his nickname?", "how is her username?"):
+  - Inspect the referenced or mentioned member's nickname and username provided in the context.
+  - Give a witty, charming, playful, or appreciative lady-like opinion! Comment specifically on how cool, aesthetic, funny, bold, or sweet their nickname sounds.
+  - NEVER freeze, stammer, or say just "Oh," or "Hmm". Always provide a complete, engaging 2 to 4 line response with lady charm and emojis (✨🌸)!
 
 Language & Multilingual Fluency:
 - You are completely fluent in English, Hindi, and Hinglish (Hindi written in Latin script, e.g., 'kaise ho', 'kya kar rahe ho', 'achha').
@@ -373,8 +376,12 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                                 content = choices[0]["message"].get("content")
                                 if content:
                                     content_str = str(content).strip()
-                                    if content_str:
-                                        return content_str
+                                    cleaned_lower = content_str.lower().strip(" .,!?:-")
+                                    # Discard stubs (< 15 characters or single interjections like "oh", "hmm", "well", etc.)
+                                    if len(content_str) < 15 or cleaned_lower in ("oh", "hmm", "well", "ah", "uh", "um", "yes", "no", "ok", "hey"):
+                                        print(f"[AIChat] Model {model_id} returned stub/incomplete completion: {content_str!r}. Trying next model...")
+                                        continue
+                                    return content_str
                             # If content was empty or None (e.g. reasoning model hit token limit), try next model
                             continue
                         elif resp.status in (429, 502, 503, 504):
@@ -538,6 +545,43 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Build Conversation History Context
                 llm_messages: List[Dict[str, str]] = []
 
+                # Context from replied message (if any)
+                ref_context_header = ""
+                if message.reference and message.reference.message_id:
+                    try:
+                        ref_id = message.reference.message_id
+                        ref_msg = message.reference.cached_message or await message.channel.fetch_message(ref_id)
+                        if ref_msg and ref_msg.author.id != bot_id:
+                            ref_author = ref_msg.author
+                            ref_disp = getattr(ref_author, "display_name", ref_author.name)
+                            ref_uname = getattr(ref_author, "name", ref_disp)
+                            ref_nick = getattr(ref_author, "nick", None) or ref_disp
+                            ref_body = self._resolve_discord_mentions(message.guild, ref_msg.clean_content or ref_msg.content or "")
+                            
+                            media_notes = []
+                            if ref_msg.attachments:
+                                media_notes.append(f"files: {', '.join(a.filename for a in ref_msg.attachments)}")
+                            if hasattr(ref_msg, 'stickers') and ref_msg.stickers:
+                                media_notes.append(f"stickers: {', '.join(s.name for s in ref_msg.stickers)}")
+                            media_str = f" [{'; '.join(media_notes)}]" if media_notes else ""
+                            
+                            ref_context_header = (
+                                f"[In reply to member: {ref_disp} (Server Nickname: \"{ref_nick}\", Discord Username: @{ref_uname}). "
+                                f"Their message was: \"{ref_body}\"{media_str}]\n"
+                            )
+                    except Exception as ref_err:
+                        print(f"[AIChat] Error fetching referenced message: {ref_err}")
+
+                # Context from other mentions in the message
+                mention_context_header = ""
+                other_mentions = [m for m in message.mentions if m.id != bot_id and m.id != message.author.id]
+                if other_mentions:
+                    m_details = []
+                    for m in other_mentions:
+                        m_nick = getattr(m, "nick", None) or m.display_name
+                        m_details.append(f"@{m.display_name} (Nickname: \"{m_nick}\", Username: @{m.name})")
+                    mention_context_header = f"[Other members mentioned: {', '.join(m_details)}]\n"
+
                 if is_reply_to_friday_llm:
                     # Traverses Discord's native reply hierarchy
                     reply_chain = await self._fetch_reply_chain(message, max_depth=6)
@@ -549,8 +593,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                         for turn in recent[-4:]:
                             llm_messages.append({"role": turn["role"], "content": turn["content"]})
 
-                # Append current user prompt with resolved name
-                user_prompt = f"{message.author.display_name}: {resolved_user_text}" if resolved_user_text else message.author.display_name
+                # Append current user prompt with resolved name and referenced/mention context
+                full_context_prefix = f"{ref_context_header}{mention_context_header}"
+                user_prompt = f"{full_context_prefix}{message.author.display_name}: {resolved_user_text}" if resolved_user_text else f"{full_context_prefix}{message.author.display_name}"
                 llm_messages.append({"role": "user", "content": user_prompt})
 
                 # Check if this is an explicit action command (e.g. "kick kardo")

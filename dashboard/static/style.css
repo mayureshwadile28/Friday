@@ -3052,7 +3052,8 @@ select option:checked {
     align-items: center;
     gap: 8px;
 }
-.resp-input-group .text-input {
+.resp-input-group .text-input,
+.resp-input-group .rich-emoji-editor {
     flex: 1;
     margin-bottom: 0 !important;
 }

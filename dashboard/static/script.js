@@ -292,6 +292,11 @@ function setupEventListeners() {
             e.stopPropagation();
             const targetId = badge.getAttribute('data-target');
             const varText = badge.getAttribute('data-var') || badge.textContent;
+            const richEl = document.getElementById(targetId + '_rich');
+            if (richEl) {
+                insertEmojiOrTextIntoRichEditor(richEl, varText);
+                return;
+            }
             const input = document.getElementById(targetId);
             if (!input) return;
             const start = input.selectionStart ?? input.value.length;
@@ -308,6 +313,13 @@ function setupEventListeners() {
             e.preventDefault();
             e.stopPropagation();
             const targetId = btn.getAttribute('data-target');
+            const richEl = document.getElementById(targetId + '_rich');
+            if (richEl) {
+                openEmojiPicker(btn, (emojiVal) => {
+                    insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                });
+                return;
+            }
             const input = document.getElementById(targetId);
             if (!input) return;
             openEmojiPicker(btn, (emojiVal) => {
@@ -333,6 +345,7 @@ function setupEventListeners() {
             const respInput = document.getElementById('resp_ai_thinking');
             if (respInput && autoVal !== undefined) {
                 respInput.value = autoVal;
+                if (typeof respInput._syncToRich === 'function') respInput._syncToRich();
             }
             await saveResponsesSettings();
         });
@@ -341,8 +354,14 @@ function setupEventListeners() {
     const autoAiInput = document.getElementById('autoAiThinkingInput');
     const respAiInput = document.getElementById('resp_ai_thinking');
     if (autoAiInput && respAiInput) {
-        autoAiInput.addEventListener('input', () => { respAiInput.value = autoAiInput.value; });
-        respAiInput.addEventListener('input', () => { autoAiInput.value = respAiInput.value; });
+        autoAiInput.addEventListener('input', () => { 
+            respAiInput.value = autoAiInput.value; 
+            if (typeof respAiInput._syncToRich === 'function') respAiInput._syncToRich();
+        });
+        respAiInput.addEventListener('input', () => { 
+            autoAiInput.value = respAiInput.value; 
+            if (typeof autoAiInput._syncToRich === 'function') autoAiInput._syncToRich();
+        });
     }
     
     const topSaveBtn = document.getElementById('topSaveSecurityBtn');
@@ -1530,6 +1549,13 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('rrTitleInput', true);
     attachRichEmojiEditor('annContentInput');
     attachRichEmojiEditor('annTitleInput', true);
+    attachRichEmojiEditor('resp_ai_thinking', true);
+    attachRichEmojiEditor('autoAiThinkingInput', true);
+    attachRichEmojiEditor('autoRespTextInput', true);
+
+    document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
+        attachRichEmojiEditor(inp.id, true);
+    });
 }
 
 function syncAllRichEmojiEditors() {
@@ -1538,8 +1564,12 @@ function syncAllRichEmojiEditors() {
         'ticketBtn1', 'ticketBtn2', 'ticketBtn3', 'ticketBtn4',
         'levelMessageInput',
         'rrDescInput', 'rrTitleInput',
-        'annContentInput', 'annTitleInput'
+        'annContentInput', 'annTitleInput',
+        'resp_ai_thinking', 'autoAiThinkingInput', 'autoRespTextInput'
     ];
+    document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
+        if (!ids.includes(inp.id)) ids.push(inp.id);
+    });
     ids.forEach(id => {
         const el = document.getElementById(id);
         if (el && typeof el._syncToRich === 'function') {
@@ -3538,6 +3568,8 @@ async function loadResponsesSettings() {
             if (autoAiInput && data.config['ai_thinking'] !== undefined) {
                 autoAiInput.value = data.config['ai_thinking'];
             }
+            initAllRichEmojiEditors();
+            syncAllRichEmojiEditors();
         }
     } catch(e) {
         console.error("Failed to load custom responses", e);
@@ -4351,6 +4383,7 @@ async function loadAutomationsSettings() {
                 if (autoAiInput && crConf['ai_thinking'] !== undefined) {
                     autoAiInput.value = crConf['ai_thinking'];
                 }
+                syncAllRichEmojiEditors();
             } catch (err) {}
         }
     } catch (e) {
@@ -4559,7 +4592,10 @@ async function addAutoResponderRule() {
             currentAutoresponderRules = (data.autoresponder && data.autoresponder.rules) || [];
             renderAutoResponderRules();
             showToast("✅ Auto-responder rule saved!");
-            if (textInput) textInput.value = '';
+            if (textInput) {
+                textInput.value = '';
+                if (typeof textInput._syncToRich === 'function') textInput._syncToRich();
+            }
             if (memberSelect) memberSelect.value = '';
         } else {
             showToast(`❌ Error: ${data.error || 'Failed to add rule'}`);
