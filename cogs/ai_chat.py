@@ -48,9 +48,15 @@ INAPPROPRIATE_PATTERNS = re.compile(
     re.IGNORECASE
 )
 
-# Intent detection for real-time web news and Google search lookups
+# Date/Time queries: MUST be answered directly without triggering web search or news dumps!
+DATE_TIME_QUERY_REGEX = re.compile(
+    r'\b(date|time|day|year|month|clock|tarikh|din|aaj konsi|kya tarikh|kya date|what date|what time|what day|today\'?s? date|current date|current time)\b',
+    re.IGNORECASE
+)
+
+# Strict intent detection for web news and Google search lookups
 SEARCH_INTENT_REGEX = re.compile(
-    r'\b(news|latest|today|recent|headlines|breaking|update|updates|current events|score|scores|match|matches|result|results|release date|when will|who won|stock price|stocks|weather|weather today|google|search online|search internet|taza khabar|samachar|kya chal raha hai|kya hua|aaj ki news|aaj ka news)\b',
+    r'\b(news|headlines|breaking news|breaking|taza khabar|samachar|aaj ki news|aaj ka news|current events|live score|cricket score|football score|match score|stock price|share price|crypto price|bitcoin price|search google|google it|google pe dekho|search online|search internet|internet pe dekho|kya chal raha hai duniya me|world news|latest update on|what is happening with)\b',
     re.IGNORECASE
 )
 
@@ -101,6 +107,19 @@ class AIChat(commands.Cog):
         # Sequential bumper queue: ensures one-by-one safe processing
         self.queue_lock = asyncio.Lock()
         self.queue_size = 0
+        # Track message IDs produced by Friday's LLM so replies only trigger on actual LLM messages
+        stored_ids = getattr(db, "data", {}).get("llm_message_ids", [])
+        self.llm_message_ids = set(stored_ids)
+
+    def _record_llm_message(self, message_id: int):
+        """Record an LLM response ID so that user replies to this message are properly recognized."""
+        self.llm_message_ids.add(message_id)
+        if hasattr(db, "data") and isinstance(db.data, dict):
+            if "llm_message_ids" not in db.data:
+                db.data["llm_message_ids"] = []
+            db.data["llm_message_ids"].append(message_id)
+            if len(db.data["llm_message_ids"]) > 2000:
+                db.data["llm_message_ids"] = db.data["llm_message_ids"][-2000:]
 
     def _get_api_key(self) -> Optional[str]:
         return os.getenv("OPENROUTER_API_KEY")
@@ -168,9 +187,15 @@ class AIChat(commands.Cog):
         return has_action and (has_verb or len(text.split()) <= 6)
 
     def _detect_and_extract_search_query(self, text: str) -> Optional[str]:
-        """Detect if the query asks for news or live Google facts, and clean search keywords."""
+        """Detect if the query asks for news or live Google facts, strictly excluding date/time questions."""
+        # 1. If asking about date or time without explicitly asking for news, NEVER trigger web search!
+        if DATE_TIME_QUERY_REGEX.search(text) and not re.search(r'\b(news|khabar|samachar|headline)\b', text, re.IGNORECASE):
+            return None
+
+        # 2. Must match search intent keywords
         if not SEARCH_INTENT_REGEX.search(text):
             return None
+
         # Clean common conversational phrases to get clean search terms for Google
         cleaned = re.sub(
             r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding)\b',
@@ -267,6 +292,12 @@ Real-Time Temporal Awareness & Live Context:
 {realtime_block}
 - You are fully present in the current moment ({date_str}).
 - When asked about today's date, current year, day of the week, or time, ALWAYS answer with this exact live real-world date ({date_str}) and time. You are NEVER stuck in the past.
+
+DIRECT ANSWER DIRECTIVE (CRITICAL):
+- Always answer ONLY what the user asked.
+- If the user asks for the date, day of week, year, or time (e.g. "What's today's date?"):
+  Answer strictly with the exact date/time in 1 to 2 short, charming lines!
+  NEVER include news, breaking updates, weather, or unrequested summaries when only asked for the date or time!
 
 Personality & Demeanor:
 - You speak with elegance, warmth, and a touch of feminine charm and playful wit. You feel like a real, intelligent lady having a natural conversation.
@@ -371,24 +402,34 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         content = message.content.strip()
 
         # 1. Check if replying directly to a message from Friday
-        is_reply_to_friday = False
+        # MUST only trigger if replying to an actual LLM-generated message, NOT a pregenerated joke, embed, or command
+        is_reply_to_friday_llm = False
         if message.reference and message.reference.message_id:
+            ref_id = message.reference.message_id
             try:
-                ref_msg = message.reference.cached_message or await message.channel.fetch_message(message.reference.message_id)
+                ref_msg = message.reference.cached_message or await message.channel.fetch_message(ref_id)
                 if ref_msg and ref_msg.author.id == bot_id:
-                    is_reply_to_friday = True
+                    has_embeds = bool(ref_msg.embeds)
+                    has_interaction = bool(ref_msg.interaction)
+                    has_components = bool(ref_msg.components)
+                    
+                    # If it has embeds, slash command interaction, or buttons, it is a pregenerated command/joke -> IGNORE
+                    if not has_embeds and not has_interaction and not has_components:
+                        # Must be tracked as an LLM message or non-command message from Friday
+                        if ref_id in self.llm_message_ids or (ref_msg.content and not ref_msg.content.startswith("/")):
+                            is_reply_to_friday_llm = True
             except Exception:
                 pass
 
-        # 2. Check if explicitly mentioning Friday
+        # 2. Check if explicitly mentioning Friday in the message
         is_mentioning_friday = (
             f"<@{bot_id}>" in content or
             f"<@!{bot_id}>" in content or
             (self.bot.user in message.mentions and not message.reference)
         )
 
-        # If neither replying to Friday nor mentioning Friday, ignore
-        if not is_reply_to_friday and not is_mentioning_friday:
+        # If neither an explicit mention nor a reply to Friday's LLM message, IGNORE
+        if not is_reply_to_friday_llm and not is_mentioning_friday:
             return
 
         # 3. Nickname Change Command Bypass: @Friday @User New Nickname
@@ -404,7 +445,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
 
         # Standalone Greeting Bypass: If mentioning Friday with no text or simple greeting word
         # Handled specifically by cogs/expressions.py using custom responses in DB
-        if not is_reply_to_friday and (not clean_text or clean_lower in GREETING_WORDS):
+        if not is_reply_to_friday_llm and (not clean_text or clean_lower in GREETING_WORDS):
             return
 
         # 5. Cooldown check (prevent spamming API, 1.5s cooldown per user)
@@ -433,6 +474,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
 
         try:
             thinking_msg = await message.reply(placeholder, mention_author=True)
+            self._record_llm_message(thinking_msg.id)
         except Exception as send_err:
             print(f"[AIChat] Could not send initial thinking message: {send_err}")
             self.queue_size = max(0, self.queue_size - 1)
@@ -450,7 +492,8 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             try:
                 await thinking_msg.edit(content=censor_reply)
             except Exception:
-                await message.channel.send(f"{message.author.mention} {censor_reply}")
+                sent = await message.channel.send(f"{message.author.mention} {censor_reply}")
+                self._record_llm_message(sent.id)
             return
 
         # 9. Process sequentially through the bumper queue lock
@@ -470,7 +513,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Resolve all mentions in the clean user input
                 resolved_user_text = self._resolve_discord_mentions(message.guild, clean_text)
 
-                # 10. Check if live Google Search / News lookup is needed
+                # 10. Check if live Google Search / News lookup is needed (ignoring date/time queries)
                 search_query = self._detect_and_extract_search_query(resolved_user_text)
                 live_search_context = ""
                 is_research_mode = False
@@ -495,7 +538,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Build Conversation History Context
                 llm_messages: List[Dict[str, str]] = []
 
-                if is_reply_to_friday:
+                if is_reply_to_friday_llm:
                     # Traverses Discord's native reply hierarchy
                     reply_chain = await self._fetch_reply_chain(message, max_depth=6)
                     llm_messages.extend(reply_chain)
@@ -554,11 +597,14 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Edit the "Thinking..." message into Friday's actual response!
                 try:
                     await thinking_msg.edit(content=ai_reply)
+                    self._record_llm_message(thinking_msg.id)
                 except discord.NotFound:
-                    await message.channel.send(f"{message.author.mention} {ai_reply}")
+                    sent = await message.channel.send(f"{message.author.mention} {ai_reply}")
+                    self._record_llm_message(sent.id)
                 except Exception as edit_err:
                     print(f"[AIChat] Error editing message: {edit_err}")
-                    await message.channel.send(ai_reply)
+                    sent = await message.channel.send(ai_reply)
+                    self._record_llm_message(sent.id)
 
                 # Small 0.5s safety buffer between consecutive queue jobs to protect upstream rate limits
                 await asyncio.sleep(0.5)
@@ -596,7 +642,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
 
         is_action = self._is_action_request(resolved_question)
 
-        # Check search intent
+        # Check search intent (excluding date/time queries)
         search_query = self._detect_and_extract_search_query(resolved_question)
         live_search_context = ""
         is_research_mode = False
@@ -648,7 +694,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         if len(reply) > 2000:
             reply = reply[:1990] + "..."
 
-        await interaction.followup.send(reply)
+        sent_msg = await interaction.followup.send(reply)
+        if sent_msg:
+            self._record_llm_message(sent_msg.id)
 
     @app_commands.command(name="clearchat", description="Reset your recent conversation memory with Friday in this channel.")
     async def slash_clear(self, interaction: discord.Interaction):
