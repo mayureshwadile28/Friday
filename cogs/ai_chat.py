@@ -605,6 +605,12 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         max_tokens: int = 750
     ) -> str:
         """Call OpenRouter API with prioritized fallback models, multi-key pooling, and Groq fallback."""
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(override=True)
+        except Exception:
+            pass
+
         openrouter_keys = self._get_api_keys()
         gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         groq_key = os.getenv("GROQ_API_KEY")
@@ -652,6 +658,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                                     g_content = g_choices[0]["message"].get("content")
                                     if g_content and len(str(g_content).strip()) >= 15:
                                         return str(g_content).strip()
+                            else:
+                                err_txt = await g_resp.text()
+                                print(f"[AIChat Groq Engine] HTTP {g_resp.status} on {g_model}: {err_txt}")
                     except Exception as g_err:
                         print(f"[AIChat Groq Engine] Error on {g_model}: {g_err}")
                         continue
@@ -689,6 +698,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                                     gm_content = gm_choices[0]["message"].get("content")
                                     if gm_content and len(str(gm_content).strip()) >= 15:
                                         return str(gm_content).strip()
+                            else:
+                                gm_err_txt = await gm_resp.text()
+                                print(f"[AIChat Google AI Studio Engine] HTTP {gm_resp.status} on {gm}: {gm_err_txt}")
                     except Exception as gm_err:
                         print(f"[AIChat Google AI Studio Engine] Error on {gm}: {gm_err}")
                         continue
