@@ -659,8 +659,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                                 g_data = await g_resp.json()
                                 g_choices = g_data.get("choices", [])
                                 if g_choices and "message" in g_choices[0]:
-                                    g_content = g_choices[0]["message"].get("content")
-                                    if g_content and len(str(g_content).strip()) >= 15:
+                                    msg_obj = g_choices[0]["message"]
+                                    g_content = msg_obj.get("content") or msg_obj.get("reasoning")
+                                    if g_content and len(str(g_content).strip()) > 0:
                                         return str(g_content).strip()
                             else:
                                 err_txt = await g_resp.text()
@@ -700,7 +701,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                                 gm_choices = gm_data.get("choices", [])
                                 if gm_choices and "message" in gm_choices[0]:
                                     gm_content = gm_choices[0]["message"].get("content")
-                                    if gm_content and len(str(gm_content).strip()) >= 15:
+                                    if gm_content and len(str(gm_content).strip()) > 0:
                                         return str(gm_content).strip()
                             else:
                                 gm_err_txt = await gm_resp.text()

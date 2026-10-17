@@ -3,13 +3,15 @@ from discord.ext import commands
 import os, sys
 from dotenv import load_dotenv
 
-# Ensure safe UTF-8 output and 1ms high-precision timer on Windows (prevents audio micro-skips / frame drift)
+# Ensure unbuffered / line-buffered output so journalctl and logs appear immediately
+try:
+    sys.stdout.reconfigure(line_buffering=True, encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(line_buffering=True, encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
+# Ensure safe UTF-8 output and 1ms high-precision timer on Windows
 if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-    except Exception:
-        pass
     try:
         import ctypes
         ctypes.windll.winmm.timeBeginPeriod(1)
