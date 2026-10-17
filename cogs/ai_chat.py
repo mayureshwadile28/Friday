@@ -108,7 +108,7 @@ def sanitize_ai_mentions(text: str) -> str:
     if not text:
         return text
     # Insert zero-width space after @ for everyone and here so it renders as normal text without blue mention pills
-    sanitized = re.sub(r'@(everyone|here)', r'@\u200b\1', text, flags=re.IGNORECASE)
+    sanitized = re.sub(r'@(everyone|here)', lambda m: '@\u200b' + m.group(1), text, flags=re.IGNORECASE)
     return sanitized
 
 
