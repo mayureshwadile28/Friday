@@ -16,6 +16,7 @@ __pycache__/
 # Scratch, temp, and agent files
 scratch/
 .agents/
+skills-lock.json
 .vscode/
 .idea/
 
