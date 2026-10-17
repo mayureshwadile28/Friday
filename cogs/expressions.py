@@ -7,6 +7,8 @@ import io
 import os
 import json
 import random
+import uuid
+from typing import Optional
 from database import db
 from response_utils import make_box_embed, reply_box
 
@@ -250,57 +252,148 @@ class Expressions(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     # ───────────────────── Autoresponder Slash Commands Group ─────────────────────
-    autoresponder = app_commands.Group(name="autoresponder", description="Manage automated replies when members are mentioned")
+    autoresponder = app_commands.Group(name="autoresponder", description="Manage automated replies and reactions on mentions or keywords")
 
-    @autoresponder.command(name="add", description="Set Friday to auto-reply with a message when a member is tagged.")
-    @app_commands.describe(member="The member to trigger response on mention", response="The response message ({author} and {user} supported)")
+    @autoresponder.command(name="add", description="Set Friday to auto-reply and/or react on member mention or standalone keyword.")
+    @app_commands.describe(
+        response="The reply message ({author} and {user} supported)",
+        member="Target member to trigger on mention (optional if using keyword)",
+        keyword="Standalone word/keyword to trigger (e.g. 'ip') (optional if using member)",
+        emoji="Optional emoji to react to the message with"
+    )
     @app_commands.default_permissions(manage_guild=True)
-    async def autoresponder_add(self, interaction: discord.Interaction, member: discord.Member, response: str):
+    async def autoresponder_add(
+        self,
+        interaction: discord.Interaction,
+        response: str,
+        member: Optional[discord.Member] = None,
+        keyword: Optional[str] = None,
+        emoji: Optional[str] = None
+    ):
         gid = str(interaction.guild.id)
         if gid not in db.autoresponder or not isinstance(db.autoresponder[gid], dict):
             db.autoresponder[gid] = {"rules": [], "ignored_channels": []}
 
         clean_resp = response.strip()
-        uid = str(member.id)
+        clean_emoji = emoji.strip() if emoji else ""
         rules = db.autoresponder[gid].setdefault("rules", [])
-        existing = False
-        for r in rules:
-            if str(r.get("user_id")) == uid:
-                r["response"] = clean_resp
-                r["user_name"] = member.display_name
-                existing = True
-                break
 
-        if not existing:
-            rules.append({
-                "user_id": uid,
-                "user_name": member.display_name,
-                "response": clean_resp
-            })
-        db.save_data()
+        if not member and not keyword:
+            embed = discord.Embed(
+                title="✖ Missing Target",
+                description="Please provide either a **member** (to trigger on mention) or a **keyword** (e.g. `ip`).",
+                color=0xed4245
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
 
-        embed = discord.Embed(
-            title="✔ Auto-Responder Configured",
-            description=f"When {member.mention} is tagged, Friday will reply with:\n> {clean_resp}",
-            color=0x2b2d31
-        )
-        await interaction.response.send_message(embed=embed)
+        if keyword:
+            clean_word = keyword.strip()
+            rule_id = str(uuid.uuid4())[:8]
+            existing = False
+            for r in rules:
+                if (r.get("type") == "word" or "trigger" in r) and str(r.get("trigger", "")).lower() == clean_word.lower():
+                    r["type"] = "word"
+                    r["trigger"] = clean_word
+                    r["response"] = clean_resp
+                    r["emoji"] = clean_emoji
+                    existing = True
+                    break
+            if not existing:
+                rules.append({
+                    "id": rule_id,
+                    "type": "word",
+                    "trigger": clean_word,
+                    "response": clean_resp,
+                    "emoji": clean_emoji
+                })
+            db.save_data()
 
-    @autoresponder.command(name="remove", description="Remove auto-responder rule for a member.")
-    @app_commands.describe(member="The member whose auto-responder rule should be removed")
+            emoji_note = f"\n> **Reaction:** {clean_emoji}" if clean_emoji else ""
+            embed = discord.Embed(
+                title="✔ Keyword Auto-Responder Configured",
+                description=f"When someone writes standalone word `{clean_word}` (e.g. 'what is the {clean_word}?'), Friday will reply with:\n> {clean_resp}{emoji_note}\n\n*Note: Partial words like `{clean_word}L` will strictly NOT trigger.*",
+                color=0x2b2d31
+            )
+            await interaction.response.send_message(embed=embed)
+            return
+
+        if member:
+            uid = str(member.id)
+            rule_id = str(uuid.uuid4())[:8]
+            existing = False
+            for r in rules:
+                if str(r.get("user_id")) == uid:
+                    r["type"] = "mention"
+                    r["response"] = clean_resp
+                    r["user_name"] = member.display_name
+                    r["emoji"] = clean_emoji
+                    existing = True
+                    break
+            if not existing:
+                rules.append({
+                    "id": rule_id,
+                    "type": "mention",
+                    "user_id": uid,
+                    "user_name": member.display_name,
+                    "response": clean_resp,
+                    "emoji": clean_emoji
+                })
+            db.save_data()
+
+            emoji_note = f"\n> **Reaction:** {clean_emoji}" if clean_emoji else ""
+            embed = discord.Embed(
+                title="✔ Mention Auto-Responder Configured",
+                description=f"When {member.mention} is tagged, Friday will reply with:\n> {clean_resp}{emoji_note}",
+                color=0x2b2d31
+            )
+            await interaction.response.send_message(embed=embed)
+
+    @autoresponder.command(name="remove", description="Remove auto-responder rule for a member or keyword.")
+    @app_commands.describe(
+        member="The member whose auto-responder rule should be removed",
+        keyword="The keyword rule to remove (e.g. 'ip')"
+    )
     @app_commands.default_permissions(manage_guild=True)
-    async def autoresponder_remove(self, interaction: discord.Interaction, member: discord.Member):
+    async def autoresponder_remove(
+        self,
+        interaction: discord.Interaction,
+        member: Optional[discord.Member] = None,
+        keyword: Optional[str] = None
+    ):
         gid = str(interaction.guild.id)
-        uid = str(member.id)
+        if not member and not keyword:
+            embed = discord.Embed(
+                title="✖ Missing Target",
+                description="Please specify either a `member` or a `keyword` to remove.",
+                color=0xed4245
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
         if gid in db.autoresponder and isinstance(db.autoresponder[gid], dict):
             rules = db.autoresponder[gid].get("rules", [])
             initial_len = len(rules)
-            db.autoresponder[gid]["rules"] = [r for r in rules if str(r.get("user_id")) != uid]
+            if keyword:
+                clean_kw = keyword.strip().lower()
+                db.autoresponder[gid]["rules"] = [
+                    r for r in rules
+                    if str(r.get("trigger", "")).lower() != clean_kw
+                ]
+                removed_target = f"keyword `{keyword}`"
+            else:
+                uid = str(member.id)
+                db.autoresponder[gid]["rules"] = [
+                    r for r in rules
+                    if str(r.get("user_id")) != uid
+                ]
+                removed_target = member.mention
+
             if len(db.autoresponder[gid]["rules"]) < initial_len:
                 db.save_data()
                 embed = discord.Embed(
                     title="✔ Trigger Removed",
-                    description=f"Successfully removed auto-responder trigger for {member.mention}",
+                    description=f"Successfully removed auto-responder trigger for {removed_target}.",
                     color=0x2b2d31
                 )
                 await interaction.response.send_message(embed=embed)
@@ -308,7 +401,7 @@ class Expressions(commands.Cog):
 
         embed = discord.Embed(
             title="✖ Trigger Not Found",
-            description=f"No active auto-responder rule found for {member.mention}.",
+            description=f"No active auto-responder rule found matching your input.",
             color=0x2b2d31
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -333,11 +426,27 @@ class Expressions(commands.Cog):
             title="✔ Active Auto-Responder Rules",
             color=0x2b2d31
         )
-        if rules:
-            lines = [f"• <@{r.get('user_id')}>: \"{r.get('response')}\"" for r in rules]
-            embed.add_field(name="Mention Triggers", value="\n".join(lines[:20]), inline=False)
+
+        mention_rules = [r for r in rules if r.get("user_id")]
+        word_rules = [r for r in rules if r.get("type") == "word" or r.get("trigger")]
+
+        if mention_rules:
+            mlines = []
+            for r in mention_rules[:15]:
+                react_str = f" [React: {r.get('emoji')}]" if r.get("emoji") else ""
+                mlines.append(f"• <@{r.get('user_id')}>: \"{r.get('response')}\"{react_str}")
+            embed.add_field(name="Mention Triggers", value="\n".join(mlines), inline=False)
         else:
             embed.add_field(name="Mention Triggers", value="None configured yet.", inline=False)
+
+        if word_rules:
+            wlines = []
+            for r in word_rules[:15]:
+                react_str = f" [React: {r.get('emoji')}]" if r.get("emoji") else ""
+                wlines.append(f"• Word `{r.get('trigger')}`: \"{r.get('response')}\"{react_str}")
+            embed.add_field(name="Keyword / Word Triggers", value="\n".join(wlines), inline=False)
+        else:
+            embed.add_field(name="Keyword / Word Triggers", value="None configured yet.", inline=False)
 
         if ignored:
             ign_lines = [f"• <#{cid}>" for cid in ignored]
@@ -401,30 +510,45 @@ class Expressions(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # ───────────────────── Listener: Mention Reactions & Replies ─────────────────────
+    async def _safe_add_reaction(self, message: discord.Message, raw_emoji: str):
+        if not raw_emoji:
+            return
+        try:
+            react_target = raw_emoji.strip()
+            # Custom emoji format <:name:id> or <a:name:id>
+            custom_match = re.match(r'^<a?:([a-zA-Z0-9_]+):([0-9]+)>$', react_target)
+            if custom_match:
+                eid = int(custom_match.group(2))
+                custom_obj = self.bot.get_emoji(eid)
+                react_target = custom_obj if custom_obj else f"{custom_match.group(1)}:{custom_match.group(2)}"
+            await message.add_reaction(react_target)
+        except Exception as e:
+            print(f"[Expressions] Warning: Failed to react with {raw_emoji}: {e}")
+
+    # ───────────────────── Listener: Reactions & Automated Replies ─────────────────────
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild or not message.mentions:
+        if message.author.bot or not message.guild:
             return
 
         gid = str(message.guild.id)
+        content = message.content or ""
+
         # Only count members explicitly tagged with @ in message content (ignore reply pings)
-        content = message.content
-        explicitly_mentioned_ids = {
-            str(m.id) for m in message.mentions
-            if f"<@{m.id}>" in content or f"<@!{m.id}>" in content
-        }
-        if not explicitly_mentioned_ids:
-            return
+        explicitly_mentioned_ids = set()
+        if message.mentions:
+            explicitly_mentioned_ids = {
+                str(m.id) for m in message.mentions
+                if f"<@{m.id}>" in content or f"<@!{m.id}>" in content
+            }
 
         # 0. Tag Greeting Response: When someone tags @Friday with no message or simple greeting
-        if self.bot.user and (str(self.bot.user.id) in explicitly_mentioned_ids or self.bot.user in message.mentions):
-            clean_content = re.sub(r'<@!?' + str(self.bot.user.id) + r'>', '', message.content).strip()
+        if self.bot.user and (str(self.bot.user.id) in explicitly_mentioned_ids or (message.mentions and self.bot.user in message.mentions)):
+            clean_content = re.sub(r'<@!?' + str(self.bot.user.id) + r'>', '', content).strip()
             clean_lower = clean_content.lower().strip("!?,. ")
             GREETING_WORDS = {'', 'hi', 'hii', 'hiii', 'hey', 'heyy', 'heyyy', 'hello', 'helloo', 'yo', 'sup', 'friday'}
             if not clean_content or clean_lower in GREETING_WORDS:
                 template = random.choice(GREETINGS)
-                # Formats greeting with direct user mention and tags them
                 greeting = template.replace("{user}", message.author.mention)
                 if message.author.mention not in greeting:
                     greeting = f"{message.author.mention} {greeting}"
@@ -437,27 +561,17 @@ class Expressions(commands.Cog):
                         print(f"[Greeting Reply Error] {e}")
                 return
 
-
         # 1. Autoreact on Mention
-        autoreact_rules = db.autoreact.get(gid, [])
-        if autoreact_rules and isinstance(autoreact_rules, list):
-            for rule in autoreact_rules:
-                if str(rule.get("user_id")) in explicitly_mentioned_ids:
-                    raw_emoji = rule.get("emoji")
-                    if raw_emoji:
-                        try:
-                            react_target = raw_emoji
-                            # Check if custom emoji formatted as <:name:id> or <a:name:id>
-                            custom_match = re.match(r'^<a?:([a-zA-Z0-9_]+):([0-9]+)>$', raw_emoji.strip())
-                            if custom_match:
-                                eid = int(custom_match.group(2))
-                                custom_obj = self.bot.get_emoji(eid)
-                                react_target = custom_obj if custom_obj else f"{custom_match.group(1)}:{custom_match.group(2)}"
-                            await message.add_reaction(react_target)
-                        except Exception as e:
-                            print(f"[Autoreact] Warning: Failed to react with {raw_emoji}: {e}")
+        if explicitly_mentioned_ids:
+            autoreact_rules = db.autoreact.get(gid, [])
+            if autoreact_rules and isinstance(autoreact_rules, list):
+                for rule in autoreact_rules:
+                    if str(rule.get("user_id")) in explicitly_mentioned_ids:
+                        raw_emoji = rule.get("emoji")
+                        if raw_emoji:
+                            await self._safe_add_reaction(message, raw_emoji)
 
-        # 2. Autoresponder on Mention
+        # 2. Autoresponder (Word / Keyword Triggers & Mention Triggers)
         ar_data = db.autoresponder.get(gid, {})
         if isinstance(ar_data, dict):
             rules = ar_data.get("rules", [])
@@ -465,29 +579,64 @@ class Expressions(commands.Cog):
 
             # Skip if current channel is ignored
             if str(message.channel.id) not in ignored_channels and rules:
-                for rule in rules:
-                    target_id = str(rule.get("user_id"))
-                    if target_id in explicitly_mentioned_ids:
-                        # Suppress autoresponder if target is currently AFK to prevent dual/conflicting messages
-                        afk_members = getattr(db, "afk_data", {}).get(gid, {})
-                        if target_id in afk_members:
-                            continue
+                responded = False
 
-                        resp_template = rule.get("response")
-                        if resp_template:
-                            # Format response variables
-                            target_member = next((m for m in message.mentions if str(m.id) == target_id), None)
-                            formatted = resp_template.replace("{author}", message.author.mention)
-                            if target_member:
-                                formatted = formatted.replace("{user}", target_member.display_name).replace("{member}", target_member.mention)
-                            try:
-                                await message.reply(formatted, mention_author=False)
-                            except Exception:
+                # 2A. Check Word / Keyword Triggers (whole-word boundary match)
+                for rule in rules:
+                    trigger = rule.get("trigger", "").strip() if (rule.get("type") == "word" or "trigger" in rule) else ""
+                    if trigger:
+                        # Match standalone word/phrase (e.g. 'ip' matches 'what is the ip?' but NOT 'IPL' or 'equipment')
+                        pattern = rf'(?<!\w){re.escape(trigger)}(?!\w)'
+                        if re.search(pattern, content, re.IGNORECASE):
+                            # React with emoji if configured
+                            raw_emoji = rule.get("emoji")
+                            if raw_emoji:
+                                await self._safe_add_reaction(message, raw_emoji)
+
+                            # Reply with message if configured
+                            resp_template = rule.get("response")
+                            if resp_template:
+                                formatted = resp_template.replace("{author}", message.author.mention).replace("{user}", message.author.display_name)
                                 try:
-                                    await message.channel.send(formatted)
-                                except Exception as e:
-                                    print(f"[Autoresponder] Error sending response: {e}")
-                            break  # Avoid sending multiple responses for single message
+                                    await message.reply(formatted, mention_author=False)
+                                except Exception:
+                                    try:
+                                        await message.channel.send(formatted)
+                                    except Exception as e:
+                                        print(f"[Autoresponder Word Reply Error] {e}")
+                            responded = True
+                            break
+
+                # 2B. If no keyword triggered, check Mention Triggers
+                if not responded and explicitly_mentioned_ids:
+                    for rule in rules:
+                        target_id = str(rule.get("user_id", ""))
+                        if target_id and target_id in explicitly_mentioned_ids:
+                            # Suppress autoresponder if target is currently AFK to prevent dual/conflicting messages
+                            afk_members = getattr(db, "afk_data", {}).get(gid, {})
+                            if target_id in afk_members:
+                                continue
+
+                            # React with emoji if configured
+                            raw_emoji = rule.get("emoji")
+                            if raw_emoji:
+                                await self._safe_add_reaction(message, raw_emoji)
+
+                            # Reply with message if configured
+                            resp_template = rule.get("response")
+                            if resp_template:
+                                target_member = next((m for m in message.mentions if str(m.id) == target_id), None)
+                                formatted = resp_template.replace("{author}", message.author.mention)
+                                if target_member:
+                                    formatted = formatted.replace("{user}", target_member.display_name).replace("{member}", target_member.mention)
+                                try:
+                                    await message.reply(formatted, mention_author=False)
+                                except Exception:
+                                    try:
+                                        await message.channel.send(formatted)
+                                    except Exception as e:
+                                        print(f"[Autoresponder Mention Reply Error] {e}")
+                            break
 
 
 async def setup(bot):

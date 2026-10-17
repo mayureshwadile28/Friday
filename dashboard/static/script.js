@@ -285,6 +285,33 @@ function setupEventListeners() {
     const saveLimitsBtn = document.getElementById('saveLimitsBtn');
     if (saveLimitsBtn) saveLimitsBtn.addEventListener('click', saveLimits);
 
+    // Capture active selection on any editor before button clicks cause blur
+    document.addEventListener('mousedown', (e) => {
+        const btn = e.target.closest('.resp-emoji-btn, .emoji-picker-btn, .resp-var-badge');
+        if (!btn) return;
+        const targetId = btn.getAttribute('data-target');
+        if (targetId) {
+            const richEl = document.getElementById(targetId + '_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+            }
+            const input = document.getElementById(targetId);
+            if (input && typeof input.selectionStart === 'number') {
+                input._savedCaret = { start: input.selectionStart, end: input.selectionEnd };
+            }
+        }
+    }, true);
+
+    document.addEventListener('selectionchange', () => {
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA') && typeof active.selectionStart === 'number') {
+            active._savedCaret = { start: active.selectionStart, end: active.selectionEnd };
+        }
+    });
+
     // Custom Responses Event Listeners (Emoji picker & variable inserters)
     document.querySelectorAll('.resp-var-badge').forEach(badge => {
         badge.addEventListener('click', (e) => {
@@ -299,11 +326,13 @@ function setupEventListeners() {
             }
             const input = document.getElementById(targetId);
             if (!input) return;
-            const start = input.selectionStart ?? input.value.length;
-            const end = input.selectionEnd ?? input.value.length;
+            const start = (input._savedCaret && typeof input._savedCaret.start === 'number') ? input._savedCaret.start : (input.selectionStart ?? input.value.length);
+            const end = (input._savedCaret && typeof input._savedCaret.end === 'number') ? input._savedCaret.end : (input.selectionEnd ?? input.value.length);
             input.value = input.value.substring(0, start) + varText + input.value.substring(end);
             input.focus();
-            input.selectionStart = input.selectionEnd = start + varText.length;
+            const newPos = start + varText.length;
+            input.selectionStart = input.selectionEnd = newPos;
+            input._savedCaret = { start: newPos, end: newPos };
             input.dispatchEvent(new Event('input', { bubbles: true }));
         });
     });
@@ -315,19 +344,32 @@ function setupEventListeners() {
             const targetId = btn.getAttribute('data-target');
             const richEl = document.getElementById(targetId + '_rich');
             if (richEl) {
+                // Ensure range is saved before opening popover
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
                 openEmojiPicker(btn, (emojiVal) => {
+                    if (!emojiVal) return;
                     insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
                 });
                 return;
             }
             const input = document.getElementById(targetId);
             if (!input) return;
+            // Record caret before focus moves to emoji popover
+            if (typeof input.selectionStart === 'number') {
+                input._savedCaret = { start: input.selectionStart, end: input.selectionEnd };
+            }
             openEmojiPicker(btn, (emojiVal) => {
-                const start = input.selectionStart ?? input.value.length;
-                const end = input.selectionEnd ?? input.value.length;
+                if (!emojiVal) return;
+                const start = (input._savedCaret && typeof input._savedCaret.start === 'number') ? input._savedCaret.start : (input.selectionStart ?? input.value.length);
+                const end = (input._savedCaret && typeof input._savedCaret.end === 'number') ? input._savedCaret.end : (input.selectionEnd ?? input.value.length);
                 input.value = input.value.substring(0, start) + emojiVal + ' ' + input.value.substring(end);
                 input.focus();
-                input.selectionStart = input.selectionEnd = start + emojiVal.length + 1;
+                const newPos = start + emojiVal.length + 1;
+                input.selectionStart = input.selectionEnd = newPos;
+                input._savedCaret = { start: newPos, end: newPos };
                 input.dispatchEvent(new Event('input', { bubbles: true }));
             });
         });
@@ -1411,12 +1453,31 @@ function richHtmlToRawMarkdown(el) {
 
 function insertEmojiOrTextIntoRichEditor(richEl, val) {
     if (!richEl) return;
-    richEl.focus();
     const sel = window.getSelection();
-    let range;
-    if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+    let range = null;
+
+    // 1. Try to restore saved range from when user was interacting with richEl
+    if (richEl._savedRange) {
+        try {
+            range = richEl._savedRange;
+            if (sel) {
+                sel.removeAllRanges();
+                sel.addRange(range);
+            }
+        } catch (e) {
+            range = null;
+        }
+    }
+
+    // 2. Fallback to current selection if still inside richEl
+    if (!range && sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
         range = sel.getRangeAt(0);
-    } else {
+    }
+
+    richEl.focus();
+
+    // 3. Fallback to end of editor
+    if (!range) {
         range = document.createRange();
         range.selectNodeContents(richEl);
         range.collapse(false);
@@ -1473,8 +1534,11 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
         range.setEndAfter(textNode);
     }
 
-    sel.removeAllRanges();
-    sel.addRange(range);
+    if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
+    }
+    richEl._savedRange = range.cloneRange();
     richEl.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -1492,6 +1556,8 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
     richEl.className = 'rich-emoji-editor' + (isSingleLine ? ' single-line' : '');
     richEl.contentEditable = 'true';
     richEl.spellcheck = false;
+    richEl.setAttribute('autocorrect', 'off');
+    richEl.setAttribute('autocapitalize', 'off');
 
     if (targetEl.placeholder) {
         richEl.setAttribute('data-placeholder', targetEl.placeholder);
@@ -1501,6 +1567,18 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
 
     // Initial render
     richEl.innerHTML = rawMarkdownToRichHtml(targetEl.value || '');
+
+    function saveRichRange() {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+            richEl._savedRange = sel.getRangeAt(0).cloneRange();
+        }
+    }
+
+    richEl.addEventListener('keyup', saveRichRange);
+    richEl.addEventListener('mouseup', saveRichRange);
+    richEl.addEventListener('touchend', saveRichRange);
+    richEl.addEventListener('focus', saveRichRange);
 
     if (isSingleLine) {
         richEl.addEventListener('keydown', (e) => {
@@ -1512,6 +1590,7 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
     }
 
     richEl.addEventListener('input', () => {
+        saveRichRange();
         const raw = richHtmlToRawMarkdown(richEl);
         targetEl.value = raw;
         targetEl.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1523,14 +1602,16 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
         if (!text) return;
         const html = rawMarkdownToRichHtml(text);
         document.execCommand('insertHTML', false, html);
+        saveRichRange();
         const raw = richHtmlToRawMarkdown(richEl);
         targetEl.value = raw;
         targetEl.dispatchEvent(new Event('input', { bubbles: true }));
     });
 
     richEl.addEventListener('blur', () => {
+        saveRichRange();
         const raw = richHtmlToRawMarkdown(richEl);
-        richEl.innerHTML = rawMarkdownToRichHtml(raw);
+        targetEl.value = raw;
     });
 
     targetEl._syncToRich = function() {
@@ -4438,6 +4519,8 @@ function renderAutoReactRules() {
     });
 }
 
+let autoRespCurrentType = 'mention';
+
 function renderAutoResponderRules() {
     const listEl = document.getElementById('autoRespRulesList');
     const countEl = document.getElementById('autoRespCount');
@@ -4451,31 +4534,64 @@ function renderAutoResponderRules() {
 
     listEl.innerHTML = '';
     currentAutoresponderRules.forEach(rule => {
-        const member = currentGuildMembers.find(m => String(m.id) === String(rule.user_id));
-        const username = member ? member.username : (rule.user_name || `User ${rule.user_id}`);
-        const avatar = member ? member.avatar : null;
-        const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="automation-rule-avatar">` : `<div class="automation-rule-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
+        const isWord = (rule.type === 'word' || (!rule.user_id && rule.trigger));
+        let targetHtml = '';
+
+        if (isWord) {
+            const triggerText = rule.trigger || '';
+            targetHtml = `
+                <div class="automation-rule-user">
+                    <div class="automation-rule-avatar-fallback" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight:700;">#</div>
+                    <div class="automation-rule-meta">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="rule-type-badge word">Word Trigger</span>
+                            <span class="automation-rule-name" style="font-family:monospace;font-size:13px;color:#34d399;">"${escapeHtml(triggerText)}"</span>
+                        </div>
+                        <span class="automation-rule-id" style="font-size:11px;color:#94a3b8;">Strict Standalone Word</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            const member = currentGuildMembers.find(m => String(m.id) === String(rule.user_id));
+            const username = member ? member.username : (rule.user_name || `User ${rule.user_id}`);
+            const avatar = member ? member.avatar : null;
+            const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="automation-rule-avatar">` : `<div class="automation-rule-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
+            targetHtml = `
+                <div class="automation-rule-user">
+                    ${avatarHtml}
+                    <div class="automation-rule-meta">
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <span class="rule-type-badge mention">@ Mention</span>
+                            <span class="automation-rule-name">${escapeHtml(username)}</span>
+                        </div>
+                        <span class="automation-rule-id">${rule.user_id}</span>
+                    </div>
+                </div>
+            `;
+        }
+
+        const reactionBadge = rule.emoji ? `
+            <span class="rule-reaction-badge" title="Reacts with this emoji">
+                <span style="font-size:11px;color:#94a3b8;">Reacts:</span>
+                ${renderEmojiHtmlOrChar(rule.emoji, 18)}
+            </span>
+        ` : '';
 
         const item = document.createElement('div');
         item.className = 'automation-rule-item';
         item.innerHTML = `
-            <div class="automation-rule-user">
-                ${avatarHtml}
-                <div class="automation-rule-meta">
-                    <span class="automation-rule-name">${escapeHtml(username)}</span>
-                    <span class="automation-rule-id">${rule.user_id}</span>
-                </div>
+            ${targetHtml}
+            <div class="automation-rule-content" title="${escapeHtml(rule.response || '')}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                <span style="flex:1;">${renderDiscordMarkdown(rule.response || '')}</span>
+                ${reactionBadge}
             </div>
-            <div class="automation-rule-content" title="${escapeHtml(rule.response)}">
-                ${renderDiscordMarkdown(rule.response)}
-            </div>
-            <button class="btn-delete-rule" title="Remove rule" type="button" data-user="${rule.user_id}">
+            <button class="btn-delete-rule" title="Remove rule" type="button">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
             </button>
         `;
 
         item.querySelector('.btn-delete-rule').addEventListener('click', () => {
-            removeAutoResponderRule(rule.user_id);
+            removeAutoResponderRule(rule.id, rule.user_id, rule.trigger);
         });
 
         listEl.appendChild(item);
@@ -4573,32 +4689,59 @@ async function removeAutoReactRule(userId) {
 
 async function addAutoResponderRule() {
     if (!currentGuildId) return showToast("⚠️ Select a server first!");
-    const memberSelect = document.getElementById('autoRespMemberSelect');
     const textInput = document.getElementById('autoRespTextInput');
-    const userId = memberSelect ? memberSelect.value : '';
     const responseText = textInput ? textInput.value.trim() : '';
-
-    if (!userId) return showToast("⚠️ Please select a target member!");
     if (!responseText) return showToast("⚠️ Please enter a response message!");
 
-    const member = currentGuildMembers.find(m => String(m.id) === String(userId));
-    const userName = member ? member.username : `User ${userId}`;
+    const emojiInput = document.getElementById('autoRespEmojiInput');
+    const rawEmoji = emojiInput ? (emojiInput.dataset.rawEmoji || emojiInput.value).trim() : '';
+
+    const payload = {
+        type: autoRespCurrentType,
+        response: responseText,
+        emoji: rawEmoji
+    };
+
+    if (autoRespCurrentType === 'word') {
+        const wordInput = document.getElementById('autoRespWordInput');
+        const trigger = wordInput ? wordInput.value.trim() : '';
+        if (!trigger) return showToast("⚠️ Please enter a standalone trigger word (e.g. IP)!");
+        payload.trigger = trigger;
+    } else {
+        const memberSelect = document.getElementById('autoRespMemberSelect');
+        const userId = memberSelect ? memberSelect.value : '';
+        if (!userId) return showToast("⚠️ Please select a target member!");
+        const member = currentGuildMembers.find(m => String(m.id) === String(userId));
+        payload.user_id = userId;
+        payload.user_name = member ? member.username : `User ${userId}`;
+    }
 
     try {
         const resp = await fetch(`/api/guild/${currentGuildId}/autoresponder/add`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId, user_name: userName, response: responseText })
+            body: JSON.stringify(payload)
         });
         const data = await resp.json();
         if (data.success) {
             currentAutoresponderRules = (data.autoresponder && data.autoresponder.rules) || [];
             renderAutoResponderRules();
             showToast("✅ Auto-responder rule saved!");
+
+            // Reset inputs
             if (textInput) {
                 textInput.value = '';
                 if (typeof textInput._syncToRich === 'function') textInput._syncToRich();
             }
+            const wordInput = document.getElementById('autoRespWordInput');
+            if (wordInput) wordInput.value = '';
+            if (emojiInput) {
+                emojiInput.value = '';
+                emojiInput.dataset.rawEmoji = '';
+            }
+            const autoRespEmojiBtn = document.getElementById('autoRespEmojiBtn');
+            if (autoRespEmojiBtn) autoRespEmojiBtn.innerHTML = '😊';
+            const memberSelect = document.getElementById('autoRespMemberSelect');
             if (memberSelect) memberSelect.value = '';
         } else {
             showToast(`❌ Error: ${data.error || 'Failed to add rule'}`);
@@ -4608,13 +4751,18 @@ async function addAutoResponderRule() {
     }
 }
 
-async function removeAutoResponderRule(userId) {
+async function removeAutoResponderRule(ruleId, userId, trigger) {
     if (!currentGuildId) return;
     try {
+        const payload = {};
+        if (ruleId) payload.id = ruleId;
+        if (userId) payload.user_id = userId;
+        if (trigger) payload.trigger = trigger;
+
         const resp = await fetch(`/api/guild/${currentGuildId}/autoresponder/remove`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: userId })
+            body: JSON.stringify(payload)
         });
         const data = await resp.json();
         if (data.success) {
@@ -4673,6 +4821,7 @@ async function removeIgnoredChannel(channelId) {
 }
 
 function setupAutomationEvents() {
+    // 1. Autoreact Emoji Picker
     const arEmojiBtn = document.getElementById('autoReactEmojiBtn');
     const arEmojiInput = document.getElementById('autoReactEmojiInput');
 
@@ -4701,6 +4850,62 @@ function setupAutomationEvents() {
         arEmojiInput.addEventListener('input', (e) => {
             const val = e.target.value.trim();
             if (arEmojiBtn) arEmojiBtn.innerHTML = renderEmojiHtmlOrChar(val, 22);
+        });
+    }
+
+    // 2. Autoresponder Trigger Type Mode Switcher
+    const mentionBtn = document.getElementById('autoRespTypeMentionBtn');
+    const wordBtn = document.getElementById('autoRespTypeWordBtn');
+    const memberWrap = document.getElementById('autoRespMemberWrap');
+    const wordWrap = document.getElementById('autoRespWordWrap');
+
+    if (mentionBtn && wordBtn) {
+        mentionBtn.addEventListener('click', () => {
+            autoRespCurrentType = 'mention';
+            mentionBtn.classList.add('active');
+            wordBtn.classList.remove('active');
+            if (memberWrap) memberWrap.style.display = 'block';
+            if (wordWrap) wordWrap.style.display = 'none';
+        });
+
+        wordBtn.addEventListener('click', () => {
+            autoRespCurrentType = 'word';
+            wordBtn.classList.add('active');
+            mentionBtn.classList.remove('active');
+            if (wordWrap) wordWrap.style.display = 'block';
+            if (memberWrap) memberWrap.style.display = 'none';
+        });
+    }
+
+    // 3. Autoresponder Emoji Reaction Picker
+    const autoRespEmojiBtn = document.getElementById('autoRespEmojiBtn');
+    const autoRespEmojiInput = document.getElementById('autoRespEmojiInput');
+
+    const triggerAutoRespEmojiPicker = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        openEmojiPicker(autoRespEmojiBtn || autoRespEmojiInput, (emojiVal) => {
+            if (!emojiVal) return;
+            if (autoRespEmojiInput) {
+                autoRespEmojiInput.dataset.rawEmoji = emojiVal;
+                const m = emojiVal.match(/<a?:([a-zA-Z0-9_]+):[0-9]+>/);
+                autoRespEmojiInput.value = m ? `:${m[1]}:` : emojiVal;
+            }
+            if (autoRespEmojiBtn) {
+                autoRespEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 22);
+            }
+        });
+    };
+
+    if (autoRespEmojiBtn) autoRespEmojiBtn.addEventListener('click', triggerAutoRespEmojiPicker);
+    if (autoRespEmojiInput) {
+        autoRespEmojiInput.style.cursor = 'pointer';
+        autoRespEmojiInput.addEventListener('click', triggerAutoRespEmojiPicker);
+        autoRespEmojiInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (autoRespEmojiBtn) autoRespEmojiBtn.innerHTML = renderEmojiHtmlOrChar(val, 22);
         });
     }
 
@@ -4957,6 +5162,10 @@ function setupFirstWelcomeAndAfkEvents() {
             e.stopPropagation();
             const richEl = document.getElementById('firstWelcomeTitleInput_rich');
             if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
                 openEmojiPicker(titleEmojiBtn, (emojiVal) => {
                     if (!emojiVal) return;
                     insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
@@ -4965,13 +5174,18 @@ function setupFirstWelcomeAndAfkEvents() {
                 });
                 return;
             }
+            if (typeof titleInput.selectionStart === 'number') {
+                titleInput._savedCaret = { start: titleInput.selectionStart, end: titleInput.selectionEnd };
+            }
             openEmojiPicker(titleEmojiBtn, (emojiVal) => {
                 if (!emojiVal) return;
-                const start = titleInput.selectionStart ?? titleInput.value.length;
-                const end = titleInput.selectionEnd ?? titleInput.value.length;
+                const start = (titleInput._savedCaret && typeof titleInput._savedCaret.start === 'number') ? titleInput._savedCaret.start : (titleInput.selectionStart ?? titleInput.value.length);
+                const end = (titleInput._savedCaret && typeof titleInput._savedCaret.end === 'number') ? titleInput._savedCaret.end : (titleInput.selectionEnd ?? titleInput.value.length);
                 titleInput.value = titleInput.value.substring(0, start) + emojiVal + ' ' + titleInput.value.substring(end);
                 titleInput.focus();
-                titleInput.selectionStart = titleInput.selectionEnd = start + emojiVal.length + 1;
+                const newPos = start + emojiVal.length + 1;
+                titleInput.selectionStart = titleInput.selectionEnd = newPos;
+                titleInput._savedCaret = { start: newPos, end: newPos };
                 titleEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 20);
                 updateFirstWelcomePreview();
             });
@@ -4988,6 +5202,10 @@ function setupFirstWelcomeAndAfkEvents() {
             e.stopPropagation();
             const richEl = document.getElementById('firstWelcomeMsgInput_rich');
             if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
                 openEmojiPicker(msgEmojiBtn, (emojiVal) => {
                     if (!emojiVal) return;
                     insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
@@ -4995,13 +5213,18 @@ function setupFirstWelcomeAndAfkEvents() {
                 });
                 return;
             }
+            if (typeof msgInput.selectionStart === 'number') {
+                msgInput._savedCaret = { start: msgInput.selectionStart, end: msgInput.selectionEnd };
+            }
             openEmojiPicker(msgEmojiBtn, (emojiVal) => {
                 if (!emojiVal) return;
-                const start = msgInput.selectionStart ?? msgInput.value.length;
-                const end = msgInput.selectionEnd ?? msgInput.value.length;
+                const start = (msgInput._savedCaret && typeof msgInput._savedCaret.start === 'number') ? msgInput._savedCaret.start : (msgInput.selectionStart ?? msgInput.value.length);
+                const end = (msgInput._savedCaret && typeof msgInput._savedCaret.end === 'number') ? msgInput._savedCaret.end : (msgInput.selectionEnd ?? msgInput.value.length);
                 msgInput.value = msgInput.value.substring(0, start) + emojiVal + ' ' + msgInput.value.substring(end);
                 msgInput.focus();
-                msgInput.selectionStart = msgInput.selectionEnd = start + emojiVal.length + 1;
+                const newPos = start + emojiVal.length + 1;
+                msgInput.selectionStart = msgInput.selectionEnd = newPos;
+                msgInput._savedCaret = { start: newPos, end: newPos };
                 updateFirstWelcomePreview();
             });
         });

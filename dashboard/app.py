@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify, request as flask_request
 import json
 import os
 import sys
+import uuid
 import requests
 import asyncio
 import discord
@@ -1289,30 +1290,65 @@ def remove_autoreact(gid):
 def add_autoresponder(gid):
     gid_str = str(gid)
     data = flask_request.json or {}
-    user_id = str(data.get("user_id", "")).strip()
-    user_name = str(data.get("user_name", f"User {user_id}")).strip()
+    rule_type = str(data.get("type", "mention")).strip().lower()
     response_text = str(data.get("response", "")).strip()
+    raw_emoji = str(data.get("emoji", "")).strip()
 
-    if not user_id or not response_text:
-        return jsonify({"success": False, "error": "User ID and response message are required"}), 400
+    if not response_text:
+        return jsonify({"success": False, "error": "Response message is required"}), 400
 
     if gid_str not in db.autoresponder or not isinstance(db.autoresponder[gid_str], dict):
         db.autoresponder[gid_str] = {"rules": [], "ignored_channels": []}
 
     rules = db.autoresponder[gid_str].setdefault("rules", [])
-    existing = False
-    for rule in rules:
-        if str(rule.get("user_id")) == user_id:
-            rule["response"] = response_text
-            rule["user_name"] = user_name
-            existing = True
-            break
-    if not existing:
-        rules.append({
-            "user_id": user_id,
-            "user_name": user_name,
-            "response": response_text
-        })
+    rule_id = str(uuid.uuid4())[:8]
+
+    if rule_type == "word" or "trigger" in data:
+        trigger = str(data.get("trigger", "")).strip()
+        if not trigger:
+            return jsonify({"success": False, "error": "Trigger word or phrase is required"}), 400
+        clean_trigger = trigger.lower()
+        existing = False
+        for rule in rules:
+            if (rule.get("type") == "word" or "trigger" in rule) and str(rule.get("trigger", "")).lower() == clean_trigger:
+                rule["type"] = "word"
+                rule["trigger"] = trigger
+                rule["response"] = response_text
+                rule["emoji"] = raw_emoji
+                existing = True
+                break
+        if not existing:
+            rules.append({
+                "id": rule_id,
+                "type": "word",
+                "trigger": trigger,
+                "response": response_text,
+                "emoji": raw_emoji
+            })
+    else:
+        # Mention rule
+        user_id = str(data.get("user_id", "")).strip()
+        user_name = str(data.get("user_name", f"User {user_id}")).strip()
+        if not user_id:
+            return jsonify({"success": False, "error": "Target member is required"}), 400
+        existing = False
+        for rule in rules:
+            if str(rule.get("user_id")) == user_id:
+                rule["type"] = "mention"
+                rule["user_name"] = user_name
+                rule["response"] = response_text
+                rule["emoji"] = raw_emoji
+                existing = True
+                break
+        if not existing:
+            rules.append({
+                "id": rule_id,
+                "type": "mention",
+                "user_id": user_id,
+                "user_name": user_name,
+                "response": response_text,
+                "emoji": raw_emoji
+            })
 
     db.save_data()
     return jsonify({"success": True, "autoresponder": db.autoresponder[gid_str]})
@@ -1321,11 +1357,24 @@ def add_autoresponder(gid):
 def remove_autoresponder(gid):
     gid_str = str(gid)
     data = flask_request.json or {}
+    rule_id = str(data.get("id", "")).strip()
     user_id = str(data.get("user_id", "")).strip()
+    trigger = str(data.get("trigger", "")).strip().lower()
 
     if gid_str in db.autoresponder and isinstance(db.autoresponder[gid_str], dict):
         rules = db.autoresponder[gid_str].get("rules", [])
-        db.autoresponder[gid_str]["rules"] = [r for r in rules if str(r.get("user_id")) != user_id]
+        if rule_id:
+            db.autoresponder[gid_str]["rules"] = [r for r in rules if str(r.get("id")) != rule_id]
+        elif trigger:
+            db.autoresponder[gid_str]["rules"] = [
+                r for r in rules
+                if str(r.get("trigger", "")).lower() != trigger
+            ]
+        elif user_id:
+            db.autoresponder[gid_str]["rules"] = [
+                r for r in rules
+                if str(r.get("user_id")) != user_id
+            ]
         db.save_data()
 
     return jsonify({"success": True, "autoresponder": db.autoresponder.get(gid_str, {"rules": [], "ignored_channels": []})})

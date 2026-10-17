@@ -54,9 +54,9 @@ Right-Click -> Apps -> Steal Sticker - Steal a sticker from a message
 /autoreact add @member <emoji> - Automatically reacts with an emoji when @member is mentioned
 /autoreact remove @member - Removes the auto-reaction rule for @member
 /autoreact list - Lists all active auto-reaction mention rules
-/autoresponder add @member <response> - Automatically replies with a message when @member is mentioned ({author} and {user} supported)
-/autoresponder remove @member - Removes the auto-responder rule for @member
-/autoresponder list - Lists all active auto-responder rules and ignored channels
+/autoresponder add <response> [member] [keyword] [emoji] - Auto-replies and/or reacts when @member is mentioned OR when standalone keyword is typed ({author} and {user} supported)
+/autoresponder remove [member] [keyword] - Removes the auto-responder rule for @member or keyword
+/autoresponder list - Lists all active auto-responder rules (mentions and keywords) and ignored channels
 /autoresponder ignore_channel #channel - Disables auto-responses in the specified channel
 /autoresponder unignore_channel #channel - Re-enables auto-responses in an ignored channel
 

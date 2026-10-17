@@ -2752,27 +2752,52 @@ Click an inquiry button below to open a confidential support ticket with our tea
             </div>
         </div>
 
-        <!-- CARD 2: AUTO-RESPONDER -->
+        <!-- CARD 2: AUTO-RESPONDER (MENTIONS & WORD TRIGGERS) -->
         <div class="automation-card">
             <div class="automation-card-header">
                 <div class="automation-header-icon" style="background: rgba(88, 101, 242, 0.15); color: #5865f2;">
                     <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="20"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                 </div>
                 <div>
-                    <h2 class="automation-card-title">Auto-Responder on Mention</h2>
-                    <p class="automation-card-desc">When a user is mentioned, Friday automatically replies with a preset custom message.</p>
+                    <h2 class="automation-card-title">Auto-Responder (Mentions &amp; Keyword Triggers)</h2>
+                    <p class="automation-card-desc">Automatically reply and react when a member is tagged or when standalone words (e.g. "IP") are typed.</p>
                 </div>
             </div>
 
             <!-- Form: Add Autoresponder Rule -->
             <div class="automation-form-box">
-                <div class="form-field-full">
+                <!-- Trigger Type Segment Tabs -->
+                <div class="form-field-full" style="margin-bottom: 12px;">
+                    <label class="form-sublabel">Trigger Type</label>
+                    <div class="mode-segment-group" id="autoRespTypeGroup" style="display:flex;gap:8px;margin-top:4px;">
+                        <button type="button" class="mode-segment-btn active" data-type="mention" id="autoRespTypeMentionBtn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            Member Mention (@member)
+                        </button>
+                        <button type="button" class="mode-segment-btn" data-type="word" id="autoRespTypeWordBtn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
+                            Standalone Word / Keyword (e.g. IP)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Field: Target Member (Shown when type === 'mention') -->
+                <div class="form-field-full" id="autoRespMemberWrap">
                     <label class="form-sublabel">Target Member</label>
                     <select class="custom-select select-styled searchable-select" id="autoRespMemberSelect">
                         <option value="">Select a member...</option>
                     </select>
                 </div>
-                <div class="form-field-full" style="margin-top: 10px;">
+
+                <!-- Field: Trigger Word (Shown when type === 'word') -->
+                <div class="form-field-full" id="autoRespWordWrap" style="display: none;">
+                    <label class="form-sublabel">Standalone Trigger Word</label>
+                    <input class="text-input" id="autoRespWordInput" placeholder="e.g. IP (matches 'what is the ip?' but NOT 'IPL')" type="text"/>
+                    <span style="font-size: 11px; color: #94a3b8; margin-top: 4px; display: block;">Strict standalone matching: only triggers on whole words or spaced words, preventing false matches like "IPL" or "equipment".</span>
+                </div>
+
+                <!-- Field: Response Message -->
+                <div class="form-field-full" style="margin-top: 12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
                         <label class="form-sublabel">Automated Response Message</label>
                         <div class="resp-vars-wrap">
@@ -2781,11 +2806,24 @@ Click an inquiry button below to open a confidential support ticket with our tea
                         </div>
                     </div>
                     <div class="resp-input-group">
-                        <input class="text-input" id="autoRespTextInput" placeholder="e.g. {author}, {user} is currently busy, please do not ping!" type="text"/>
-                        <button class="resp-emoji-btn" data-target="autoRespTextInput" type="button">😊 Emojis</button>
+                        <input class="text-input" id="autoRespTextInput" placeholder="e.g. {author}, the server IP is play.myserver.com!" type="text"/>
+                        <button class="resp-emoji-btn" data-target="autoRespTextInput" type="button" title="Insert Server Emoji" style="display:inline-flex;align-items:center;gap:6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                            😊 Emojis
+                        </button>
                     </div>
                 </div>
-                <button class="btn-action-primary" id="addAutoRespBtn" style="margin-top: 10px;" type="button">
+
+                <!-- Field: Optional Reaction Emoji -->
+                <div class="form-field-full" style="margin-top: 12px;">
+                    <label class="form-sublabel">Optional Emoji Reaction (Reacts to the message)</label>
+                    <div class="emoji-picker-container" style="display:flex;align-items:center;gap:10px;">
+                        <button class="emoji-picker-btn" id="autoRespEmojiBtn" type="button" title="Choose Reaction Emoji" style="min-width:44px;height:42px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:18px;cursor:pointer;">😊</button>
+                        <input class="text-input emoji-text-input" id="autoRespEmojiInput" placeholder="Click button or type emoji (:name:)" type="text" style="flex:1;height:42px;"/>
+                    </div>
+                </div>
+
+                <button class="btn-action-primary" id="addAutoRespBtn" style="margin-top: 14px;" type="button">
                     <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
                     Add Auto-Responder Rule
                 </button>
