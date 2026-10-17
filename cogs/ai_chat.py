@@ -605,15 +605,19 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         max_tokens: int = 750
     ) -> str:
         """Call OpenRouter API with prioritized fallback models, multi-key pooling, and Groq fallback."""
+        ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
         try:
             from dotenv import load_dotenv
-            load_dotenv(override=True)
+            load_dotenv(dotenv_path=ENV_PATH, override=True)
         except Exception:
             pass
 
         openrouter_keys = self._get_api_keys()
         gemini_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         groq_key = os.getenv("GROQ_API_KEY")
+        ai_provider = os.getenv("AI_PROVIDER", "").strip().lower()
+
+        print(f"[AIChat Engine] Provider: {ai_provider!r} | Groq Key: {'SET' if groq_key else 'NONE'} | OpenRouter Keys: {len(openrouter_keys)} | Gemini Key: {'SET' if gemini_key else 'NONE'}")
 
         if not openrouter_keys and not gemini_key and not groq_key:
             return "My AI key is not configured in `.env` yet, darling. Please add `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, or `GROQ_API_KEY`!"
@@ -1098,7 +1102,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 await asyncio.sleep(0.5)
 
         except Exception as e:
+            import traceback
             print(f"[AIChat Error] {e}")
+            traceback.print_exc()
             try:
                 await thinking_msg.edit(
                     content="Oh dear, my thoughts got a little tangled in the clouds. ✨ Please ask me again in just a moment!",
