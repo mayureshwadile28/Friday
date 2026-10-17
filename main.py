@@ -81,7 +81,8 @@ async def on_ready():
         "cogs.music",
         "cogs.afk",
         "cogs.welcomer",
-        "cogs.ai_chat"
+        "cogs.ai_chat",
+        "cogs.temp_voice"
     ]
     for cog in cogs_list:
         try:

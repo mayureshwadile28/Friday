@@ -127,10 +127,25 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /media_whitelist_list - View all members and roles exempt from media-only channel deletion
 *(Note: Server Owner & Administrators have automatic immunity by default)*
 
+🔊 Temporary Voice Channels (Join-to-Create / VC Hub)
+/voice setup <hub_channel> [category] [default_name] [user_limit] - Configure the Voice Hub channel and category (Admin only)
+/voice autohub - Automatically create a '➕ Join to Create' voice channel & 'TEMPORARY CHANNELS' category with full permissions
+/voice status - View current Voice Hub configuration and real-time active rooms
+/voice lock - Lock your temporary room so other members cannot join
+/voice unlock - Unlock your temporary room for everyone
+/voice hide - Hide your temporary room from the server channel list
+/voice unhide - Make your temporary room visible to everyone
+/voice limit <number> - Set room occupant limit (0 for unlimited, 1-99)
+/voice name <new_name> - Rename your temporary voice room
+/voice kick <member> - Disconnect an unwanted user from your temporary room
+/voice claim - Claim ownership of the temporary room if the original creator left
+*(Note: Friday also automatically drops an Interactive In-Chat Button Panel in the temporary VC with Lock, Hide, Limit, Rename, Kick, and Claim buttons!)*
+
 💬 Tag Greeting Protocol
 @Friday - Tagging Friday alone or with a simple greeting ("hi", "heyy", "hello", "yo") prompts a sweet, warm girl-speak greeting that tags the user from 300 non-conversational greetings in data/greetings.json
 
 🌐 Friday Web Control Center (http://localhost:5000)
+- Temporary Voice Studio: Master Voice Hub toggle, One-Click Auto-Setup button (automatically creates Hub VC & Category), Hub channel selector, Category selector, custom room name template ({user}, {username}), default user limit, live active rooms stream (owner, occupants, lock/visibility status), and in-chat button panel cheatsheet.
 - Security Command Center: Master Anti-Nuke toggle, Anti-Raid system hero card (velocity tracking & thresholds), Anti-Spam system hero card (rate limits & flood control), 10 live security channel status pills, Limit & Punish matrix, Instant Punishment matrix, Detect Only matrix, immunity whitelist, and one-click channel creation.
 - Universal Visual Rich Emoji Editor: Interactive contenteditable editors across all modules rendering actual emoji images (<img class="editor-inline-emoji">) for custom server emojis and Unicode emojis, caret position preservation, and glitch-free dot/ellipsis support.
 - First Welcome Studio: Channel selector, active toggle, custom embed title & message editors with dynamic variables ({user}, {username}, {name}, {server}, {member_count}, {channel}), avatar thumbnail toggle, accent color picker (Success, Info, Warning, Danger, or Custom Hex), and one-click live test dispatch.
@@ -144,3 +159,4 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 - Ticket System: Interactive studio with live Discord simulator, panel channel and ticket category routing, support staff role, soft rounded secondary action buttons (border-radius: 8px), direct transcript destination text channel, optional transcript category, private ticket toggle, draft save button, one-click deploy.
 - Music Customizer: Full suite of customizable bot replies for VC events (join, leave, play, pause, queue, filter).
 - State Persistence: Complete multi-module synchronization ensuring no configurations or drafts are reset upon clicking "Sync State".
+

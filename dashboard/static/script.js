@@ -179,7 +179,8 @@ const tabTitles = {
     'responsesSection': 'Custom Bot Responses',
     'automationsSection': 'Auto-React & Auto-Responder',
     'firstWelcomeSection': 'First Chat Welcome',
-    'afkSection': 'AFK System & Pings'
+    'afkSection': 'AFK System & Pings',
+    'tempVoiceSection': 'Temporary Voice Channels (Join-to-Create)'
 };
 
 // ───────────────────── Bot Profile & Avatar Sync ─────────────────────
@@ -1052,6 +1053,7 @@ function setupEventListeners() {
 
     // Initialize Mention Autocomplete
     setupMentionAutocomplete();
+    setupTempVoiceEvents();
 }
 
 // ───────────────────── Stepper Control ─────────────────────
@@ -1299,6 +1301,7 @@ async function loadDataForActiveTab() {
     else if (activeTab === 'automationsSection') await loadAutomationsSettings();
     else if (activeTab === 'firstWelcomeSection') await loadFirstWelcomeSettings();
     else if (activeTab === 'afkSection') await loadAfkSettings();
+    else if (activeTab === 'tempVoiceSection') await loadTempVoiceSettings();
 }
 
 // ───────────────────── Emoji Picker Logic ─────────────────────
@@ -5395,3 +5398,199 @@ function setupFirstWelcomeAndAfkEvents() {
         showToast("🔄 AFK list refreshed.");
     });
 }
+
+// ───────────────────── TEMPORARY VOICE CHANNELS (JOIN-TO-CREATE) ─────────────────────
+
+let currentGuildVoiceChannels = [];
+
+async function loadTempVoiceSettings() {
+    if (!currentGuildId) return;
+    try {
+        const [vcResp, tvResp] = await Promise.all([
+            fetch(`/api/guild/${currentGuildId}/voice-channels`),
+            fetch(`/api/guild/${currentGuildId}/temp-voice`)
+        ]);
+        currentGuildVoiceChannels = await vcResp.json();
+        const tvData = await tvResp.json();
+
+        // Populate Voice Hub select
+        const hubSelect = document.getElementById('tempVoiceHubSelect');
+        if (hubSelect) {
+            hubSelect.innerHTML = '<option value="">Select a voice channel...</option>' +
+                currentGuildVoiceChannels.map(vc => `<option value="${vc.id}">🔊 ${escapeHtml(vc.name)}</option>`).join('');
+            if (tvData.hub_channel_id) hubSelect.value = tvData.hub_channel_id;
+        }
+
+        // Populate Category select
+        const catSelect = document.getElementById('tempVoiceCategorySelect');
+        if (catSelect) {
+            catSelect.innerHTML = '<option value="">Same as Hub Channel (Default)</option>' +
+                (currentGuildCategories || []).map(cat => `<option value="${cat.id}">📁 ${escapeHtml(cat.name)}</option>`).join('');
+            if (tvData.category_id) catSelect.value = tvData.category_id;
+        }
+
+        // Master toggle & label
+        const enabledToggle = document.getElementById('tempVoiceEnabledToggle');
+        const statusLabel = document.getElementById('tempVoiceStatusLabel');
+        if (enabledToggle) {
+            enabledToggle.checked = Boolean(tvData.enabled);
+        }
+        if (statusLabel) {
+            statusLabel.textContent = tvData.enabled ? 'Voice Hub Enabled' : 'Voice Hub Disabled';
+            statusLabel.style.color = tvData.enabled ? '#34d399' : 'var(--text-secondary)';
+        }
+
+        // Inputs
+        const nameInput = document.getElementById('tempVoiceNameInput');
+        if (nameInput) nameInput.value = tvData.default_name || "🔊 {user}'s Room";
+
+        const limitInput = document.getElementById('tempVoiceLimitInput');
+        if (limitInput) limitInput.value = (tvData.user_limit !== undefined) ? tvData.user_limit : 0;
+
+        // Active Rooms
+        renderActiveTempVoiceRooms(tvData.active_rooms || []);
+
+        setTimeout(initCustomSelects, 50);
+    } catch (e) {
+        console.error("Error loading temp voice settings:", e);
+    }
+}
+
+function renderActiveTempVoiceRooms(rooms) {
+    const listEl = document.getElementById('tempVoiceRoomsList');
+    const countEl = document.getElementById('tempVoiceActiveCount');
+    if (countEl) countEl.textContent = rooms.length;
+
+    if (!listEl) return;
+    if (!rooms || rooms.length === 0) {
+        listEl.innerHTML = '<div class="empty-rules-placeholder">No temporary voice rooms are currently active.</div>';
+        return;
+    }
+
+    listEl.innerHTML = '';
+    rooms.forEach(room => {
+        const card = document.createElement('div');
+        card.className = 'tv-room-card';
+
+        const lockPill = room.locked 
+            ? '<span class="tv-status-pill locked">🔒 Locked</span>'
+            : '<span class="tv-status-pill public">🔓 Public</span>';
+
+        const visPill = room.hidden
+            ? '<span class="tv-status-pill hidden-pill">🙈 Hidden</span>'
+            : '';
+
+        const avatarHtml = room.owner_avatar
+            ? `<img src="${room.owner_avatar}" alt="" class="tv-room-avatar">`
+            : `<div class="tv-room-avatar-fallback">${(room.owner_name || 'U').charAt(0).toUpperCase()}</div>`;
+
+        const limitStr = room.limit ? `${room.member_count} / ${room.limit}` : `${room.member_count} users`;
+
+        card.innerHTML = `
+            <div class="tv-room-top">
+                <div class="tv-room-title">
+                    <span>🔊</span>
+                    <span>${escapeHtml(room.name)}</span>
+                </div>
+                <div class="tv-room-pills">
+                    ${lockPill}
+                    ${visPill}
+                </div>
+            </div>
+            <div class="tv-room-meta">
+                <div class="tv-room-owner">
+                    ${avatarHtml}
+                    <span>Owner: <strong>${escapeHtml(room.owner_name)}</strong></span>
+                </div>
+                <div>
+                    <span>Occupants: <strong>${escapeHtml(limitStr)}</strong></span>
+                </div>
+            </div>
+        `;
+        listEl.appendChild(card);
+    });
+}
+
+function setupTempVoiceEvents() {
+    const enabledToggle = document.getElementById('tempVoiceEnabledToggle');
+    const statusLabel = document.getElementById('tempVoiceStatusLabel');
+    if (enabledToggle && statusLabel) {
+        enabledToggle.addEventListener('change', () => {
+            const isChecked = enabledToggle.checked;
+            statusLabel.textContent = isChecked ? 'Voice Hub Enabled' : 'Voice Hub Disabled';
+            statusLabel.style.color = isChecked ? '#34d399' : 'var(--text-secondary)';
+        });
+    }
+
+    const saveBtn = document.getElementById('saveTempVoiceBtn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            if (!currentGuildId) return showToast('⚠️ Select a server first!');
+            saveBtn.disabled = true;
+            try {
+                const payload = {
+                    enabled: document.getElementById('tempVoiceEnabledToggle')?.checked || false,
+                    hub_channel_id: document.getElementById('tempVoiceHubSelect')?.value || null,
+                    category_id: document.getElementById('tempVoiceCategorySelect')?.value || null,
+                    default_name: document.getElementById('tempVoiceNameInput')?.value || "🔊 {user}'s Room",
+                    user_limit: parseInt(document.getElementById('tempVoiceLimitInput')?.value || 0)
+                };
+
+                const resp = await fetch(`/api/guild/${currentGuildId}/temp-voice`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const res = await resp.json();
+                if (res.success) {
+                    showToast('✅ Voice Hub settings saved successfully!');
+                } else {
+                    showToast(`❌ Error: ${res.error || 'Failed to save settings'}`);
+                }
+            } catch (err) {
+                showToast('❌ Network error saving Voice Hub settings');
+            } finally {
+                saveBtn.disabled = false;
+            }
+        });
+    }
+
+    const autoHubBtn = document.getElementById('tempVoiceAutoHubBtn');
+    if (autoHubBtn) {
+        autoHubBtn.addEventListener('click', async () => {
+            if (!currentGuildId) return showToast('⚠️ Select a server first!');
+            autoHubBtn.disabled = true;
+            autoHubBtn.innerHTML = 'Creating...';
+            try {
+                const resp = await fetch(`/api/guild/${currentGuildId}/temp-voice/autohub`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const res = await resp.json();
+                if (res.success) {
+                    showToast(`✨ ${res.message || 'Auto-created Voice Hub!'}`);
+                    await loadTempVoiceSettings();
+                } else {
+                    showToast(`❌ Error: ${res.error || 'Auto-setup failed'}`);
+                }
+            } catch (err) {
+                showToast('❌ Network error during auto-setup');
+            } finally {
+                autoHubBtn.disabled = false;
+                autoHubBtn.innerHTML = `
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Auto-Create Hub Channel &amp; Category
+                `;
+            }
+        });
+    }
+
+    const refreshRoomsBtn = document.getElementById('refreshTempVoiceRoomsBtn');
+    if (refreshRoomsBtn) {
+        refreshRoomsBtn.addEventListener('click', async () => {
+            await loadTempVoiceSettings();
+            showToast('🔄 Refreshed active voice rooms');
+        });
+    }
+}
+

@@ -181,6 +181,42 @@ def get_channels(gid):
         pass
     return jsonify([])
 
+@app.route('/api/guild/<gid>/voice-channels')
+def get_voice_channels(gid):
+    if bot_instance:
+        guild = bot_instance.get_guild(int(gid))
+        if guild:
+            result = [{"id": str(c.id), "name": c.name} for c in guild.voice_channels]
+            return jsonify(result)
+
+    try:
+        resp = requests.get(f"{DISCORD_API}/guilds/{gid}/channels", headers=discord_headers(), timeout=5)
+        if resp.status_code == 200:
+            channels = resp.json()
+            result = [{"id": str(c["id"]), "name": c["name"]} for c in channels if c.get("type") == 2]
+            return jsonify(result)
+    except Exception:
+        pass
+    return jsonify([])
+
+@app.route('/api/guild/<gid>/categories')
+def get_categories(gid):
+    if bot_instance:
+        guild = bot_instance.get_guild(int(gid))
+        if guild:
+            result = [{"id": str(c.id), "name": c.name} for c in guild.categories]
+            return jsonify(result)
+
+    try:
+        resp = requests.get(f"{DISCORD_API}/guilds/{gid}/channels", headers=discord_headers(), timeout=5)
+        if resp.status_code == 200:
+            channels = resp.json()
+            result = [{"id": str(c["id"]), "name": c["name"]} for c in channels if c.get("type") == 4]
+            return jsonify(result)
+    except Exception:
+        pass
+    return jsonify([])
+
 @app.route('/api/guild/<gid>/emojis')
 def get_guild_emojis(gid):
     if bot_instance:
@@ -1570,6 +1606,112 @@ def clear_afk_status(gid):
         return jsonify({"success": True, "message": f"AFK cleared for user {user_id}"})
     
     return jsonify({"success": False, "error": "User not currently AFK"}), 404
+
+# ───────────────────── API: Temp Voice (Join to Create) ─────────────────────
+
+@app.route('/api/guild/<gid>/temp-voice', methods=['GET'])
+def get_temp_voice_config(gid):
+    gid_str = str(gid)
+    cfg = getattr(db, "temp_voice", {}).get(gid_str, {})
+    
+    # Get active rooms from TempVoice cog if loaded
+    active_rooms = []
+    if bot_instance:
+        cog = bot_instance.get_cog("TempVoice")
+        if cog and hasattr(cog, "active_channels"):
+            for ch_id, data in cog.active_channels.items():
+                if data.get("guild_id") == gid_str:
+                    ch = bot_instance.get_channel(int(ch_id))
+                    owner = ch.guild.get_member(data.get("owner_id")) if ch and ch.guild else None
+                    active_rooms.append({
+                        "id": ch_id,
+                        "name": ch.name if ch else data.get("channel_name", "Voice Room"),
+                        "owner_id": str(data.get("owner_id")),
+                        "owner_name": owner.display_name if owner else f"User {data.get('owner_id')}",
+                        "owner_avatar": str(owner.display_avatar.url) if owner and owner.display_avatar else None,
+                        "member_count": len(ch.members) if ch else 0,
+                        "locked": bool(data.get("locked")),
+                        "hidden": bool(data.get("hidden")),
+                        "limit": ch.user_limit if ch else 0
+                    })
+
+    return jsonify({
+        "enabled": bool(cfg.get("enabled", False)),
+        "hub_channel_id": cfg.get("hub_channel_id"),
+        "category_id": cfg.get("category_id"),
+        "default_name": cfg.get("default_name", "🔊 {user}'s Room"),
+        "user_limit": int(cfg.get("user_limit", 0)),
+        "active_rooms": active_rooms
+    })
+
+@app.route('/api/guild/<gid>/temp-voice', methods=['POST'])
+def save_temp_voice_config(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    
+    if not hasattr(db, "temp_voice") or not isinstance(db.temp_voice, dict):
+        db.temp_voice = {}
+
+    db.temp_voice[gid_str] = {
+        "enabled": bool(data.get("enabled", False)),
+        "hub_channel_id": data.get("hub_channel_id") or None,
+        "category_id": data.get("category_id") or None,
+        "default_name": (data.get("default_name") or "🔊 {user}'s Room").strip()[:80],
+        "user_limit": max(0, min(99, int(data.get("user_limit", 0))))
+    }
+    db.save_data()
+    return jsonify({"success": True, "message": "Voice Hub settings saved successfully!"})
+
+@app.route('/api/guild/<gid>/temp-voice/autohub', methods=['POST'])
+def autohub_temp_voice(gid):
+    gid_str = str(gid)
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Bot instance offline"}), 503
+
+    future_result = asyncio.run_coroutine_threadsafe(
+        _create_autohub_coroutine(int(gid)),
+        bot_instance.loop
+    )
+    try:
+        res = future_result.result(timeout=10)
+        return jsonify(res)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+async def _create_autohub_coroutine(guild_id):
+    guild = bot_instance.get_guild(guild_id)
+    if not guild:
+        return {"success": False, "error": "Guild not found"}
+
+    category = discord.utils.get(guild.categories, name="TEMPORARY CHANNELS")
+    if not category:
+        category = await guild.create_category("TEMPORARY CHANNELS", reason="Friday Voice Hub Auto-Setup")
+
+    hub_vc = await guild.create_voice_channel(
+        name="➕ Join to Create",
+        category=category,
+        reason="Friday Voice Hub Auto-Setup"
+    )
+
+    if not hasattr(db, "temp_voice") or not isinstance(db.temp_voice, dict):
+        db.temp_voice = {}
+
+    db.temp_voice[str(guild_id)] = {
+        "enabled": True,
+        "hub_channel_id": str(hub_vc.id),
+        "category_id": str(category.id),
+        "default_name": "🔊 {user}'s Room",
+        "user_limit": 0
+    }
+    db.save_data()
+    return {
+        "success": True,
+        "hub_channel_id": str(hub_vc.id),
+        "hub_channel_name": hub_vc.name,
+        "category_id": str(category.id),
+        "category_name": category.name,
+        "message": f"Created '➕ Join to Create' under '{category.name}'!"
+    }
 
 # ───────────────────── Bot Lifecycle ─────────────────────
 

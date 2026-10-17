@@ -463,10 +463,17 @@ Accessible at `http://localhost:5000` when running [`main.py`](file:///c:/Users/
 11. **Ticket Dispatch Studio:**
     - 2-column studio layout with soft rounded action buttons (`border-radius: 8px`).
     - Destination text channel for direct transcript delivery and draft save capabilities.
-12. **Music Customizer & Universal State Persistence:**
+12. **Temporary Voice Channels (Join-to-Create / VC Hub):**
+    - Master Voice Hub toggle and one-click auto-setup (`/voice autohub` or web button).
+    - Auto-spawns custom, private temporary voice channels when members join the Hub.
+    - In-Chat Interactive Button Panel dropped in the voice room's chat: Lock 🔒, Hide 👁️, User Limit 👥, Rename ✏️, Kick 🚫, and Claim 👑.
+    - Automatic channel deletion when empty.
+    - Real-time active voice rooms stream and control panel in the Web Dashboard.
+13. **Music Customizer & Universal State Persistence:**
     - Full suite of editable bot replies for voice events.
     - Real-time two-way synchronization ensuring configurations persist across restarts and web reloads.
 
 ---
 
 > *Document updated on October 17, 2026 for Friday v2.0*
+

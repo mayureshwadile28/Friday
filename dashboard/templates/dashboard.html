@@ -147,6 +147,17 @@
 </div>
                     AFK System & Pings
                 </a>
+<a class="nav-item" data-tab="tempVoiceSection" href="#">
+<div class="nav-icon-wrap">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16">
+<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+<path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+<line x1="12" x2="12" y1="19" y2="23"></line>
+<line x1="8" x2="16" y1="23" y2="23"></line>
+</svg>
+</div>
+                    Temporary Voice (VC Hub)
+                </a>
 </div>
 </div>
 <!-- Sidebar Footer -->
@@ -3125,6 +3136,147 @@ Click an inquiry button below to open a confidential support ticket with our tea
         </div>
     </div>
 </div> <!-- End #afkSection -->
+
+<!-- ───────────────────── TEMPORARY VOICE CHANNELS (JOIN-TO-CREATE) ───────────────────── -->
+<div class="content-section" id="tempVoiceSection" style="display: none;">
+    <!-- Top Hero Header -->
+    <div class="automation-card" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 14px; align-items: center;">
+                <div class="automation-header-icon" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+                    <svg fill="none" height="22" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="22">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" x2="12" y1="19" y2="23"></line>
+                        <line x1="8" x2="16" y1="23" y2="23"></line>
+                    </svg>
+                </div>
+                <div>
+                    <h2 class="automation-card-title" style="font-size: 18px; margin: 0 0 4px 0;">Temporary Voice Channels (Join-to-Create)</h2>
+                    <p class="automation-card-desc" style="margin: 0; font-size: 13px;">Allow members to join a designated Voice Hub to automatically spawn private rooms equipped with interactive in-chat controls.</p>
+                </div>
+            </div>
+            <!-- Enable/Disable Master Toggle -->
+            <div style="display: flex; align-items: center; gap: 12px; background: rgba(255, 255, 255, 0.03); padding: 8px 16px; border-radius: 12px; border: 1px solid var(--border-subtle);">
+                <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);" id="tempVoiceStatusLabel">Voice Hub Disabled</span>
+                <label class="switch">
+                    <input id="tempVoiceEnabledToggle" type="checkbox"/>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2-Column Studio Grid -->
+    <div class="tempvoice-studio-grid">
+        <!-- LEFT: Setup & Configuration -->
+        <div class="tempvoice-panel">
+            <!-- 1-Click Auto Setup Hero Card -->
+            <div class="tempvoice-card-highlight">
+                <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 8px;">
+                    <span style="font-size: 18px;">✨</span>
+                    <div style="font-weight: 700; font-size: 14px; color: #fff;">One-Click Quick Setup</div>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
+                    Friday can automatically create a <strong>➕ Join to Create</strong> voice channel and a <strong>TEMPORARY CHANNELS</strong> category in your server with all required permissions.
+                </div>
+                <button type="button" class="btn-action-primary" id="tempVoiceAutoHubBtn" style="width: 100%; justify-content: center; height: 38px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Auto-Create Hub Channel &amp; Category
+                </button>
+            </div>
+
+            <!-- Manual / Fine-Tuning Settings Form -->
+            <div class="automation-card" style="margin-top: 16px;">
+                <div class="automation-card-title" style="font-size: 15px; margin-bottom: 14px;">Voice Hub Settings</div>
+                
+                <div style="display: flex; flex-direction: column; gap: 14px;">
+                    <!-- Hub Channel Select -->
+                    <div>
+                        <label class="form-sublabel">Hub Voice Channel ("Join to Create")</label>
+                        <select class="custom-select select-styled searchable-select" id="tempVoiceHubSelect">
+                            <option value="">Select a voice channel...</option>
+                        </select>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Members who join this channel will instantly spawn their own room.</div>
+                    </div>
+
+                    <!-- Category Select -->
+                    <div>
+                        <label class="form-sublabel">Category for New Rooms (Optional)</label>
+                        <select class="custom-select select-styled searchable-select" id="tempVoiceCategorySelect">
+                            <option value="">Same as Hub Channel...</option>
+                        </select>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">New temporary voice channels will be created under this category.</div>
+                    </div>
+
+                    <!-- Default Name Template -->
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                            <label class="form-sublabel">Room Name Template</label>
+                            <div class="resp-vars-wrap">
+                                <span class="resp-var-badge" data-target="tempVoiceNameInput" data-var="{user}">{user}</span>
+                                <span class="resp-var-badge" data-target="tempVoiceNameInput" data-var="{username}">{username}</span>
+                            </div>
+                        </div>
+                        <input class="text-input" id="tempVoiceNameInput" placeholder="🔊 {user}'s Room" type="text" value="🔊 {user}'s Room"/>
+                    </div>
+
+                    <!-- Default User Limit -->
+                    <div>
+                        <label class="form-sublabel">Default User Limit</label>
+                        <input class="text-input" id="tempVoiceLimitInput" max="99" min="0" placeholder="0 (Unlimited)" type="number" value="0"/>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Enter 0 for unlimited, or a maximum member limit (1 to 99).</div>
+                    </div>
+
+                    <!-- Save Button -->
+                    <button class="btn-action-primary" id="saveTempVoiceBtn" type="button" style="margin-top: 6px; width: 100%; justify-content: center; height: 40px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save Voice Hub Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Active Voice Rooms & In-Chat Controls Preview -->
+        <div class="tempvoice-panel">
+            <!-- Active Rooms Card -->
+            <div class="automation-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 14px; margin-bottom: 14px;">
+                    <div>
+                        <h2 class="automation-card-title" style="margin: 0; font-size: 15px;">Active Temporary Rooms (<span id="tempVoiceActiveCount">0</span>)</h2>
+                        <p class="automation-card-desc" style="margin: 2px 0 0 0; font-size: 12px;">Real-time list of temporary voice channels currently open in this server.</p>
+                    </div>
+                    <button type="button" id="refreshTempVoiceRoomsBtn" class="btn-action-secondary" style="height: 34px; gap: 6px; font-size: 12px;">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                        Refresh
+                    </button>
+                </div>
+
+                <div id="tempVoiceRoomsList" class="tempvoice-rooms-scroll">
+                    <div class="empty-rules-placeholder">No temporary voice rooms are currently active.</div>
+                </div>
+            </div>
+
+            <!-- In-Chat Interactive Controls Overview Card -->
+            <div class="automation-card" style="margin-top: 16px;">
+                <div class="automation-card-title" style="font-size: 14px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+                    <span>🎮</span> In-Chat Interactive Control Panel
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin-bottom: 12px;">
+                    Whenever a member spawns a temporary voice room, Friday posts this live button panel directly inside the channel's text chat:
+                </div>
+                <div class="tempvoice-controls-cheatsheet">
+                    <div class="tv-control-badge">🔒 <strong>Lock / Unlock</strong>: Toggle public/private access</div>
+                    <div class="tv-control-badge">👁️ <strong>Hide / Unhide</strong>: Toggle visibility on server list</div>
+                    <div class="tv-control-badge">👥 <strong>User Limit</strong>: Set custom member cap (Modal)</div>
+                    <div class="tv-control-badge">✏️ <strong>Rename</strong>: Change room name on the fly (Modal)</div>
+                    <div class="tv-control-badge">🚫 <strong>Kick Member</strong>: Disconnect unwanted users</div>
+                    <div class="tv-control-badge">👑 <strong>Claim Room</strong>: Transfer ownership if creator leaves</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div> <!-- End #tempVoiceSection -->
 </div> <!-- End .main-container -->
 <!-- Global Emoji Popover -->
 <div class="emoji-popover" id="emojiPopover">
