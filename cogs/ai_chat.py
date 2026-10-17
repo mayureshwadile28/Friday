@@ -627,7 +627,13 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                     "Content-Type": "application/json",
                     "User-Agent": "FridayDiscordBot/1.0"
                 }
-                for g_model in GROQ_FALLBACK_MODELS:
+                groq_model_env = os.getenv("GROQ_MODEL", "").strip()
+                groq_models = [groq_model_env] if groq_model_env else []
+                for m in GROQ_FALLBACK_MODELS:
+                    if m not in groq_models:
+                        groq_models.append(m)
+
+                for g_model in groq_models:
                     g_payload = {
                         "model": g_model,
                         "messages": [
@@ -658,7 +664,13 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                     "Authorization": f"Bearer {gemini_key}",
                     "Content-Type": "application/json"
                 }
-                for gm in GOOGLE_FALLBACK_MODELS:
+                google_model_env = (os.getenv("GEMINI_MODEL") or os.getenv("GOOGLE_MODEL", "")).strip()
+                google_models = [google_model_env] if google_model_env else []
+                for m in GOOGLE_FALLBACK_MODELS:
+                    if m not in google_models:
+                        google_models.append(m)
+
+                for gm in google_models:
                     gm_payload = {
                         "model": gm,
                         "messages": [
