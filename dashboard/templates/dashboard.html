@@ -2708,21 +2708,119 @@ Click an inquiry button below to open a confidential support ticket with our tea
 <div class="section tab-content" id="automationsSection" style="display:none;">
     <div class="section-header">
         <div>
-            <h1 class="section-title">⚡ Auto-React &amp; Auto-Responder</h1>
-            <p class="section-desc">Automatically add emoji reactions or dispatch automated responses whenever configured members are mentioned in chat.</p>
+            <h1 class="section-title">⚡ Auto-Responder &amp; Auto-React</h1>
+            <p class="section-desc">Create smart keyword triggers, member mention auto-replies with rich emojis, and automated reaction dispatches.</p>
         </div>
     </div>
 
-    <div class="automations-grid">
-        <!-- CARD 1: AUTO-REACT -->
+    <!-- 1. HERO STUDIO: AUTO-RESPONDER (MENTIONS & KEYWORDS) -->
+    <div class="automation-card auto-responder-hero-card">
+        <div class="automation-card-header">
+            <div class="automation-header-icon" style="background: rgba(88, 101, 242, 0.15); color: #5865f2;">
+                <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+            </div>
+            <div>
+                <h2 class="automation-card-title">Auto-Responder Studio</h2>
+                <p class="automation-card-desc">Automatically reply and/or react with emojis when a member is tagged or when standalone keywords (e.g. "IP") are typed in chat.</p>
+            </div>
+        </div>
+
+        <div class="autoresponder-studio-layout">
+            <!-- Left Column: Rule Composer Form -->
+            <div class="autoresponder-composer-box">
+                <div class="composer-section-title">Create New Trigger Rule</div>
+
+                <!-- Trigger Type Segment Tabs -->
+                <div class="form-field-full" style="margin-bottom: 14px;">
+                    <label class="form-sublabel">Trigger Type</label>
+                    <div class="mode-segment-group" id="autoRespTypeGroup">
+                        <button type="button" class="mode-segment-btn active" data-type="mention" id="autoRespTypeMentionBtn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            Member Mention (@member)
+                        </button>
+                        <button type="button" class="mode-segment-btn" data-type="word" id="autoRespTypeWordBtn">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
+                            Standalone Word / Keyword (e.g. IP)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Target Member (Shown when type === 'mention') -->
+                <div class="form-field-full" id="autoRespMemberWrap">
+                    <label class="form-sublabel">Target Member</label>
+                    <select class="custom-select select-styled searchable-select" id="autoRespMemberSelect">
+                        <option value="">Select a member...</option>
+                    </select>
+                </div>
+
+                <!-- Standalone Trigger Word (Shown when type === 'word') -->
+                <div class="form-field-full" id="autoRespWordWrap" style="display: none;">
+                    <label class="form-sublabel">Standalone Trigger Word</label>
+                    <input class="text-input" id="autoRespWordInput" placeholder="e.g. IP (matches 'what is the ip?' but NOT 'IPL')" type="text"/>
+                    <span class="field-hint-text">Strict standalone matching: only triggers on whole words or spaced words, preventing false matches like "IPL" or "equipment".</span>
+                </div>
+
+                <!-- Response Message -->
+                <div class="form-field-full" style="margin-top: 14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
+                        <label class="form-sublabel" style="margin-bottom:0;">Automated Response Message</label>
+                        <div class="resp-vars-wrap">
+                            <span class="resp-var-badge" data-target="autoRespTextInput" data-var="{author}">{author}</span>
+                            <span class="resp-var-badge" data-target="autoRespTextInput" data-var="{user}">{user}</span>
+                        </div>
+                    </div>
+                    <div class="resp-input-group">
+                        <input class="text-input" id="autoRespTextInput" placeholder="e.g. {author}, the server IP is play.myserver.com!" type="text"/>
+                        <button class="resp-emoji-btn" data-target="autoRespTextInput" type="button" title="Insert Server Emoji">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                            😊 Emojis
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Optional Emoji Reaction -->
+                <div class="form-field-full" style="margin-top: 14px;">
+                    <label class="form-sublabel">Optional Emoji Reaction (Reacts to triggering message)</label>
+                    <div class="emoji-picker-container" style="display:flex;align-items:center;gap:8px;">
+                        <button class="emoji-picker-btn" id="autoRespEmojiBtn" type="button" title="Choose Reaction Emoji" style="min-width:44px;height:40px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:18px;cursor:pointer;">😊</button>
+                        <input class="text-input emoji-text-input" id="autoRespEmojiInput" placeholder="Click button or type emoji (:name:)" type="text" style="flex:1;height:40px;"/>
+                        <button class="btn-clear-subtle" id="autoRespEmojiClearBtn" type="button" title="Clear reaction emoji" style="display:none;background:none;border:none;color:#94a3b8;cursor:pointer;padding:6px;font-size:14px;">✕</button>
+                    </div>
+                </div>
+
+                <button class="btn-action-primary" id="addAutoRespBtn" style="margin-top: 18px; width: 100%; height: 40px;" type="button">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
+                    Add Auto-Responder Rule
+                </button>
+            </div>
+
+            <!-- Right Column: Active Rules Panel -->
+            <div class="autoresponder-rules-panel">
+                <div class="autoresponder-rules-top">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span class="autoresponder-rules-title">Active Auto-Responder Rules</span>
+                        <span class="autoresponder-count-badge" id="autoRespCount">0</span>
+                    </div>
+                    <span class="autoresponder-hint">Click trash icon to delete</span>
+                </div>
+                <div class="autoresponder-rules-scroll" id="autoRespRulesList">
+                    <div class="empty-rules-placeholder">No auto-responder rules configured yet.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. LOWER GRID: AUTO-REACT (LEFT) & IGNORED CHANNELS (RIGHT) -->
+    <div class="automations-lower-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 24px;">
+        <!-- CARD 2: AUTO-REACT ON MENTION -->
         <div class="automation-card">
             <div class="automation-card-header">
                 <div class="automation-header-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">
-                    <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="20"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                    <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
                 </div>
                 <div>
                     <h2 class="automation-card-title">Auto-React on Mention</h2>
-                    <p class="automation-card-desc">When a user is tagged in chat, Friday automatically reacts to that message with a set emoji.</p>
+                    <p class="automation-card-desc">React with an emoji whenever a member is tagged in chat.</p>
                 </div>
             </div>
 
@@ -2743,8 +2841,8 @@ Click an inquiry button below to open a confidential support ticket with our tea
                         </div>
                     </div>
                 </div>
-                <button class="btn-action-primary" id="addAutoReactBtn" type="button">
-                    <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
+                <button class="btn-action-primary" id="addAutoReactBtn" type="button" style="margin-top: 4px;">
+                    <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="15"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
                     Add Auto-React Rule
                 </button>
             </div>
@@ -2758,155 +2856,37 @@ Click an inquiry button below to open a confidential support ticket with our tea
             </div>
         </div>
 
-        <!-- CARD 2: AUTO-RESPONDER (MENTIONS & WORD TRIGGERS) -->
+        <!-- CARD 3: IGNORED CHANNELS FOR AUTORESPONDER -->
         <div class="automation-card">
             <div class="automation-card-header">
-                <div class="automation-header-icon" style="background: rgba(88, 101, 242, 0.15); color: #5865f2;">
-                    <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="20"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <div class="automation-header-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">
+                    <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="20"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"></line></svg>
                 </div>
                 <div>
-                    <h2 class="automation-card-title">Auto-Responder (Mentions &amp; Keyword Triggers)</h2>
-                    <p class="automation-card-desc">Automatically reply and react when a member is tagged or when standalone words (e.g. "IP") are typed.</p>
+                    <h2 class="automation-card-title">Auto-Responder Ignored Channels</h2>
+                    <p class="automation-card-desc">Friday will never send mention auto-responses inside these ignored channels.</p>
                 </div>
             </div>
 
-            <!-- Form: Add Autoresponder Rule -->
-            <div class="automation-form-box">
-                <!-- Trigger Type Segment Tabs -->
-                <div class="form-field-full" style="margin-bottom: 12px;">
-                    <label class="form-sublabel">Trigger Type</label>
-                    <div class="mode-segment-group" id="autoRespTypeGroup" style="display:flex;gap:8px;margin-top:4px;">
-                        <button type="button" class="mode-segment-btn active" data-type="mention" id="autoRespTypeMentionBtn">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                            Member Mention (@member)
-                        </button>
-                        <button type="button" class="mode-segment-btn" data-type="word" id="autoRespTypeWordBtn">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
-                            Standalone Word / Keyword (e.g. IP)
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Field: Target Member (Shown when type === 'mention') -->
-                <div class="form-field-full" id="autoRespMemberWrap">
-                    <label class="form-sublabel">Target Member</label>
-                    <select class="custom-select select-styled searchable-select" id="autoRespMemberSelect">
-                        <option value="">Select a member...</option>
+            <div class="automation-form-box" style="flex-direction: row; gap: 12px; align-items: flex-end;">
+                <div style="flex: 1;">
+                    <label class="form-sublabel">Select Channel to Ignore</label>
+                    <select class="custom-select select-styled searchable-select" id="autoRespIgnoreChannelSelect">
+                        <option value="">Select a channel...</option>
                     </select>
                 </div>
-
-                <!-- Field: Trigger Word (Shown when type === 'word') -->
-                <div class="form-field-full" id="autoRespWordWrap" style="display: none;">
-                    <label class="form-sublabel">Standalone Trigger Word</label>
-                    <input class="text-input" id="autoRespWordInput" placeholder="e.g. IP (matches 'what is the ip?' but NOT 'IPL')" type="text"/>
-                    <span style="font-size: 11px; color: #94a3b8; margin-top: 4px; display: block;">Strict standalone matching: only triggers on whole words or spaced words, preventing false matches like "IPL" or "equipment".</span>
-                </div>
-
-                <!-- Field: Response Message -->
-                <div class="form-field-full" style="margin-top: 12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
-                        <label class="form-sublabel">Automated Response Message</label>
-                        <div class="resp-vars-wrap">
-                            <span class="resp-var-badge" data-target="autoRespTextInput" data-var="{author}">{author}</span>
-                            <span class="resp-var-badge" data-target="autoRespTextInput" data-var="{user}">{user}</span>
-                        </div>
-                    </div>
-                    <div class="resp-input-group">
-                        <input class="text-input" id="autoRespTextInput" placeholder="e.g. {author}, the server IP is play.myserver.com!" type="text"/>
-                        <button class="resp-emoji-btn" data-target="autoRespTextInput" type="button" title="Insert Server Emoji" style="display:inline-flex;align-items:center;gap:6px;">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
-                            😊 Emojis
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Field: Optional Reaction Emoji -->
-                <div class="form-field-full" style="margin-top: 12px;">
-                    <label class="form-sublabel">Optional Emoji Reaction (Reacts to the message)</label>
-                    <div class="emoji-picker-container" style="display:flex;align-items:center;gap:10px;">
-                        <button class="emoji-picker-btn" id="autoRespEmojiBtn" type="button" title="Choose Reaction Emoji" style="min-width:44px;height:42px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:8px;font-size:18px;cursor:pointer;">😊</button>
-                        <input class="text-input emoji-text-input" id="autoRespEmojiInput" placeholder="Click button or type emoji (:name:)" type="text" style="flex:1;height:42px;"/>
-                    </div>
-                </div>
-
-                <button class="btn-action-primary" id="addAutoRespBtn" style="margin-top: 14px;" type="button">
-                    <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
-                    Add Auto-Responder Rule
+                <button class="btn-action-primary" id="addIgnoreChannelBtn" style="white-space: nowrap; height: 38px;" type="button">
+                    <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="15"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
+                    Ignore Channel
                 </button>
             </div>
 
-            <!-- List of Active Autoresponder Rules -->
-            <div class="automation-rules-wrap">
-                <div class="automation-rules-header">Active Auto-Responder Rules (<span id="autoRespCount">0</span>)</div>
-                <div class="automation-rules-list" id="autoRespRulesList">
-                    <div class="empty-rules-placeholder">No auto-responder rules configured yet.</div>
+            <div class="ignored-channels-wrap">
+                <div class="automation-rules-header">Currently Ignored Channels (<span id="autoRespIgnoredCount">0</span>)</div>
+                <div class="ignored-channels-chips" id="autoRespIgnoredChipsList">
+                    <div class="empty-rules-placeholder">No channels ignored. Auto-responder operates server-wide.</div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- CARD 3: IGNORED CHANNELS FOR AUTORESPONDER -->
-    <div class="automation-card" style="margin-top: 20px;">
-        <div class="automation-card-header">
-            <div class="automation-header-icon" style="background: rgba(239, 68, 68, 0.15); color: #ef4444;">
-                <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="20"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"></line></svg>
-            </div>
-            <div>
-                <h2 class="automation-card-title">Auto-Responder Ignored Channels</h2>
-                <p class="automation-card-desc">Friday will never send mention auto-responses inside these ignored channels.</p>
-            </div>
-        </div>
-
-        <div class="automation-form-box" style="flex-direction: row; gap: 12px; align-items: flex-end;">
-            <div style="flex: 1;">
-                <label class="form-sublabel">Select Channel to Ignore</label>
-                <select class="custom-select select-styled searchable-select" id="autoRespIgnoreChannelSelect">
-                    <option value="">Select a channel...</option>
-                </select>
-            </div>
-            <button class="btn-action-primary" id="addIgnoreChannelBtn" style="white-space: nowrap; height: 38px;" type="button">
-                <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
-                Ignore Channel
-            </button>
-        </div>
-
-        <div class="ignored-channels-wrap">
-            <div class="automation-rules-header">Currently Ignored Channels (<span id="autoRespIgnoredCount">0</span>)</div>
-            <div class="ignored-channels-chips" id="autoRespIgnoredChipsList">
-                <div class="empty-rules-placeholder">No channels ignored. Auto-responder operates server-wide.</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- CARD 4: AI CHAT THINKING STATUS & RESPONSE -->
-    <div class="automation-card" style="margin-top: 20px;">
-        <div class="automation-card-header">
-            <div class="automation-header-icon" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">
-                <svg fill="none" height="20" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="20"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
-            </div>
-            <div>
-                <h2 class="automation-card-title">AI Processing Status (Thinking... 💭)</h2>
-                <p class="automation-card-desc">Personalize the real-time thinking cloud indicator Friday posts while generating her conversational AI response.</p>
-            </div>
-        </div>
-
-        <div class="automation-form-box">
-            <div class="form-field-full">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
-                    <label class="form-sublabel">Thinking Message Placeholder</label>
-                    <div class="resp-vars-wrap">
-                        <span class="resp-var-badge" data-target="autoAiThinkingInput" data-var="{user}">{user}</span>
-                    </div>
-                </div>
-                <div class="resp-input-group">
-                    <input class="text-input" id="autoAiThinkingInput" placeholder="Thinking... 💭" type="text"/>
-                    <button class="resp-emoji-btn" data-target="autoAiThinkingInput" type="button" title="Insert Emoji" style="display:inline-flex;align-items:center;gap:6px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg> Emojis</button>
-                </div>
-            </div>
-            <button class="btn-action-primary" id="saveAiThinkingBtn" style="margin-top: 10px;" type="button">
-                <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="15"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                Save Thinking Message
-            </button>
         </div>
     </div>
 </div> <!-- End #automationsSection -->

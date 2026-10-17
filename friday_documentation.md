@@ -1,217 +1,417 @@
-# 🤖 Friday — Discord Bot Documentation
+# 🤖 Friday — Complete System Documentation
 
-> **Version:** 1.1 · **Library:** discord.py · **Language:** Python 3 · **Command Style:** Slash Commands (App Commands)
-> **Source:** [`Friday.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/Friday.py)
-
----
-
-## What is Friday?
-
-Friday is a **general-purpose Discord bot** built with `discord.py`. She is designed to be a server's all-in-one security guard, moderator, and community engagement tool — all controlled through modern Discord **Slash Commands** (`/`).
-
-Friday uses a **persistent JSON memory system** ([`friday_memory.json`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/friday_memory.json)) to save all settings, XP data, banned words, whitelists, reaction role configurations, and ignored privacy channels across restarts. Every setting is scoped **per-server (guild)**, so Friday can run on multiple servers simultaneously with independent configs.
+> **Version:** 2.0 · **Library:** discord.py · **Language:** Python 3 · **Architecture:** Modular Cog System · **Dashboard:** Flask Web Control Center
+> **Source:** [`main.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/main.py) · [`Friday.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/Friday.py)
 
 ---
 
-## Architecture & Permissions Philosophy
+## 🌟 What is Friday?
 
-Friday employs a strict, layered permissions model:
-- **Administrators ONLY:** Critical infrastructure like Anti-Nuke security limits and toggles.
-- **Staff (Moderators):** Day-to-day operations like Anti-Abuse chat filters, reaction panels, expressions, channel privacy, and direct moderation (kicks, bans, purges).
-- **Everyone:** Fun commands, utility info, and leveling stats.
+**Friday** is a high-performance, general-purpose Discord companion, security guardian, and server automation engine. She combines:
+- **Enterprise Server Defense:** Multi-tier Anti-Nuke, high-speed Anti-Raid velocity tracking, duplicate flood Anti-Spam protection, and 10 automatic audit log channels.
+- **Conversational Intelligence:** High-uptime LLM chat engine (Groq, OpenRouter, Google Gemini) featuring conversational memory, live Google news search, user persona learning, server instructions, and safety guardrails.
+- **Member Care & Welcome:** First-message welcome greeting detection for newly joined members, and an intelligent AFK tracker with automatic `[AFK]` nickname prefixing and missed ping tracking.
+- **Precision Keyword & Mention Auto-Responder:** Strict word-boundary matching engine preventing substring false positives (e.g. matching `ip` but never `IPL`), paired with custom reaction emoji dispatches and channel exemptions.
+- **Pure YouTube Audio Engine:** High-fidelity 48kHz music streaming strictly from YouTube official releases with live autocomplete and real-time DSP Equalizer switching.
+- **Unified Web Control Center:** Sleek dark-mode dashboard running locally at `http://localhost:5000` with an authentic Discord simulator, real-time sync, and the **Universal Visual Rich Emoji Editor** displaying actual emoji images in all text inputs.
+
+Friday operates with a **persistent JSON database** ([`friday_memory.json`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/friday_memory.json)), ensuring all server configurations, XP leaderboards, security limits, ticket panels, first-welcome settings, and auto-responder rules survive bot restarts and reboots. Every setting is strictly isolated per Discord Guild.
+
+---
+
+## 🏛️ System Architecture & Layered Hierarchy
+
+Friday is built on a modular 15-cog architecture loaded dynamically on startup via [`main.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/main.py), paired with an asynchronous Flask Web Dashboard running in a background daemon thread sharing the unified [`database.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/database.py) instance.
 
 ```mermaid
 graph TD
-    A["Friday.py — Single-file Bot"] --> B["Persistent Memory<br/>friday_memory.json"]
-    A --> C["Event Listeners"]
-    A --> D["Slash Commands"]
+    M["main.py — Core Engine"] --> DB["Persistent Database<br/>database.py / friday_memory.json"]
+    M --> WB["Flask Web Control Center<br/>dashboard/app.py (Port 5000)"]
+    M --> COGS["Modular Extensions (cogs/)"]
 
-    D --> D1["⚙️ Security & Anti-Nuke (Admins)"]
-    D --> D2["🛡️ Moderation (Staff)"]
-    D --> D3["🔒 Channel Privacy (Staff)"]
-    D --> D4["🤬 Anti-Abuse Filter (Staff)"]
-    D --> D5["🎉 Community & Leveling (Mixed)"]
-    D --> D6["🎨 Expressions (Staff)"]
-    D --> D7["📊 Utility (Mixed)"]
+    COGS --> C1["🛡️ cogs.moderation"]
+    COGS --> C2["⚙️ cogs.security (Anti-Nuke/Raid/Spam)"]
+    COGS --> C3["🤖 cogs.ai_chat (Groq/OpenRouter/Gemini)"]
+    COGS --> C4["💤 cogs.afk (Status & Ping Tracking)"]
+    COGS --> C5["👋 cogs.welcomer (First Welcome Engine)"]
+    COGS --> C6["🎨 cogs.expressions (Autoresponder & Reactions)"]
+    COGS --> C7["🔒 cogs.privacy (Lockdown & Channel Protection)"]
+    COGS --> C8["🤬 cogs.anti_abuse (Chat Word Filter)"]
+    COGS --> C9["🎉 cogs.leveling (XP & Milestone Cards)"]
+    COGS --> C10["🎭 cogs.reaction_roles (Panel Dispatcher)"]
+    COGS --> C11["🎫 cogs.tickets (HTML Archiving & Routing)"]
+    COGS --> C12["📢 cogs.announcements (Self-Broadcaster)"]
+    COGS --> C13["🖼️ cogs.media (Media-Only Enforcement)"]
+    COGS --> C14["🎵 cogs.music (Pure YouTube Audio Engine)"]
+    COGS --> C15["📊 cogs.utility (Latency, Jokes & Sync)"]
 ```
+
+### Layered Permissions Model
+- **👑 Server Owner & Administrators:** Complete control over Anti-Nuke thresholds, server-wide AI instructions, security audit generation, channel lockdowns, and whitelist assignments.
+- **🛡️ Staff & Moderators (`Manage Messages` / `Moderate Members`):** Day-to-day enforcement, warnings, timeouts, bans, purges, auto-responder rules, and announcement broadcasts.
+- **👥 Server Members:** Natural AI conversation, AFK mode, music playback, rank cards, leaderboard inspection, and Hinglish joke queries.
 
 ---
 
-## 🗂️ Feature Breakdown
+## 🗂️ Complete Feature Breakdown
+
+---
 
 ### 1. 🛡️ Moderation Commands
-Standard moderation toolkit with **role hierarchy checks** — users cannot act on members with equal or higher roles (unless they are the server owner).
+The moderation toolkit enforces Discord's role hierarchy to prevent abuse (moderators cannot punish members with equal or higher roles). All actions are logged into Friday's security audit channels.
 
-| Command | Description | Permission Required |
-|---|---|---|
-| `/ban @member [reason]` | Bans a member from the server | `Ban Members` |
-| `/unban <user> [reason]` | Unbans a user by username, tag, or numeric ID (with live autocomplete) | `Ban Members` |
-| `/warn @member [reason] [delivery]` | Issues formal warning with flexible dispatch (Both, DM Only, or Channel Chat) | `Moderate Members` |
-| `/warnings @member` | Displays a member's active warning history with IDs and timestamps | `Moderate Members` |
-| `/clearwarns @member [warn_id]` | Clears all warnings or a specific warning ID for a member | `Moderate Members` |
-| `/timeout @member <minutes> [reason]` | Mutes a member for a duration | `Moderate Members` |
-| `/untimeout @member [reason]` | Removes an active timeout early | `Moderate Members` |
-| `/purge <amount>` | Bulk-deletes messages in the current channel | `Manage Messages` |
-| `@Friday @member <nick>` | Mentions-based nickname changer (leave `<nick>` blank to reset) | `Manage Nicknames` |
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/ban` | `@member [reason]` | Permanently bans a member from the server | `Ban Members` |
+| `/unban` | `<user> [reason]` | Unbans a user by username, tag, or numeric ID with live autocomplete | `Ban Members` |
+| `/warn` | `@member [reason] [delivery]` | Issues a formal warning (`delivery`: Both, DM Only, or Channel Chat) | `Moderate Members` |
+| `/warnings` | `@member` | Displays all active warning IDs, timestamps, and reasons for a member | `Moderate Members` |
+| `/clearwarns` | `@member [warn_id]` | Clears all warnings or a specific warning ID for a member | `Moderate Members` |
+| `/timeout` | `@member <minutes> [reason]` | Applies a temporary timeout (mute) to a member | `Moderate Members` |
+| `/untimeout` | `@member [reason]` | Lifts an active timeout from a member early | `Moderate Members` |
+| `/purge` | `<amount>` | Bulk-deletes messages (1–100) in the current channel | `Manage Messages` |
+| `@Friday` | `@member <new nickname>` | Changes a user's nickname (requires Manage Nicknames permission) | `Manage Nicknames` |
 
 ---
 
 ### 2. ⚙️ Anti-Nuke, Anti-Raid & Security Command Center
-Friday's flagship enterprise security architecture. Combines audit log tracking, message velocity filters, and instant action enforcement across three dedicated security tiers:
-1. **Limit & Punish:** Enforces penalties (Ban, Kick, Strip Roles, Timeout) when destructive actions exceed thresholds in a 60s rolling window (Mass Ban, Mass Kick, Role Create/Delete, Channel Create/Delete, Mention Spam).
-2. **Instant Punishment:** Enforces immediate penalties upon detection (Unauthorized Bot Add, Mass Pruning, Dangerous Admin Permissions, Vanity URL Change, Server Rename, Server Icon Change, Role/Channel Rename, Emoji Delete/Rename, Invite Delete).
+Friday's multi-layered defense system safeguards the server against compromised staff accounts, rogue bots, raid attacks, and spam floods.
+
+#### Security Layers:
+1. **Limit & Punish:** Enforces penalties (Ban, Kick, Strip Roles, Timeout) when destructive actions exceed thresholds in a rolling 60-second window (Mass Ban, Mass Kick, Role Create/Delete, Channel Create/Delete, Mention Spam).
+2. **Instant Punishment:** Immediate enforcement upon detecting unauthorized bot additions, mass pruning, dangerous administrator permissions, vanity URL modifications, server renames, server icon alterations, role/channel renames, emoji deletion/renaming, and invite deletions.
 3. **Detect Only:** Auto-deletes and silently logs Discord invite link spam and ghost pings.
-4. **Anti-Raid System:** Tracks member join velocity. If joins exceed threshold (e.g. >5 joins in 10s), Friday engages auto-quarantine/lockdown and alerts `#audit-antiraid`.
-5. **Anti-Spam System:** Detects message bursts (>5 msgs in 4s) or duplicate flood spam (>3 repeated messages), automatically purges messages, applies a 10-minute timeout, and alerts `#audit-antispam`.
-6. **10 Dedicated Audit Channels:** Organizes logs under "Friday Security Logs" category across:
-   `#audit-antiraid`, `#audit-antispam`, `#audit-roles`, `#audit-channels`, `#audit-antinuke`,
-   `#audit-banned`, `#audit-deleted`, `#audit-timeouts`, `#audit-whitelisted`, `#audit-abuse`.
+4. **Anti-Raid Velocity Tracking:** Monitors member join velocity (e.g. >5 joins in 10 seconds). Exceeding thresholds triggers quarantine lockdown and alerts `#audit-antiraid`.
+5. **Anti-Spam Flood Filter:** Detects message bursts (>5 messages in 4 seconds) or duplicate message flooding (>3 repeated messages), automatically purges offending messages, applies a 10-minute timeout, and alerts `#audit-antispam`.
+6. **10 Dedicated Audit Channels:** Auto-created and organized under the "Friday Security Logs" category:
+   - `#audit-antiraid`, `#audit-antispam`, `#audit-roles`, `#audit-channels`, `#audit-antinuke`
+   - `#audit-banned`, `#audit-deleted`, `#audit-timeouts`, `#audit-whitelisted`, `#audit-abuse`
 
-| Command | Description | Permission Required |
-|---|---|---|
-| `/antinuke_toggle <ON/OFF>` | Master switch enabling or disabling all automated security punishments | `Administrator` |
-| `/antiraid <enable/disable>` | Toggle high-speed mass join velocity tracking & auto-quarantine | `Administrator` |
-| `/antispam <enable/disable>` | Toggle rapid message burst & duplicate flood filter | `Administrator` |
-| `/security_status` | Comprehensive status overview of all 10 security audit channels & matrices | `Administrator` |
-| `/antinuke_limit <action> <limit>`| Sets threshold limits for destructive actions within 60 seconds | `Administrator` |
-| `/antinuke_refresh` | Auto-creates the "Friday Security Logs" category and all 10 audit channels | `Administrator` |
-| `/antinuke_sync` | Auto-scans and re-links existing security audit channels across the server | `Administrator` |
-| `/whitelist_add @user` | Makes a user completely immune to anti-nuke, anti-raid, and anti-spam detection | `Administrator` |
-| `/whitelist_remove @user` | Removes a user's security immunity | `Administrator` |
-
----
-
-### 3. 🔒 Channel Privacy System
-A powerful tool to lock down the server during raids, or simply manage private channels efficiently. Includes a failsafe so you don't accidentally lock members out of the entire server.
-
-| Command | Description | Permission Required |
-|---|---|---|
-| `/private [channel]` | Makes a specific channel private (`@everyone` read = False) | `Manage Channels` |
-| `/unprivate [channel] [all_channels]` | Unprivates a specific channel or ALL channels (Protects Security Logs) | `Manage Channels` |
-| `/private_category <category>` | Makes an entire category and all its channels private | `Manage Channels` |
-| `/unprivate_category <category>` | Unprivates a category and all its channels (Blocks Security Logs) | `Manage Channels` |
-| `/ignore_private_add <channel>` | Adds a channel to the ignore list (won't be hit by force private) | `Manage Channels` |
-| `/ignore_private_remove <channel>` | Removes a channel from the ignore list | `Manage Channels` |
-| `/force_private` | Initiates Lockdown: Makes all channels private EXCEPT ignored channels, which become Read-Only so members can read but not chat. | `Manage Channels` |
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/antinuke_toggle` | `<ON/OFF>` | Master switch enabling or disabling automated security punishments | `Administrator` |
+| `/antiraid` | `<enable/disable>` | Toggle high-speed mass join velocity tracking & auto-quarantine | `Administrator` |
+| `/antispam` | `<enable/disable>` | Toggle rapid message burst and duplicate flood filter | `Administrator` |
+| `/security_status` | *None* | Comprehensive overview of all 10 security audit channels & matrices | `Administrator` |
+| `/antinuke_limit` | `<action> <limit>` | Sets threshold limits for destructive actions within a 60-second window | `Administrator` |
+| `/antinuke_refresh` | *None* | Auto-creates the "Friday Security Logs" category and all 10 audit channels | `Administrator` |
+| `/antinuke_sync` | *None* | Auto-scans and re-links existing security audit channels across the server | `Administrator` |
+| `/whitelist_add` | `@user` | Makes a user completely immune to anti-nuke, anti-raid, and anti-spam actions | `Administrator` |
+| `/whitelist_remove` | `@user` | Revokes a user's security immunity | `Administrator` |
 
 ---
 
-### 4. 🤬 Anti-Abuse Chat Filter
-A **real-time word filter** that scans every message (and edited messages via `on_message_edit`) against a per-server banned word list. Triggering it auto-deletes the message and alerts the `#audit-abuse` log channel.
+### 3. 🤖 AI Conversational Assistant & Natural Language Engine
+Powered by [`cogs/ai_chat.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/ai_chat.py), Friday features a resilient, multi-provider LLM pipeline with high uptime, charming personality, and deep server awareness.
 
-| Command | Description | Permission Required |
-|---|---|---|
-| `/anti_abuse <words>` | Add words to the filter (comma-separated) | `Manage Messages` |
-| `/anti_abuse_remove <word>` | Remove a specific word from the filter | `Manage Messages` |
-| `/anti_abuse_list` | View all currently banned words | `Manage Messages` |
-| `/anti_abuse_whitelist_add @user` | Make a user immune to the word filter | `Manage Messages` |
-| `/anti_abuse_whitelist_remove @user`| Remove a user's immunity | `Manage Messages` |
+#### Multi-Tier LLM Fallback Pipeline:
+- **Groq (Ultra-Fast Primary):** `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `qwen/qwen3.8-27b`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b`.
+- **OpenRouter (High-Capacity Free Tier):** `google/gemma-4-26b-a4b-it:free`, `nvidia/nemotron-3-super-120b-a12b:free`, `liquid/lfm-2.5-2.6b:free`, `google/gemma-4-31b-it:free`, `nvidia/nemotron-3.5-super-vl:free`.
+- **Google Gemini (Resilient Fallback):** `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-3.5-flash`.
 
----
+#### Core Features:
+1. **Conversational Memory:** Maintains a rolling multi-turn memory session (up to 8 messages) per user/channel. Replying to Friday's messages or tagging her continues the conversation seamlessly.
+2. **Real-Time Google News & Live Search:** Automatically detects search intent (news, cricket scores, crypto prices, world events) and queries Google News RSS in real-time, injecting verified summaries into the LLM context.
+3. **Smart Date & Time Handling:** Direct queries regarding current date, time, day, or year are resolved instantly using the host's real-time clock without triggering unnecessary web searches or hallucinations.
+4. **Persona Learning:** Gently learns positive personal facts, favorite games, hobbies, and preferences during casual chat (e.g. "I love Valorant", "My favorite color is emerald"), saving them to `db.user_memories` to personalize future interactions.
+5. **Server Instructions:** Server Owners and Admins can configure custom behavioral rules (e.g., "Always welcome gamers warmly" or "Speak in casual Hinglish"), which are dynamically embedded into Friday's system prompt.
+6. **Community Safety & Moderation Guardrails:**
+   - Blocks severe 18+/NSFW profanity patterns with a polite request to keep chat clean.
+   - Gracefully declines requests to take moderation actions (kick, ban, mute, purge), reminding users that Friday is a companion and directing them to human staff.
+   - **Mention Sanitization:** Strips raw `@everyone`, `@here`, and mass ping syntax to prevent ping abuse.
 
-### 5. 🎉 XP & Leveling System
-Tracks message activity and rewards **15–40 XP per message** with a **60-second cooldown**.
-Features **3 selectable Level-Up Notification Modes**:
-- **Text Only:** Sends rich markdown congratulations message.
-- **Image Card Only:** Generates and uploads a high-resolution PIL graphical milestone badge card.
-- **Both (Text + Image Card):** Sends the custom text message together with the milestone card attached.
-
-| Command | Description | Permission Required |
-|---|---|---|
-| `/level_setup #channel` | Activates leveling and sets the notification channel | `Manage Channels` |
-| `/level_mode <text/image/both>` | Selects notification dispatch mode (Text, Image Card, or Both) | `Manage Channels` |
-| `/rank [@user]` | Shows a visual rank card (custom generated image) | Everyone |
-| `/leaderboard` | Displays the top 10 most active members | Everyone |
-
----
-
-### 6. 🎨 Expressions — Emoji & Sticker Theft
-Tools for staff to quickly populate the server with emojis and stickers.
-
-| Command | Description | Permission Required |
-|---|---|---|
-| `/emoji_steal <emojis>` | Paste one or more custom emojis to bulk-steal them | `Manage Expressions` |
-| **Right-Click → Steal Sticker** | Context menu on any message to steal its sticker | `Manage Expressions` |
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/ask` | `<question>` | Direct slash command to ask Friday anything with her charming personality | Everyone |
+| `/clearchat` | *None* | Resets recent multi-turn conversation memory with Friday in the channel | Everyone |
+| `/mymemory` | `<action: view/clear>` | Views or clears personal persona facts Friday has learned about you | Everyone |
+| `/server_instruction` | `<action: add/view/clear> [instruction]` | Configures server-wide custom behavioral instructions for Friday | `Administrator` |
+| In-Chat Mention | `@Friday <message>` or Reply | Triggers intelligent conversational response with multi-turn context | Everyone |
 
 ---
 
-### 7. 🎭 Reaction Roles
-Create interactive role-assignment panels where users react to claim roles.
+### 4. 💤 Member AFK & Ping Tracking System
+Managed by [`cogs/afk.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/afk.py), this module manages away statuses, alerts taggers, and saves missed mentions.
 
-| Command | Description | Permission Required |
-|---|---|---|
-| `/reaction_panel` | Creates an embed panel with up to 3 emoji-role pairs | `Manage Roles` |
+#### Core Behavior:
+- **Nickname Prefixing:** Automatically prepends `[AFK] ` to the member's server nickname upon setting AFK, and seamlessly restores their original nickname when they return.
+- **Mention Notifications:** When another member mentions or replies to an AFK user, Friday sends a notification embed displaying the away duration (`<t:time:R>`) and reason.
+- **Missed Pings Summary:** Captures all pings while the user is away, recording the author, channel, and direct `[Jump to Message]` URLs.
+- **Welcome Back Notification:** Upon the user's return (sending any message in the server), Friday removes their AFK status, reverts their nickname, and presents a compact summary of missed pings.
+- **Autoresponder Deconfliction:** If a mentioned user has an active auto-responder rule, the auto-responder is temporarily suppressed while they are AFK so users receive only the relevant away notice.
 
----
-
-### 8. 🎫 Interactive Ticket System
-Full-fledged interactive ticketing system with dynamic buttons, automated channel provisioning, and authenticated HTML transcript archiving:
-- **Buttons Action Row:** Secondary Discord buttons with soft rounded corners (`border-radius: 8px`) and server emoji icons at the leading position.
-- **Category Routing:** Creates isolated channels (`#ticket-001-general-support`) inside designated category.
-- **Support Staff Role:** Automatically pinged and granted access upon opening.
-- **Confidentiality:** Strict private channel isolation blocking public members.
-- **Direct Transcript Text Channel:** Transcripts can be uploaded directly to a specified text channel or category fallback upon closing.
-- **HTML Transcripts:** Authenticated standalone HTML files complete with creation/close timestamps, participant metadata, message history, and file attachments.
-
-| Command | Description | Permission Required |
-|---|---|---|
-| `/ticket create_ticket_panel` | Deploys an interactive support panel with dynamic buttons | `Manage Channels` |
-| `/ticket handle_role <role>` | Designates support staff role to be granted access and auto-pinged | `Manage Roles` |
-| `/ticket add @user` | Grants a specific user access to an active ticket channel | `Manage Channels` |
-| `/ticket remove @user` | Revokes access for a specific user from an active ticket channel | `Manage Channels` |
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/afk` | `[reason]` | Sets your AFK status with an optional reason (e.g. Studying, Lunch, Sleeping) | Everyone |
 
 ---
 
-### 9. 📢 Self Announcements Dispatcher
-| Command | Description | Permission Required |
-|---|---|---|
-| `/announcement <channel>` | Configures or overwrites the official announcement destination channel | `Manage Channels` |
-| In-Chat Tag Shortcut | Reply to any draft announcement and tag `@Friday announcement kardo` / `@Friday announcement do it` to self-broadcast | `Manage Messages` |
+### 5. 👋 First Message Welcome Engine
+Managed by [`cogs/welcomer.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/welcomer.py), Friday greets new members on their **very first message** in the server.
+
+#### Core Behavior:
+- **First Message Detection:** Monitors incoming messages and greets members who joined the server within the last 7 days upon posting their first-ever chat message.
+- **Customizable Embed:** Displays a sleek box embed with the user's avatar thumbnail, personalized server title, and welcome text.
+- **Dynamic Template Variables:** Supports `{user}`, `{username}`, `{name}`, `{server}`, `{member_count}`, and `{channel}`.
+- **Theme Color Accents:** Selectable presets (`success`, `info`, `warning`, `danger`) or custom hex codes (e.g. `#10b981`).
+- **Dashboard Studio Integration:** Fully configurable via the Web Control Center with real-time card previews and live test dispatch.
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/first_welcome set` | `[channel]` | Sets the destination welcome channel (defaults to current channel if blank) | `Administrator` |
+| `/first_welcome disable` | *None* | Disables first-message welcome greetings for this server | `Administrator` |
+| `/first_welcome status` | *None* | Views current configuration, destination channel, and theme colors | `Administrator` |
+| `/first_welcome test` | *None* | Dispatches an authentic test welcome card to preview formatting | `Administrator` |
+| `/first_welcome message` | `<template>` | Updates the welcome message format using template variables | `Administrator` |
+| `/first_welcome reset` | `[member]` | Clears welcome history for a member or all members to re-trigger greetings | `Administrator` |
+| `/set_welcomer` | `[mode] [channel]` | Shortcut command to set welcome channel (leave empty for current channel) | `Administrator` |
+| `/set_first_welcome` | `[channel]` | Standalone shortcut to set first-welcome destination to current channel | `Administrator` |
 
 ---
 
-### 10. 📊 Utility Commands
-| Command | Description | Permission Required |
-|---|---|---|
-| `/bot_status` | Staff Dashboard: View Friday's current security and system status | `Manage Messages` |
-| `/ping` | Shows bot latency confirmation | Everyone |
-| `/serverinfo` | Displays server info, member counts, and creation date | Everyone |
-| `/joke [category]` | Returns a hilarious Hinglish, Desi, or tech joke from a library of 420 jokes with interactive 'Next Joke 🔄' button | Everyone |
-| `/help` | Full command reference organized by category | Everyone |
-| `/sync` | Force-syncs global slash commands to the server | `Administrator` |
+### 6. 🎨 Expressions, Reactions & Keyword Auto-Responder
+Managed by [`cogs/expressions.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/expressions.py), this module powers emoji theft, auto-reactions on mention, and keyword-triggered automated responses.
+
+#### Precision Word Boundary Engine:
+- **Standalone Keyword Matching:** Uses strict regular expressions `(?<!\w){re.escape(trigger)}(?!\w)` so that words like `ip` trigger on `"what is the ip?"` or `"send ip please"`, but **strictly never** trigger on substrings like `"IPL"` or `"equipment"`.
+- **Reaction Emoji Pairing:** Rules can optionally attach an emoji reaction (custom server emoji or standard Unicode) that Friday will automatically add to the triggering message.
+- **Channel Exemptions:** Channels can be exempted using `/autoresponder ignore_channel` to keep busy or serious channels clean.
+- **Supported Variables:** Reply templates support `{author}` (triggering author mention) and `{user}` (target member name).
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/emoji_steal` | `<emojis>` | Paste one or more custom emojis to bulk-steal and add them to the server | `Manage Expressions` |
+| Context Menu | Right-Click Message → Apps → Steal Sticker | Instantly steals a sticker from any message and uploads it to server | `Manage Expressions` |
+| `/autoreact add` | `@member <emoji>` | Automatically reacts with an emoji whenever `@member` is tagged | `Manage Guild` |
+| `/autoreact remove`| `@member` | Removes the auto-reaction rule for `@member` | `Manage Guild` |
+| `/autoreact list` | *None* | Lists all active auto-reaction mention rules | Everyone |
+| `/autoresponder add` | `<response> [member] [keyword] [emoji]` | Creates an automated reply/reaction when a member is tagged OR a word is typed | `Manage Guild` |
+| `/autoresponder remove` | `[member] [keyword]` | Removes an auto-responder rule by member mention or keyword | `Manage Guild` |
+| `/autoresponder list` | *None* | Lists all active auto-responder rules (mentions and keywords) and ignored channels | Everyone |
+| `/autoresponder ignore_channel` | `#channel` | Disables auto-responder triggers in the specified channel | `Manage Guild` |
+| `/autoresponder unignore_channel` | `#channel` | Re-enables auto-responder triggers in an ignored channel | `Manage Guild` |
 
 ---
 
-## 📦 Persistent Memory Schema
+### 7. 🔒 Channel Privacy & Lockdown System
+Managed by [`cogs/privacy.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/privacy.py), this system enables rapid lockdown during emergencies while protecting critical audit channels.
 
-All data is stored in [`friday_memory.json`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/friday_memory.json) with this structure:
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/private` | `[channel]` | Hides a specific channel from `@everyone` | `Manage Channels` |
+| `/unprivate` | `[channel] [all_channels]` | Restores channel visibility for a specific channel or ALL channels | `Manage Channels` |
+| `/private_category` | `<category>` | Hides an entire category and all contained channels | `Manage Channels` |
+| `/unprivate_category`| `<category>` | Unhides an entire category and all contained channels | `Manage Channels` |
+| `/ignore_private_add`| `<channel>` | Adds a channel to the lockdown exemption list | `Manage Channels` |
+| `/ignore_private_remove`| `<channel>` | Removes a channel from the lockdown exemption list | `Manage Channels` |
+| `/force_private` | *None* | Emergency Lockdown: Hides all channels except exempt channels (which become Read-Only) | `Manage Channels` |
+
+---
+
+### 8. 🤬 Anti-Abuse Chat Filter
+Managed by [`cogs/anti_abuse.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/anti_abuse.py), scans both newly sent messages and edited messages against a custom blacklist.
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/anti_abuse` | `<words>` | Adds words to the filter (comma-separated list) | `Manage Messages` |
+| `/anti_abuse_remove` | `<word>` | Removes a specific word from the filter | `Manage Messages` |
+| `/anti_abuse_list` | *None* | Displays all currently filtered words | `Manage Messages` |
+| `/anti_abuse_whitelist_add` | `@user` | Grants a member immunity from the word filter | `Manage Messages` |
+| `/anti_abuse_whitelist_remove` | `@user` | Revokes a member's filter immunity | `Manage Messages` |
+
+---
+
+### 9. 🎉 Community, XP & Leveling
+Managed by [`cogs/leveling.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/leveling.py), rewards active chatting with 15–40 XP per message (60-second cooldown).
+
+#### Notification Modes:
+1. **Text Only:** Sends a formatted markdown congratulatory announcement.
+2. **Image Card Only:** Generates and uploads a high-resolution PIL graphical milestone badge card.
+3. **Both (Text + Image Card):** Sends the custom text message together with the attached milestone card.
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/level_setup` | `#channel` | Activates leveling and designates the level-up update channel | `Manage Channels` |
+| `/level_mode` | `<text/image/both>` | Selects notification dispatch mode (Text, Image Card, or Both) | `Manage Channels` |
+| `/rank` | `[@user]` | Generates and displays a custom graphical rank card | Everyone |
+| `/leaderboard` | *None* | Displays the top 10 most active server members | Everyone |
+
+---
+
+### 10. 🎭 Reaction Roles
+Managed by [`cogs/reaction_roles.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/reaction_roles.py), provides interactive self-assignable role panels.
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/reaction_panel` | *Interactive* | Creates an embed panel supporting up to 3 emoji-role pairs | `Manage Roles` |
+
+---
+
+### 11. 🎫 Interactive Ticket System
+Managed by [`cogs/tickets.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/tickets.py), provides secure support channel provisioning with authenticated HTML transcript delivery.
+
+- **Dynamic Action Buttons:** Soft rounded Discord buttons (`border-radius: 8px`) with leading emoji icons.
+- **Isolated Channels:** Creates private channels (`#ticket-001-general-support`) hidden from regular members.
+- **Support Staff Routing:** Automatically pings and grants access to designated support staff roles.
+- **Direct Transcript Text Channel:** Delivers full HTML chat transcripts directly to a designated log channel upon closing.
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/ticket create_ticket_panel` | `<channel> <title> <desc> ...` | Deploys an interactive support panel with dynamic buttons | `Administrator` |
+| `/ticket handle_role` | `<role>` | Designates the support staff role to be granted ticket access | `Administrator` |
+| `/ticket add` | `@user` | Grants a specific user access to an active ticket channel | `Manage Channels` |
+| `/ticket remove` | `@user` | Revokes a specific user's access from an active ticket channel | `Manage Channels` |
+
+---
+
+### 12. 📢 Self Announcements Dispatcher
+Managed by [`cogs/announcements.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/announcements.py), streamlines server announcements.
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/announcement` | `<channel>` | Sets or overwrites the official announcement destination channel | `Manage Channels` |
+| In-Chat Reply Shortcut | Tag `@Friday announcement kardo` | Reply to any draft message to broadcast it with embeds & attachments | `Manage Messages` |
+
+---
+
+### 13. 🎵 High-Fidelity Music (Pure YouTube Engine)
+Managed by [`cogs/music.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/music.py), powered by `yt-dlp` and `FFmpeg`.
+
+- **Pure YouTube Audio Search:** Queries official releases and verified artist channels exclusively.
+- **Real-Time Autocomplete:** Google Search suggestion API integration providing suggestions in under 500ms.
+- **Interactive Controller Views:** Balanced 2-row button grid (Pause/Resume, Skip, Shuffle, Loop, Stop, Queue, Like, Vol -, Vol +) and a DSP Equalizer dropdown.
+- **Seamless Real-Time EQ Switching:** 8 DSP presets (`Studio Master`, `Bass Boost`, `Vocal Boost`, `Nightcore`, `Lo-Fi`, `Treble Boost`, `8D Spatial Audio`, `Flat`) applied without restarting playback from 0:00 (seeks seamlessly using `-ss`).
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/join` | *None* | Connects Friday to the user's voice channel | Everyone in VC |
+| `/leave` | *None* | Stops playback, clears queue, and disconnects Friday | Everyone in VC |
+| `/play` | `<music>` | Searches and streams audio from YouTube with live autocomplete | Everyone in VC |
+| `/soundtest` | *None* | Plays a 2-second studio chime to verify voice channel audio output | Everyone in VC |
+| `/pause` | *None* | Pauses active playback | Everyone in VC |
+| `/resume` | *None* | Resumes paused playback | Everyone in VC |
+| `/skip` | *None* | Skips to the next track in queue | Everyone in VC |
+| `/shuffle` | *None* | Shuffles upcoming tracks in the playlist | Everyone in VC |
+| `/volume` | `<1-200>` | Adjusts master playback volume percentage | Everyone in VC |
+| `/queue` | *None* | Displays the current playlist and upcoming tracks | Everyone |
+| `/likes` | *None* | Displays your personal saved favorite tracks | Everyone |
+| `/filter` | `<preset>` | Applies DSP EQ profile in real-time without restarting track | Everyone in VC |
+| `/stop` | *None* | Stops playback immediately and empties queue | Everyone in VC |
+
+---
+
+### 14. 🖼️ Media Only Channels
+Managed by [`cogs/media.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/media.py), restricts specific channels (memes, art, showcases) to media attachments only.
+
+- Deletes text-only messages from non-whitelisted members with a temporary warning notice.
+- Server Owners and Administrators have automatic immunity by default.
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/media` | `<action> [channel] [user] [role]` | Master media channel configuration (Set, Remove, List, Whitelist) | `Manage Channels` |
+| `/media_whitelist_add` | `[user] [role]` | Grants a member or role media-only chat exemption | `Manage Channels` |
+| `/media_whitelist_remove` | `[user] [role]` | Revokes media-only chat exemption from a member or role | `Manage Channels` |
+| `/media_whitelist_list` | *None* | Displays all currently whitelisted members and roles | `Manage Channels` |
+
+---
+
+### 15. 💬 Tag Greeting Protocol
+When a member tags `@Friday` alone or with a simple greeting (`hi`, `hello`, `heyy`, `yo`, `sup`):
+- Responds with a warm, friendly girl-speak greeting that tags the member directly.
+- Randomly selected from **300 unique greetings** in [`data/greetings.json`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/data/greetings.json).
+- Non-conversational greetings distinguish casual tags from full AI queries.
+
+---
+
+### 16. 📊 Utility Commands
+Managed by [`cogs/utility.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/utility.py).
+
+| Command | Syntax & Options | Description | Permission Required |
+|---|---|---|---|
+| `/bot_status` | *None* | Staff Dashboard: View Friday's current security and system status | `Manage Messages` |
+| `/ping` | *None* | Checks bot latency confirmation | Everyone |
+| `/serverinfo` | *None* | Displays server information, member counts, and creation date | Everyone |
+| `/joke` | `[category]` | Returns a Hinglish, Desi, or tech joke from 420 jokes with interactive 'Next Joke 🔄' button | Everyone |
+| `/help` | *None* | Full command reference organized by category | Everyone |
+| `/sync` | *None* | Force-syncs global slash commands to the current server | `Administrator` |
+
+---
+
+## 📦 Persistent Database Schema (`friday_memory.json`)
+
+All configurations are saved in [`friday_memory.json`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/friday_memory.json) and managed by [`database.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/database.py):
 
 ```json
 {
-    "nuke_settings":   { "guild_id": { "channel": 3, "ban": 5 } },
-    "whitelist":       { "guild_id": [user_id, ...] },
+    "nuke_settings": { "guild_id": { "channel": 3, "ban": 5 } },
+    "whitelist": { "guild_id": [ "user_id_1", "user_id_2" ] },
     "antinuke_active": { "guild_id": true },
     "security_settings": {
         "guild_id": {
-            "limits": { ... },
-            "instant": { ... },
-            "detect": { ... },
+            "limits": { "mass_ban": 5, "mass_kick": 5, "channel_create": 3 },
+            "instant": { "bot_add": "ban", "dangerous_perms": "strip_roles" },
+            "detect": { "invite_links": true, "ghost_ping": true },
             "antiraid": { "enabled": true, "join_threshold": 5 },
             "antispam": { "enabled": true, "rate_limit": 5 }
         }
     },
-    "server_logs":     { "guild_id": { "audit-deleted": channel_id, ... } },
-    "banned_words":    { "guild_id": ["word1", "word2"] },
-    "abuse_whitelist": { "guild_id": [user_id, ...] },
-    "xp_data":         { "guild_id": { "user_id": { "xp": 150, "level": 2 } } },
-    "level_channels":  { "guild_id": "channel_id" },
-    "level_modes":     { "guild_id": "both" },
-    "reaction_roles":  { "message_id": { "emoji_str": role_id } },
-    "ignored_private": { "guild_id": [channel_id, ...] },
+    "server_logs": { "guild_id": { "audit-deleted": "channel_id", "audit-antinuke": "channel_id" } },
+    "banned_words": { "guild_id": [ "badword1", "badword2" ] },
+    "abuse_whitelist": { "guild_id": [ "user_id" ] },
+    "xp_data": { "guild_id": { "user_id": { "xp": 240, "level": 3 } } },
+    "level_channels": { "guild_id": "channel_id" },
+    "level_modes": { "guild_id": "both" },
+    "reaction_roles": { "message_id": { "<:emoji:id>": "role_id" } },
+    "ignored_private": { "guild_id": [ "channel_id" ] },
     "announcement_channels": { "guild_id": "channel_id" },
-    "ticket_panels":   { "guild_id": { ... } },
-    "ticket_support_roles": { "guild_id": role_id },
-    "ticket_drafts":   { "guild_id": { ... } }
+    "ticket_panels": { "guild_id": { "panel_id": { ... } } },
+    "ticket_support_roles": { "guild_id": "role_id" },
+    "ticket_drafts": { "guild_id": { ... } },
+    "first_welcome": {
+        "guild_id": {
+            "enabled": true,
+            "channel_id": "channel_id",
+            "title": "WELCOME TO {server}",
+            "message": "Welcome to **{server}**, {user}! Glad to have you here!",
+            "show_avatar": true,
+            "status_color": "success",
+            "custom_hex": "#10b981"
+        }
+    },
+    "first_chat_welcomes": { "guild_id": [ "user_id_welcomed" ] },
+    "afk_data": {
+        "guild_id": {
+            "user_id": {
+                "reason": "Studying for exams",
+                "time": 1729158000.0,
+                "original_nick": "Alex",
+                "nick_changed": true,
+                "mentions": [
+                    {
+                        "author_name": "Sarah",
+                        "author_id": 123456789,
+                        "jump_url": "https://discord.com/channels/...",
+                        "channel_name": "general",
+                        "time": 1729158500.0
+                    }
+                ]
+            }
+        }
+    },
+    "autoreact": { "guild_id": [ { "user_id": "user_id", "emoji": "🌸" } ] },
+    "autoresponder": {
+        "guild_id": {
+            "rules": [
+                { "id": "a1b2c3d4", "type": "word", "trigger": "ip", "response": "Server IP is mc.example.com", "emoji": "🌐" },
+                { "id": "e5f6g7h8", "type": "mention", "user_id": "target_id", "response": "Hey {author}, I am currently busy!", "emoji": "💤" }
+            ],
+            "ignored_channels": [ "channel_id" ]
+        }
+    },
+    "user_memories": { "guild_id": { "user_id": [ "Likes gaming", "Plays Valorant" ] } },
+    "server_instructions": { "guild_id": [ "Keep responses friendly and polite" ] },
+    "media_channels": { "guild_id": [ "channel_id" ] },
+    "media_whitelists": { "guild_id": { "users": [ "user_id" ], "roles": [ "role_id" ] } }
 }
 ```
 
@@ -219,127 +419,54 @@ All data is stored in [`friday_memory.json`](file:///c:/Users/vinod/OneDrive/Des
 
 ## 🌐 Web Control Center (Dashboard)
 
-Accessible locally at `http://localhost:5000` when running [`main.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/main.py).
+Accessible at `http://localhost:5000` when running [`main.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/main.py).
 
-### Modules:
-1. **🛡️ Security & Anti-Nuke Command Center:**
-   - Master Anti-Nuke engine toggle.
-   - Anti-Raid system hero card with join velocity rate thresholds.
-   - Anti-Spam system hero card with burst message limits and flood control.
+### Dashboard Modules:
+1. **Universal Visual Rich Emoji Editor Engine:**
+   - Universal contenteditable text editors across all studios rendering real emoji images (`<img class="editor-inline-emoji">`) for custom server emojis and Unicode emojis.
+   - Preserves cursor position and selection ranges during emoji insertion.
+   - Dot/ellipsis (`...`) glitch protection preventing broken typography.
+2. **Security Command Center:**
+   - Master Anti-Nuke toggle, Anti-Raid velocity card, Anti-Spam burst/flood card.
    - 10 live security channel status pills with single-click auto-creation & sync.
-   - Limit & Punish matrix table (Ban, Kick, Role Create/Delete, Channel Create/Delete, Mention Spam).
-   - Instant Punishment matrix table (Bot Add, Prune, Dangerous Admin Perms, Vanity Change, Server Rename, Server Icon, Role/Channel Rename, Emoji Delete/Rename, Invite Delete).
-   - Detect Only matrix table (Invite Links, Ghost Ping).
+   - Limit & Punish, Instant Punishment, and Detect Only configuration matrices.
    - Immunity Whitelist manager.
-2. **🎉 Leveling & Rewards:**
-   - 3-Way Mode Segmented Switch: Text Only, Image Card Only, or Both.
-   - Custom template editor with single-line markdown headings (`#`, `##`, `###`), subtext (`-#`), bold, italic, spoilers, and dynamic variables (`{user}`, `{level}`).
-   - Universal emoji picker with server custom emojis (static + animated GIFs) and standard emojis.
-   - Real-time Discord chat simulator and live graphical milestone card simulation.
-   - Live test message dispatcher to any server channel.
-3. **💬 @ Mention Autocomplete System:**
-   - Interactive popover appearing in all dashboard text editors when typing `@`.
-   - Autocompletes members (`<@USER_ID>`), roles (`<@&ROLE_ID>`), `@everyone`, and `@here`.
-   - Authentic Discord mention badges rendered in live simulators.
-4. **🤬 Anti-Abuse Filter:**
-   - Banned words tag manager (press Enter to ban).
-   - Filter immunity whitelist selector.
-5. **🔒 Channel & Category Privacy:**
-   - **Global Lockdown:** Single-click server lockdown (hides all text channels except exempt channels, which turn Read-Only).
-   - **Unlock All:** Restores default member permissions across the server.
-   - **Individual Channel Privacy:** Lock (hide) or unlock (reveal) specific text channels.
-   - **Category Privacy:** Lock or unlock entire categories and their channels with one click.
-   - **Lockdown Exempt Channels:** Tag list of safe channels that stay visible during emergency lockdowns.
-6. **🎭 Reaction Roles Deployer:**
-   - Destination channel picker.
-   - Custom panel title & description with markdown formatting and server/default emoji picker.
-   - Dynamic role-emoji mapping builder (supports server static/animated emojis and standard emojis).
-   - Live Discord embed preview with simulated reaction button pills.
-   - One-click deployment and state restoration across syncs.
-7. **📢 Announcements Dispatcher:**
-   - Target destination channel selector & save.
-   - Rich composer with server emojis, Discord markdown shortcut chips, notification pings (`@everyone`, `@here`, None), and customizable color theme accents.
-   - Live simulator and one-click web broadcast.
-8. **🎫 Interactive Ticket Dispatch Studio:**
-   - Live 2-column studio layout with authentic Discord simulator.
-   - Soft rounded action buttons (`border-radius: 8px`).
-   - Destination text channel for direct transcript delivery.
-   - Draft Save button for saving configurations without deploying.
-   - Category provisioning and support role routing.
-9. **🎵 Music & Audio Customizer:**
-   - Full suite of editable custom responses for connection, disconnection, playback, pauses, skips, and queue notices in the Web Dashboard.
-   - Live stream status synchronization.
-10. **🔄 Universal State Persistence:**
-   - State synchronization across all modules ensuring no form selections, drafts, or configs are reset upon clicking "Sync State".
-   - Bot lifecycle management with clean shutdown.
+3. **First Welcome Studio:**
+   - Destination channel selector, enable/disable toggle.
+   - Custom Embed Title & Description editor with variable helpers (`{user}`, `{username}`, `{name}`, `{server}`, `{member_count}`, `{channel}`).
+   - Avatar thumbnail display toggle and theme color accent picker (Success, Info, Warning, Danger, Custom Hex).
+   - Live Discord card preview simulator and one-click test message dispatcher.
+4. **Autoresponder & Reactions Studio:**
+   - Trigger mode switcher: Standalone Keyword (`word`) or Member Mention (`mention`).
+   - Keyword editor with strict word-boundary matching notice (`(?<!\w)word(?!\w)`).
+   - Rich response template editor with inline visual emojis and variable tags (`{author}`, `{user}`).
+   - Reaction emoji picker for dispatching message reactions.
+   - Ignored channels list and channel picker.
+5. **Leveling & Rewards Studio:**
+   - 3-Way Mode Switch: Text Only, Image Card Only, or Both.
+   - Template editor with Discord markdown headings (`#`, `##`, `###`), subtext (`-#`), and variables (`{user}`, `{level}`).
+   - Real-time Discord chat simulator and graphical badge card preview.
+   - Live test dispatch button.
+6. **@ Mention Autocomplete System:**
+   - Interactive popover appearing in all text editors upon typing `@`.
+   - Autocompletes members (`<@USER_ID>`), roles (`<@&ROLE_ID>`), `@everyone`, and `@here` with Discord-style badges.
+7. **Channel & Category Privacy:**
+   - Single-click global lockdown and unlock all buttons.
+   - Individual channel and whole-category privacy toggles.
+   - Lockdown exempt channel list.
+8. **Anti-Abuse Filter:**
+   - Banned words tag manager and immunity whitelist selector.
+9. **Reaction Roles Deployer:**
+   - Destination channel picker, markdown description, dynamic role-emoji pairing builder, and authentic Discord simulator preview.
+10. **Announcements Composer:**
+    - Destination channel selector, notification pings (`@everyone`, `@here`, None), markdown shortcut chips, and one-click web broadcasting.
+11. **Ticket Dispatch Studio:**
+    - 2-column studio layout with soft rounded action buttons (`border-radius: 8px`).
+    - Destination text channel for direct transcript delivery and draft save capabilities.
+12. **Music Customizer & Universal State Persistence:**
+    - Full suite of editable bot replies for voice events.
+    - Real-time two-way synchronization ensuring configurations persist across restarts and web reloads.
 
 ---
 
-### 9. 🎵 High-Fidelity Music & Audio Streaming (Pure YouTube Engine)
-
-Friday features a built-in voice playback engine powered by `yt-dlp` and `FFmpeg`:
-- **Strict YouTube Audio Search:** Searches and fetches audio exclusively from official YouTube releases using candidate relevance scoring (`official audio`, `music video`, verified artist channels). JioSaavn and SoundCloud fallbacks are completely removed to prevent unofficial covers or incorrect artist uploads.
-- **Real-time Autocomplete:** Ultra-fast (<500ms) live song suggestions powered by Google search suggestion API.
-- **Interactive Controller Views:** Clean, balanced 2-row button grid:
-  - **Row 0:** `Pause / Resume`, `Skip`, `Shuffle`, `Loop`, `Stop (Danger Red)`
-  - **Row 1:** `Queue`, `Like (Success Green)`, `Vol -`, `Vol +`
-  - **Row 2:** DSP Equalizer Select Menu dropdown featuring 8 profiles (`Studio Master`, `Bass Boost`, `Vocal Boost`, `Nightcore`, `Lo-Fi`, `Treble Boost`, `8D Spatial Audio`, `Flat`).
-- **Real-Time EQ Profile Switching:** Choosing an EQ filter switches the audio profile instantly in real time without restarting the track from 0:00 (seeks seamlessly at current playback timestamp using `-ss`).
-- **Dashboard Custom Responses:** Every bot reply is customizable directly in the Web Control Center.
-
-| Command | Description | Permission Required |
-|---|---|---|
-| `/join` | Connects Friday to the user's current voice channel | Everyone in VC |
-| `/leave` | Stops playback, clears the queue, and disconnects Friday | Everyone in VC |
-| `/play <music>` | Searches and streams audio exclusively from YouTube with live autocomplete and interactive UI | Everyone in VC |
-| `/soundtest` | Plays a 2-second studio test chime to verify voice channel audio output | Everyone in VC |
-| `/pause` | Pauses active playback | Everyone in VC |
-| `/resume` | Resumes paused playback | Everyone in VC |
-| `/skip` | Skips current track to next in queue | Everyone in VC |
-| `/shuffle` | Shuffles upcoming tracks in the playlist queue | Everyone in VC |
-| `/volume <percent>` | Adjusts master playback volume (1% to 200%) | Everyone in VC |
-| `/queue` | Displays the current playlist and upcoming tracks in clean box format | Everyone |
-| `/likes` | Displays your personal saved favorite tracks | Everyone |
-| `/filter <preset>` | Sets audio EQ profile in real time without restarting track (8 DSP presets) | Everyone in VC |
-| `/stop` | Halts playback and empties the playlist queue | Everyone in VC |
-
----
-
-### 10. 💬 Mention Greeting Protocol
-
-When a member tags `@Friday` alone (or with a simple greeting like `heyy` / `hi`):
-- Friday responds with a sweet, casual girl-speak greeting that **directly tags the member** (`{user}`) and enables Discord reply mention.
-- Randomly selected from a collection of **300 unique girl-speak greetings** in `data/greetings.json`.
-- Greetings are strictly warm and declarative **without prompting questions** (no "how are you?" or "how's it going?"), ensuring users never mistake the bot for a conversational AI chatbot.
-
----
-
-### 11. 🖼️ Media Only Channels
-
-Friday can lock down specific channels to strictly enforce media-only contributions (showcase, memes, artwork):
-- Any message posted without attachments (images, videos) by non-whitelisted members is immediately removed with a temporary warning notice.
-- **Automatic Immunity:** Server Owners and Administrators (members with `Administrator`, `Manage Server`, or `Manage Channels`) are automatically immune and will never have their messages deleted.
-- **Media Whitelist:** Staff can grant explicit exemption to specific members or server roles.
-
-| Command | Description | Permission Required |
-|---|---|---|
-| `/media <action> [channel] [user] [role]` | Master media channel configuration (Set, Remove, List, Whitelist) | `Manage Channels` |
-| `/media_whitelist_add [user] [role]` | Exempts a specific member or role from media-only deletion | `Manage Channels` |
-| `/media_whitelist_remove [user] [role]` | Revokes media-only chat exemption from a member or role | `Manage Channels` |
-| `/media_whitelist_list` | Displays all currently whitelisted members and roles | `Manage Channels` |
-
----
-
-### 12. 📦 Command Box Formatting & Monochrome Aesthetics
-
-- All Discord command responses have been standardized from raw text with cartoon emojis into sleek dark box embeds (`response_utils.py`).
-- Cartoon emojis (`🔨`, `❌`, `✅`, `🔇`, `🧹`) have been replaced with elegant monochrome geometric symbols (`✓`, `✕`, `▲`, `◈`, `♫`, `⬡`).
-- The Web Dashboard Custom Responses interface (`dashboard.html`) features matching black-and-white SVGs and box-format defaults while preserving all system identifiers.
-
----
-
-> *Document updated on October 14, 2026*
-
-
-
-
+> *Document updated on October 17, 2026 for Friday v2.0*

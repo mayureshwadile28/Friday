@@ -25,6 +25,31 @@ Friday Bot - Complete Command List
 /whitelist_add @user - Makes a user immune to anti-nuke, anti-raid, and anti-spam detection
 /whitelist_remove @user - Removes a user's security immunity
 
+🤖 AI Assistant & Conversations (Groq / OpenRouter / Gemini Pipeline)
+/ask <question> - Ask Friday anything directly with her charming lady personality and real-time knowledge
+/clearchat - Reset your recent multi-turn conversation memory with Friday in the current channel
+/mymemory <view/clear> - Inspect what friendly personal memories Friday remembers about you, or clear them
+/server_instruction <add/view/clear> [instruction] - Configure server-wide behavioral instructions for Friday (Admin & Owner only)
+Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conversation with contextual memory, live Google news search, live date/time handling, and safe mention sanitization
+
+💤 Member AFK System
+/afk [reason] - Sets your status to AFK with an optional reason (e.g. Studying, Lunch, Sleeping)
+  • Automatically prefixes your server nickname with [AFK] and reverts it upon return
+  • Notifies members who tag or reply to you with your away reason and duration
+  • Records all missed pings with channel tags and [Jump to Message] links
+  • Automatically welcomes you back and displays your missed pings summary on your next message
+  • Automatically suppresses conflicting mention auto-responses while you are AFK
+
+👋 First Message Welcome Engine
+/first_welcome set [channel] - Set the destination channel for first-chat greetings (leave empty for current channel)
+/first_welcome disable - Disables first-message welcome greetings for this server
+/first_welcome status - Views current first-welcome configuration, target channel, and theme
+/first_welcome test - Sends an authentic test welcome card to preview the layout and styling
+/first_welcome message <template> - Updates the welcome message format with live variables
+/first_welcome reset [member] - Resets first-welcome status for a specific member or all members to re-trigger greetings
+/set_welcomer [mode] [channel] - Quick shortcut command to set the welcome channel
+/set_first_welcome [channel] - Standalone shortcut to set the first-welcome channel to current channel
+
 🔒 Channel Privacy & Lockdown
 /private [channel] - Makes a specific channel private
 /unprivate [channel] [all_channels] - Unprivates a specific channel or ALL channels (Protects Security Logs)
@@ -48,13 +73,13 @@ Friday Bot - Complete Command List
 /leaderboard - Displays the top 10 most active members
 /joke [category] - Returns a hilarious Hinglish, Desi, or tech joke from a library of 420 jokes with an interactive 'Next Joke 🔄' button
 
-🎨 Expressions & Automations (Emojis, Reactions & Mention Responders)
+🎨 Expressions, Reactions & Keyword Auto-Responder
 /emoji_steal <emojis> - Paste one or more custom emojis to bulk-steal them
 Right-Click -> Apps -> Steal Sticker - Steal a sticker from a message
 /autoreact add @member <emoji> - Automatically reacts with an emoji when @member is mentioned
 /autoreact remove @member - Removes the auto-reaction rule for @member
 /autoreact list - Lists all active auto-reaction mention rules
-/autoresponder add <response> [member] [keyword] [emoji] - Auto-replies and/or reacts when @member is mentioned OR when standalone keyword is typed ({author} and {user} supported)
+/autoresponder add <response> [member] [keyword] [emoji] - Auto-replies and/or reacts when @member is mentioned OR when a standalone keyword/word is typed ({author} and {user} supported). Uses strict word boundaries so words like 'ip' trigger on 'what is the ip?' but strictly NOT on 'IPL' or 'equipment'.
 /autoresponder remove [member] [keyword] - Removes the auto-responder rule for @member or keyword
 /autoresponder list - Lists all active auto-responder rules (mentions and keywords) and ignored channels
 /autoresponder ignore_channel #channel - Disables auto-responses in the specified channel
@@ -73,17 +98,6 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /serverinfo - Displays server info, member counts, and creation date
 /help - Full command reference organized by category
 /sync - Force-syncs global slash commands to the server
-
-🌐 Friday Web Control Center (http://localhost:5000)
-- Security Command Center: Master Anti-Nuke toggle, Anti-Raid system hero card (velocity tracking & thresholds), Anti-Spam system hero card (rate limits & flood control), 10 live security channel status pills, Limit & Punish matrix, Instant Punishment matrix, Detect Only matrix, immunity whitelist, and one-click channel creation.
-- Leveling: 3 notification modes (Text Only, Image Card Only, Both), channel selector, markdown template editor (#, ##, -#, **, *, etc.), server animated/static emoji picker, simulated Discord card preview, live chat simulator, real-time Discord test dispatch.
-- @ Mention Autocomplete: Live popup popover in all text editors typing '@' searching members (<@ID>) and roles (<@&ID>) with Discord-styled live badges.
-- Anti-Abuse: Real-time blacklist tag manager, immunity whitelist.
-- Channel & Category Privacy: Global lockdown button, unlock all button, individual channel lock/unlock, whole category lock/unlock, lockdown exempt channels list.
-- Reaction Roles: Target channel selector, title, markdown description with server & standard emojis, interactive role-emoji pairing builder, live authentic Discord embed simulator with reaction buttons, one-click server deployment, state restoration.
-- Announcements: Destination channel selector & save, title, audience notification ping (@everyone/@here/none), Discord markdown chips & server emojis, embed theme colors, thumbnail & footer controls, live simulator, one-click web broadcasting.
-- Ticket System: Interactive studio with live Discord simulator, panel channel and ticket category routing, support staff role, soft rounded secondary action buttons (border-radius: 8px), direct transcript destination text channel, optional transcript category, private ticket toggle, draft save button, one-click deploy.
-- State Persistence: Complete multi-module synchronization ensuring no configurations or drafts are reset upon clicking "Sync State".
 
 🎫 Ticket System
 /ticket create_ticket_panel <channel> <title> <desc> <btn1> <cat> ... - Deploys an interactive support panel
@@ -106,8 +120,6 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /filter <preset> - Set audio mastering & EQ profiles in real time without restarting the track (🎧 Studio Master, 🔊 Bass Boost, 🎙️ Vocal Boost, 🌙 Nightcore, ☕ Lo-Fi, 🎼 Treble Boost, 🌀 8D Spatial Audio, ⚡ Flat)
 /stop - Stop playback immediately and clear the entire music queue
 
-@Friday - Tagging Friday prompts a sweet girl-speak greeting that tags the user from 300 non-conversational greetings in data/greetings.json
-
 🖼️ Media Only Channels
 /media <action> [channel] [user] [role] - Configure media-only channels (Set, Remove, List) or manage exemptions
 /media_whitelist_add [user] [role] - Exempt a member or role from media-only channel chat deletion
@@ -115,4 +127,20 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /media_whitelist_list - View all members and roles exempt from media-only channel deletion
 *(Note: Server Owner & Administrators have automatic immunity by default)*
 
+💬 Tag Greeting Protocol
+@Friday - Tagging Friday alone or with a simple greeting ("hi", "heyy", "hello", "yo") prompts a sweet, warm girl-speak greeting that tags the user from 300 non-conversational greetings in data/greetings.json
 
+🌐 Friday Web Control Center (http://localhost:5000)
+- Security Command Center: Master Anti-Nuke toggle, Anti-Raid system hero card (velocity tracking & thresholds), Anti-Spam system hero card (rate limits & flood control), 10 live security channel status pills, Limit & Punish matrix, Instant Punishment matrix, Detect Only matrix, immunity whitelist, and one-click channel creation.
+- Universal Visual Rich Emoji Editor: Interactive contenteditable editors across all modules rendering actual emoji images (<img class="editor-inline-emoji">) for custom server emojis and Unicode emojis, caret position preservation, and glitch-free dot/ellipsis support.
+- First Welcome Studio: Channel selector, active toggle, custom embed title & message editors with dynamic variables ({user}, {username}, {name}, {server}, {member_count}, {channel}), avatar thumbnail toggle, accent color picker (Success, Info, Warning, Danger, or Custom Hex), and one-click live test dispatch.
+- Autoresponder Studio: Toggle between Keyword mode (with whole-word regex matching notice) and Member Mention mode, message template editor with rich visual emojis, optional emoji reaction picker, and ignored channels manager.
+- Leveling: 3 notification modes (Text Only, Image Card Only, Both), channel selector, markdown template editor (#, ##, -#, **, *, etc.), server animated/static emoji picker, simulated Discord card preview, live chat simulator, real-time Discord test dispatch.
+- @ Mention Autocomplete: Live popup popover in all text editors typing '@' searching members (<@ID>) and roles (<@&ID>) with Discord-styled live badges.
+- Anti-Abuse: Real-time blacklist tag manager, immunity whitelist.
+- Channel & Category Privacy: Global lockdown button, unlock all button, individual channel lock/unlock, whole category lock/unlock, lockdown exempt channels list.
+- Reaction Roles: Target channel selector, title, markdown description with server & standard emojis, interactive role-emoji pairing builder, live authentic Discord embed simulator with reaction buttons, one-click server deployment, state restoration.
+- Announcements: Destination channel selector & save, title, audience notification ping (@everyone/@here/none), Discord markdown chips & server emojis, embed theme colors, thumbnail & footer controls, live simulator, one-click web broadcasting.
+- Ticket System: Interactive studio with live Discord simulator, panel channel and ticket category routing, support staff role, soft rounded secondary action buttons (border-radius: 8px), direct transcript destination text channel, optional transcript category, private ticket toggle, draft save button, one-click deploy.
+- Music Customizer: Full suite of customizable bot replies for VC events (join, leave, play, pause, queue, filter).
+- State Persistence: Complete multi-module synchronization ensuring no configurations or drafts are reset upon clicking "Sync State".

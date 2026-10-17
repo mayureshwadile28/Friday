@@ -402,32 +402,6 @@ function setupEventListeners() {
         saveRespBtn.addEventListener('click', saveResponsesSettings);
     }
 
-    const saveAiThinkingBtn = document.getElementById('saveAiThinkingBtn');
-    if (saveAiThinkingBtn) {
-        saveAiThinkingBtn.addEventListener('click', async () => {
-            const autoVal = document.getElementById('autoAiThinkingInput')?.value?.trim();
-            const respInput = document.getElementById('resp_ai_thinking');
-            if (respInput && autoVal !== undefined) {
-                respInput.value = autoVal;
-                if (typeof respInput._syncToRich === 'function') respInput._syncToRich();
-            }
-            await saveResponsesSettings();
-        });
-    }
-
-    const autoAiInput = document.getElementById('autoAiThinkingInput');
-    const respAiInput = document.getElementById('resp_ai_thinking');
-    if (autoAiInput && respAiInput) {
-        autoAiInput.addEventListener('input', () => { 
-            respAiInput.value = autoAiInput.value; 
-            if (typeof respAiInput._syncToRich === 'function') respAiInput._syncToRich();
-        });
-        respAiInput.addEventListener('input', () => { 
-            autoAiInput.value = respAiInput.value; 
-            if (typeof autoAiInput._syncToRich === 'function') autoAiInput._syncToRich();
-        });
-    }
-    
     const topSaveBtn = document.getElementById('topSaveSecurityBtn');
     if (topSaveBtn) {
         topSaveBtn.addEventListener('click', saveLimits);
@@ -1761,7 +1735,6 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('autoReactEmojiInput', true);
     attachRichEmojiEditor('autoRespEmojiInput', true);
     attachRichEmojiEditor('autoRespTextInput', true);
-    attachRichEmojiEditor('autoAiThinkingInput', true);
     attachRichEmojiEditor('resp_ai_thinking', true);
     attachRichEmojiEditor('firstWelcomeTitleInput', true);
     attachRichEmojiEditor('firstWelcomeMsgInput');
@@ -3924,10 +3897,6 @@ async function loadCustomResponsesSettings() {
                 input.value = conf[cr.id] !== undefined ? conf[cr.id] : (conf[`resp_${cr.id}`] || '');
             }
         });
-        const autoAiInput = document.getElementById('autoAiThinkingInput');
-        if (autoAiInput && (conf['ai_thinking'] !== undefined || conf['resp_ai_thinking'] !== undefined)) {
-            autoAiInput.value = conf['ai_thinking'] !== undefined ? conf['ai_thinking'] : (conf['resp_ai_thinking'] || '');
-        }
     } catch (e) {
         console.error("Failed to load custom responses", e);
     }
@@ -4583,16 +4552,7 @@ async function loadAutomationsSettings() {
             renderAutoResponderRules();
             renderIgnoredChannels();
 
-            try {
-                const crResp = await fetch(`/api/guild/${currentGuildId}/custom_responses`);
-                const crData = await crResp.json();
-                const crConf = crData.config || crData || {};
-                const autoAiInput = document.getElementById('autoAiThinkingInput');
-                if (autoAiInput && crConf['ai_thinking'] !== undefined) {
-                    autoAiInput.value = crConf['ai_thinking'];
-                }
-                syncAllRichEmojiEditors();
-            } catch (err) {}
+            syncAllRichEmojiEditors();
         }
     } catch (e) {
         console.error("Failed to load automations", e);
@@ -4613,21 +4573,25 @@ function renderAutoReactRules() {
     listEl.innerHTML = '';
     currentAutoreactRules.forEach(rule => {
         const member = currentGuildMembers.find(m => String(m.id) === String(rule.user_id));
-        const username = member ? member.username : (rule.user_name || `User ${rule.user_id}`);
+        const username = member ? (member.name || member.username) : (rule.user_name || `Member`);
+        const handle = member && member.username && member.name && member.name !== member.username ? `@${member.username}` : (rule.user_name && rule.user_name !== username ? `@${rule.user_name}` : '');
         const avatar = member ? member.avatar : null;
-        const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="automation-rule-avatar">` : `<div class="automation-rule-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
+        const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="auto-rule-avatar">` : `<div class="auto-rule-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
 
         const item = document.createElement('div');
-        item.className = 'automation-rule-item';
+        item.className = 'auto-react-rule-card';
         item.innerHTML = `
-            <div class="automation-rule-user">
+            <div class="auto-rule-target">
                 ${avatarHtml}
-                <div class="automation-rule-meta">
-                    <span class="automation-rule-name">${escapeHtml(username)}</span>
-                    <span class="automation-rule-id">${rule.user_id}</span>
+                <div class="auto-rule-meta">
+                    <div class="auto-rule-title-row">
+                        <span class="auto-rule-name">${escapeHtml(username)}</span>
+                        ${handle ? `<span class="auto-rule-handle">${escapeHtml(handle)}</span>` : ''}
+                    </div>
+                    <span class="auto-rule-subtext">Reacts with emoji when tagged in chat</span>
                 </div>
             </div>
-            <div class="automation-rule-badge" style="display:inline-flex; align-items:center; justify-content:center; min-width:32px; height:32px; padding:2px 8px; background:rgba(255,255,255,0.06); border:1px solid var(--border-subtle); border-radius:6px;">
+            <div class="auto-react-emoji-box" title="Reaction emoji">
                 ${renderEmojiHtmlOrChar(rule.emoji, 24)}
             </div>
             <button class="btn-delete-rule" title="Remove rule" type="button" data-user="${rule.user_id}">
@@ -4652,66 +4616,84 @@ function renderAutoResponderRules() {
     if (countEl) countEl.textContent = currentAutoresponderRules.length;
 
     if (currentAutoresponderRules.length === 0) {
-        listEl.innerHTML = '<div class="empty-rules-placeholder">No auto-responder rules configured yet.</div>';
+        listEl.innerHTML = `
+            <div class="empty-rules-placeholder" style="padding: 36px 20px; text-align: center;">
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: #64748b; margin-bottom: 8px;">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+                <div style="font-weight: 600; color: #cbd5e1; font-size: 13.5px; margin-bottom: 4px;">No auto-responder rules configured</div>
+                <div style="font-size: 11.5px; color: #94a3b8;">Create a member mention reply or a keyword trigger on the left to get started.</div>
+            </div>
+        `;
         return;
     }
 
     listEl.innerHTML = '';
     currentAutoresponderRules.forEach(rule => {
         const isWord = (rule.type === 'word' || (!rule.user_id && rule.trigger));
-        let targetHtml = '';
+        let headerHtml = '';
 
         if (isWord) {
             const triggerText = rule.trigger || '';
-            targetHtml = `
-                <div class="automation-rule-user">
-                    <div class="automation-rule-avatar-fallback" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-weight:700;">#</div>
-                    <div class="automation-rule-meta">
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <span class="rule-type-badge word">Word Trigger</span>
-                            <span class="automation-rule-name" style="font-family:monospace;font-size:13px;color:#34d399;">"${escapeHtml(triggerText)}"</span>
+            headerHtml = `
+                <div class="auto-rule-target">
+                    <div class="auto-rule-avatar-fallback word">#</div>
+                    <div class="auto-rule-meta">
+                        <div class="auto-rule-title-row">
+                            <span class="auto-rule-type-pill word"># KEYWORD</span>
+                            <span class="auto-rule-name word-name">"${escapeHtml(triggerText)}"</span>
                         </div>
-                        <span class="automation-rule-id" style="font-size:11px;color:#94a3b8;">Strict Standalone Word</span>
+                        <span class="auto-rule-subtext">Matches standalone word or phrase</span>
                     </div>
                 </div>
             `;
         } else {
             const member = currentGuildMembers.find(m => String(m.id) === String(rule.user_id));
-            const username = member ? member.username : (rule.user_name || `User ${rule.user_id}`);
+            const username = member ? (member.name || member.username) : (rule.user_name || `Member`);
+            const handle = member && member.username && member.name && member.name !== member.username ? `@${member.username}` : (rule.user_name && rule.user_name !== username ? `@${rule.user_name}` : '');
             const avatar = member ? member.avatar : null;
-            const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="automation-rule-avatar">` : `<div class="automation-rule-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
-            targetHtml = `
-                <div class="automation-rule-user">
+            const avatarHtml = avatar 
+                ? `<img src="${avatar}" alt="" class="auto-rule-avatar">` 
+                : `<div class="auto-rule-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
+
+            headerHtml = `
+                <div class="auto-rule-target">
                     ${avatarHtml}
-                    <div class="automation-rule-meta">
-                        <div style="display:flex;align-items:center;gap:6px;">
-                            <span class="rule-type-badge mention">@ Mention</span>
-                            <span class="automation-rule-name">${escapeHtml(username)}</span>
+                    <div class="auto-rule-meta">
+                        <div class="auto-rule-title-row">
+                            <span class="auto-rule-type-pill mention">@ MENTION</span>
+                            <span class="auto-rule-name">${escapeHtml(username)}</span>
+                            ${handle ? `<span class="auto-rule-handle">${escapeHtml(handle)}</span>` : ''}
                         </div>
-                        <span class="automation-rule-id">${rule.user_id}</span>
+                        <span class="auto-rule-subtext">Triggers when member is tagged in chat</span>
                     </div>
                 </div>
             `;
         }
 
         const reactionBadge = rule.emoji ? `
-            <span class="rule-reaction-badge" title="Reacts with this emoji">
-                <span style="font-size:11px;color:#94a3b8;">Reacts:</span>
+            <div class="auto-rule-reaction-badge" title="Also reacts to the triggering message">
+                <span style="font-size:10.5px;color:#94a3b8;font-weight:600;">Reacts:</span>
                 ${renderEmojiHtmlOrChar(rule.emoji, 18)}
-            </span>
+            </div>
         ` : '';
 
         const item = document.createElement('div');
-        item.className = 'automation-rule-item';
+        item.className = 'auto-rule-card';
         item.innerHTML = `
-            ${targetHtml}
-            <div class="automation-rule-content" title="${escapeHtml(rule.response || '')}" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <span style="flex:1;">${renderDiscordMarkdown(rule.response || '')}</span>
-                ${reactionBadge}
+            <div class="auto-rule-header">
+                ${headerHtml}
+                <div class="auto-rule-actions">
+                    ${reactionBadge}
+                    <button class="btn-delete-rule" title="Remove rule" type="button">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
             </div>
-            <button class="btn-delete-rule" title="Remove rule" type="button">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
-            </button>
+            <div class="auto-rule-bubble ${isWord ? 'word-bubble' : ''}">
+                <div class="auto-rule-bubble-label">Automated Reply:</div>
+                <div class="auto-rule-bubble-text">${renderDiscordMarkdown(rule.response || '')}</div>
+            </div>
         `;
 
         item.querySelector('.btn-delete-rule').addEventListener('click', () => {
@@ -4865,6 +4847,8 @@ async function addAutoResponderRule() {
             }
             const autoRespEmojiBtn = document.getElementById('autoRespEmojiBtn');
             if (autoRespEmojiBtn) autoRespEmojiBtn.innerHTML = '😊';
+            const autoRespEmojiClearBtn = document.getElementById('autoRespEmojiClearBtn');
+            if (autoRespEmojiClearBtn) autoRespEmojiClearBtn.style.display = 'none';
             const memberSelect = document.getElementById('autoRespMemberSelect');
             if (memberSelect) memberSelect.value = '';
         } else {
@@ -5024,6 +5008,8 @@ function setupAutomationEvents() {
             if (autoRespEmojiBtn) {
                 autoRespEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 22);
             }
+            const clearBtn = document.getElementById('autoRespEmojiClearBtn');
+            if (clearBtn) clearBtn.style.display = 'inline-flex';
         });
     };
 
@@ -5034,6 +5020,23 @@ function setupAutomationEvents() {
         autoRespEmojiInput.addEventListener('input', (e) => {
             const val = e.target.value.trim();
             if (autoRespEmojiBtn) autoRespEmojiBtn.innerHTML = renderEmojiHtmlOrChar(val, 22);
+            const clearBtn = document.getElementById('autoRespEmojiClearBtn');
+            if (clearBtn) clearBtn.style.display = val ? 'inline-flex' : 'none';
+        });
+    }
+
+    const autoRespEmojiClearBtn = document.getElementById('autoRespEmojiClearBtn');
+    if (autoRespEmojiClearBtn) {
+        autoRespEmojiClearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (autoRespEmojiInput) {
+                autoRespEmojiInput.value = '';
+                autoRespEmojiInput.dataset.rawEmoji = '';
+                if (typeof autoRespEmojiInput._syncToRich === 'function') autoRespEmojiInput._syncToRich();
+            }
+            if (autoRespEmojiBtn) autoRespEmojiBtn.innerHTML = '😊';
+            autoRespEmojiClearBtn.style.display = 'none';
         });
     }
 
