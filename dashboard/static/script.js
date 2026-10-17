@@ -287,9 +287,31 @@ function setupEventListeners() {
 
     // Capture active selection on any editor before button clicks cause blur
     document.addEventListener('mousedown', (e) => {
-        const btn = e.target.closest('.resp-emoji-btn, .emoji-picker-btn, .resp-var-badge');
+        const btn = e.target.closest('.resp-emoji-btn, .emoji-picker-btn, .resp-var-badge, .btn-emoji-trigger, .rr-emoji-preview-btn, .var-chip, [id$="EmojiBtn"]');
         if (!btn) return;
-        const targetId = btn.getAttribute('data-target');
+        let targetId = btn.getAttribute('data-target');
+        if (!targetId && btn.id) {
+            if (btn.id === 'rrTitleEmojiBtn') targetId = 'rrTitleInput';
+            else if (btn.id === 'rrDescEmojiBtn') targetId = 'rrDescInput';
+            else if (btn.id === 'rrFooterEmojiBtn') targetId = 'rrFooterInput';
+            else if (btn.id === 'annTitleEmojiBtn') targetId = 'annTitleInput';
+            else if (btn.id === 'annContentEmojiBtn') targetId = 'annContentInput';
+            else if (btn.id === 'annFooterEmojiBtn') targetId = 'annFooterInput';
+            else if (btn.id === 'ticketTitleEmojiBtn') targetId = 'ticketTitleInput';
+            else if (btn.id === 'ticketDescEmojiBtn') targetId = 'ticketDescInput';
+            else if (btn.id === 'emojiPickerBtn') targetId = 'levelMessageInput';
+            else if (btn.id === 'firstWelcomeTitleEmojiBtn') targetId = 'firstWelcomeTitleInput';
+            else if (btn.id === 'firstWelcomeMsgEmojiBtn') targetId = 'firstWelcomeMsgInput';
+            else if (btn.id === 'autoRespEmojiBtn') targetId = 'autoRespEmojiInput';
+            else if (btn.id === 'autoReactEmojiBtn') targetId = 'autoReactEmojiInput';
+            else if (btn.id.startsWith('ticketBtn') && btn.id.endsWith('EmojiBtn')) {
+                const num = btn.id.replace('ticketBtn', '').replace('EmojiBtn', '');
+                targetId = 'ticketBtn' + num;
+            } else if (btn.id.startsWith('rrEmojiBtn_')) {
+                const rowId = btn.id.replace('rrEmojiBtn_', '');
+                targetId = 'rrEmojiInput_' + rowId;
+            }
+        }
         if (targetId) {
             const richEl = document.getElementById(targetId + '_rich');
             if (richEl) {
@@ -681,6 +703,30 @@ function setupEventListeners() {
         });
     }
 
+    const rrFooterEmojiBtn = document.getElementById('rrFooterEmojiBtn');
+    if (rrFooterEmojiBtn) {
+        rrFooterEmojiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEmojiPicker(rrFooterEmojiBtn, (val) => {
+                const richEl = document.getElementById('rrFooterInput_rich');
+                if (richEl) {
+                    insertEmojiOrTextIntoRichEditor(richEl, val);
+                    return;
+                }
+                const input = document.getElementById('rrFooterInput');
+                if (input) {
+                    const start = input.selectionStart || input.value.length;
+                    const end = input.selectionEnd || input.value.length;
+                    input.value = input.value.substring(0, start) + val + ' ' + input.value.substring(end);
+                    input.focus();
+                    input.selectionStart = input.selectionEnd = start + val.length + 1;
+                    currentRrFooterText = input.value;
+                    updateRrEmbedPreview();
+                }
+            });
+        });
+    }
+
     // Reaction Theme Presets & Custom Colors
     document.querySelectorAll('.rr-theme-chip').forEach(chip => {
         chip.addEventListener('click', () => {
@@ -876,6 +922,30 @@ function setupEventListeners() {
         annContentEmojiBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             openEmojiPicker(annContentEmojiBtn, (val) => insertAnnVar(val));
+        });
+    }
+
+    const annFooterEmojiBtn = document.getElementById('annFooterEmojiBtn');
+    if (annFooterEmojiBtn) {
+        annFooterEmojiBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openEmojiPicker(annFooterEmojiBtn, (val) => {
+                const richEl = document.getElementById('annFooterInput_rich');
+                if (richEl) {
+                    insertEmojiOrTextIntoRichEditor(richEl, val);
+                    return;
+                }
+                const input = document.getElementById('annFooterInput');
+                if (input) {
+                    const start = input.selectionStart || input.value.length;
+                    const end = input.selectionEnd || input.value.length;
+                    input.value = input.value.substring(0, start) + val + ' ' + input.value.substring(end);
+                    input.focus();
+                    input.selectionStart = input.selectionEnd = start + val.length + 1;
+                    currentAnnFooterText = input.value;
+                    updateAnnPreview();
+                }
+            });
         });
     }
 
@@ -1388,27 +1458,62 @@ function rawMarkdownToRichHtml(raw) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 
-    // Single unified regex to prevent recursive replacement inside attributes
-    const emojiRegex = /(&lt;a:([a-zA-Z0-9_]+):([0-9]+)&gt;|&lt;:([a-zA-Z0-9_]+):([0-9]+)&gt;|:([a-zA-Z0-9_]+):)/g;
+    // Single unified regex matching:
+    // 1. &lt;a:name:id&gt;
+    // 2. &lt;:name:id&gt;
+    // 3. :name:
+    // 4. Standalone snowflake IDs [0-9]{15,22}
+    const emojiRegex = /(&lt;a:([a-zA-Z0-9_]+):([0-9]{15,22})&gt;|&lt;:([a-zA-Z0-9_]+):([0-9]{15,22})&gt;|:([a-zA-Z0-9_]+):|(?<!\w)([0-9]{15,22})(?!\w))/g;
 
-    s = s.replace(emojiRegex, (match, full, animName, animId, staticName, staticId, colonName) => {
+    s = s.replace(emojiRegex, (match, full, animName, animId, staticName, staticId, colonName, pureId) => {
         if (animName && animId) {
             const code = `<a:${animName}:${animId}>`;
             const url = `https://cdn.discordapp.com/emojis/${animId}.gif?size=48&quality=lossless`;
             return `<img class="editor-inline-emoji animated" data-emoji="${code}" src="${url}" alt="${animName}" title=":${animName}:" contenteditable="false">`;
         }
         if (staticName && staticId) {
-            const code = `<:${staticName}:${staticId}>`;
-            const url = `https://cdn.discordapp.com/emojis/${staticId}.png?size=48`;
-            return `<img class="editor-inline-emoji" data-emoji="${code}" src="${url}" alt="${staticName}" title=":${staticName}:" contenteditable="false">`;
-        }
-        if (colonName && typeof currentServerEmojis !== 'undefined' && currentServerEmojis && currentServerEmojis.length) {
-            const found = currentServerEmojis.find(e => e.name.toLowerCase() === colonName.toLowerCase());
-            if (found) {
-                const code = found.code || (found.animated ? `<a:${found.name}:${found.id}>` : `<:${found.name}:${found.id}>`);
-                const clazz = found.animated ? 'editor-inline-emoji animated' : 'editor-inline-emoji';
-                return `<img class="${clazz}" data-emoji="${code}" src="${found.url}" alt="${found.name}" title=":${found.name}:" contenteditable="false">`;
+            let isAnim = false;
+            let finalName = staticName;
+            if (typeof currentServerEmojis !== 'undefined' && Array.isArray(currentServerEmojis)) {
+                const found = currentServerEmojis.find(e => String(e.id) === staticId);
+                if (found) {
+                    isAnim = !!found.animated;
+                    finalName = found.name;
+                }
             }
+            const code = isAnim ? `<a:${finalName}:${staticId}>` : `<:${finalName}:${staticId}>`;
+            const ext = isAnim ? 'gif?size=48&quality=lossless' : 'png?size=48';
+            const clazz = isAnim ? 'editor-inline-emoji animated' : 'editor-inline-emoji';
+            const url = `https://cdn.discordapp.com/emojis/${staticId}.${ext}`;
+            return `<img class="${clazz}" data-emoji="${code}" src="${url}" alt="${finalName}" title=":${finalName}:" contenteditable="false">`;
+        }
+        if (colonName && typeof currentServerEmojis !== 'undefined' && Array.isArray(currentServerEmojis) && currentServerEmojis.length) {
+            const found = currentServerEmojis.find(e => e.name && e.name.toLowerCase() === colonName.toLowerCase());
+            if (found) {
+                const isAnim = !!found.animated;
+                const code = found.code || (isAnim ? `<a:${found.name}:${found.id}>` : `<:${found.name}:${found.id}>`);
+                const clazz = isAnim ? 'editor-inline-emoji animated' : 'editor-inline-emoji';
+                const ext = isAnim ? 'gif?size=48&quality=lossless' : 'png?size=48';
+                const url = found.url || `https://cdn.discordapp.com/emojis/${found.id}.${ext}`;
+                return `<img class="${clazz}" data-emoji="${code}" src="${url}" alt="${found.name}" title=":${found.name}:" contenteditable="false">`;
+            }
+        }
+        if (pureId) {
+            let isAnim = false;
+            let emName = 'custom_emoji';
+            let url = `https://cdn.discordapp.com/emojis/${pureId}.png?size=48`;
+            if (typeof currentServerEmojis !== 'undefined' && Array.isArray(currentServerEmojis)) {
+                const found = currentServerEmojis.find(e => String(e.id) === pureId);
+                if (found) {
+                    isAnim = !!found.animated;
+                    emName = found.name;
+                    const ext = isAnim ? 'gif?size=48&quality=lossless' : 'png?size=48';
+                    url = found.url || `https://cdn.discordapp.com/emojis/${pureId}.${ext}`;
+                }
+            }
+            const code = isAnim ? `<a:${emName}:${pureId}>` : `<:${emName}:${pureId}>`;
+            const clazz = isAnim ? 'editor-inline-emoji animated' : 'editor-inline-emoji';
+            return `<img class="${clazz}" data-emoji="${code}" src="${url}" alt="${emName}" title=":${emName}:" contenteditable="false">`;
         }
         return match;
     });
@@ -1485,13 +1590,14 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
 
     range.deleteContents();
 
-    let animMatch = val.match(/^<a:([a-zA-Z0-9_]+):([0-9]+)>$/);
-    let staticMatch = val.match(/^<:([a-zA-Z0-9_]+):([0-9]+)>$/);
+    val = String(val).trim();
+    let animMatch = val.match(/^<a:([a-zA-Z0-9_]+):([0-9]{15,22})>$/);
+    let staticMatch = val.match(/^<:([a-zA-Z0-9_]+):([0-9]{15,22})>$/);
 
     if (!animMatch && !staticMatch) {
         const colonMatch = val.match(/^:([a-zA-Z0-9_]+):$/);
         if (colonMatch && typeof currentServerEmojis !== 'undefined' && currentServerEmojis) {
-            const found = currentServerEmojis.find(e => e.name.toLowerCase() === colonMatch[1].toLowerCase());
+            const found = currentServerEmojis.find(e => e.name && e.name.toLowerCase() === colonMatch[1].toLowerCase());
             if (found) {
                 if (found.animated) {
                     animMatch = [val, found.name, found.id];
@@ -1499,6 +1605,23 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
                     staticMatch = [val, found.name, found.id];
                 }
             }
+        }
+    }
+
+    if (!animMatch && !staticMatch && /^[0-9]{15,22}$/.test(val)) {
+        let isAnim = false;
+        let emName = 'custom_emoji';
+        if (typeof currentServerEmojis !== 'undefined' && Array.isArray(currentServerEmojis)) {
+            const found = currentServerEmojis.find(e => String(e.id) === val);
+            if (found) {
+                isAnim = !!found.animated;
+                emName = found.name;
+            }
+        }
+        if (isAnim) {
+            animMatch = [val, emName, val];
+        } else {
+            staticMatch = [val, emName, val];
         }
     }
 
@@ -1612,6 +1735,9 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
         saveRichRange();
         const raw = richHtmlToRawMarkdown(richEl);
         targetEl.value = raw;
+        if (typeof targetEl._syncToRich === 'function') {
+            targetEl._syncToRich();
+        }
     });
 
     targetEl._syncToRich = function() {
@@ -1628,35 +1754,29 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('levelMessageInput');
     attachRichEmojiEditor('rrDescInput');
     attachRichEmojiEditor('rrTitleInput', true);
+    attachRichEmojiEditor('rrFooterInput', true);
     attachRichEmojiEditor('annContentInput');
     attachRichEmojiEditor('annTitleInput', true);
-    attachRichEmojiEditor('resp_ai_thinking', true);
-    attachRichEmojiEditor('autoAiThinkingInput', true);
+    attachRichEmojiEditor('annFooterInput', true);
+    attachRichEmojiEditor('autoReactEmojiInput', true);
+    attachRichEmojiEditor('autoRespEmojiInput', true);
     attachRichEmojiEditor('autoRespTextInput', true);
+    attachRichEmojiEditor('autoAiThinkingInput', true);
+    attachRichEmojiEditor('resp_ai_thinking', true);
     attachRichEmojiEditor('firstWelcomeTitleInput', true);
     attachRichEmojiEditor('firstWelcomeMsgInput');
 
     document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
         attachRichEmojiEditor(inp.id, true);
     });
+    document.querySelectorAll('.rr-emoji-input').forEach(inp => {
+        attachRichEmojiEditor(inp.id, true);
+    });
 }
 
 function syncAllRichEmojiEditors() {
-    const ids = [
-        'ticketDescInput', 'ticketTitleInput',
-        'ticketBtn1', 'ticketBtn2', 'ticketBtn3', 'ticketBtn4',
-        'levelMessageInput',
-        'rrDescInput', 'rrTitleInput',
-        'annContentInput', 'annTitleInput',
-        'resp_ai_thinking', 'autoAiThinkingInput', 'autoRespTextInput',
-        'firstWelcomeTitleInput', 'firstWelcomeMsgInput'
-    ];
-    document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
-        if (!ids.includes(inp.id)) ids.push(inp.id);
-    });
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el && typeof el._syncToRich === 'function') {
+    document.querySelectorAll('[data-rich-editor-ready="true"]').forEach(el => {
+        if (typeof el._syncToRich === 'function') {
             el._syncToRich();
         }
     });
@@ -2374,12 +2494,16 @@ function addRrMappingRow(initialEmoji = '🎉', initialRoleId = '') {
     const roleSelect = row.querySelector(`#rrRoleSelect_${rowId}`);
     const removeBtn = row.querySelector(`#rrRemoveBtn_${rowId}`);
 
+    attachRichEmojiEditor(`rrEmojiInput_${rowId}`, true);
+
     emojiBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         openEmojiPicker(emojiBtn, (chosenEmoji) => {
             emojiInput.dataset.rawEmoji = chosenEmoji;
-            const m = chosenEmoji.match(/<a?:([a-zA-Z0-9_]+):[0-9]+>/);
-            emojiInput.value = m ? `:${m[1]}:` : chosenEmoji;
+            emojiInput.value = chosenEmoji;
+            if (typeof emojiInput._syncToRich === 'function') {
+                emojiInput._syncToRich();
+            }
             mappingObj.emoji = chosenEmoji;
             emojiBtn.innerHTML = renderEmojiHtmlOrChar(chosenEmoji);
             updateRrEmbedPreview();
@@ -2452,7 +2576,7 @@ function updateRrEmbedPreview() {
     const simFooterText = document.getElementById('rrSimFooterText');
     const simFooterIcon = document.getElementById('rrSimFooterIcon');
     if (simFooterText) {
-        simFooterText.textContent = currentRrFooterText || 'React below to claim your roles!';
+        simFooterText.innerHTML = renderDiscordMarkdown(currentRrFooterText || 'React below to claim your roles!');
     }
     if (simFooterIcon) {
         if (currentBotAvatar) {
@@ -2829,7 +2953,7 @@ function updateAnnPreview() {
 
     // Footer
     if (simFooterText) {
-        simFooterText.textContent = currentAnnFooterText || 'Friday Broadcast System • Official Notification';
+        simFooterText.innerHTML = renderDiscordMarkdown(currentAnnFooterText || 'Friday Broadcast System • Official Notification');
     }
     if (simFooterIcon) {
         if (currentBotAvatar && currentAnnShowThumbnail) {
@@ -4834,8 +4958,10 @@ function setupAutomationEvents() {
             if (!emojiVal) return;
             if (arEmojiInput) {
                 arEmojiInput.dataset.rawEmoji = emojiVal;
-                const m = emojiVal.match(/<a?:([a-zA-Z0-9_]+):[0-9]+>/);
-                arEmojiInput.value = m ? `:${m[1]}:` : emojiVal;
+                arEmojiInput.value = emojiVal;
+                if (typeof arEmojiInput._syncToRich === 'function') {
+                    arEmojiInput._syncToRich();
+                }
             }
             if (arEmojiBtn) {
                 arEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 22);
@@ -4890,8 +5016,10 @@ function setupAutomationEvents() {
             if (!emojiVal) return;
             if (autoRespEmojiInput) {
                 autoRespEmojiInput.dataset.rawEmoji = emojiVal;
-                const m = emojiVal.match(/<a?:([a-zA-Z0-9_]+):[0-9]+>/);
-                autoRespEmojiInput.value = m ? `:${m[1]}:` : emojiVal;
+                autoRespEmojiInput.value = emojiVal;
+                if (typeof autoRespEmojiInput._syncToRich === 'function') {
+                    autoRespEmojiInput._syncToRich();
+                }
             }
             if (autoRespEmojiBtn) {
                 autoRespEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 22);

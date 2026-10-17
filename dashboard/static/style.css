@@ -3524,8 +3524,36 @@ select option:checked {
     white-space: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: 9px 14px;
-    line-height: 22px;
+    padding: 8px 14px;
+    line-height: 24px;
+    display: inline-flex;
+    align-items: center;
+}
+
+.rr-emoji-picker-container .rich-emoji-editor.single-line {
+    width: 120px !important;
+    min-width: 120px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 6px 10px !important;
+    margin-bottom: 0 !important;
+}
+
+.emoji-input-wrap .rich-emoji-editor.single-line,
+.emoji-picker-container .rich-emoji-editor.single-line {
+    flex: 1;
+    margin-bottom: 0 !important;
+    height: 42px !important;
+    min-height: 42px !important;
+}
+
+.btn-emoji-trigger img,
+.emoji-picker-btn img,
+.rr-emoji-preview-btn img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    vertical-align: middle;
 }
 
 .editor-inline-emoji {

@@ -1405,7 +1405,10 @@
 </label>
 <div>
 <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Custom Footer Text</label>
-<input class="text-input" id="rrFooterInput" style="font-size: 12px; padding: 6px 10px; margin-top: 4px;" type="text" value="React below to claim your roles!"/>
+<div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
+<input class="text-input" id="rrFooterInput" style="flex: 1; font-size: 12px; padding: 6px 10px; margin-top: 0;" type="text" value="React below to claim your roles!"/>
+<button class="btn btn-secondary emoji-picker-btn" id="rrFooterEmojiBtn" style="padding: 2px 8px; font-size: 11px; height: 38px;" type="button" title="Insert Server Emoji">😊</button>
+</div>
 </div>
 </div>
 </div>
@@ -1606,7 +1609,10 @@ We are excited to introduce seamless broadcast capability.
 </label>
 <div>
 <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Footer Text (Optional)</label>
-<input class="text-input" id="annFooterInput" style="font-size: 12px; padding: 6px 10px; margin-top: 4px;" type="text" value="Friday Broadcast System • Official Notification"/>
+<div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
+<input class="text-input" id="annFooterInput" style="flex: 1; font-size: 12px; padding: 6px 10px; margin-top: 0;" type="text" value="Friday Broadcast System • Official Notification"/>
+<button class="btn btn-secondary emoji-picker-btn" id="annFooterEmojiBtn" style="padding: 2px 8px; font-size: 11px; height: 38px;" type="button" title="Insert Server Emoji">😊</button>
+</div>
 </div>
 </div>
 </div>
@@ -2732,7 +2738,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     <div class="form-field-emoji">
                         <label class="form-sublabel">Reaction Emoji</label>
                         <div class="emoji-input-wrap">
-                            <input class="text-input" id="autoReactEmojiInput" placeholder="👑 or :fire:" readonly type="text"/>
+                            <input class="text-input" id="autoReactEmojiInput" placeholder="👑 or :fire:" type="text"/>
                             <button class="btn-emoji-trigger" id="autoReactEmojiBtn" title="Choose emoji" type="button">😊</button>
                         </div>
                     </div>
