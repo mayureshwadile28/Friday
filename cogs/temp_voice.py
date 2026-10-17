@@ -21,6 +21,12 @@ class VoiceRenameModal(discord.ui.Modal, title="Rename Voice Room"):
         self.cog_ref = cog_ref
 
     async def on_submit(self, interaction: discord.Interaction):
+        channel_data = self.cog_ref.active_channels.get(str(self.channel.id), {})
+        owner_id = channel_data.get("owner_id")
+        if owner_id and interaction.user.id != owner_id:
+            await interaction.response.send_message("🔒 Access Denied: Only the room owner can rename this room.", ephemeral=True)
+            return
+
         new_name = self.name_input.value.strip()
         try:
             await self.channel.edit(name=new_name)
@@ -50,6 +56,12 @@ class VoiceLimitModal(discord.ui.Modal, title="Set User Limit"):
         self.cog_ref = cog_ref
 
     async def on_submit(self, interaction: discord.Interaction):
+        channel_data = self.cog_ref.active_channels.get(str(self.channel.id), {})
+        owner_id = channel_data.get("owner_id")
+        if owner_id and interaction.user.id != owner_id:
+            await interaction.response.send_message("🔒 Access Denied: Only the room owner can adjust user limits.", ephemeral=True)
+            return
+
         val = self.limit_input.value.strip()
         if not val.isdigit():
             await interaction.response.send_message("❌ Please enter a valid number between 0 and 99.", ephemeral=True)
@@ -90,6 +102,12 @@ class KickMemberSelect(discord.ui.Select):
         super().__init__(placeholder="Select a member to disconnect...", min_values=1, max_values=1, options=options[:25])
 
     async def callback(self, interaction: discord.Interaction):
+        channel_data = self.cog_ref.active_channels.get(str(self.channel.id), {})
+        owner_id = channel_data.get("owner_id", self.owner_id)
+        if interaction.user.id != owner_id:
+            await interaction.response.send_message("🔒 Access Denied: Only the room owner can disconnect members.", ephemeral=True)
+            return
+
         val = self.values[0]
         if val == "none":
             await interaction.response.send_message("No eligible members to kick.", ephemeral=True)
@@ -119,20 +137,19 @@ class VoiceControlView(discord.ui.View):
         self.owner_id = owner_id
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # Check if the interaction user is the owner or admin
         channel_data = self.cog_ref.active_channels.get(str(self.channel_id))
         current_owner_id = channel_data.get("owner_id") if channel_data else self.owner_id
         
-        # If user is clicking Claim button, allow anyone in the VC
+        # If user is clicking Claim button, allow check inside callback (only if owner left)
         custom_id = interaction.data.get("custom_id", "")
         if custom_id == "vc_btn_claim":
             return True
 
-        if interaction.user.id == current_owner_id or interaction.user.guild_permissions.administrator:
+        if interaction.user.id == current_owner_id:
             return True
 
         await interaction.response.send_message(
-            "🔒 Only the room owner (or an Administrator) can adjust these settings.",
+            f"🔒 **Access Denied:** Only the voice room owner (<@{current_owner_id}>) who created this room can edit these settings.",
             ephemeral=True
         )
         return False
@@ -251,6 +268,8 @@ class VoiceControlView(discord.ui.View):
         # Transfer ownership
         channel_data["owner_id"] = interaction.user.id
         self.owner_id = interaction.user.id
+        db.temp_voice_active = self.cog_ref.active_channels
+        db.save_data()
 
         # Grant full room manage permissions to new owner
         try:
@@ -269,8 +288,10 @@ class TempVoice(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
-        # active_channels: { "channel_id_str": { "guild_id": str, "owner_id": int, "created_at": float, "locked": bool, "hidden": bool, "panel_msg_id": int } }
-        self.active_channels = {}
+        # Persist active channels in db so bot restarts don't lose owner tracking
+        self.active_channels = getattr(db, "temp_voice_active", {})
+        if not isinstance(self.active_channels, dict):
+            self.active_channels = {}
         self._creation_locks = set()
 
     def get_guild_config(self, guild_id: int) -> dict:
@@ -410,6 +431,8 @@ class TempVoice(commands.Cog):
                     "hidden": False,
                     "panel_msg_id": None
                 }
+                db.temp_voice_active = self.active_channels
+                db.save_data()
 
                 # Send interactive Control Panel inside the voice channel's text chat
                 view = VoiceControlView(self, new_vc.id, member.id)
@@ -434,6 +457,8 @@ class TempVoice(commands.Cog):
                 try:
                     msg = await new_vc.send(content=member.mention, embed=embed, view=view)
                     self.active_channels[ch_key]["panel_msg_id"] = msg.id
+                    db.temp_voice_active = self.active_channels
+                    db.save_data()
                 except Exception as ex:
                     print(f"⚠️ Could not send Voice Control Panel in {new_vc.name}: {ex}")
 
@@ -452,6 +477,8 @@ class TempVoice(commands.Cog):
                     ch_key = str(vc.id)
                     if ch_key in self.active_channels:
                         del self.active_channels[ch_key]
+                        db.temp_voice_active = self.active_channels
+                        db.save_data()
                     await vc.delete(reason="Friday Voice Hub: Temp channel empty")
                 except Exception as ex:
                     print(f"⚠️ Error deleting empty temp VC {vc.id}: {ex}")
@@ -593,8 +620,11 @@ class TempVoice(commands.Cog):
             return
 
         data = self.active_channels[str(vc.id)]
-        if interaction.user.id != data.get("owner_id") and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Only the room owner can lock this room.", ephemeral=True)
+        if interaction.user.id != data.get("owner_id"):
+            await interaction.response.send_message(
+                f"🔒 **Access Denied:** Only the voice room owner (<@{data.get('owner_id')}>) who created this room can edit these settings.",
+                ephemeral=True
+            )
             return
 
         data["locked"] = True
@@ -611,14 +641,58 @@ class TempVoice(commands.Cog):
             return
 
         data = self.active_channels[str(vc.id)]
-        if interaction.user.id != data.get("owner_id") and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Only the room owner can unlock this room.", ephemeral=True)
+        if interaction.user.id != data.get("owner_id"):
+            await interaction.response.send_message(
+                f"🔒 **Access Denied:** Only the voice room owner (<@{data.get('owner_id')}>) who created this room can edit these settings.",
+                ephemeral=True
+            )
             return
 
         data["locked"] = False
         await vc.set_permissions(interaction.guild.default_role, connect=True)
         await self.update_panel_embed(vc)
         await interaction.response.send_message("🔓 Your room is now **Unlocked**! Anyone can join.", ephemeral=True)
+
+    @voice_group.command(name="hide", description="Hide your temporary voice room from the channel list")
+    async def voice_hide(self, interaction: discord.Interaction):
+        vc = interaction.user.voice.channel if interaction.user.voice else None
+        if not vc or str(vc.id) not in self.active_channels:
+            await interaction.response.send_message("❌ You are not inside an active temporary voice room.", ephemeral=True)
+            return
+
+        data = self.active_channels[str(vc.id)]
+        if interaction.user.id != data.get("owner_id"):
+            await interaction.response.send_message(
+                f"🔒 **Access Denied:** Only the voice room owner (<@{data.get('owner_id')}>) who created this room can edit these settings.",
+                ephemeral=True
+            )
+            return
+
+        data["hidden"] = True
+        await vc.set_permissions(interaction.guild.default_role, view_channel=False)
+        await vc.set_permissions(interaction.user, view_channel=True)
+        await self.update_panel_embed(vc)
+        await interaction.response.send_message("👁️ Your room is now **Hidden** from the channel list!", ephemeral=True)
+
+    @voice_group.command(name="unhide", description="Make your temporary voice room visible to everyone")
+    async def voice_unhide(self, interaction: discord.Interaction):
+        vc = interaction.user.voice.channel if interaction.user.voice else None
+        if not vc or str(vc.id) not in self.active_channels:
+            await interaction.response.send_message("❌ You are not inside an active temporary voice room.", ephemeral=True)
+            return
+
+        data = self.active_channels[str(vc.id)]
+        if interaction.user.id != data.get("owner_id"):
+            await interaction.response.send_message(
+                f"🔒 **Access Denied:** Only the voice room owner (<@{data.get('owner_id')}>) who created this room can edit these settings.",
+                ephemeral=True
+            )
+            return
+
+        data["hidden"] = False
+        await vc.set_permissions(interaction.guild.default_role, view_channel=True)
+        await self.update_panel_embed(vc)
+        await interaction.response.send_message("👁️ Your room is now **Visible** to everyone!", ephemeral=True)
 
     @voice_group.command(name="limit", description="Set user limit for your temporary voice room")
     @app_commands.describe(limit="Maximum number of users allowed (0 for unlimited, 1-99)")
@@ -629,8 +703,11 @@ class TempVoice(commands.Cog):
             return
 
         data = self.active_channels[str(vc.id)]
-        if interaction.user.id != data.get("owner_id") and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Only the room owner can set the limit.", ephemeral=True)
+        if interaction.user.id != data.get("owner_id"):
+            await interaction.response.send_message(
+                f"🔒 **Access Denied:** Only the voice room owner (<@{data.get('owner_id')}>) who created this room can edit these settings.",
+                ephemeral=True
+            )
             return
 
         limit = max(0, min(99, limit))
@@ -648,8 +725,11 @@ class TempVoice(commands.Cog):
             return
 
         data = self.active_channels[str(vc.id)]
-        if interaction.user.id != data.get("owner_id") and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Only the room owner can rename this room.", ephemeral=True)
+        if interaction.user.id != data.get("owner_id"):
+            await interaction.response.send_message(
+                f"🔒 **Access Denied:** Only the voice room owner (<@{data.get('owner_id')}>) who created this room can edit these settings.",
+                ephemeral=True
+            )
             return
 
         new_name = new_name.strip()[:60]
@@ -667,8 +747,11 @@ class TempVoice(commands.Cog):
             return
 
         data = self.active_channels[str(vc.id)]
-        if interaction.user.id != data.get("owner_id") and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Only the room owner can kick members.", ephemeral=True)
+        if interaction.user.id != data.get("owner_id"):
+            await interaction.response.send_message(
+                f"🔒 **Access Denied:** Only the voice room owner (<@{data.get('owner_id')}>) who created this room can edit these settings.",
+                ephemeral=True
+            )
             return
 
         if member not in vc.members:
