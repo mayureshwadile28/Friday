@@ -6,6 +6,52 @@ from database import db
 
 from emoji_utils import replace_plain_emojis
 
+# Announcement intent patterns
+ANN_KEYWORD_REGEX = re.compile(
+    r'\b(?:announc(?:e|ement)|announcment|annoucement|anouncement|annonucment|elan|elam|ailaan|aillan|ghoshna)\b',
+    re.IGNORECASE
+)
+
+# Drafting and prompt instruction keywords (these indicate the user wants the LLM to write/draft an announcement!)
+DRAFT_INSTRUCTION_REGEX = re.compile(
+    r'\b(?:likh\s*do|likhdo|likho|likh\s*de|likhde|likh|write|compose|draft|drafting|bana\s*do|banado|banao|bana\s*de|banade|create|generate|prepare|tayyar\s*karo|soch\s*ke|ek\s+badhiya|ek\s+ac?chha|ek\s+naya|ke\s+liye|ke\s+leye|for\s+staff|for\s+server|about)\b',
+    re.IGNORECASE
+)
+
+# Dispatch action keywords (these indicate publishing / sending the draft)
+DISPATCH_ACTION_REGEX = re.compile(
+    r'\b(?:kar\s*do|kardo|karo|kar\s*de|karde|kar\s*dena|kardena|send|send\s*it|send\s*this|bhej\s*do|bhejdo|bhejo|bhej\s*dena|bhejdena|post|post\s*it|post\s*this|post\s*kardo|push|push\s*kardo|broadcast|publish|daal\s*do|daaldo|daalo)\b',
+    re.IGNORECASE
+)
+
+def is_announcement_dispatch_command(text: str, is_reply: bool = False) -> bool:
+    """Classify whether a user input is an announcement dispatch/publish command versus an LLM drafting prompt."""
+    clean = text.strip()
+    clean_no_ch = re.sub(r'<#\d+>', '', clean).strip()
+    words = [w.strip('!?,.: ') for w in clean_no_ch.split() if w.strip('!?,.: ')]
+
+    # 1. If it contains drafting/writing instructions, it belongs to the LLM
+    if DRAFT_INSTRUCTION_REGEX.search(clean):
+        return False
+
+    has_ann_kw = bool(ANN_KEYWORD_REGEX.search(clean))
+    has_dispatch_action = bool(DISPATCH_ACTION_REGEX.search(clean))
+
+    # 2. If announcement keyword is present
+    if has_ann_kw:
+        if has_dispatch_action:
+            return True
+        if len(words) <= 3:
+            return True
+        if is_reply:
+            return True
+
+    # 3. If replying to Friday and user issues a dispatch verb (e.g. "@Friday kardo", "@Friday send it")
+    if is_reply and has_dispatch_action and len(words) <= 4:
+        return True
+
+    return False
+
 class AnnouncementConfirmView(discord.ui.View):
     def __init__(self, original_msg: discord.Message, draft_msg: discord.Message, target_channel: discord.TextChannel, bot: commands.Bot):
         super().__init__(timeout=60)
@@ -128,8 +174,6 @@ class Announcements(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-
-
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
@@ -144,14 +188,12 @@ class Announcements(commands.Cog):
         if not is_bot_mentioned:
             return
 
-        # Check if the user is replying to a draft announcement message
-        if not message.reference or not message.reference.message_id:
-            return
+        # Clean content and check whether this is an announcement dispatch command
+        cleaned_text = message.content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip()
+        is_reply = bool(message.reference and message.reference.message_id)
 
-        # Clean content and check for announcement triggers (handling spelling variations and natural phrasing)
-        cleaned_text = message.content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip().lower()
-        announcement_keywords = ["announcement", "annoucement", "anouncement", "announce", "elan", "elam", "aillan"]
-        if not any(k in cleaned_text for k in announcement_keywords):
+        # Dispatch command check: If this is an LLM drafting prompt (e.g. "likh do ek badhiya sa..."), ignore it here!
+        if not is_announcement_dispatch_command(cleaned_text, is_reply=is_reply):
             return
 
         gid = str(message.guild.id)
@@ -166,53 +208,76 @@ class Announcements(commands.Cog):
             )
             return
 
-        # Check if the user mentioned a channel in the command (e.g. @Friday announcement #general)
+        # 1. Target Channel resolution
+        target_channel = None
         if message.channel_mentions:
             target_channel = message.channel_mentions[0]
-            target_channel_id = str(target_channel.id)
-            # Update the default channel in the database
-            db.announcement_channels[gid] = target_channel_id
+            db.announcement_channels[gid] = str(target_channel.id)
             db.save_data()
         else:
             target_channel_id = db.announcement_channels.get(gid)
-            if not target_channel_id:
-                await message.reply(
-                    "⚠️ **Announcement Channel Not Specified!**\n"
-                    "Please mention the target channel in your message, for example: `@Friday announcement #general`",
-                    mention_author=False
-                )
-                return
-            
-            # Retrieve the target destination channel
-            try:
-                target_channel = message.guild.get_channel(int(target_channel_id))
-            except (ValueError, TypeError):
-                target_channel = None
+            if target_channel_id:
+                try:
+                    target_channel = message.guild.get_channel(int(target_channel_id))
+                except (ValueError, TypeError):
+                    target_channel = None
+
+            # Fallback auto-detection for announcement channel in the server
+            if not target_channel:
+                for candidate_name in ["announcements", "announcement", "updates", "server-announcements", "news"]:
+                    found = discord.utils.get(message.guild.text_channels, name=candidate_name)
+                    if found:
+                        target_channel = found
+                        db.announcement_channels[gid] = str(found.id)
+                        db.save_data()
+                        break
 
         if not target_channel or not isinstance(target_channel, discord.TextChannel):
             await message.reply(
-                "❌ **Channel Not Found:** The configured announcement channel could not be found or was deleted. Please specify a channel in your message like `@Friday announcement #channel`.",
+                "⚠️ **Announcement Channel Not Specified!**\n"
+                "Please specify the target channel in your message (e.g. `@Friday announcement #announcements`) or configure it in the dashboard.",
                 mention_author=False
             )
             return
 
-        # Fetch the referenced draft message
-        try:
-            if message.reference.resolved and isinstance(message.reference.resolved, discord.Message):
-                draft_msg = message.reference.resolved
-            else:
-                draft_msg = await message.channel.fetch_message(message.reference.message_id)
-        except Exception as e:
-            await message.reply(f"❌ Failed to fetch draft message: {e}", mention_author=False)
+        # 2. Draft message resolution
+        draft_msg = None
+        if message.reference and message.reference.message_id:
+            try:
+                if message.reference.resolved and isinstance(message.reference.resolved, discord.Message):
+                    draft_msg = message.reference.resolved
+                else:
+                    draft_msg = await message.channel.fetch_message(message.reference.message_id)
+            except Exception:
+                draft_msg = None
+
+        if not draft_msg:
+            # Fallback: scan last 15 messages in the channel to find Friday's latest draft
+            try:
+                async for past_msg in message.channel.history(limit=15):
+                    if past_msg.id == message.id:
+                        continue
+                    if past_msg.author.id == self.bot.user.id and past_msg.content:
+                        if past_msg.content.strip().startswith('#') or 'announcement' in past_msg.content.lower():
+                            draft_msg = past_msg
+                            break
+                        elif not past_msg.embeds and not past_msg.components and len(past_msg.content) > 30:
+                            draft_msg = past_msg
+                            break
+            except Exception:
+                pass
+
+        if not draft_msg or (not draft_msg.content and not draft_msg.attachments and not draft_msg.embeds):
+            await message.reply(
+                "⚠️ **No Announcement Draft Found!**\n"
+                "Please reply directly to Friday's announcement draft with `@Friday announcement kardo`, or ask Friday to write one first with `@Friday announcement likh do...`! 🌸",
+                mention_author=False
+            )
             return
 
-        if not draft_msg.content and not draft_msg.attachments and not draft_msg.embeds:
-            await message.reply("⚠️ The referenced message appears to be empty.", mention_author=False)
-            return
-
-        # Send confirmation prompt
+        # Send confirmation prompt with buttons
         view = AnnouncementConfirmView(message, draft_msg, target_channel, self.bot)
-        prompt_tpl = db.custom_responses.get(gid, {}).get("announcement_confirm_prompt", "❓ **Are you sure you want to send this message to {channel}?**")
+        prompt_tpl = db.custom_responses.get(gid, {}).get("announcement_confirm_prompt", "❓ **Are you sure you want to broadcast this announcement to {channel}?**")
         prompt_txt = prompt_tpl.replace("{channel}", target_channel.mention)
         prompt = await message.reply(
             prompt_txt,

@@ -15,6 +15,7 @@ from typing import List, Dict, Any, Optional
 
 from database import db
 from emoji_utils import replace_plain_emojis
+from cogs.announcements import is_announcement_dispatch_command
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -115,7 +116,7 @@ def sanitize_ai_mentions(text: str) -> str:
 
 # Intent detection for announcements, broadcast drafting, guidelines, and server rules
 ANNOUNCEMENT_INTENT_REGEX = re.compile(
-    r'\b(?:announcement|announcements|announce|elan|elam|aillan|draft|drafting|guideline|guidelines|staff guidelines|server rules|community rules|staff rules|rule|rules|notice|circular|broadcast|policy|code of conduct|announcement kardo|kardo announcement|post announcement|write an announcement|make an announcement|draft an announcement|draft rules|draft guidelines|rules draft|rules likho|guidelines banao|announcement banao)\b',
+    r'\b(?:announc(?:e|ement)|announcment|annoucement|anouncement|annonucment|elan|elam|ailaan|aillan|ghoshna|draft|drafting|guideline|guidelines|staff guidelines|server rules|community rules|staff rules|rule|rules|notice|circular|broadcast|policy|code of conduct|write an announcement|make an announcement|draft an announcement|draft rules|draft guidelines|rules draft|rules likho|guidelines banao|announcement banao)\b',
     re.IGNORECASE
 )
 
@@ -982,10 +983,10 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         clean_lower = clean_text.lower().strip("!?,. ")
 
         # Announcement Dispatch Command Bypass:
-        # If the user is replying to a draft message and issuing an announcement command (e.g. "@Friday announcement #general" or "@Friday announce kardo"),
+        # If the user is issuing an announcement dispatch command (e.g. "@Friday announcement", "@Friday announcment kardo", "@Friday announcement #general"),
         # this workflow belongs exclusively to cogs/announcements.py, NOT the conversational LLM!
-        ann_dispatch_keywords = ["announcement", "annoucement", "anouncement", "announce", "elan", "elam", "aillan"]
-        if message.reference and any(k in clean_lower for k in ann_dispatch_keywords):
+        # (Drafting requests like "@Friday announcement likh do ek badhiya sa..." will NOT match and will proceed to LLM!)
+        if is_announcement_dispatch_command(clean_text, is_reply=bool(message.reference)):
             return
 
         # Standalone Greeting Bypass: If mentioning Friday with no text or simple greeting word
