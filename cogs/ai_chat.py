@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
 
 from database import db
+from emoji_utils import replace_plain_emojis
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -556,6 +557,12 @@ class AIChat(commands.Cog):
             if notable_channels:
                 context_lines.append(f"- Notable Channels: {', '.join('#' + name for name in notable_channels)}")
 
+            # Server custom emojis available
+            if guild.emojis:
+                avail_emojis = [f":{e.name}:" for e in guild.emojis if getattr(e, 'available', True)][:35]
+                if avail_emojis:
+                    context_lines.append(f"- Server Custom Emojis: {', '.join(avail_emojis)}")
+
         if channel:
             context_lines.append(f"- Active Channel: #{channel.name}")
 
@@ -689,9 +696,14 @@ DISCORD MARKDOWN STYLING:
   • In CASUAL conversation: STRICTLY AVOID using `#`, `##`, or `###` headers! Keep casual chat clean and readable with **bold** and *italics*.
   • In ANNOUNCEMENT & GUIDELINES mode: You MUST use `# ` on the first line for the announcement title, and clean `##` or `###` for sub-sections with blank lines between items.
 
-EMOJI RESTRAINT:
+EMOJI RESTRAINT & SERVER CUSTOM EMOJI GUIDANCE:
 - Use at most 1 or 2 tasteful emojis per message (e.g. ✨ or 🌸 or 😊).
 - DO NOT spam 3, 4, or 5 emojis in a single message. Keep your aesthetic classy, light, and graceful.
+- Guidance on Server Custom Emojis vs Standard Emojis:
+  • You have access to Server Custom Emojis (listed in the context above).
+  • CRITICAL CAUTION: Many custom server emojis have slang, Hindi, sound-effect, or meme names (e.g. 'bhai', 'op', 'lol', 'oye', 'pkd') where the actual image/picture looks completely different from what the word sounds like!
+  • ONLY use a custom server emoji (`:name:`) if its name is 100% CLEAR, SELF-EXPLANATORY, AND DIRECTLY MATCHES the visual topic (for example: `:announcement:`, `:rules:`, `:verify:`, `:developer:`, `:sparkles:`, `:heart:`, `:star:`, `:fire:`).
+  • If the server emoji name is slang, unfamiliar, or ambiguous, ALWAYS stick to clean, beautiful, universal standard Unicode emojis (📢, 🛠️, 📌, ⚠️, 🚀, ✨, 🌸, 🛡️, 🔔, 💡). They render reliably, look gorgeous everywhere, and never cause visual confusion!
 
 COMPLETE YOUR THOUGHTS:
 - Always finish your sentences and thoughts completely. Never abruptly break off mid-sentence.
@@ -969,6 +981,13 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         clean_text = re.sub(r'<@!?' + str(bot_id) + r'>', '', content).strip()
         clean_lower = clean_text.lower().strip("!?,. ")
 
+        # Announcement Dispatch Command Bypass:
+        # If the user is replying to a draft message and issuing an announcement command (e.g. "@Friday announcement #general" or "@Friday announce kardo"),
+        # this workflow belongs exclusively to cogs/announcements.py, NOT the conversational LLM!
+        ann_dispatch_keywords = ["announcement", "annoucement", "anouncement", "announce", "elan", "elam", "aillan"]
+        if message.reference and any(k in clean_lower for k in ann_dispatch_keywords):
+            return
+
         # Standalone Greeting Bypass: If mentioning Friday with no text or simple greeting word
         # Handled specifically by cogs/expressions.py using custom responses in DB
         if not is_reply_to_friday_llm and (not clean_text or clean_lower in GREETING_WORDS):
@@ -1215,6 +1234,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Sanitize mass mentions so @everyone / @here never render as blue pills or ping
                 ai_reply = sanitize_ai_mentions(ai_reply)
 
+                # Resolve server custom emojis if Friday outputted valid :emoji_name:
+                ai_reply = replace_plain_emojis(ai_reply, self.bot, guild=message.guild)
+
                 # Enforce Discord 2000 character limit
                 if len(ai_reply) > 2000:
                     ai_reply = ai_reply[:1990] + "..."
@@ -1334,6 +1356,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         self.sessions[session_key].append({"role": "assistant", "content": reply, "time": now})
 
         reply = sanitize_ai_mentions(reply)
+        reply = replace_plain_emojis(reply, self.bot, guild=interaction.guild)
         if len(reply) > 2000:
             reply = reply[:1990] + "..."
 

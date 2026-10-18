@@ -38,16 +38,41 @@ class AnnouncementConfirmView(discord.ui.View):
             except Exception:
                 pass
 
+        # Process content and ensure @everyone mention for broadcast (not during draft)
+        raw_content = self.draft_msg.content or ""
+
+        # 1. Un-sanitize any zero-width space in @everyone or @here
+        processed_content = raw_content.replace('@\u200beveryone', '@everyone').replace('@\u200bhere', '@here')
+
+        # 2. Convert conversational "Hey everyone" or "Hello everyone" to "Hey @everyone!"
+        processed_content = re.sub(
+            r'\b(hey|hello|hi|namaste)\s+everyone\b(!|\?|\.|\,)?',
+            r'\1 @everyone\2',
+            processed_content,
+            flags=re.IGNORECASE
+        )
+
+        # 3. If @everyone is not yet present in the content, ensure @everyone is included
+        if '@everyone' not in processed_content:
+            if processed_content.startswith('# '):
+                lines = processed_content.split('\n')
+                lines.insert(1, '\n@everyone')
+                processed_content = '\n'.join(lines)
+            elif processed_content:
+                processed_content = f"@everyone\n\n{processed_content}"
+            else:
+                processed_content = "@everyone"
+
         # Process emojis
-        new_content = replace_plain_emojis(self.draft_msg.content, self.bot)
+        new_content = replace_plain_emojis(processed_content, self.bot, guild=self.original_msg.guild)
         new_embeds = []
         for em in self.draft_msg.embeds:
             e = em.copy()
-            if e.title: e.title = replace_plain_emojis(e.title, self.bot)
-            if e.description: e.description = replace_plain_emojis(e.description, self.bot)
+            if e.title: e.title = replace_plain_emojis(e.title, self.bot, guild=self.original_msg.guild)
+            if e.description: e.description = replace_plain_emojis(e.description, self.bot, guild=self.original_msg.guild)
             for i, field in enumerate(e.fields):
-                e.set_field_at(i, name=replace_plain_emojis(field.name, self.bot), 
-                               value=replace_plain_emojis(field.value, self.bot), 
+                e.set_field_at(i, name=replace_plain_emojis(field.name, self.bot, guild=self.original_msg.guild), 
+                               value=replace_plain_emojis(field.value, self.bot, guild=self.original_msg.guild), 
                                inline=field.inline)
             new_embeds.append(e)
 
@@ -55,7 +80,8 @@ class AnnouncementConfirmView(discord.ui.View):
             broadcasted = await self.target_channel.send(
                 content=new_content if new_content else None,
                 embeds=new_embeds,
-                files=files if files else []
+                files=files if files else [],
+                allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
             )
 
             gid = str(interaction.guild.id) if interaction.guild else ""
@@ -122,9 +148,9 @@ class Announcements(commands.Cog):
         if not message.reference or not message.reference.message_id:
             return
 
-        # Clean content and check for announcement triggers (handling spelling variations)
+        # Clean content and check for announcement triggers (handling spelling variations and natural phrasing)
         cleaned_text = message.content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip().lower()
-        announcement_keywords = ["announcement", "annoucement", "anouncement"]
+        announcement_keywords = ["announcement", "annoucement", "anouncement", "announce", "elan", "elam", "aillan"]
         if not any(k in cleaned_text for k in announcement_keywords):
             return
 
