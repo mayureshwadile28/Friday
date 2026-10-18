@@ -347,6 +347,10 @@ def update_limits(gid):
 @app.route('/api/guild/<gid>/security', methods=['GET'])
 def get_security_settings(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     sec_cog = bot_instance.get_cog("Security") if bot_instance else None
     cfg = sec_cog.get_security_config(gid_str) if sec_cog else db.security_settings.get(gid_str, {})
     server_logs = db.server_logs.get(gid_str, {})
@@ -421,6 +425,19 @@ def update_security_settings(gid):
         for k, v in limits.items():
             if isinstance(v, dict) and "limit" in v:
                 db.nuke_settings[gid_str][k] = int(v["limit"])
+
+    if "feature_whitelists" in body and isinstance(body["feature_whitelists"], dict):
+        if gid_str not in db.feature_whitelists:
+            db.feature_whitelists[gid_str] = {}
+        for feat, items in body["feature_whitelists"].items():
+            uids = []
+            for it in items:
+                uid = it.get("id") if isinstance(it, dict) else it
+                try:
+                    uids.append(int(uid))
+                except (ValueError, TypeError):
+                    pass
+            db.feature_whitelists[gid_str][feat] = uids
 
     db.save_data()
     return jsonify({"success": True})

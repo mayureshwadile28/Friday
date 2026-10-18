@@ -4052,7 +4052,8 @@ async function saveLimits() {
                 detect: detectData,
                 antiraid: antiraidData,
                 antispam: antispamData
-            }
+            },
+            feature_whitelists: currentFeatureWhitelists
         };
 
         fetch(`/api/guild/${currentGuildId}/security/update`, {
@@ -4291,6 +4292,8 @@ function renderFeatureWhitelists(fwData) {
                 if (drawerEl) drawerEl.style.display = 'none';
                 if (btnToggle) btnToggle.classList.remove('open');
             } else {
+                if (drawerEl) drawerEl.style.display = 'block';
+                if (btnToggle) btnToggle.classList.add('open');
                 userIds.forEach(item => {
                     const uid = typeof item === 'object' && item !== null ? item.id : item;
                     const itemUsername = typeof item === 'object' && item !== null ? item.username : null;

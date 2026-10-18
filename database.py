@@ -91,9 +91,19 @@ class Database:
         return default_val
 
     def save_data(self):
+        disk_data = {}
+        try:
+            if os.path.exists(DATA_FILE):
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    disk_data = json.load(f)
+        except Exception:
+            pass
+
         payload = {}
         if hasattr(self, "data") and isinstance(self.data, dict):
             payload.update(self.data)
+        if isinstance(disk_data, dict):
+            payload.update(disk_data)
         for k, v in self.__dict__.items():
             if k != "data" and not k.startswith("_"):
                 payload[k] = v
