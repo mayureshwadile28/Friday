@@ -143,12 +143,17 @@ import threading
 def run_dashboard(bot_instance_ref):
     import sys
     sys.path.append(os.path.join(os.path.dirname(__file__), 'dashboard'))
-    from dashboard.app import app, set_bot_instance
-    set_bot_instance(bot_instance_ref)
-    port = int(os.environ.get("PORT") or os.environ.get("SERVER_PORT") or 5000)
-    print(f"\n🤖 Friday Dashboard running on port {port} (http://0.0.0.0:{port})\n")
-    import logging
-    app.run(host="0.0.0.0", port=port, use_reloader=False)
+    try:
+        from dashboard.app import app, set_bot_instance
+        set_bot_instance(bot_instance_ref)
+        port = int(os.environ.get("PORT") or os.environ.get("SERVER_PORT") or 5000)
+        print(f"\n🤖 Friday Dashboard running on port {port} (http://0.0.0.0:{port})\n")
+        import logging
+        app.run(host="0.0.0.0", port=port, use_reloader=False)
+    except Exception as e:
+        import traceback
+        print(f"\n❌ [Dashboard Error] Failed to start web dashboard: {e}\n")
+        traceback.print_exc()
 
 if __name__ == "__main__":
     if TOKEN:

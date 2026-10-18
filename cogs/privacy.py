@@ -72,17 +72,33 @@ class Privacy(commands.Cog):
     async def unprivate_channel(self, interaction: discord.Interaction, channel_id: str = None, all_channels: bool = False):
         await interaction.response.defer()
         if all_channels:
+            gid = str(interaction.guild.id)
+            locked_ids = set(getattr(db, "lockdown_channels", {}).get(gid, []))
             count = 0
             for ch in interaction.guild.text_channels:
                 if ch.category and ch.category.name == "Friday Security Logs":
                     continue
-                overwrites = ch.overwrites_for(interaction.guild.default_role)
-                if overwrites.read_messages is not None or overwrites.send_messages is not None:
-                    await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
-                    count += 1
-            db.lockdown_active[str(interaction.guild.id)] = False
+                # If we tracked the channels privated during lockdown, ONLY restore those!
+                if locked_ids:
+                    if ch.id in locked_ids:
+                        await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+                        count += 1
+                else:
+                    # Fallback safety: NEVER unprivate staff/admin channels that were already private!
+                    ow = ch.overwrites_for(interaction.guild.default_role)
+                    if ow.read_messages == False:
+                        name_low = ch.name.lower()
+                        cat_low = ch.category.name.lower() if ch.category else ""
+                        if any(w in name_low or w in cat_low for w in ["staff", "admin", "mod", "log", "private", "ticket"]):
+                            continue
+                    if ow.read_messages is not None or ow.send_messages is not None:
+                        await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+                        count += 1
+
+            db.lockdown_active[gid] = False
+            if hasattr(db, "lockdown_channels") and isinstance(db.lockdown_channels, dict) and gid in db.lockdown_channels:
+                del db.lockdown_channels[gid]
             db.save_data()
-            gid = str(interaction.guild.id)
             resp_tpl = db.custom_responses.get(gid, {}).get("lockdown_lifted", "🔓 Successfully unprivated and unlocked {count} channels.")
             await interaction.followup.send(resp_tpl.replace("{count}", str(count)))
         else:
@@ -163,16 +179,24 @@ class Privacy(commands.Cog):
         await interaction.response.defer()
         ignored_count = 0
         privated_count = 0
+        just_privated = []
         for ch in interaction.guild.text_channels:
+            if ch.category and ch.category.name == "Friday Security Logs":
+                continue
             if ch.id in ignore_list:
                 await ch.set_permissions(interaction.guild.default_role, read_messages=True, send_messages=False)
                 ignored_count += 1
             else:
-                if ch.overwrites_for(interaction.guild.default_role).read_messages != False:
+                ow = ch.overwrites_for(interaction.guild.default_role)
+                if ow.read_messages != False:
                     await ch.set_permissions(interaction.guild.default_role, read_messages=False)
                     privated_count += 1
+                    just_privated.append(ch.id)
                     
         db.lockdown_active[gid] = True
+        if not hasattr(db, "lockdown_channels") or not isinstance(db.lockdown_channels, dict):
+            db.lockdown_channels = {}
+        db.lockdown_channels[gid] = just_privated
         db.save_data()
         resp_tpl = db.custom_responses.get(gid, {}).get("lockdown_initiated", "🔒 **LOCKDOWN INITIATED:** {privated} channels privated. {ignored} ignored channels are now Read-Only for members.")
         await interaction.followup.send(resp_tpl.replace("{privated}", str(privated_count)).replace("{ignored}", str(ignored_count)))
@@ -191,11 +215,21 @@ class Privacy(commands.Cog):
             
         await interaction.response.defer()
         await category.set_permissions(interaction.guild.default_role, read_messages=False)
+        just_privated = []
         count = 0
         for ch in category.channels:
-            await ch.set_permissions(interaction.guild.default_role, read_messages=False)
-            count += 1
-        await interaction.followup.send(f"🔒 **{category.name}** and its {count} channels are now private.")
+            ow = ch.overwrites_for(interaction.guild.default_role)
+            if ow.read_messages != False:
+                await ch.set_permissions(interaction.guild.default_role, read_messages=False)
+                just_privated.append(ch.id)
+                count += 1
+
+        cat_key = str(category.id)
+        if not hasattr(db, "category_locked_channels") or not isinstance(db.category_locked_channels, dict):
+            db.category_locked_channels = {}
+        db.category_locked_channels[cat_key] = just_privated
+        db.save_data()
+        await interaction.followup.send(f"🔒 **{category.name}** and its {count} public channels are now private.")
 
     @app_commands.command(name="unprivate_category", description="Unprivate an entire category and its channels.")
     @app_commands.describe(category_id="Select a category (only privated categories are shown)")
@@ -215,10 +249,27 @@ class Privacy(commands.Cog):
             
         await interaction.response.defer()
         await category.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+        
+        cat_key = str(category.id)
+        locked_ids = set(getattr(db, "category_locked_channels", {}).get(cat_key, []))
         count = 0
         for ch in category.channels:
-            await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
-            count += 1
+            if locked_ids:
+                if ch.id in locked_ids:
+                    await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+                    count += 1
+            else:
+                ow = ch.overwrites_for(interaction.guild.default_role)
+                if ow.read_messages == False:
+                    name_low = ch.name.lower()
+                    if any(w in name_low for w in ["staff", "admin", "mod", "log", "private", "ticket"]):
+                        continue
+                await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+                count += 1
+                
+        if hasattr(db, "category_locked_channels") and isinstance(db.category_locked_channels, dict) and cat_key in db.category_locked_channels:
+            del db.category_locked_channels[cat_key]
+            db.save_data()
         await interaction.followup.send(f"🔓 **{category.name}** and its {count} channels are no longer private (and unlocked).")
 
 async def setup(bot):

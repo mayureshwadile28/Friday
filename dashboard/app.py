@@ -199,23 +199,6 @@ def get_voice_channels(gid):
         pass
     return jsonify([])
 
-@app.route('/api/guild/<gid>/categories')
-def get_categories(gid):
-    if bot_instance:
-        guild = bot_instance.get_guild(int(gid))
-        if guild:
-            result = [{"id": str(c.id), "name": c.name} for c in guild.categories]
-            return jsonify(result)
-
-    try:
-        resp = requests.get(f"{DISCORD_API}/guilds/{gid}/channels", headers=discord_headers(), timeout=5)
-        if resp.status_code == 200:
-            channels = resp.json()
-            result = [{"id": str(c["id"]), "name": c["name"]} for c in channels if c.get("type") == 4]
-            return jsonify(result)
-    except Exception:
-        pass
-    return jsonify([])
 
 @app.route('/api/guild/<gid>/emojis')
 def get_guild_emojis(gid):
@@ -771,21 +754,27 @@ def execute_lockdown(gid):
         if not guild: raise Exception("Guild not found.")
         ignored_count = 0
         privated_count = 0
+        just_privated = []
         for ch in guild.text_channels:
             if ch.category and ch.category.name == "Friday Security Logs": continue
             if ch.id in ignore_list:
                 await ch.set_permissions(guild.default_role, read_messages=True, send_messages=False)
                 ignored_count += 1
             else:
-                if ch.overwrites_for(guild.default_role).read_messages != False:
+                ow = ch.overwrites_for(guild.default_role)
+                if ow.read_messages != False:
                     await ch.set_permissions(guild.default_role, read_messages=False)
                     privated_count += 1
-        return {"privated": privated_count, "ignored": ignored_count}
+                    just_privated.append(ch.id)
+        return {"privated": privated_count, "ignored": ignored_count, "locked_ids": just_privated}
 
     try:
         fut = asyncio.run_coroutine_threadsafe(do_lockdown(), bot_instance.loop)
         res = fut.result(timeout=10)
         db.lockdown_active[gid_str] = True
+        if not hasattr(db, "lockdown_channels") or not isinstance(db.lockdown_channels, dict):
+            db.lockdown_channels = {}
+        db.lockdown_channels[gid_str] = res.get("locked_ids", [])
         db.save_data()
         return jsonify({"success": True, "privated": res["privated"], "ignored": res["ignored"]})
     except Exception as e:
@@ -800,19 +789,32 @@ def execute_unlock_all(gid):
     async def do_unlock():
         guild = bot_instance.get_guild(int(gid))
         if not guild: raise Exception("Guild not found.")
+        locked_ids = set(getattr(db, "lockdown_channels", {}).get(gid_str, []))
         count = 0
         for ch in guild.text_channels:
             if ch.category and ch.category.name == "Friday Security Logs": continue
-            ow = ch.overwrites_for(guild.default_role)
-            if ow.read_messages is not None or ow.send_messages is not None:
-                await ch.set_permissions(guild.default_role, read_messages=None, send_messages=None)
-                count += 1
+            if locked_ids:
+                if ch.id in locked_ids:
+                    await ch.set_permissions(guild.default_role, read_messages=None, send_messages=None)
+                    count += 1
+            else:
+                ow = ch.overwrites_for(guild.default_role)
+                if ow.read_messages == False:
+                    name_low = ch.name.lower()
+                    cat_low = ch.category.name.lower() if ch.category else ""
+                    if any(w in name_low or w in cat_low for w in ["staff", "admin", "mod", "log", "private", "ticket"]):
+                        continue
+                if ow.read_messages is not None or ow.send_messages is not None:
+                    await ch.set_permissions(guild.default_role, read_messages=None, send_messages=None)
+                    count += 1
         return {"unlocked": count}
 
     try:
         fut = asyncio.run_coroutine_threadsafe(do_unlock(), bot_instance.loop)
         res = fut.result(timeout=10)
         db.lockdown_active[gid_str] = False
+        if hasattr(db, "lockdown_channels") and isinstance(db.lockdown_channels, dict) and gid_str in db.lockdown_channels:
+            del db.lockdown_channels[gid_str]
         db.save_data()
         return jsonify({"success": True, "unlocked": res["unlocked"]})
     except Exception as e:
@@ -866,13 +868,44 @@ def toggle_category_privacy(gid):
         if cat.name == "Friday Security Logs":
             raise Exception("Friday Security Logs category must remain private.")
 
-        perm = False if action == "private" else None
-        await cat.set_permissions(cat.guild.default_role, read_messages=perm, send_messages=perm if action == "unprivate" else None)
-        count = 0
-        for ch in cat.channels:
-            await ch.set_permissions(cat.guild.default_role, read_messages=perm, send_messages=perm if action == "unprivate" else None)
-            count += 1
-        return cat.name, count
+        cat_key = str(cat.id)
+        if not hasattr(db, "category_locked_channels") or not isinstance(db.category_locked_channels, dict):
+            db.category_locked_channels = {}
+
+        if action == "private":
+            await cat.set_permissions(cat.guild.default_role, read_messages=False)
+            just_privated = []
+            count = 0
+            for ch in cat.channels:
+                ow = ch.overwrites_for(cat.guild.default_role)
+                if ow.read_messages != False:
+                    await ch.set_permissions(cat.guild.default_role, read_messages=False)
+                    just_privated.append(ch.id)
+                    count += 1
+            db.category_locked_channels[cat_key] = just_privated
+            db.save_data()
+            return cat.name, count
+        else:
+            await cat.set_permissions(cat.guild.default_role, read_messages=None, send_messages=None)
+            locked_ids = set(getattr(db, "category_locked_channels", {}).get(cat_key, []))
+            count = 0
+            for ch in cat.channels:
+                if locked_ids:
+                    if ch.id in locked_ids:
+                        await ch.set_permissions(cat.guild.default_role, read_messages=None, send_messages=None)
+                        count += 1
+                else:
+                    ow = ch.overwrites_for(cat.guild.default_role)
+                    if ow.read_messages == False:
+                        name_low = ch.name.lower()
+                        if any(w in name_low for w in ["staff", "admin", "mod", "log", "private", "ticket"]):
+                            continue
+                    await ch.set_permissions(cat.guild.default_role, read_messages=None, send_messages=None)
+                    count += 1
+            if cat_key in db.category_locked_channels:
+                del db.category_locked_channels[cat_key]
+                db.save_data()
+            return cat.name, count
 
     try:
         fut = asyncio.run_coroutine_threadsafe(do_toggle_cat(), bot_instance.loop)
