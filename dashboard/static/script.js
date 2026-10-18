@@ -180,7 +180,8 @@ const tabTitles = {
     'automationsSection': 'Auto-React & Auto-Responder',
     'firstWelcomeSection': 'First Chat Welcome',
     'afkSection': 'AFK System & Pings',
-    'tempVoiceSection': 'Temporary Voice Channels (Join-to-Create)'
+    'tempVoiceSection': 'Temporary Voice Channels (Join-to-Create)',
+    'backupSection': 'Server Backups & Disaster Recovery'
 };
 
 // ───────────────────── Bot Profile & Avatar Sync ─────────────────────
@@ -1055,6 +1056,7 @@ function setupEventListeners() {
     // Initialize Mention Autocomplete
     setupMentionAutocomplete();
     setupTempVoiceEvents();
+    setupBackupEvents();
 }
 
 // ───────────────────── Stepper Control ─────────────────────
@@ -1327,6 +1329,7 @@ async function loadDataForActiveTab() {
     else if (activeTab === 'firstWelcomeSection') await loadFirstWelcomeSettings();
     else if (activeTab === 'afkSection') await loadAfkSettings();
     else if (activeTab === 'tempVoiceSection') await loadTempVoiceSettings();
+    else if (activeTab === 'backupSection') await loadBackups();
 }
 
 // ───────────────────── Emoji Picker Logic ─────────────────────
@@ -5652,4 +5655,265 @@ function setupTempVoiceEvents() {
         });
     }
 }
+
+// ───────────────────── Server Backups & Disaster Recovery ─────────────────────
+
+let currentBackups = [];
+let activeRestoreBackupId = null;
+
+async function loadBackups() {
+    if (!currentGuildId) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/backups?t=${Date.now()}`);
+        const data = await resp.json();
+        if (data.success) {
+            currentBackups = data.backups || [];
+            renderBackups(currentBackups);
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to fetch backups'}`);
+        }
+    } catch (err) {
+        showToast('❌ Network error loading server backups');
+    }
+}
+
+function renderBackups(backups) {
+    const listCont = document.getElementById('backupListContainer');
+    const statCount = document.getElementById('backupStatCount');
+    const statLatest = document.getElementById('backupStatLatest');
+
+    if (statCount) statCount.textContent = backups.length;
+    if (statLatest) {
+        statLatest.textContent = backups.length > 0 ? (backups[0].created_at_formatted || 'Recently') : 'None saved yet';
+    }
+
+    if (!listCont) return;
+
+    if (!backups || backups.length === 0) {
+        listCont.innerHTML = `
+            <div class="whitelist-empty" style="padding: 36px 20px; text-align: center;">
+                <div style="font-size: 32px; margin-bottom: 10px;">💾</div>
+                <div style="font-weight: 700; font-size: 15px; color: #fff; margin-bottom: 4px;">No Snapshots Saved Yet</div>
+                <div style="font-size: 13px; color: var(--text-muted); max-width: 400px; margin: 0 auto 16px;">
+                    Take a snapshot right now to save your roles, channels, and permission overwrites.
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    listCont.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(320px, 1fr))';
+    grid.style.gap = '16px';
+
+    backups.forEach(b => {
+        const item = document.createElement('div');
+        item.className = 'card';
+        item.style.margin = '0';
+        item.style.padding = '18px';
+        item.style.background = 'rgba(255, 255, 255, 0.03)';
+        item.style.border = '1px solid var(--border-color)';
+        item.style.borderRadius = '14px';
+        item.style.display = 'flex';
+        item.style.flexDirection = 'column';
+        item.style.justifyContent = 'space-between';
+
+        const createdTime = b.created_at_formatted || b.created_at || 'Recently';
+
+        item.innerHTML = `
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px;">
+                    <div>
+                        <div style="font-size: 15px; font-weight: 700; color: #fff;">${escapeHtml(b.name || 'Server Snapshot')}</div>
+                        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                            ${escapeHtml(createdTime)} • <span style="font-family: monospace; color: #5865F2;">${escapeHtml(b.id)}</span>
+                        </div>
+                    </div>
+                    <span style="font-size: 11px; padding: 2px 8px; border-radius: 6px; background: rgba(88, 101, 242, 0.15); color: #5865F2; font-weight: 600;">Snapshot</span>
+                </div>
+
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
+                    <span style="font-size: 11px; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #E0E7FF;">
+                        👑 <strong>${b.roles_count || 0}</strong> Roles
+                    </span>
+                    <span style="font-size: 11px; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #E0E7FF;">
+                        📁 <strong>${b.categories_count || 0}</strong> Categories
+                    </span>
+                    <span style="font-size: 11px; padding: 4px 10px; border-radius: 8px; background: rgba(255,255,255,0.05); color: #E0E7FF;">
+                        💬 <strong>${b.channels_count || 0}</strong> Channels
+                    </span>
+                </div>
+
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 16px;">
+                    👤 Saved by: <span style="color: var(--text-secondary);">${escapeHtml(b.created_by || 'Admin')}</span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px;">
+                <button class="btn btn-danger btn-restore-snapshot" style="flex: 1; padding: 7px 12px; font-size: 12px;" type="button" data-id="${escapeHtml(b.id)}" data-name="${escapeHtml(b.name)}">
+                    🚨 Restore
+                </button>
+                <button class="btn btn-secondary btn-delete-snapshot" style="padding: 7px 12px; font-size: 12px;" type="button" data-id="${escapeHtml(b.id)}">
+                    🗑️
+                </button>
+            </div>
+        `;
+
+        item.querySelector('.btn-restore-snapshot').addEventListener('click', () => {
+            openRestoreModal(b.id, b.name);
+        });
+
+        item.querySelector('.btn-delete-snapshot').addEventListener('click', () => {
+            deleteBackup(b.id);
+        });
+
+        grid.appendChild(item);
+    });
+
+    listCont.appendChild(grid);
+}
+
+async function createBackup() {
+    if (!currentGuildId) return showToast('⚠️ Select a server first!');
+    const name = prompt("Enter a label for this server snapshot (optional):", "");
+    if (name === null) return;
+
+    const btn = document.getElementById('backupCreateBtn');
+    const textSpan = document.getElementById('backupCreateBtnText');
+    const originalText = textSpan ? textSpan.textContent : 'Create Live Backup';
+
+    if (btn) btn.disabled = true;
+    if (textSpan) {
+        textSpan.innerHTML = '<span class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin 0.6s linear infinite; margin-right:6px; vertical-align:middle;"></span> Capturing Snapshot...';
+    }
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/backups/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('💾 Live server snapshot created successfully!');
+            await loadBackups();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to create backup'}`);
+        }
+    } catch (err) {
+        showToast('❌ Network error capturing snapshot');
+    } finally {
+        if (btn) btn.disabled = false;
+        if (textSpan) textSpan.textContent = originalText;
+    }
+}
+
+function openRestoreModal(backupId, backupName) {
+    activeRestoreBackupId = backupId;
+    const modal = document.getElementById('backupRestoreModal');
+    const nameEl = document.getElementById('modalBackupNameText');
+    const idEl = document.getElementById('modalBackupIdText');
+
+    if (nameEl) nameEl.textContent = backupName || backupId;
+    if (idEl) idEl.textContent = `Snapshot ID: ${backupId}`;
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeRestoreModal() {
+    const modal = document.getElementById('backupRestoreModal');
+    if (modal) modal.style.display = 'none';
+    activeRestoreBackupId = null;
+}
+
+async function confirmRestoreBackup() {
+    if (!currentGuildId || !activeRestoreBackupId) return;
+
+    const confirmBtn = document.getElementById('modalRestoreConfirmBtn');
+    const btnText = document.getElementById('modalRestoreBtnText');
+    const origText = btnText ? btnText.textContent : 'Yes, Restore Server';
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (btnText) {
+        btnText.innerHTML = '<span class="spinner" style="display:inline-block; width:12px; height:12px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin 0.6s linear infinite; margin-right:6px; vertical-align:middle;"></span> Restoring Server...';
+    }
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/backups/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backup_id: activeRestoreBackupId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            closeRestoreModal();
+            showToast('✅ Server restored successfully from snapshot!');
+            await loadCoreData();
+            await loadBackups();
+        } else {
+            showToast(`❌ Restoration failed: ${data.error || 'Unknown error'}`);
+        }
+    } catch (err) {
+        showToast('❌ Network error during server restoration');
+    } finally {
+        if (confirmBtn) confirmBtn.disabled = false;
+        if (btnText) btnText.textContent = origText;
+    }
+}
+
+async function deleteBackup(backupId) {
+    if (!currentGuildId || !backupId) return;
+    if (!confirm(`Are you sure you want to delete backup snapshot '${backupId}'? This cannot be undone.`)) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/backups/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backup_id: backupId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('🗑️ Backup snapshot deleted.');
+            await loadBackups();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to delete'}`);
+        }
+    } catch (err) {
+        showToast('❌ Network error deleting backup');
+    }
+}
+
+function setupBackupEvents() {
+    const refreshBtn = document.getElementById('backupRefreshBtn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            await loadBackups();
+            showToast('🔄 Refreshed server snapshots list');
+        });
+    }
+
+    const createBtn = document.getElementById('backupCreateBtn');
+    if (createBtn) {
+        createBtn.addEventListener('click', createBackup);
+    }
+
+    const cancelBtn = document.getElementById('modalRestoreCancelBtn');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', closeRestoreModal);
+    }
+
+    const confirmBtn = document.getElementById('modalRestoreConfirmBtn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', confirmRestoreBackup);
+    }
+
+    const modal = document.getElementById('backupRestoreModal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeRestoreModal();
+        });
+    }
+}
+
 

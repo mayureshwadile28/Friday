@@ -1845,6 +1845,104 @@ async def _create_autohub_coroutine(guild_id):
         "message": f"Created '➕ Join to Create' under '{category.name}'!"
     }
 
+# ───────────────────── API: Server Backups & Disaster Recovery ─────────────────────
+
+@app.route('/api/guild/<gid>/backups', methods=['GET'])
+def get_guild_backups(gid):
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
+    backups = (db.server_backups.get(gid_str) or db.server_backups.get(gid_int) or []) if hasattr(db, "server_backups") else []
+    return jsonify({"success": True, "backups": backups})
+
+@app.route('/api/guild/<gid>/backups/create', methods=['POST'])
+def create_guild_backup(gid):
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    body = flask_request.json or {}
+    name = body.get("name")
+    
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Friday bot is not connected to Discord right now."})
+    
+    guild = bot_instance.get_guild(gid_int or int(gid_str))
+    if not guild:
+        return jsonify({"success": False, "error": f"Server {gid} not found or Friday lacks access."})
+    
+    try:
+        from cogs.backup import capture_server_backup
+        snapshot = capture_server_backup(guild, name=name, creator_name="Dashboard Administrator")
+        return jsonify({"success": True, "backup": snapshot})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/guild/<gid>/backups/restore', methods=['POST'])
+def restore_guild_backup(gid):
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    body = flask_request.json or {}
+    backup_id = body.get("backup_id")
+    
+    if not backup_id:
+        return jsonify({"success": False, "error": "Backup ID is required."})
+        
+    if not bot_instance or not bot_instance.loop:
+        return jsonify({"success": False, "error": "Friday bot is not connected to Discord right now."})
+        
+    guild = bot_instance.get_guild(gid_int or int(gid_str))
+    if not guild:
+        return jsonify({"success": False, "error": f"Server {gid} not found or Friday lacks access."})
+        
+    try:
+        db.reload()
+    except Exception:
+        pass
+        
+    backups = (db.server_backups.get(gid_str) or db.server_backups.get(gid_int) or []) if hasattr(db, "server_backups") else []
+    target_backup = next((b for b in backups if b.get("id") == backup_id.strip()), None)
+    if not target_backup:
+        return jsonify({"success": False, "error": f"Backup snapshot '{backup_id}' not found."})
+        
+    try:
+        from cogs.backup import apply_server_restore
+        coro = apply_server_restore(guild, target_backup)
+        future = asyncio.run_coroutine_threadsafe(coro, bot_instance.loop)
+        summary = future.result(timeout=180)
+        return jsonify({"success": True, "summary": summary, "backup": target_backup})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/guild/<gid>/backups/delete', methods=['POST'])
+def delete_guild_backup(gid):
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    body = flask_request.json or {}
+    backup_id = body.get("backup_id")
+    
+    if not backup_id:
+        return jsonify({"success": False, "error": "Backup ID is required."})
+        
+    try:
+        db.reload()
+    except Exception:
+        pass
+        
+    deleted = False
+    for g_key in [gid_str, gid_int]:
+        if hasattr(db, "server_backups") and g_key in db.server_backups:
+            orig = len(db.server_backups[g_key])
+            db.server_backups[g_key] = [b for b in db.server_backups[g_key] if b.get("id") != backup_id.strip()]
+            if len(db.server_backups[g_key]) < orig:
+                deleted = True
+                
+    if deleted:
+        db.save_data()
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": f"Backup '{backup_id}' not found."})
+
 # ───────────────────── Bot Lifecycle ─────────────────────
 
 @app.route('/api/bot/stop', methods=['POST'])

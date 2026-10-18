@@ -158,6 +158,16 @@
 </div>
                     Temporary Voice (VC Hub)
                 </a>
+<a class="nav-item" data-tab="backupSection" href="#">
+<div class="nav-icon-wrap">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16">
+<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+<polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+<line x1="12" y1="22.08" x2="12" y2="12"></line>
+</svg>
+</div>
+                    Server Backups
+                </a>
 </div>
 </div>
 <!-- Sidebar Footer -->
@@ -3359,6 +3369,131 @@ Click an inquiry button below to open a confidential support ticket with our tea
         </div>
     </div>
 </div> <!-- End #tempVoiceSection -->
+
+<!-- ──────────────── MODULE: SERVER BACKUPS & DISASTER RECOVERY ──────────────── -->
+<div class="content-section" id="backupSection" style="display: none;">
+    <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <h1 class="section-title" style="margin: 0;">Server Snapshots & Disaster Recovery</h1>
+                <span class="status-pill active" id="backupStatusBadge">
+                    <span class="status-pulse"></span> Instant Recovery
+                </span>
+            </div>
+            <p class="section-desc" style="margin-top: 6px; max-width: 650px;">
+                Capture complete, immutable snapshots of server roles, channel structures, categories, and permission overwrites. If a compromised administrator or raid ever wrecks your server, restore everything in one click.
+            </p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" id="backupRefreshBtn" type="button" title="Refresh snapshots list">
+                <svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="14">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                </svg>
+                Refresh List
+            </button>
+            <button class="btn btn-primary" id="backupCreateBtn" type="button" title="Capture live snapshot of channels, roles, and permissions">
+                <svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="14">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span id="backupCreateBtnText">Create Live Backup</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Quick Stats Cards Row -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="card" style="margin: 0; padding: 18px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(88, 101, 242, 0.15); display: flex; align-items: center; justify-content: center; color: #5865F2; font-size: 20px;">
+                💾
+            </div>
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Saved Snapshots</div>
+                <div style="font-size: 22px; font-weight: 800; color: #fff;" id="backupStatCount">0</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin: 0; padding: 18px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); display: flex; align-items: center; justify-content: center; color: #10B981; font-size: 20px;">
+                🛡️
+            </div>
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Hierarchy Coverage</div>
+                <div style="font-size: 13px; font-weight: 700; color: #10B981; margin-top: 4px;">Roles, Categories & Overwrites</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin: 0; padding: 18px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); display: flex; align-items: center; justify-content: center; color: #F59E0B; font-size: 20px;">
+                ⏱️
+            </div>
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Latest Backup</div>
+                <div style="font-size: 13px; font-weight: 600; color: #fff; margin-top: 4px;" id="backupStatLatest">None saved yet</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backups List Card -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+                <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px;">Server Snapshots Vault</h3>
+                <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Backups are securely synchronized between Discord bot slash commands (<code>/backup</code>) and this web panel.</p>
+            </div>
+        </div>
+
+        <div id="backupListContainer">
+            <div class="whitelist-empty" style="padding: 36px 20px; text-align: center;">
+                <div style="font-size: 32px; margin-bottom: 10px;">💾</div>
+                <div style="font-weight: 700; font-size: 15px; color: #fff; margin-bottom: 4px;">No Snapshots Saved Yet</div>
+                <div style="font-size: 13px; color: var(--text-muted); max-width: 400px; margin: 0 auto 16px;">
+                    Take a snapshot right now to save your roles, channels, and permission overwrites.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Disaster Recovery Tips Card -->
+    <div class="card" style="background: rgba(30, 31, 34, 0.6); border-left: 4px solid #5865F2;">
+        <h4 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px;">💡 How Friday Disaster Recovery Works</h4>
+        <ul style="font-size: 12px; color: var(--text-secondary); line-height: 1.8; margin: 0; padding-left: 18px;">
+            <li><strong>Automated Role Rebuilding:</strong> Recreates any deleted roles with identical permissions, colors, and hoist settings.</li>
+            <li><strong>Category & Channel Hierarchy:</strong> Reconstructs text and voice channels into their original categories with exact slowmode and topic settings.</li>
+            <li><strong>Permission Overwrite Synchronization:</strong> Restores complex channel view/send permissions for specific roles.</li>
+            <li><strong>Administrator Only:</strong> In Discord, only the Server Owner and Administrators can run <code>/backup create</code> or <code>/backup restore</code>.</li>
+        </ul>
+    </div>
+</div> <!-- End #backupSection -->
+
+<!-- Restore Confirmation Modal -->
+<div class="modal-backdrop" id="backupRestoreModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div class="modal-dialog" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; max-width: 460px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(239, 68, 68, 0.15); color: #EF4444; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+                ⚠️
+            </div>
+            <div>
+                <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Restore Server Snapshot?</h3>
+                <span style="font-size: 12px; color: var(--text-muted);" id="modalBackupIdText">Snapshot ID: bk-xxxx</span>
+            </div>
+        </div>
+        <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">
+            This will restore roles, categories, and channels from snapshot <strong id="modalBackupNameText" style="color: #fff;"></strong>. Missing channels will be created, and permissions will be synchronized.
+        </p>
+        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #FCA5A5; margin-bottom: 20px;">
+            🚨 <strong>Notice:</strong> This action should be used for disaster recovery or rolling back accidental channel/role deletions.
+        </div>
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button class="btn btn-secondary" id="modalRestoreCancelBtn" type="button">Cancel</button>
+            <button class="btn btn-danger" id="modalRestoreConfirmBtn" type="button">
+                <span id="modalRestoreBtnText">Yes, Restore Server</span>
+            </button>
+        </div>
+    </div>
+</div>
 </div> <!-- End .main-container -->
 <!-- Global Emoji Popover -->
 <div class="emoji-popover" id="emojiPopover">
