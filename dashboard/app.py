@@ -1858,6 +1858,35 @@ def get_guild_backups(gid):
     backups = (db.server_backups.get(gid_str) or db.server_backups.get(gid_int) or []) if hasattr(db, "server_backups") else []
     return jsonify({"success": True, "backups": backups})
 
+@app.route('/api/guild/<gid>/backups/<bid>/audit', methods=['GET'])
+def audit_guild_backup(gid, bid):
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Friday bot is not connected to Discord right now."})
+        
+    guild = bot_instance.get_guild(gid_int or int(gid_str))
+    if not guild:
+        return jsonify({"success": False, "error": f"Server {gid} not found or Friday lacks access."})
+        
+    try:
+        db.reload()
+    except Exception:
+        pass
+        
+    backups = (db.server_backups.get(gid_str) or db.server_backups.get(gid_int) or []) if hasattr(db, "server_backups") else []
+    target_backup = next((b for b in backups if b.get("id") == bid.strip()), None)
+    if not target_backup:
+        return jsonify({"success": False, "error": f"Backup snapshot '{bid}' not found."})
+        
+    try:
+        from cogs.backup import audit_server_status
+        audit_res = audit_server_status(guild, target_backup)
+        return jsonify({"success": True, "audit": audit_res, "backup": target_backup})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 @app.route('/api/guild/<gid>/backups/create', methods=['POST'])
 def create_guild_backup(gid):
     gid_str = str(gid)
@@ -1879,12 +1908,40 @@ def create_guild_backup(gid):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.route('/api/guild/<gid>/backups/update', methods=['POST'])
+def update_guild_backup(gid):
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    body = flask_request.json or {}
+    backup_id = body.get("backup_id")
+    name = body.get("name")
+    
+    if not backup_id:
+        return jsonify({"success": False, "error": "Backup ID is required."})
+        
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Friday bot is not connected to Discord right now."})
+        
+    guild = bot_instance.get_guild(gid_int or int(gid_str))
+    if not guild:
+        return jsonify({"success": False, "error": f"Server {gid} not found or Friday lacks access."})
+        
+    try:
+        from cogs.backup import update_server_backup
+        snapshot = update_server_backup(guild, backup_id=backup_id, new_name=name, updater_name="Dashboard Administrator")
+        return jsonify({"success": True, "backup": snapshot})
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 @app.route('/api/guild/<gid>/backups/restore', methods=['POST'])
 def restore_guild_backup(gid):
     gid_str = str(gid)
     gid_int = int(gid) if str(gid).isdigit() else None
     body = flask_request.json or {}
     backup_id = body.get("backup_id")
+    clean_unauthorized = bool(body.get("clean_unauthorized", False))
     
     if not backup_id:
         return jsonify({"success": False, "error": "Backup ID is required."})
@@ -1908,7 +1965,7 @@ def restore_guild_backup(gid):
         
     try:
         from cogs.backup import apply_server_restore
-        coro = apply_server_restore(guild, target_backup)
+        coro = apply_server_restore(guild, target_backup, clean_unauthorized=clean_unauthorized)
         future = asyncio.run_coroutine_threadsafe(coro, bot_instance.loop)
         summary = future.result(timeout=180)
         return jsonify({"success": True, "summary": summary, "backup": target_backup})

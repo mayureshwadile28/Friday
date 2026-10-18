@@ -5720,7 +5720,8 @@ function renderBackups(backups) {
         item.style.flexDirection = 'column';
         item.style.justifyContent = 'space-between';
 
-        const createdTime = b.created_at_formatted || b.created_at || 'Recently';
+        const createdTime = b.updated_at_formatted || b.created_at_formatted || b.created_at || 'Recently';
+        const isUpdated = Boolean(b.updated_at);
 
         item.innerHTML = `
             <div>
@@ -5731,7 +5732,9 @@ function renderBackups(backups) {
                             ${escapeHtml(createdTime)} • <span style="font-family: monospace; color: #5865F2;">${escapeHtml(b.id)}</span>
                         </div>
                     </div>
-                    <span style="font-size: 11px; padding: 2px 8px; border-radius: 6px; background: rgba(88, 101, 242, 0.15); color: #5865F2; font-weight: 600;">Snapshot</span>
+                    <span style="font-size: 11px; padding: 2px 8px; border-radius: 6px; background: ${isUpdated ? 'rgba(16, 185, 129, 0.15)' : 'rgba(88, 101, 242, 0.15)'}; color: ${isUpdated ? '#10B981' : '#5865F2'}; font-weight: 600;">
+                        ${isUpdated ? 'Updated' : 'Snapshot'}
+                    </span>
                 </div>
 
                 <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;">
@@ -5747,19 +5750,26 @@ function renderBackups(backups) {
                 </div>
 
                 <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 16px;">
-                    👤 Saved by: <span style="color: var(--text-secondary);">${escapeHtml(b.created_by || 'Admin')}</span>
+                    👤 Saved by: <span style="color: var(--text-secondary);">${escapeHtml(b.updated_by || b.created_by || 'Admin')}</span>
                 </div>
             </div>
 
             <div style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 14px;">
+                <button class="btn btn-secondary btn-update-snapshot" style="padding: 7px 12px; font-size: 12px;" type="button" data-id="${escapeHtml(b.id)}" title="Update this snapshot with current server channels & roles">
+                    🔄 Update
+                </button>
                 <button class="btn btn-danger btn-restore-snapshot" style="flex: 1; padding: 7px 12px; font-size: 12px;" type="button" data-id="${escapeHtml(b.id)}" data-name="${escapeHtml(b.name)}">
                     🚨 Restore
                 </button>
-                <button class="btn btn-secondary btn-delete-snapshot" style="padding: 7px 12px; font-size: 12px;" type="button" data-id="${escapeHtml(b.id)}">
+                <button class="btn btn-secondary btn-delete-snapshot" style="padding: 7px 12px; font-size: 12px;" type="button" data-id="${escapeHtml(b.id)}" title="Delete snapshot">
                     🗑️
                 </button>
             </div>
         `;
+
+        item.querySelector('.btn-update-snapshot').addEventListener('click', () => {
+            updateBackup(b.id, b.name);
+        });
 
         item.querySelector('.btn-restore-snapshot').addEventListener('click', () => {
             openRestoreModal(b.id, b.name);
@@ -5810,15 +5820,95 @@ async function createBackup() {
     }
 }
 
-function openRestoreModal(backupId, backupName) {
+async function updateBackup(backupId, currentName) {
+    if (!currentGuildId || !backupId) return;
+    const confirmUpdate = confirm(`Overwrite snapshot '${currentName || backupId}' with the CURRENT server structure (roles, channels, permissions)?`);
+    if (!confirmUpdate) return;
+
+    const newName = prompt("Enter updated name for this snapshot (leave empty to keep current name):", currentName || "");
+    if (newName === null) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/backups/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ backup_id: backupId, name: newName.trim() })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('🔄 Snapshot updated in-place with current server structure!');
+            await loadBackups();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to update snapshot'}`);
+        }
+    } catch (err) {
+        showToast('❌ Network error updating snapshot');
+    }
+}
+
+async function openRestoreModal(backupId, backupName) {
     activeRestoreBackupId = backupId;
     const modal = document.getElementById('backupRestoreModal');
     const nameEl = document.getElementById('modalBackupNameText');
     const idEl = document.getElementById('modalBackupIdText');
+    const auditBadge = document.getElementById('modalAuditBadge');
+    const auditDetails = document.getElementById('modalAuditDetails');
+    const cleanBox = document.getElementById('modalCleanUnauthorizedContainer');
+    const cleanCheckbox = document.getElementById('modalCleanUnauthorized');
+    const cleanDesc = document.getElementById('modalCleanUnauthorizedDesc');
 
     if (nameEl) nameEl.textContent = backupName || backupId;
     if (idEl) idEl.textContent = `Snapshot ID: ${backupId}`;
+    if (cleanCheckbox) cleanCheckbox.checked = false;
+    if (cleanBox) cleanBox.style.display = 'none';
+
+    if (auditBadge) {
+        auditBadge.textContent = "Analyzing...";
+        auditBadge.style.background = "rgba(88,101,242,0.15)";
+        auditBadge.style.color = "#5865F2";
+    }
+    if (auditDetails) {
+        auditDetails.innerHTML = "Checking whether channels or roles were deleted or if server is in sync...";
+    }
+
     if (modal) modal.style.display = 'flex';
+
+    // Fetch live audit from bot
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/backups/${backupId}/audit?t=${Date.now()}`);
+        const data = await resp.json();
+        if (data.success && data.audit) {
+            const audit = data.audit;
+            if (audit.is_in_sync) {
+                if (auditBadge) {
+                    auditBadge.textContent = "✅ Server Intact";
+                    auditBadge.style.background = "rgba(16,185,129,0.15)";
+                    auditBadge.style.color = "#10B981";
+                }
+                if (auditDetails) {
+                    auditDetails.innerHTML = `<strong>Safe to restore:</strong> All ${audit.total_snapshot_channels} channels and ${audit.total_snapshot_roles} roles already exist. Restoring will synchronize permissions <em>without creating duplicate channels or roles</em>.`;
+                }
+            } else {
+                if (auditBadge) {
+                    auditBadge.textContent = "🚨 Disaster Damage";
+                    auditBadge.style.background = "rgba(239,68,68,0.15)";
+                    auditBadge.style.color = "#EF4444";
+                }
+                if (auditDetails) {
+                    auditDetails.innerHTML = `<strong>Missing items detected:</strong> ${audit.missing_channels_count} channels, ${audit.missing_roles_count} roles, and ${audit.missing_categories_count} categories will be reconstructed.`;
+                }
+            }
+
+            if (audit.unauthorized_channels_count > 0 && cleanBox) {
+                cleanBox.style.display = 'block';
+                if (cleanDesc) {
+                    cleanDesc.textContent = `Found ${audit.unauthorized_channels_count} rogue/spam channel(s) created after this snapshot. Enable this to purge them.`;
+                }
+            }
+        }
+    } catch (e) {
+        if (auditDetails) auditDetails.textContent = "Pre-check analysis could not be completed, proceeding with standard safe restore.";
+    }
 }
 
 function closeRestoreModal() {
@@ -5832,7 +5922,8 @@ async function confirmRestoreBackup() {
 
     const confirmBtn = document.getElementById('modalRestoreConfirmBtn');
     const btnText = document.getElementById('modalRestoreBtnText');
-    const origText = btnText ? btnText.textContent : 'Yes, Restore Server';
+    const origText = btnText ? btnText.textContent : 'Confirm Safe Restore';
+    const cleanUnauthorized = Boolean(document.getElementById('modalCleanUnauthorized')?.checked);
 
     if (confirmBtn) confirmBtn.disabled = true;
     if (btnText) {
@@ -5843,12 +5934,26 @@ async function confirmRestoreBackup() {
         const resp = await fetch(`/api/guild/${currentGuildId}/backups/restore`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ backup_id: activeRestoreBackupId })
+            body: JSON.stringify({
+                backup_id: activeRestoreBackupId,
+                clean_unauthorized: cleanUnauthorized
+            })
         });
         const data = await resp.json();
         if (data.success) {
             closeRestoreModal();
-            showToast('✅ Server restored successfully from snapshot!');
+            const sm = data.summary || {};
+            const createdCh = sm.created_channels || 0;
+            const createdRo = sm.created_roles || 0;
+            const purged = sm.deleted_unauthorized_channels || 0;
+            
+            let msg = '✅ Server restoration finished!';
+            if (sm.was_in_sync && createdCh === 0 && createdRo === 0) {
+                msg = '✅ Server in-sync! Permissions & settings synchronized without duplicates.';
+            } else {
+                msg = `✅ Restored! (${createdCh} channels created, ${createdRo} roles created${purged ? `, ${purged} spam channels purged` : ''})`;
+            }
+            showToast(msg);
             await loadCoreData();
             await loadBackups();
         } else {

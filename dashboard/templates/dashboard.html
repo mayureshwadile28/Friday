@@ -3470,26 +3470,49 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 <!-- Restore Confirmation Modal -->
 <div class="modal-backdrop" id="backupRestoreModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-    <div class="modal-dialog" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; max-width: 460px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+    <div class="modal-dialog" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; max-width: 480px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
             <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(239, 68, 68, 0.15); color: #EF4444; display: flex; align-items: center; justify-content: center; font-size: 20px;">
                 ⚠️
             </div>
             <div>
-                <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Restore Server Snapshot?</h3>
+                <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Safe Server Restoration</h3>
                 <span style="font-size: 12px; color: var(--text-muted);" id="modalBackupIdText">Snapshot ID: bk-xxxx</span>
             </div>
         </div>
-        <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 16px;">
-            This will restore roles, categories, and channels from snapshot <strong id="modalBackupNameText" style="color: #fff;"></strong>. Missing channels will be created, and permissions will be synchronized.
+
+        <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 14px;">
+            Restoring snapshot <strong id="modalBackupNameText" style="color: #fff;"></strong> will safely reconstruct missing channels/roles and synchronize permissions without creating duplicates.
         </p>
-        <div style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #FCA5A5; margin-bottom: 20px;">
-            🚨 <strong>Notice:</strong> This action should be used for disaster recovery or rolling back accidental channel/role deletions.
+
+        <!-- Live Audit Assessment Card -->
+        <div id="modalAuditBox" style="background: rgba(30, 31, 34, 0.7); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; font-size: 12px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-weight: 700; color: #fff;">Server Health Pre-Check:</span>
+                <span id="modalAuditBadge" style="padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; background: rgba(88,101,242,0.15); color: #5865F2;">Analyzing...</span>
+            </div>
+            <div id="modalAuditDetails" style="color: var(--text-secondary); line-height: 1.5;">
+                Checking whether channels or roles were deleted...
+            </div>
         </div>
+
+        <!-- Clean Rogue Spam Channels Option -->
+        <div id="modalCleanUnauthorizedContainer" style="display: none; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;">
+            <label style="display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: #FCA5A5; cursor: pointer; margin: 0;">
+                <input type="checkbox" id="modalCleanUnauthorized" style="margin-top: 2px; cursor: pointer;">
+                <div>
+                    <strong style="color: #fff;">Purge Rogue Spam Channels:</strong>
+                    <div id="modalCleanUnauthorizedDesc" style="color: #FCA5A5; margin-top: 2px;">
+                        Delete unauthorized channels created during the raid/nuke that were not in this snapshot.
+                    </div>
+                </div>
+            </label>
+        </div>
+
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
             <button class="btn btn-secondary" id="modalRestoreCancelBtn" type="button">Cancel</button>
             <button class="btn btn-danger" id="modalRestoreConfirmBtn" type="button">
-                <span id="modalRestoreBtnText">Yes, Restore Server</span>
+                <span id="modalRestoreBtnText">Confirm Safe Restore</span>
             </button>
         </div>
     </div>
