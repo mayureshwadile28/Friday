@@ -4298,7 +4298,7 @@ function renderFeatureWhitelists(fwData) {
                     const member = currentGuildMembers.find(m => String(m.id) === String(uid));
                     const username = member ? member.username : (itemUsername || `User ${uid}`);
                     const avatar = member && member.avatar ? member.avatar : itemAvatar;
-                    const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="fw-chip-avatar">` : `<div class="fw-chip-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
+                    const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="fw-chip-avatar" width="22" height="22" style="width: 22px; height: 22px; max-width: 22px; max-height: 22px; border-radius: 50%; object-fit: cover; display: inline-block;">` : `<div class="fw-chip-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
 
                     const chip = document.createElement('div');
                     chip.className = 'fw-member-chip';
@@ -4396,7 +4396,7 @@ function renderFeaturePopoverMembers(query) {
     filtered.slice(0, 30).forEach(m => {
         const item = document.createElement('div');
         item.className = 'fw-popover-item';
-        const avatarHtml = m.avatar ? `<img src="${m.avatar}" alt="" class="fw-popover-avatar">` : `<div class="fw-popover-avatar-fallback">${m.username.charAt(0).toUpperCase()}</div>`;
+        const avatarHtml = m.avatar ? `<img src="${m.avatar}" alt="" class="fw-popover-avatar" width="28" height="28" style="width: 28px; height: 28px; max-width: 28px; max-height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">` : `<div class="fw-popover-avatar-fallback">${m.username.charAt(0).toUpperCase()}</div>`;
         item.innerHTML = `
             ${avatarHtml}
             <div class="fw-popover-user-info">

@@ -2574,40 +2574,89 @@ input:checked + .slider:before {
 .fw-member-chip {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: 999px;
-    padding: 3px 8px 3px 4px;
+    padding: 3px 10px 3px 4px;
     font-size: 12px;
     color: #f1f5f9;
+    max-width: 100%;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
 
+.fw-member-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.22);
+}
+
+.fw-chip-avatar,
 .fw-member-avatar {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    object-fit: cover;
+    width: 22px !important;
+    height: 22px !important;
+    max-width: 22px !important;
+    max-height: 22px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    display: block !important;
     background: #313338;
+    flex-shrink: 0;
 }
 
+.fw-chip-avatar-fallback {
+    width: 22px;
+    height: 22px;
+    min-width: 22px;
+    min-height: 22px;
+    border-radius: 50%;
+    background: #5865f2;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.fw-chip-name {
+    font-weight: 600;
+    color: #f2f3f5;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fw-chip-id {
+    font-size: 11px;
+    color: #949ba4;
+    font-family: monospace;
+    opacity: 0.85;
+}
+
+.fw-chip-remove,
 .fw-member-rm {
     background: none;
     border: none;
     color: #94a3b8;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 16px;
     line-height: 1;
-    padding: 0 2px;
+    padding: 0 4px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color 0.15s ease;
+    transition: color 0.15s ease, transform 0.15s ease;
 }
 
+.fw-chip-remove:hover,
 .fw-member-rm:hover {
     color: #ef4444;
+    transform: scale(1.2);
 }
 
 /* Feature Whitelist Search Popover */
