@@ -95,6 +95,10 @@ class Security(commands.Cog):
         if feature:
             feat_wl = db.feature_whitelists.get(gid, {}).get(feature, [])
             if member_or_user.id in feat_wl: return True
+        # Server Administrators and Managers are always considered whitelisted/immune
+        if isinstance(member_or_user, discord.Member):
+            if member_or_user.guild_permissions.administrator:
+                return True
         return False
 
     def record_action_and_check(self, guild_id, user_id, action_type):
@@ -900,50 +904,74 @@ class Security(commands.Cog):
         if not db.antinuke_active.get(gid, True): return
         cfg = self.get_security_config(gid)
 
+        # Check if author is Server Owner, Administrator, or Whitelisted
+        is_admin_or_owner = False
+        if isinstance(author, discord.Member):
+            is_admin_or_owner = (
+                author.id == guild.owner_id or
+                author.guild_permissions.administrator or
+                author.guild_permissions.manage_guild or
+                author.guild_permissions.manage_messages
+            )
+        is_immune = is_admin_or_owner or self.is_whitelisted(guild, author)
+
         # 1. Detect Only: Anti Invite Link (Auto-Delete & Log)
         if cfg.get("detect", {}).get("invite_link", {}).get("enabled", True) and self.invite_regex.search(message.content):
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            try:
-                resp_tpl = db.custom_responses.get(gid, {}).get("security_invite_warn", "🔗 {member}, discord invite links are not allowed in this server.")
-                warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
-                await warn_msg.delete(delay=5)
-            except Exception:
-                pass
-            embed = discord.Embed(
-                title="🔗 Invite Link Removed",
-                description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
-                color=discord.Color.orange(),
-                timestamp=discord.utils.utcnow()
-            )
-            await self.log_security_event(guild, "audit-antispam", embed)
-            return
+            if not is_immune and not self.is_whitelisted(guild, author, feature="invite_link"):
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                try:
+                    resp_tpl = db.custom_responses.get(gid, {}).get("security_invite_warn", "🔗 {member}, discord invite links are not allowed in this server.")
+                    warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
+                    await warn_msg.delete(delay=5)
+                except Exception:
+                    pass
+                embed = discord.Embed(
+                    title="🔗 Invite Link Removed",
+                    description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
+                    color=discord.Color.orange(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-antispam", embed)
+                return
 
-        # 2. Detect Only: Anti Link
+        # 2. Detect Only: Anti Link (Auto-Delete & Log)
         if cfg.get("detect", {}).get("anti_link", {}).get("enabled", True) and self.link_regex.search(message.content):
-            try:
-                await message.delete()
-            except Exception:
-                pass
-            try:
-                resp_tpl = db.custom_responses.get(gid, {}).get("security_link_warn", "🔗 {member}, external links are not allowed in this server.")
-                warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
-                await warn_msg.delete(delay=5)
-            except Exception:
-                pass
-            embed = discord.Embed(
-                title="🔗 Link Removed",
-                description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
-                color=discord.Color.orange(),
-                timestamp=discord.utils.utcnow()
-            )
-            await self.log_security_event(guild, "audit-antispam", embed)
-            return
+            can_send_link = is_immune or self.is_whitelisted(guild, author, feature="anti_link")
+
+            if not can_send_link:
+                # Check if this is a GIF (tenor, giphy, or .gif) and member has embed/attachment permissions
+                gif_patterns = re.compile(r'(?:tenor\.com|giphy\.com|gfycat\.com|\.gif(?:\?|$)|media\.discordapp\.net/attachments/.*\.gif)', re.IGNORECASE)
+                is_gif = bool(gif_patterns.search(message.content))
+                if is_gif and isinstance(author, discord.Member):
+                    channel_perms = message.channel.permissions_for(author)
+                    if channel_perms.embed_links or channel_perms.attach_files:
+                        can_send_link = True
+
+            if not can_send_link:
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                try:
+                    resp_tpl = db.custom_responses.get(gid, {}).get("security_link_warn", "🔗 {member}, external links are not allowed in this server.")
+                    warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
+                    await warn_msg.delete(delay=5)
+                except Exception:
+                    pass
+                embed = discord.Embed(
+                    title="🔗 Link Removed",
+                    description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
+                    color=discord.Color.orange(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-antispam", embed)
+                return
 
         # Whitelist protects administrative commands & punishments
-        if self.is_whitelisted(guild, author, feature="antispam"):
+        if is_immune or self.is_whitelisted(guild, author, feature="antispam"):
             return
 
         # 3. Anti-Mention Limit

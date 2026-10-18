@@ -941,22 +941,20 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         content = message.content.strip()
 
         # 1. Check if replying directly to a message from Friday
-        # MUST only trigger if replying to an actual LLM-generated message, NOT a pregenerated joke, embed, or command
+        # MUST only trigger if replying to an actual LLM-generated message, NOT a pregenerated autoresponder, joke, embed, or command!
         is_reply_to_friday_llm = False
         if message.reference and message.reference.message_id:
             ref_id = message.reference.message_id
             try:
                 ref_msg = message.reference.cached_message or await message.channel.fetch_message(ref_id)
                 if ref_msg and ref_msg.author.id == bot_id:
-                    has_embeds = bool(ref_msg.embeds)
-                    has_interaction = bool(ref_msg.interaction)
-                    has_components = bool(ref_msg.components)
-                    
-                    # If it has embeds, slash command interaction, or buttons, it is a pregenerated command/joke -> IGNORE
-                    if not has_embeds and not has_interaction and not has_components:
-                        # Must be tracked as an LLM message or non-command message from Friday
-                        if ref_id in self.llm_message_ids or (ref_msg.content and not ref_msg.content.startswith("/")):
-                            is_reply_to_friday_llm = True
+                    # If replying to a Friday message that is NOT in llm_message_ids, it is PREGENERATED
+                    # (autoresponder, tag greeting, AFK alert, embed, warning, announcement prompt).
+                    # Strictly do NOT trigger the LLM!
+                    if ref_id in self.llm_message_ids:
+                        is_reply_to_friday_llm = True
+                    else:
+                        return
             except Exception:
                 pass
 
