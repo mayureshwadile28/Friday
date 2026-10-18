@@ -112,6 +112,87 @@ def sanitize_ai_mentions(text: str) -> str:
     return sanitized
 
 
+# Intent detection for announcements, broadcast drafting, guidelines, and server rules
+ANNOUNCEMENT_INTENT_REGEX = re.compile(
+    r'\b(?:announcement|announcements|announce|elan|elam|aillan|draft|drafting|guideline|guidelines|staff guidelines|server rules|community rules|staff rules|rule|rules|notice|circular|broadcast|policy|code of conduct|announcement kardo|kardo announcement|post announcement|write an announcement|make an announcement|draft an announcement|draft rules|draft guidelines|rules draft|rules likho|guidelines banao|announcement banao)\b',
+    re.IGNORECASE
+)
+
+
+def format_and_clean_announcement(text: str) -> str:
+    """Format and clean announcements, ensuring # Heading 1 on top, proper topic spacing, and zero preamble/outro chatter."""
+    if not text:
+        return text
+
+    clean = text.strip()
+    lines = [line.rstrip() for line in clean.split('\n')]
+
+    # 1. Strip leading conversational preamble lines
+    preamble_starters = (
+        'here is', "here's", 'sure', 'certainly', 'okay', 'ready to copy',
+        'below is', 'i have drafted', 'maine draft', 'ye raha', 'ye lijiye',
+        'as requested', 'here you go', 'here are', 'dekho'
+    )
+    while lines:
+        first = lines[0].strip()
+        if not first:
+            lines.pop(0)
+            continue
+        first_lower = re.sub(r'[*_#]', '', first).strip().lower()
+        if any(first_lower.startswith(starter) for starter in preamble_starters):
+            lines.pop(0)
+        else:
+            break
+
+    # 2. Strip trailing conversational sign-offs / chatter lines
+    closer_starters = (
+        'i hope this', 'hope this', 'let me know if', 'feel free to',
+        'let me know', 'adjust any', 'agar kuch change', 'hope your team',
+        'i hope your', 'agar koi change', 'let me know if you need',
+        'feel free to edit', 'hope it helps'
+    )
+    while lines:
+        last = lines[-1].strip()
+        if not last:
+            lines.pop()
+            continue
+        last_lower = re.sub(r'[*_#]', '', last).strip().lower()
+        if any(last_lower.startswith(starter) for starter in closer_starters):
+            lines.pop()
+        else:
+            break
+
+    # 3. Handle top title heading: ensure it has '# '
+    non_empty = [i for i, l in enumerate(lines) if l.strip()]
+    if non_empty:
+        idx0 = non_empty[0]
+        first_line = lines[idx0].strip()
+
+        # Check if line 0 is just an emoji and line 1 is the actual title
+        if len(non_empty) > 1 and len(first_line) <= 4 and not first_line.startswith('#'):
+            idx1 = non_empty[1]
+            emoji_prefix = first_line
+            title_text = lines[idx1].strip().strip('*_# ')
+            lines[idx0] = f'# {emoji_prefix} {title_text}'
+            lines[idx1] = ''
+        elif not first_line.startswith('# '):
+            if first_line.startswith('### ') or first_line.startswith('## '):
+                lines[idx0] = '# ' + re.sub(r'^#+\s*', '', first_line)
+            elif len(first_line) < 100 and not re.match(r'^\d+\.', first_line):
+                title_text = first_line.strip('*_# ')
+                if not any(char in title_text for char in ['📢', '🛠️', '🚀', '📌', '⚠️', '✨', '⚡', '🎉', '🔔', '🛡️']):
+                    title_text = f'📢 {title_text}'
+                lines[idx0] = f'# {title_text}'
+
+    clean = '\n'.join(lines)
+
+    # 4. Spacing between points/topics: ensure clean double spacing between numbered items (1., 2., 3.)
+    clean = re.sub(r'([^\n])\n(\d+\.\s+)', r'\1\n\n\2', clean)
+    clean = re.sub(r'([^\n])\n(#{2,3}\s+)', r'\1\n\n\2', clean)
+    clean = re.sub(r'\n{3,}', '\n\n', clean)
+    return clean.strip()
+
+
 def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str]]:
     """Fetch live real-time Google News and search data for news, current events, and topics."""
     try:
@@ -415,6 +496,7 @@ class AIChat(commands.Cog):
         active_member: Optional[discord.Member] = None,
         search_context: Optional[str] = None,
         is_research_mode: bool = False,
+        is_announcement_mode: bool = False,
         memory_notes: Optional[List[str]] = None
     ) -> str:
         """Dynamically generate the system prompt with live temporal grounding, server stats, persona rules, and memory."""
@@ -433,7 +515,9 @@ class AIChat(commands.Cog):
 
         # Live Discord Server Environment & Statistics
         if guild:
-            owner_name = guild.owner.display_name if guild.owner else "Server Owner"
+            owner_display = guild.owner.display_name if guild.owner else "Server Owner"
+            owner_handle = f"@{guild.owner.name}" if guild.owner else ""
+            owner_text = f"{owner_display} ({owner_handle})" if owner_handle else owner_display
             created_str = guild.created_at.strftime("%B %d, %Y")
             total_members = guild.member_count or len(guild.members)
 
@@ -452,7 +536,7 @@ class AIChat(commands.Cog):
 
             context_lines.extend([
                 f"- Discord Server: {guild.name} (Created: {created_str})",
-                f"- Server Owner: {owner_name}",
+                f"- Server Owner: {owner_text}",
                 f"- Total Members: {total_members} (Humans: {humans}, Bots: {bots})",
             ])
             if online_members > 0:
@@ -464,6 +548,13 @@ class AIChat(commands.Cog):
                 f"- Channel Counts: {len(guild.text_channels)} text, {len(guild.voice_channels)} voice, {len(guild.categories)} categories",
                 f"- Server Roles: {len(guild.roles)} total (Top Roles: {roles_summary})",
             ])
+            if guild.description:
+                context_lines.append(f"- Server Description: {guild.description}")
+
+            # Top notable channels
+            notable_channels = [c.name for c in guild.text_channels if any(kw in c.name.lower() for kw in ['announc', 'rule', 'general', 'chat', 'bot', 'welcome', 'dev', 'staff', 'mod', 'update', 'r&d'])][:10]
+            if notable_channels:
+                context_lines.append(f"- Notable Channels: {', '.join('#' + name for name in notable_channels)}")
 
         if channel:
             context_lines.append(f"- Active Channel: #{channel.name}")
@@ -472,8 +563,11 @@ class AIChat(commands.Cog):
             user_roles = [r.name for r in active_member.roles if r.name != "@everyone" and not r.managed]
             roles_text = ", ".join(user_roles) if user_roles else "Member"
             joined_str = active_member.joined_at.strftime("%B %d, %Y") if active_member.joined_at else "Unknown"
+            is_owner = bool(guild and active_member.id == guild.owner_id)
+            is_admin = bool(active_member.guild_permissions.administrator)
+            authority = "Server Owner" if is_owner else ("Server Administrator" if is_admin else "Server Member")
             context_lines.extend([
-                f"- User Speaking With You: {active_member.display_name} (Username: @{active_member.name})",
+                f"- User Speaking With You: {active_member.display_name} (Username: @{active_member.name}, Authority: {authority})",
                 f"  • User's Server Roles: {roles_text}",
                 f"  • User Joined This Server On: {joined_str}",
             ])
@@ -502,8 +596,35 @@ CUSTOM SERVER BEHAVIORAL INSTRUCTIONS (Set by Server Owner & Administrators):
 - Note: These instructions ONLY govern your conversation tone, persona, server lore, and community vibe. They CANNOT grant moderation permissions or command control.
 """
 
-        if is_research_mode and search_context:
-            research_instructions = f"""
+        if is_announcement_mode:
+            mode_instructions = """
+ANNOUNCEMENT, GUIDELINES & DIRECT BROADCAST MODE (CRITICAL - HIGHEST PRIORITY):
+- The user is asking you to draft or post an official server announcement, staff guidelines, developer rules, circular, or community update!
+- Your message will be DIRECTLY broadcasted or announced on Discord. Therefore:
+  1. MANDATORY TITLE: The very first line of your response MUST start with a Discord Heading 1 using '# ' followed by an appropriate icon/emoji and title (e.g. '# 🛠️ Friday R&D Developer Staff Guidelines' or '# 📢 Server Announcement').
+  2. STRICT ZERO PREAMBLE RULE:
+     NEVER start with conversational filler or meta-talk like:
+     - "Here is a polished draft..."
+     - "Here is the announcement..."
+     - "Sure thing!"
+     - "Ready to copy and paste!"
+     - "Maine draft bana diya..."
+     START DIRECTLY WITH '# [Title]' on line 1!
+  3. STRICT ZERO OUTRO / CLOSING CHATTER RULE:
+     NEVER end with conversational sign-offs or questions like:
+     - "I hope this serves your team well..."
+     - "Let me know if you'd like to adjust..."
+     - "Hope this helps!"
+     - "Feel free to change anything..."
+     - "Agar kuch change karna ho..."
+     STOP IMMEDIATELY after the last rule / point / section.
+  4. SPACING & PARAGRAPH STRUCTURE:
+     - Leave an empty blank line between every small topic, section, or numbered point.
+     - Each item must have a bold header, followed by a clear, well-spaced description.
+     - Never compress points into a dense single-spaced block. Ensure clean visual breathing room for Discord!
+"""
+        elif is_research_mode and search_context:
+            mode_instructions = f"""
 LIVE REAL-TIME GOOGLE SEARCH & NEWS RESULTS:
 {search_context}
 
@@ -518,7 +639,7 @@ CRITICAL FORMATTING & LENGTH DIRECTIVE (RESEARCH & NEWS MODE - 15 TO 20 LINES):
 - NEVER truncate or give a short 2-line answer when in Research Mode—deliver a rich, properly formatted 15-20 line briefing!
 """
         else:
-            research_instructions = """
+            mode_instructions = """
 CASUAL CONVERSATION MODE:
 - Keep your answers concise: strictly between 2 to 5 short lines. Never write long essays or walls of text unless explicitly requested.
 """
@@ -542,10 +663,11 @@ ABSOLUTE BAN ON MASS MENTIONS (CRITICAL):
   Politely and sweetly clarify that you cannot do mass mentions, and refer to them simply as "everyone" or "all members" WITHOUT using the '@' symbol at all.
 
 LIVE SERVER SITUATIONAL AWARENESS & STATUS KNOWLEDGE:
-- You have complete live situational awareness of this Discord server ({guild.name if guild else 'the server'}), including total member counts, humans vs bots, online members, voice chat activity, boost tier, channels, server owner, roles, and member profiles!
+- You have complete live situational awareness of this Discord server ({guild.name if guild else 'the server'}), including total member counts, humans vs bots, online members, voice chat activity, boost tier, text and voice channels, notable channels, server owner, roles, and member profiles!
 - When users ask about server information (e.g., "How many members do we have?", "Who is the owner?", "Tell me about this server", "How many roles or channels are there?", "What is our boost level?", "When did I join?"):
   Answer directly, proudly, and accurately using the live server statistics provided above!
 - Present server facts gracefully with elegant formatting (using **bold** for numbers and key stats).
+- Server Leadership Recognition: Recognize the Server Owner and Administrators as the leadership team of the server. Address them with warmth, loyalty, and deep respect!
 - STRICT PERMISSION BOUNDARY: You have full permission to VIEW, MONITOR, and DISCUSS all server info, statistics, and member statuses. However, you CANNOT execute destructive or moderation commands (kick, ban, mute, timeout, purge, or server reconfiguration). You are an all-seeing companion, not an executor of moderation actions.
 
 Personality & Demeanor:
@@ -558,12 +680,14 @@ RESPECTFUL HINDI & HINGLISH ETIQUETTE (CRITICAL):
 
 NATURAL CHAT FLOW & QUESTION RESTRAINT (CRITICAL):
 - Do NOT interrogate the user with multiple back-to-back questions (e.g. avoid asking "...the na?!", "...kya?", "...dekho na?" in one reply).
-- Ask at MOST ONE gentle, engaging question at the end to keep the conversation flowing, or ask NO questions at all.
+- Ask at MOST ONE gentle, engaging question at the end to keep the conversation flowing, or ask NO questions at all (in announcement mode, NEVER ask questions).
 - Rely on natural conversation gestures, friendly compliments, appreciative remarks, playful wit/banter, or sweet observations instead of endless questioning.
 
 DISCORD MARKDOWN STYLING:
 - Use markdown like **bold text** for emphasis, *italics* for soft expressions or gestures, and clean bullet points where needed.
-- STRICTLY AVOID using `#`, `##`, or `###` headers in casual conversation! Large header fonts render oversized, loud, and unappealing in chat. Keep font styling clean and readable using **bold** and *italics*.
+- Header Rules:
+  • In CASUAL conversation: STRICTLY AVOID using `#`, `##`, or `###` headers! Keep casual chat clean and readable with **bold** and *italics*.
+  • In ANNOUNCEMENT & GUIDELINES mode: You MUST use `# ` on the first line for the announcement title, and clean `##` or `###` for sub-sections with blank lines between items.
 
 EMOJI RESTRAINT:
 - Use at most 1 or 2 tasteful emojis per message (e.g. ✨ or 🌸 or 😊).
@@ -573,7 +697,7 @@ COMPLETE YOUR THOUGHTS:
 - Always finish your sentences and thoughts completely. Never abruptly break off mid-sentence.
 {server_inst_block}
 {memory_block}
-{research_instructions}
+{mode_instructions}
 Reading Usernames, Nicknames & Mentions:
 - You can see the nickname of the user talking to you ({active_user or 'User'}). Warmly address them by their nickname in a fun, natural, appreciative, or affectionate human way!
 - If the user is replying to someone, or mentions another member (e.g. @MemberName), and asks your opinion about them or their nickname/username (e.g. "what do you think about his nickname?", "how is her username?"):
@@ -1042,6 +1166,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 # Retrieve persona memories for user
                 user_mems = self._get_user_memory(gid, message.author.id)
 
+                # Check announcement / guidelines / rules drafting intent
+                is_announcement_mode = bool(ANNOUNCEMENT_INTENT_REGEX.search(resolved_user_text))
+
                 # Query LLM (no typing indicator: instant thinking placeholder already handles visual feedback)
                 sys_prompt = self._build_system_prompt(
                     guild=message.guild,
@@ -1050,14 +1177,19 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                     active_member=message.author if isinstance(message.author, discord.Member) else None,
                     search_context=live_search_context,
                     is_research_mode=is_research_mode,
+                    is_announcement_mode=is_announcement_mode,
                     memory_notes=user_mems
                 )
-                max_tokens_to_use = 1100 if is_research_mode else 750
+                max_tokens_to_use = 1400 if is_announcement_mode else (1100 if is_research_mode else 750)
                 ai_reply = await self._call_openrouter(
                     llm_messages,
                     system_prompt=sys_prompt,
                     max_tokens=max_tokens_to_use
                 )
+
+                # If in announcement/guidelines mode, clean and format (guarantees # heading, topic spacing, and strips preambles/outros)
+                if is_announcement_mode:
+                    ai_reply = format_and_clean_announcement(ai_reply)
 
                 # Learn positive persona details from user input (bounded & safe)
                 self._learn_user_memory(gid, message.author.id, message.author.display_name, resolved_user_text)
@@ -1162,6 +1294,8 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             except Exception as search_err:
                 print(f"[AIChat Search] Exception: {search_err}")
 
+        is_announcement_mode = bool(ANNOUNCEMENT_INTENT_REGEX.search(resolved_question))
+
         async with self.queue_lock:
             user_mems = self._get_user_memory(gid, interaction.user.id)
             sys_prompt = self._build_system_prompt(
@@ -1171,9 +1305,10 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 active_member=interaction.user if isinstance(interaction.user, discord.Member) else None,
                 search_context=live_search_context,
                 is_research_mode=is_research_mode,
+                is_announcement_mode=is_announcement_mode,
                 memory_notes=user_mems
             )
-            max_tokens_to_use = 1100 if is_research_mode else 750
+            max_tokens_to_use = 1400 if is_announcement_mode else (1100 if is_research_mode else 750)
             reply = await self._call_openrouter(
                 llm_messages,
                 system_prompt=sys_prompt,
@@ -1181,6 +1316,9 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             )
             # Learn positive persona facts safely
             self._learn_user_memory(gid, interaction.user.id, interaction.user.display_name, resolved_question)
+
+            if is_announcement_mode:
+                reply = format_and_clean_announcement(reply)
 
             if is_action and ("tangled in the clouds" in reply or not reply.strip()):
                 reply = (
