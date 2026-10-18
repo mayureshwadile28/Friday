@@ -249,16 +249,21 @@ def get_guild_emojis(gid):
 @app.route('/api/guild/<gid>/antinuke')
 def get_antinuke(gid):
     gid_str = str(gid)
-    whitelist_ids = db.whitelist.get(gid_str, [])
+    gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
+    whitelist_ids = db.whitelist.get(gid_str) or db.whitelist.get(gid_int) or []
     whitelist_users = [fetch_user_info(uid) for uid in whitelist_ids]
 
     return jsonify({
-        "active": db.antinuke_active.get(gid_str, True),
+        "active": db.antinuke_active.get(gid_str, db.antinuke_active.get(gid_int, True)),
         "limits": {
-            "channel": db.nuke_settings.get(gid_str, {}).get("channel", 3),
-            "ban": db.nuke_settings.get(gid_str, {}).get("ban", 3),
-            "kick": db.nuke_settings.get(gid_str, {}).get("kick", 3),
-            "role": db.nuke_settings.get(gid_str, {}).get("role", 3),
+            "channel": (db.nuke_settings.get(gid_str) or db.nuke_settings.get(gid_int) or {}).get("channel", 3),
+            "ban": (db.nuke_settings.get(gid_str) or db.nuke_settings.get(gid_int) or {}).get("ban", 3),
+            "kick": (db.nuke_settings.get(gid_str) or db.nuke_settings.get(gid_int) or {}).get("kick", 3),
+            "role": (db.nuke_settings.get(gid_str) or db.nuke_settings.get(gid_int) or {}).get("role", 3),
         },
         "whitelist": whitelist_users
     })
@@ -347,24 +352,28 @@ def update_limits(gid):
 @app.route('/api/guild/<gid>/security', methods=['GET'])
 def get_security_settings(gid):
     gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
     try:
         db.reload()
     except Exception:
         pass
     sec_cog = bot_instance.get_cog("Security") if bot_instance else None
-    cfg = sec_cog.get_security_config(gid_str) if sec_cog else db.security_settings.get(gid_str, {})
-    server_logs = db.server_logs.get(gid_str, {})
+    cfg = sec_cog.get_security_config(gid_str) if sec_cog else (db.security_settings.get(gid_str) or db.security_settings.get(gid_int) or {})
+    server_logs = db.server_logs.get(gid_str) or db.server_logs.get(gid_int) or {}
     
-    raw_fw = db.feature_whitelists.get(gid_str, {})
+    raw_fw = db.feature_whitelists.get(gid_str) or db.feature_whitelists.get(gid_int) or {}
     feature_whitelists_data = {}
     for feat, uids in raw_fw.items():
         feature_whitelists_data[feat] = [fetch_user_info(uid) for uid in uids]
 
+    raw_wl = db.whitelist.get(gid_str) or db.whitelist.get(gid_int) or []
+    whitelist_users = [fetch_user_info(uid) for uid in raw_wl]
+
     return jsonify({
         "success": True,
-        "antinuke_active": db.antinuke_active.get(gid_str, True),
-        "whitelist": db.whitelist.get(gid_str, []),
-        "nuke_settings": db.nuke_settings.get(gid_str, {}),
+        "antinuke_active": db.antinuke_active.get(gid_str, db.antinuke_active.get(gid_int, True)),
+        "whitelist": whitelist_users,
+        "nuke_settings": db.nuke_settings.get(gid_str) or db.nuke_settings.get(gid_int) or {},
         "security_settings": cfg,
         "server_logs": server_logs,
         "feature_whitelists": feature_whitelists_data
@@ -378,6 +387,10 @@ def feature_whitelist_add(gid):
     user_id = body.get("user_id")
     if not feature or not user_id:
         return jsonify({"success": False, "error": "Feature and user ID required"})
+    try:
+        db.reload()
+    except Exception:
+        pass
     if gid_str not in db.feature_whitelists:
         db.feature_whitelists[gid_str] = {}
     if feature not in db.feature_whitelists[gid_str]:
@@ -394,17 +407,30 @@ def feature_whitelist_add(gid):
 @app.route('/api/guild/<gid>/security/feature_whitelist/remove', methods=['POST'])
 def feature_whitelist_remove(gid):
     gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
     body = flask_request.json or {}
     feature = body.get("feature")
     user_id = body.get("user_id")
     if not feature or not user_id:
         return jsonify({"success": False, "error": "Feature and user ID required"})
     try:
+        db.reload()
+    except Exception:
+        pass
+    try:
         uid = int(user_id)
-        if gid_str in db.feature_whitelists and feature in db.feature_whitelists[gid_str]:
-            if uid in db.feature_whitelists[gid_str][feature]:
-                db.feature_whitelists[gid_str][feature].remove(uid)
-                db.save_data()
+        removed = False
+        for g_key in [gid_str, gid_int]:
+            if g_key and g_key in db.feature_whitelists and feature in db.feature_whitelists[g_key]:
+                for item in list(db.feature_whitelists[g_key][feature]):
+                    try:
+                        if int(item) == uid:
+                            db.feature_whitelists[g_key][feature].remove(item)
+                            removed = True
+                    except (ValueError, TypeError):
+                        pass
+        if removed:
+            db.save_data()
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
@@ -471,29 +497,54 @@ def toggle_antispam(gid):
 @app.route('/api/guild/<gid>/whitelist/add', methods=['POST'])
 def whitelist_add(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     if gid_str not in db.whitelist:
         db.whitelist[gid_str] = []
         
     user_id = flask_request.json.get("user_id")
     if user_id:
-        uid = int(user_id)
-        if uid not in db.whitelist[gid_str]:
-            db.whitelist[gid_str].append(uid)
-            db.save_data()
+        try:
+            uid = int(user_id)
+            if uid not in db.whitelist[gid_str]:
+                db.whitelist[gid_str].append(uid)
+                db.save_data()
             return jsonify({"success": True, "user": fetch_user_info(uid)})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
     return jsonify({"success": False, "error": "Invalid user ID"})
 
 @app.route('/api/guild/<gid>/whitelist/remove', methods=['POST'])
 def whitelist_remove(gid):
     gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
     user_id = flask_request.json.get("user_id")
-    if user_id:
+    if not user_id:
+        return jsonify({"success": False, "error": "User ID required"})
+    try:
+        db.reload()
+    except Exception:
+        pass
+    try:
         uid = int(user_id)
-        if gid_str in db.whitelist and uid in db.whitelist[gid_str]:
-            db.whitelist[gid_str].remove(uid)
+        removed = False
+        for g_key in [gid_str, gid_int]:
+            if g_key and g_key in db.whitelist:
+                for item in list(db.whitelist[g_key]):
+                    try:
+                        if int(item) == uid:
+                            db.whitelist[g_key].remove(item)
+                            removed = True
+                    except (ValueError, TypeError):
+                        pass
+        if removed:
             db.save_data()
             return jsonify({"success": True})
-    return jsonify({"success": False, "error": "User not in whitelist"})
+        return jsonify({"success": False, "error": "User not in whitelist"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 # ───────────────────── API: Leveling (With Test Message Sender) ─────────────────────
 
@@ -565,9 +616,15 @@ def test_leveling_message(gid):
 @app.route('/api/guild/<gid>/antiabuse')
 def get_antiabuse(gid):
     gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
+    raw_abuse = db.abuse_whitelist.get(gid_str) or db.abuse_whitelist.get(gid_int) or []
     return jsonify({
-        "words": db.banned_words.get(gid_str, []),
-        "whitelist": [fetch_user_info(uid) for uid in db.abuse_whitelist.get(gid_str, [])]
+        "words": db.banned_words.get(gid_str) or db.banned_words.get(gid_int) or [],
+        "whitelist": [fetch_user_info(uid) for uid in raw_abuse]
     })
 
 @app.route('/api/guild/<gid>/antiabuse/words', methods=['POST'])
@@ -581,29 +638,54 @@ def update_antiabuse_words(gid):
 @app.route('/api/guild/<gid>/antiabuse/whitelist/add', methods=['POST'])
 def abuse_whitelist_add(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     if gid_str not in db.abuse_whitelist:
         db.abuse_whitelist[gid_str] = []
         
     user_id = flask_request.json.get("user_id")
     if user_id:
-        uid = int(user_id)
-        if uid not in db.abuse_whitelist[gid_str]:
-            db.abuse_whitelist[gid_str].append(uid)
-            db.save_data()
+        try:
+            uid = int(user_id)
+            if uid not in db.abuse_whitelist[gid_str]:
+                db.abuse_whitelist[gid_str].append(uid)
+                db.save_data()
             return jsonify({"success": True, "user": fetch_user_info(uid)})
-    return jsonify({"success": False})
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e)})
+    return jsonify({"success": False, "error": "Invalid user ID"})
 
 @app.route('/api/guild/<gid>/antiabuse/whitelist/remove', methods=['POST'])
 def abuse_whitelist_remove(gid):
     gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
     user_id = flask_request.json.get("user_id")
-    if user_id:
+    if not user_id:
+        return jsonify({"success": False, "error": "User ID required"})
+    try:
+        db.reload()
+    except Exception:
+        pass
+    try:
         uid = int(user_id)
-        if gid_str in db.abuse_whitelist and uid in db.abuse_whitelist[gid_str]:
-            db.abuse_whitelist[gid_str].remove(uid)
+        removed = False
+        for g_key in [gid_str, gid_int]:
+            if g_key and g_key in db.abuse_whitelist:
+                for item in list(db.abuse_whitelist[g_key]):
+                    try:
+                        if int(item) == uid:
+                            db.abuse_whitelist[g_key].remove(item)
+                            removed = True
+                    except (ValueError, TypeError):
+                        pass
+        if removed:
             db.save_data()
             return jsonify({"success": True})
-    return jsonify({"success": False})
+        return jsonify({"success": False, "error": "User not in whitelist"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 # ───────────────────── API: Roles & Categories ─────────────────────
 

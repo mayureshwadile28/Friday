@@ -107,6 +107,7 @@ class Database:
         for k, v in self.__dict__.items():
             if k != "data" and not k.startswith("_"):
                 payload[k] = v
+        self.data = payload
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=4)
 

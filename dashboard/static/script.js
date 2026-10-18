@@ -243,6 +243,7 @@ function setupEventListeners() {
 
             tab.classList.add('active');
             const targetId = tab.dataset.tab;
+            try { localStorage.setItem('friday_active_tab', targetId); } catch (e) {}
             const target = document.getElementById(targetId);
             if (target) {
                 target.style.display = 'block';
@@ -1081,23 +1082,47 @@ async function loadGuilds() {
             guildList.appendChild(item);
         });
 
-        // Automatically select first guild if none active
-        if (guilds.length > 0 && !currentGuildId) {
-            selectGuild(guilds[0]);
+        // Automatically restore previously selected guild or default to first
+        if (guilds.length > 0) {
+            let targetGuild = guilds[0];
+            try {
+                const savedGuildId = localStorage.getItem('friday_selected_guild');
+                if (savedGuildId) {
+                    const match = guilds.find(g => String(g.id) === String(savedGuildId));
+                    if (match) targetGuild = match;
+                }
+            } catch (e) {}
+            if (!currentGuildId || String(currentGuildId) !== String(targetGuild.id)) {
+                await selectGuild(targetGuild);
+            }
         }
     } catch (e) { }
 }
 
 async function selectGuild(guild) {
-    currentGuildId = guild.id;
+    if (!guild) return;
+    currentGuildId = String(guild.id);
+    try { localStorage.setItem('friday_selected_guild', currentGuildId); } catch (e) {}
     guildNameDisplay.textContent = guild.name;
     guildIconSmall.innerHTML = guild.icon ? `<img src="${guild.icon}" alt="">` : guild.name.charAt(0).toUpperCase();
     guildDropdown.classList.remove('open');
 
     emptyState.style.display = 'none';
 
-    // Show active tab
-    const activeTab = document.querySelector('.nav-item.active').dataset.tab;
+    // Restore saved active tab or default
+    try {
+        const savedTab = localStorage.getItem('friday_active_tab');
+        if (savedTab) {
+            const savedTabEl = document.querySelector(`.nav-item[data-tab="${savedTab}"]`);
+            if (savedTabEl) {
+                tabs.forEach(t => t.classList.remove('active'));
+                savedTabEl.classList.add('active');
+            }
+        }
+    } catch (e) {}
+
+    const activeTabEl = document.querySelector('.nav-item.active');
+    const activeTab = activeTabEl ? activeTabEl.dataset.tab : 'antinukeSection';
     tabContents.forEach(c => c.style.display = 'none');
     const target = document.getElementById(activeTab);
     if (target) target.style.display = 'block';
@@ -1113,7 +1138,7 @@ async function selectGuild(guild) {
 
     await loadBotProfile();
     await loadCoreData();
-    loadDataForActiveTab();
+    await loadDataForActiveTab();
 }
 
 async function loadCoreData() {
@@ -2735,7 +2760,7 @@ async function removeWhitelistUser(userId, type) {
 function renderWhitelist(containerId, users, type) {
     const cont = document.getElementById(containerId);
     if (!cont) return;
-    if (!users || users.length === 0) {
+    if (!users || !Array.isArray(users) || users.length === 0) {
         cont.innerHTML = '<div class="whitelist-empty">No whitelisted members yet. Add trusted users above.</div>';
         return;
     }
@@ -2743,18 +2768,28 @@ function renderWhitelist(containerId, users, type) {
     users.forEach(u => {
         const item = document.createElement('div');
         item.className = 'whitelist-item';
-        const avatarHtml = u.avatar ? `<img src="${u.avatar}" alt="">` : `<div class="default-avatar">${u.username.charAt(0).toUpperCase()}</div>`;
+        const uid = typeof u === 'object' && u !== null ? String(u.id || '') : String(u);
+        const member = (typeof currentGuildMembers !== 'undefined' && Array.isArray(currentGuildMembers))
+            ? currentGuildMembers.find(m => String(m.id) === String(uid))
+            : null;
+        const rawUsername = (typeof u === 'object' && u !== null && u.username) ? u.username : (member ? member.username : `User ${uid}`);
+        const username = String(rawUsername || `User ${uid}`);
+        const avatar = (typeof u === 'object' && u !== null && u.avatar) ? u.avatar : (member ? member.avatar : null);
+        const initial = username.length > 0 ? username.charAt(0).toUpperCase() : '?';
+        const avatarHtml = avatar 
+            ? `<img src="${avatar}" alt="" class="whitelist-avatar" style="width: 32px; height: 32px; max-width: 32px; max-height: 32px; border-radius: 50%; object-fit: cover; display: inline-block;">` 
+            : `<div class="default-avatar" style="width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">${initial}</div>`;
         item.innerHTML = `
-            <div class="user-info">
+            <div class="user-info" style="display: flex; align-items: center; gap: 10px;">
                 ${avatarHtml}
                 <div>
-                    <span class="user-name-text">${escapeHtml(u.username)}</span>
-                    <span class="user-id-pill">${u.id}</span>
+                    <span class="user-name-text" style="font-weight: 600; color: #fff;">${escapeHtml(username)}</span>
+                    <span class="user-id-pill" style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">${escapeHtml(uid)}</span>
                 </div>
             </div>
-            <button class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;">Remove</button>
+            <button class="btn btn-danger" style="padding: 5px 10px; font-size: 12px;" type="button">Remove</button>
         `;
-        item.querySelector('button').addEventListener('click', () => removeWhitelistUser(u.id, type));
+        item.querySelector('button').addEventListener('click', () => removeWhitelistUser(uid, type));
         cont.appendChild(item);
     });
 }
@@ -4092,7 +4127,7 @@ async function saveLimits() {
 
 async function loadAntinukeSettings() {
     try {
-        const resp = await fetch(`/api/guild/${currentGuildId}/security`);
+        const resp = await fetch(`/api/guild/${currentGuildId}/security?t=${Date.now()}`);
         const data = await resp.json();
         if (data.success) {
             const tgl = document.getElementById('antinukeToggle');
@@ -4293,22 +4328,29 @@ function renderFeatureWhitelists(fwData) {
                 if (btnToggle) btnToggle.classList.remove('open');
             } else {
                 if (drawerEl) drawerEl.style.display = 'block';
-                if (btnToggle) btnToggle.classList.add('open');
+                if (btnToggle) {
+                    btnToggle.style.display = 'inline-flex';
+                    btnToggle.classList.add('open');
+                }
                 userIds.forEach(item => {
-                    const uid = typeof item === 'object' && item !== null ? item.id : item;
+                    const uid = typeof item === 'object' && item !== null ? String(item.id || '') : String(item);
                     const itemUsername = typeof item === 'object' && item !== null ? item.username : null;
                     const itemAvatar = typeof item === 'object' && item !== null ? item.avatar : null;
-                    const member = currentGuildMembers.find(m => String(m.id) === String(uid));
-                    const username = member ? member.username : (itemUsername || `User ${uid}`);
+                    const member = (typeof currentGuildMembers !== 'undefined' && Array.isArray(currentGuildMembers))
+                        ? currentGuildMembers.find(m => String(m.id) === String(uid))
+                        : null;
+                    const rawUsername = member ? member.username : (itemUsername || `User ${uid}`);
+                    const username = String(rawUsername || `User ${uid}`);
                     const avatar = member && member.avatar ? member.avatar : itemAvatar;
-                    const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="fw-chip-avatar" width="22" height="22" style="width: 22px; height: 22px; max-width: 22px; max-height: 22px; border-radius: 50%; object-fit: cover; display: inline-block;">` : `<div class="fw-chip-avatar-fallback">${username.charAt(0).toUpperCase()}</div>`;
+                    const initial = username.length > 0 ? username.charAt(0).toUpperCase() : '?';
+                    const avatarHtml = avatar ? `<img src="${avatar}" alt="" class="fw-chip-avatar" width="22" height="22" style="width: 22px; height: 22px; max-width: 22px; max-height: 22px; border-radius: 50%; object-fit: cover; display: inline-block;">` : `<div class="fw-chip-avatar-fallback">${initial}</div>`;
 
                     const chip = document.createElement('div');
                     chip.className = 'fw-member-chip';
                     chip.innerHTML = `
                         ${avatarHtml}
                         <span class="fw-chip-name">${escapeHtml(username)}</span>
-                        <span class="fw-chip-id">${uid}</span>
+                        <span class="fw-chip-id">${escapeHtml(uid)}</span>
                         <button class="fw-chip-remove" type="button" title="Remove whitelist for ${escapeHtml(username)}">&times;</button>
                     `;
                     chip.querySelector('.fw-chip-remove').addEventListener('click', (e) => {
