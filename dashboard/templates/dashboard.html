@@ -1008,16 +1008,98 @@
 </div>
 <div class="sec-row sec-row-detect" style="background: rgba(255, 255, 255, 0.02); font-size: 11px; font-weight: 700; color: #949ba4; text-transform: uppercase;">
 <div>Detection Rule</div>
+<div>Exemptions</div>
 <div style="text-align: right;">Status</div>
 </div>
+<!-- Anti Link -->
+<div class="sec-row sec-row-detect">
+<div class="sec-name">
+    <span>🔗</span>
+    <div>
+        <div>Anti Link (Auto-Delete External Links)</div>
+        <div style="font-size: 11px; color: var(--text-muted); text-transform: none; font-weight: 400; margin-top: 3px;">
+            <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: #b5bac1;">
+                <input type="checkbox" id="sec_det_link_allow_gifs" checked="" style="cursor: pointer;"/>
+                <span>Allow Discord GIFs (Tenor / Giphy) for members with Embed Permission</span>
+            </label>
+        </div>
+    </div>
+</div>
+<div class="sec-wl-cell">
+    <button class="btn-fw-add" data-feature="anti_link" title="Add whitelisted member for Anti Link">
+        <svg fill="none" height="10" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24" width="10"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
+    </button>
+    <button class="btn-fw-toggle" data-feature="anti_link" id="fw_btn_anti_link" style="display: none;" title="Toggle whitelisted members list">
+        <span>👥</span>
+        <span class="fw-count" id="fw_count_anti_link">0</span>
+        <svg class="fw-chevron" fill="none" height="10" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="10"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+</div>
+<div style="text-align: right;"><label class="switch"><input checked="" id="sec_det_link_en" type="checkbox"/><span class="slider"></span></label></div>
+</div>
+<div class="sec-row-drawer" id="fw_drawer_anti_link" style="display: none;">
+<div class="sec-drawer-content">
+<div class="sec-drawer-label"><span>🛡️</span> Whitelisted Members for Anti Link:</div>
+<div class="sec-drawer-list" id="fw_list_anti_link"></div>
+</div>
+</div>
+
+<!-- Anti GIF -->
+<div class="sec-row sec-row-detect">
+<div class="sec-name">
+    <span>🎞️</span>
+    <div>
+        <div>Anti GIF (Block All GIFs)</div>
+        <div style="font-size: 11px; color: var(--text-muted); text-transform: none; font-weight: 400; margin-top: 2px;">
+            Auto-delete Tenor, Giphy, and GIF files unless whitelisted
+        </div>
+    </div>
+</div>
+<div class="sec-wl-cell">
+    <button class="btn-fw-add" data-feature="anti_gif" title="Add whitelisted member for Anti GIF">
+        <svg fill="none" height="10" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24" width="10"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
+    </button>
+    <button class="btn-fw-toggle" data-feature="anti_gif" id="fw_btn_anti_gif" style="display: none;" title="Toggle whitelisted members list">
+        <span>👥</span>
+        <span class="fw-count" id="fw_count_anti_gif">0</span>
+        <svg class="fw-chevron" fill="none" height="10" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="10"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+</div>
+<div style="text-align: right;"><label class="switch"><input id="sec_det_gif_en" type="checkbox"/><span class="slider"></span></label></div>
+</div>
+<div class="sec-row-drawer" id="fw_drawer_anti_gif" style="display: none;">
+<div class="sec-drawer-content">
+<div class="sec-drawer-label"><span>🛡️</span> Whitelisted Members for Anti GIF:</div>
+<div class="sec-drawer-list" id="fw_list_anti_gif"></div>
+</div>
+</div>
+
 <!-- Anti Invite Link -->
 <div class="sec-row sec-row-detect">
-<div class="sec-name"><span>🔗</span> Anti Invite Link (Auto-Delete &amp; Log)</div>
+<div class="sec-name"><span>✉️</span> Anti Invite Link (Auto-Delete &amp; Log)</div>
+<div class="sec-wl-cell">
+    <button class="btn-fw-add" data-feature="invite_link" title="Add whitelisted member for Anti Invite Link">
+        <svg fill="none" height="10" stroke="currentColor" stroke-width="2.5" viewbox="0 0 24 24" width="10"><line x1="12" x2="12" y1="5" y2="19"></line><line x1="5" x2="19" y1="12" y2="12"></line></svg>
+    </button>
+    <button class="btn-fw-toggle" data-feature="invite_link" id="fw_btn_invite_link" style="display: none;" title="Toggle whitelisted members list">
+        <span>👥</span>
+        <span class="fw-count" id="fw_count_invite_link">0</span>
+        <svg class="fw-chevron" fill="none" height="10" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="10"><path d="m6 9 6 6 6-6"></path></svg>
+    </button>
+</div>
 <div style="text-align: right;"><label class="switch"><input checked="" id="sec_det_invite_link_en" type="checkbox"/><span class="slider"></span></label></div>
 </div>
+<div class="sec-row-drawer" id="fw_drawer_invite_link" style="display: none;">
+<div class="sec-drawer-content">
+<div class="sec-drawer-label"><span>🛡️</span> Whitelisted Members for Anti Invite Link:</div>
+<div class="sec-drawer-list" id="fw_list_invite_link"></div>
+</div>
+</div>
+
 <!-- Anti Ghost Ping -->
 <div class="sec-row sec-row-detect">
 <div class="sec-name"><span>👻</span> Anti Ghost Ping (Detect &amp; Log)</div>
+<div class="sec-wl-cell"></div>
 <div style="text-align: right;"><label class="switch"><input checked="" id="sec_det_ghost_ping_en" type="checkbox"/><span class="slider"></span></label></div>
 </div>
 </div>

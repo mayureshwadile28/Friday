@@ -46,7 +46,8 @@ DEFAULT_SECURITY_CONFIG = {
     },
     "detect": {
         "invite_link": {"enabled": True},
-        "anti_link": {"enabled": True},
+        "anti_link": {"enabled": True, "allow_gifs": True},
+        "anti_gif": {"enabled": False},
         "ghost_ping": {"enabled": True}
     },
     "antiraid": {
@@ -80,10 +81,14 @@ class Security(commands.Cog):
             db.security_settings[gid] = copy.deepcopy(DEFAULT_SECURITY_CONFIG)
             db.save_data()
         cfg = db.security_settings[gid]
+        import copy
         for key in ["limits", "instant", "detect", "antiraid", "antispam"]:
             if key not in cfg:
-                import copy
                 cfg[key] = copy.deepcopy(DEFAULT_SECURITY_CONFIG[key])
+        if "detect" in cfg:
+            for det_k, det_v in DEFAULT_SECURITY_CONFIG["detect"].items():
+                if det_k not in cfg["detect"]:
+                    cfg["detect"][det_k] = copy.deepcopy(det_v)
         return cfg
 
     def is_whitelisted(self, guild: discord.Guild, member_or_user, feature: str = None) -> bool:
@@ -99,6 +104,68 @@ class Security(commands.Cog):
         if isinstance(member_or_user, discord.Member):
             if member_or_user.guild_permissions.administrator:
                 return True
+        return False
+
+    def is_gif_url(self, url: str) -> bool:
+        """Check if a URL points to a GIF or GIF service (Tenor, Giphy, Gfycat, Discord, Imgur)."""
+        if not url:
+            return False
+        # Common GIF providers (including subdomains like media.tenor.com, c.tenor.com, i.giphy.com)
+        if re.search(r'(?:tenor\.com|giphy\.com|gfycat\.com)', url, re.IGNORECASE):
+            return True
+        # Direct .gif or .gifv extensions or imgur gifv
+        if re.search(r'\.(?:gif|gifv)(?:[?&#].*)?$', url, re.IGNORECASE):
+            return True
+        # Discord attachments/media links ending in .gif or .gifv
+        if re.search(r'(?:cdn|media)\.discordapp\.(?:com|net)/attachments/.*\.(?:gif|gifv)', url, re.IGNORECASE):
+            return True
+        return False
+
+    def is_gif_attachment(self, attachment: discord.Attachment) -> bool:
+        """Check if an attachment is an animated GIF."""
+        if not attachment:
+            return False
+        ct = (attachment.content_type or "").lower()
+        fn = (attachment.filename or "").lower()
+        return "image/gif" in ct or fn.endswith((".gif", ".gifv"))
+
+    def has_gif_content(self, message: discord.Message) -> bool:
+        """Return True if the message contains any GIF link, GIF attachment, or GIF embed."""
+        for att in getattr(message, "attachments", []):
+            if self.is_gif_attachment(att):
+                return True
+        for link in self.link_regex.findall(getattr(message, "content", "")):
+            if self.is_gif_url(link):
+                return True
+        for emb in getattr(message, "embeds", []):
+            if getattr(emb, "type", "") == "gifv":
+                return True
+            if emb.url and self.is_gif_url(emb.url):
+                return True
+            if emb.image and emb.image.url and self.is_gif_url(emb.image.url):
+                return True
+            if emb.video and emb.video.url and self.is_gif_url(emb.video.url):
+                return True
+            if emb.thumbnail and emb.thumbnail.url and self.is_gif_url(emb.thumbnail.url):
+                return True
+        return False
+
+    def member_has_embed_permission(self, member, channel) -> bool:
+        """Check if a member has permission to embed links or attach files (server-wide or channel override)."""
+        if not isinstance(member, discord.Member):
+            return False
+        gp = member.guild_permissions
+        if gp.administrator or gp.manage_guild or gp.manage_messages:
+            return True
+        if gp.embed_links or gp.attach_files:
+            return True
+        if hasattr(channel, "permissions_for"):
+            try:
+                cp = channel.permissions_for(member)
+                if cp.embed_links or cp.attach_files:
+                    return True
+            except Exception:
+                pass
         return False
 
     def record_action_and_check(self, guild_id, user_id, action_type):
@@ -937,32 +1004,23 @@ class Security(commands.Cog):
                 await self.log_security_event(guild, "audit-antispam", embed)
                 return
 
-        # 2. Detect Only: Anti Link (Auto-Delete & Log)
-        if cfg.get("detect", {}).get("anti_link", {}).get("enabled", True) and self.link_regex.search(message.content):
-            can_send_link = is_immune or self.is_whitelisted(guild, author, feature="anti_link")
-
-            if not can_send_link:
-                # Check if this is a GIF (tenor, giphy, or .gif) and member has embed/attachment permissions
-                gif_patterns = re.compile(r'(?:tenor\.com|giphy\.com|gfycat\.com|\.gif(?:\?|$)|media\.discordapp\.net/attachments/.*\.gif)', re.IGNORECASE)
-                is_gif = bool(gif_patterns.search(message.content))
-                if is_gif and isinstance(author, discord.Member):
-                    channel_perms = message.channel.permissions_for(author)
-                    if channel_perms.embed_links or channel_perms.attach_files:
-                        can_send_link = True
-
-            if not can_send_link:
+        # 2. Detect Only: Anti GIF (Auto-Delete & Log)
+        anti_gif_cfg = cfg.get("detect", {}).get("anti_gif", {})
+        if anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
+            can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
+            if not can_send_gif:
                 try:
                     await message.delete()
                 except Exception:
                     pass
                 try:
-                    resp_tpl = db.custom_responses.get(gid, {}).get("security_link_warn", "🔗 {member}, external links are not allowed in this server.")
+                    resp_tpl = db.custom_responses.get(gid, {}).get("security_gif_warn", "🎞️ {member}, GIFs are not allowed in this server.")
                     warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
                     await warn_msg.delete(delay=5)
                 except Exception:
                     pass
                 embed = discord.Embed(
-                    title="🔗 Link Removed",
+                    title="🎞️ GIF Removed",
                     description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
                     color=discord.Color.orange(),
                     timestamp=discord.utils.utcnow()
@@ -970,11 +1028,53 @@ class Security(commands.Cog):
                 await self.log_security_event(guild, "audit-antispam", embed)
                 return
 
+        # 3. Detect Only: Anti Link (Auto-Delete & Log)
+        anti_link_cfg = cfg.get("detect", {}).get("anti_link", {})
+        if anti_link_cfg.get("enabled", True):
+            all_links = self.link_regex.findall(message.content)
+            if all_links:
+                non_invite_links = [l for l in all_links if not self.invite_regex.search(l)]
+                if non_invite_links:
+                    can_send_all_links = is_immune or self.is_whitelisted(guild, author, feature="anti_link")
+                    if not can_send_all_links:
+                        gif_links = [l for l in non_invite_links if self.is_gif_url(l)]
+                        non_gif_links = [l for l in non_invite_links if not self.is_gif_url(l)]
+                        
+                        allow_gifs = anti_link_cfg.get("allow_gifs", True)
+                        has_embed_perm = self.member_has_embed_permission(author, message.channel)
+                        is_gif_whitelisted = self.is_whitelisted(guild, author, feature="anti_gif")
+                        
+                        # If all links are GIFs, GIFs are allowed, and member has embed permission or is GIF-whitelisted:
+                        if gif_links and not non_gif_links and allow_gifs and (has_embed_perm or is_gif_whitelisted):
+                            pass  # Legitimate GIF with embed permission allowed!
+                        else:
+                            try:
+                                await message.delete()
+                            except Exception:
+                                pass
+                            try:
+                                if not non_gif_links and gif_links and not has_embed_perm:
+                                    resp_tpl = "🎞️ {member}, you need the **Embed Links** permission to send GIFs here."
+                                else:
+                                    resp_tpl = db.custom_responses.get(gid, {}).get("security_link_warn", "🔗 {member}, external links are not allowed in this server.")
+                                warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
+                                await warn_msg.delete(delay=5)
+                            except Exception:
+                                pass
+                            embed = discord.Embed(
+                                title="🔗 Link Removed" if non_gif_links else "🎞️ GIF Link Removed (No Embed Perm)",
+                                description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
+                                color=discord.Color.orange(),
+                                timestamp=discord.utils.utcnow()
+                            )
+                            await self.log_security_event(guild, "audit-antispam", embed)
+                            return
+
         # Whitelist protects administrative commands & punishments
         if is_immune or self.is_whitelisted(guild, author, feature="antispam"):
             return
 
-        # 3. Anti-Mention Limit
+        # 4. Anti-Mention Limit
         mention_rule = cfg.get("limits", {}).get("mention", {})
         if mention_rule.get("enabled", True):
             total_mentions = len(message.mentions) + len(message.role_mentions)

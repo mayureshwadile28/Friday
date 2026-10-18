@@ -2360,7 +2360,7 @@ input:checked + .slider:before {
 }
 
 .sec-row-detect {
-    grid-template-columns: 3.5fr 70px;
+    grid-template-columns: 2.8fr 1.2fr 60px;
 }
 
 .sec-name {

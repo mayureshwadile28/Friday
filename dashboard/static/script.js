@@ -4016,7 +4016,11 @@ async function saveLimits() {
                 enabled: (document.getElementById('sec_det_invite_link_en') || document.getElementById('sec_det_invite_tgl'))?.checked ?? true
             },
             anti_link: {
-                enabled: (document.getElementById('sec_det_link_en') || document.getElementById('sec_det_link_tgl'))?.checked ?? true
+                enabled: (document.getElementById('sec_det_link_en') || document.getElementById('sec_det_link_tgl'))?.checked ?? true,
+                allow_gifs: document.getElementById('sec_det_link_allow_gifs')?.checked ?? true
+            },
+            anti_gif: {
+                enabled: (document.getElementById('sec_det_gif_en') || document.getElementById('sec_det_gif_tgl'))?.checked ?? false
             },
             ghost_ping: {
                 enabled: (document.getElementById('sec_det_ghost_ping_en') || document.getElementById('sec_det_ghost_tgl'))?.checked ?? true
@@ -4136,6 +4140,12 @@ async function loadAntinukeSettings() {
             const detect = cfg.detect || {};
             const invTgl = document.getElementById('sec_det_invite_link_en') || document.getElementById('sec_det_invite_tgl');
             if (invTgl) invTgl.checked = detect.invite_link?.enabled !== false;
+            const linkTgl = document.getElementById('sec_det_link_en') || document.getElementById('sec_det_link_tgl');
+            if (linkTgl) linkTgl.checked = detect.anti_link?.enabled !== false;
+            const linkAllowGifs = document.getElementById('sec_det_link_allow_gifs');
+            if (linkAllowGifs) linkAllowGifs.checked = detect.anti_link?.allow_gifs !== false;
+            const gifTgl = document.getElementById('sec_det_gif_en') || document.getElementById('sec_det_gif_tgl');
+            if (gifTgl) gifTgl.checked = detect.anti_gif?.enabled === true;
             const ghostTgl = document.getElementById('sec_det_ghost_ping_en') || document.getElementById('sec_det_ghost_tgl');
             if (ghostTgl) ghostTgl.checked = detect.ghost_ping?.enabled !== false;
             
@@ -4245,7 +4255,11 @@ const ALL_SECURITY_FEATURES = [
     { key: 'channel_rename', name: 'Anti Channel Rename', icon: '📝' },
     { key: 'emoji_delete', name: 'Anti Emoji Delete', icon: '💔' },
     { key: 'emoji_rename', name: 'Anti Emoji Rename', icon: '✏️' },
-    { key: 'invite_delete', name: 'Anti Invite Delete', icon: '🗑️' }
+    { key: 'invite_delete', name: 'Anti Invite Delete', icon: '🗑️' },
+    // Detect Only Whitelists
+    { key: 'anti_link', name: 'Anti Link', icon: '🔗' },
+    { key: 'anti_gif', name: 'Anti GIF', icon: '🎞️' },
+    { key: 'invite_link', name: 'Anti Invite Link', icon: '✉️' }
 ];
 
 let currentFeatureWhitelists = {};
