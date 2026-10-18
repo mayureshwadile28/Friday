@@ -937,6 +937,10 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         if message.author.bot or not message.guild or not self.bot.user:
             return
 
+        # If user sent ONLY stickers with no text, strictly IGNORE (no LLM)
+        if getattr(message, 'stickers', None) and not (message.content or "").strip():
+            return
+
         bot_id = self.bot.user.id
         content = message.content.strip()
 
@@ -979,6 +983,10 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         # 4. Clean bot mention text
         clean_text = re.sub(r'<@!?' + str(bot_id) + r'>', '', content).strip()
         clean_lower = clean_text.lower().strip("!?,. ")
+
+        # If there is no actual prompt text (sticker only, blank, or bot ping without text), strictly IGNORE
+        if not clean_text:
+            return
 
         # Announcement Dispatch Command Bypass:
         # If the user is issuing an announcement dispatch command (e.g. "@Friday announcement", "@Friday announcment kardo", "@Friday announcement #general"),

@@ -525,10 +525,13 @@ class Expressions(commands.Cog):
         except Exception as e:
             print(f"[Expressions] Warning: Failed to react with {raw_emoji}: {e}")
 
-    # ───────────────────── Listener: Reactions & Automated Replies ─────────────────────
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot or not message.guild:
+            return
+
+        # If message contains only stickers with no text, strictly IGNORE
+        if getattr(message, 'stickers', None) and not (message.content or "").strip():
             return
 
         gid = str(message.guild.id)
@@ -542,8 +545,8 @@ class Expressions(commands.Cog):
                 if f"<@{m.id}>" in content or f"<@!{m.id}>" in content
             }
 
-        # 0. Tag Greeting Response: When someone tags @Friday with no message or simple greeting
-        if self.bot.user and (str(self.bot.user.id) in explicitly_mentioned_ids or (message.mentions and self.bot.user in message.mentions)):
+        # 0. Tag Greeting Response: When someone explicitly tags @Friday with no message or simple greeting
+        if self.bot.user and str(self.bot.user.id) in explicitly_mentioned_ids:
             clean_content = re.sub(r'<@!?' + str(self.bot.user.id) + r'>', '', content).strip()
             clean_lower = clean_content.lower().strip("!?,. ")
             GREETING_WORDS = {'', 'hi', 'hii', 'hiii', 'hey', 'heyy', 'heyyy', 'hello', 'helloo', 'yo', 'sup', 'friday'}
