@@ -1718,7 +1718,14 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
         range.collapse(false);
     }
 
-    richEl.focus();
+    // Capture the editor's scroll position before focus
+    const savedScrollTop = (typeof richEl._savedScrollTop === 'number') ? richEl._savedScrollTop : richEl.scrollTop;
+
+    try {
+        richEl.focus({ preventScroll: true });
+    } catch (e) {
+        richEl.focus();
+    }
 
     const sel = window.getSelection();
     if (sel) {
@@ -1764,6 +1771,7 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
     }
 
     let nodeToInsertAfter = null;
+    let createdImg = null;
 
     if (animMatch || staticMatch) {
         const isAnim = Boolean(animMatch);
@@ -1789,6 +1797,7 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
             img.parentNode.appendChild(space);
         }
         nodeToInsertAfter = space;
+        createdImg = img;
     } else {
         const textNode = document.createTextNode(val + ' ');
         range.insertNode(textNode);
@@ -1802,8 +1811,18 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
             sel.removeAllRanges();
             sel.addRange(range);
         }
+
+        // Keep scroll and smoothly bring inserted emoji into view without jumping to line 1
+        if (createdImg && typeof createdImg.scrollIntoView === 'function') {
+            createdImg.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        } else if (nodeToInsertAfter.parentElement && typeof nodeToInsertAfter.parentElement.scrollIntoView === 'function') {
+            nodeToInsertAfter.parentElement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        } else {
+            richEl.scrollTop = savedScrollTop;
+        }
     }
 
+    richEl._savedScrollTop = richEl.scrollTop;
     richEl._savedRange = range.cloneRange();
     const newOff = getCaretCharacterOffset(richEl);
     if (newOff !== null) {
@@ -1839,6 +1858,7 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
     richEl.innerHTML = rawMarkdownToRichHtml(targetEl.value || '');
 
     function saveRichRange() {
+        richEl._savedScrollTop = richEl.scrollTop;
         const sel = window.getSelection();
         if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
             richEl._savedRange = sel.getRangeAt(0).cloneRange();
@@ -1854,6 +1874,15 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
     richEl.addEventListener('touchend', saveRichRange);
     richEl.addEventListener('input', saveRichRange);
     richEl.addEventListener('focus', saveRichRange);
+    richEl.addEventListener('scroll', () => {
+        richEl._savedScrollTop = richEl.scrollTop;
+    });
+
+    document.addEventListener('selectionchange', () => {
+        if (document.activeElement === richEl) {
+            saveRichRange();
+        }
+    });
 
     if (isSingleLine) {
         richEl.addEventListener('keydown', (e) => {
@@ -2047,12 +2076,9 @@ function renderDiscordMarkdown(rawText) {
         let line = lines[i];
 
         // Multi-line quote >>> detection
-        if (line.startsWith('>>> ')) {
+        if (line.startsWith('>>>') || line.startsWith('&gt;&gt;&gt;')) {
             inMultiQuote = true;
-            line = line.substring(4);
-        } else if (line === '>>>') {
-            inMultiQuote = true;
-            line = '';
+            line = line.replace(/^(&gt;&gt;&gt;|>>>)\s*/, '');
         }
 
         // Clean HTML escape for security
@@ -2122,39 +2148,44 @@ function renderDiscordMarkdown(rawText) {
         // Underline: __text__
         processed = processed.replace(/__(.*?)__/g, '<u>$1</u>');
         // Italic: *text* or _text_
-        processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
+        processed = processed.replace(/(?<!\*)\*(?!\s)(.*?)(?<!\s)\*(?!\*)/g, '<em>$1</em>');
         processed = processed.replace(/(?<!\w)_(.*?)_(?!\w)/g, '<em>$1</em>');
         // Strikethrough: ~~text~~
         processed = processed.replace(/~~(.*?)~~/g, '<s>$1</s>');
         // Spoiler: ||text||
         processed = processed.replace(/\|\|(.*?)\|\|/g, '<span class="discord-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
 
-        // 6. Block-Level Line Rendering (APPLIES TO THIS LINE ONLY!)
+        // 6. Block-Level Line Rendering (Strictly line-by-line)
+        const quoteMatch = line.match(/^\s*(?:&gt;|>)+\s*(.*)$/);
+        const h3Match = line.match(/^\s*(?:([•\-\*]|\S+)\s+)?###\s+(.*)$/);
+        const h2Match = line.match(/^\s*(?:([•\-\*]|\S+)\s+)?##\s+(.*)$/);
+        const h1Match = line.match(/^\s*(?:([•\-\*]|\S+)\s+)?#\s+(.*)$/);
+        const subtextLineMatch = line.match(/^\s*-#\s+(.*)$/);
+
         if (inMultiQuote) {
             htmlOutput.push(`<div class="discord-quote-line">${processed || '&nbsp;'}</div>`);
-        } else if (line.startsWith('# ')) {
-            // # Heading 1 (Strictly this line only!)
-            let content = processed.replace(/^#\s+/, '');
-            htmlOutput.push(`<div class="discord-h1">${content || '&nbsp;'}</div>`);
-        } else if (line.startsWith('## ')) {
-            // ## Heading 2 (Strictly this line only!)
-            let content = processed.replace(/^##\s+/, '');
-            htmlOutput.push(`<div class="discord-h2">${content || '&nbsp;'}</div>`);
-        } else if (line.startsWith('### ')) {
-            // ### Heading 3 (Strictly this line only!)
-            let content = processed.replace(/^###\s+/, '');
-            htmlOutput.push(`<div class="discord-h3">${content || '&nbsp;'}</div>`);
-        } else if (line.startsWith('-# ')) {
-            // -# Subtext (Strictly this line only!)
-            let content = processed.replace(/^-#\s+/, '');
+        } else if (quoteMatch) {
+            let quoteContent = processed.replace(/^\s*(&gt;|>)+\s*/, '');
+            htmlOutput.push(`<div class="discord-quote-line">${quoteContent || '&nbsp;'}</div>`);
+        } else if (subtextLineMatch) {
+            let content = processed.replace(/^\s*-#\s+/, '');
             htmlOutput.push(`<div class="discord-subtext">${content || '&nbsp;'}</div>`);
-        } else if (line.startsWith('&gt; ') || line.startsWith('> ')) {
-            // > Single-line Quote (Strictly this line only!)
-            let content = processed.replace(/^(&gt;|>)\s+/, '');
-            htmlOutput.push(`<div class="discord-quote-line">${content || '&nbsp;'}</div>`);
+        } else if (h3Match) {
+            let content = processed.replace(/^.*?(?:###\s+)/, '');
+            let prefix = h3Match[1] ? escapeHtml(h3Match[1]) + ' ' : '';
+            htmlOutput.push(`<div class="discord-h3">${prefix}${content || '&nbsp;'}</div>`);
+        } else if (h2Match) {
+            let content = processed.replace(/^.*?(?:##\s+)/, '');
+            let prefix = h2Match[1] ? escapeHtml(h2Match[1]) + ' ' : '';
+            htmlOutput.push(`<div class="discord-h2">${prefix}${content || '&nbsp;'}</div>`);
+        } else if (h1Match) {
+            let content = processed.replace(/^.*?(?:#\s+)/, '');
+            let prefix = h1Match[1] ? escapeHtml(h1Match[1]) + ' ' : '';
+            htmlOutput.push(`<div class="discord-h1">${prefix}${content || '&nbsp;'}</div>`);
         } else {
-            // Standard Discord text line
-            htmlOutput.push(`<div class="discord-line">${processed || '&nbsp;'}</div>`);
+            // Apply inline subtext if line has bullet or prefix like • -# 1. General Rules or 🟡 -#
+            let lineContent = processed.replace(/(?:^|([\s•\-*]|&gt;|>))\s*-#\s+(.*)$/, '$1<span class="discord-subtext">$2</span>');
+            htmlOutput.push(`<div class="discord-line">${lineContent || '&nbsp;'}</div>`);
         }
     }
 
@@ -3059,9 +3090,15 @@ window.insertAnnVar = function (text) {
         end = input.selectionEnd;
     }
 
+    const savedScrollTop = input.scrollTop;
     input.value = input.value.substring(0, start) + text + input.value.substring(end);
-    input.focus();
+    try {
+        input.focus({ preventScroll: true });
+    } catch (e) {
+        input.focus();
+    }
     input.selectionStart = input.selectionEnd = start + text.length;
+    input.scrollTop = savedScrollTop;
     input._savedCaret = { start: input.selectionStart, end: input.selectionEnd };
     updateAnnPreview();
 };
