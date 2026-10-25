@@ -252,33 +252,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
 
         guild_history = db.first_chat_welcomes.setdefault(gid, [])
 
-        # 1. Guard against welcoming existing/veteran members or staff
-        # Check join date: if member joined > 7 days ago, they are an existing member!
-        now = datetime.now(timezone.utc)
-        if message.author.joined_at:
-            join_age_days = (now - message.author.joined_at).total_seconds() / 86400.0
-            if join_age_days > 7.0:
-                if uid not in guild_history:
-                    guild_history.append(uid)
-                    db.save_data()
-                return
-
-        # Check if member has administrator/moderator permissions or pre-existing XP
-        is_staff = getattr(message.author.guild_permissions, "administrator", False) or getattr(message.author.guild_permissions, "manage_guild", False)
-        has_xp = (
-            hasattr(db, "xp_data") and
-            isinstance(db.xp_data, dict) and
-            gid in db.xp_data and
-            uid in db.xp_data[gid] and
-            (db.xp_data[gid][uid].get("xp", 0) > 0 or db.xp_data[gid][uid].get("level", 0) > 0)
-        )
-        if is_staff or has_xp:
-            if uid not in guild_history:
-                guild_history.append(uid)
-                db.save_data()
-            return
-
-        # 2. Check if user has already spoken their first message
+        # Check if user has already received their first chat welcome
         if uid in guild_history:
             return
 

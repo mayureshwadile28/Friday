@@ -35,19 +35,26 @@ def discord_headers():
     return {"Authorization": f"Bot {BOT_TOKEN}"}
 
 def fetch_user_info(user_id):
-    """Try to resolve user info via bot instance cache, then Discord API fallback."""
-    if bot_instance:
-        user = bot_instance.get_user(int(user_id))
+    """Try to resolve user info via bot guilds cache, global bot user cache, then Discord API fallback."""
+    uid_int = int(user_id) if str(user_id).isdigit() else None
+    if bot_instance and uid_int:
+        user = bot_instance.get_user(uid_int)
+        if not user:
+            for g in bot_instance.guilds:
+                m = g.get_member(uid_int)
+                if m:
+                    user = m
+                    break
         if user:
             avatar_url = str(user.display_avatar.url) if user.display_avatar else None
             return {
                 "id": str(user.id),
-                "username": user.display_name or user.name,
+                "username": getattr(user, "display_name", None) or user.name,
                 "avatar": avatar_url
             }
 
     try:
-        resp = requests.get(f"{DISCORD_API}/users/{user_id}", headers=discord_headers(), timeout=5)
+        resp = requests.get(f"{DISCORD_API}/users/{user_id}", headers=discord_headers(), timeout=3)
         if resp.status_code == 200:
             data = resp.json()
             avatar_hash = data.get("avatar")
@@ -168,14 +175,17 @@ def get_channels(gid):
     if bot_instance:
         guild = bot_instance.get_guild(int(gid))
         if guild:
-            result = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
-            return jsonify(result)
+            channels = []
+            for c in guild.channels:
+                if c.type in (discord.ChannelType.text, discord.ChannelType.news):
+                    channels.append({"id": str(c.id), "name": c.name})
+            return jsonify(channels)
 
     try:
         resp = requests.get(f"{DISCORD_API}/guilds/{gid}/channels", headers=discord_headers(), timeout=5)
         if resp.status_code == 200:
             channels = resp.json()
-            result = [{"id": str(c["id"]), "name": c["name"]} for c in channels if c.get("type") == 0]
+            result = [{"id": str(c["id"]), "name": c["name"]} for c in channels if c.get("type") in (0, 5)]
             return jsonify(result)
     except Exception:
         pass
@@ -622,9 +632,21 @@ def get_antiabuse(gid):
     except Exception:
         pass
     raw_abuse = db.abuse_whitelist.get(gid_str) or db.abuse_whitelist.get(gid_int) or []
+    raw_universal = db.whitelist.get(gid_str) or db.whitelist.get(gid_int) or []
+    combined_ids = []
+    seen = set()
+    for uid in (raw_universal + raw_abuse):
+        try:
+            u_int = int(uid)
+            if u_int not in seen:
+                seen.add(u_int)
+                combined_ids.append(u_int)
+        except (ValueError, TypeError):
+            pass
+
     return jsonify({
         "words": db.banned_words.get(gid_str) or db.banned_words.get(gid_int) or [],
-        "whitelist": [fetch_user_info(uid) for uid in raw_abuse]
+        "whitelist": [fetch_user_info(uid) for uid in combined_ids]
     })
 
 @app.route('/api/guild/<gid>/antiabuse/words', methods=['POST'])
@@ -1217,7 +1239,8 @@ def broadcast_announcement(gid):
 
         msg = await channel.send(
             content=mention_str if mention_str else None,
-            embed=embed
+            embed=embed,
+            allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
         )
         return channel.name, msg.jump_url
 

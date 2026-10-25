@@ -2,8 +2,8 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import re
+import io
 from database import db
-
 from emoji_utils import replace_plain_emojis
 
 # Announcement intent patterns
@@ -52,74 +52,150 @@ def is_announcement_dispatch_command(text: str, is_reply: bool = False) -> bool:
 
     return False
 
+def format_announcement_broadcast_text(raw_text: str, guild: discord.Guild, bot: commands.Bot) -> str:
+    """Prepare and format announcement text for broadcast with @everyone and custom emojis."""
+    if not raw_text:
+        return ""
+
+    # 1. Un-sanitize zero-width space in @everyone or @here
+    processed = raw_text.replace('@\u200beveryone', '@everyone').replace('@\u200bhere', '@here')
+
+    # 2. Convert conversational greetings like "Hey everyone" or "Hello everyone" to "Hey @everyone!"
+    processed = re.sub(
+        r'\b(hey|hello|hi|namaste)\s+everyone\b(!|\?|\.|\,)?',
+        r'\1 @everyone\2',
+        processed,
+        flags=re.IGNORECASE
+    )
+
+    # 3. If @everyone is not yet present, ensure @everyone is included
+    if '@everyone' not in processed and '@here' not in processed:
+        if processed.startswith('# '):
+            lines = processed.split('\n')
+            lines.insert(1, '\n@everyone')
+            processed = '\n'.join(lines)
+        elif processed:
+            processed = f"@everyone\n\n{processed}"
+        else:
+            processed = "@everyone"
+
+    # 4. Replace plain emoji representations with server/custom emojis
+    return replace_plain_emojis(processed, bot, guild=guild)
+
+class ChannelSelectDropdown(discord.ui.ChannelSelect):
+    def __init__(self, parent_view):
+        self.parent_view = parent_view
+        super().__init__(
+            channel_types=[discord.ChannelType.text, discord.ChannelType.news],
+            placeholder="Change destination channel (optional)...",
+            min_values=1,
+            max_values=1,
+            row=0
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        if interaction.user != self.parent_view.initiator:
+            await interaction.response.send_message("Only the staff member who initiated this announcement can change the channel.", ephemeral=True)
+            return
+        selected_channel = self.values[0]
+        self.parent_view.target_channel = selected_channel
+        embed = self.parent_view.generate_embed()
+        await interaction.response.edit_message(embed=embed, view=self.parent_view)
+
 class AnnouncementConfirmView(discord.ui.View):
-    def __init__(self, original_msg: discord.Message, draft_msg: discord.Message, target_channel: discord.TextChannel, bot: commands.Bot):
+    def __init__(self, initiator: discord.Member, source_msg: discord.Message, target_channel: discord.TextChannel | None, bot: commands.Bot):
         super().__init__(timeout=60)
-        self.original_msg = original_msg
-        self.draft_msg = draft_msg
+        self.initiator = initiator
+        self.source_msg = source_msg
         self.target_channel = target_channel
         self.bot = bot
         self.prompt_message = None
 
+        # Add destination channel selector
+        self.add_item(ChannelSelectDropdown(self))
+
+    def generate_embed(self) -> discord.Embed:
+        chan_mention = self.target_channel.mention if self.target_channel else "⚠️ *None Selected (Use dropdown below)*"
+        
+        # Build snippet of source content
+        content_preview = (self.source_msg.content or "").strip()
+        if len(content_preview) > 350:
+            content_preview = content_preview[:350] + "..."
+        if not content_preview and self.source_msg.attachments:
+            content_preview = f"*[File Attachment: {self.source_msg.attachments[0].filename}]*"
+        elif not content_preview and self.source_msg.embeds:
+            content_preview = "*[Rich Embed Card]*"
+        elif not content_preview:
+            content_preview = "*[No Text]*"
+
+        embed = discord.Embed(
+            title="📢 Confirm Announcement Broadcast",
+            description=(
+                f"🎯 **Destination Channel:** {chan_mention}\n"
+                f"👤 **Drafted By:** {self.source_msg.author.mention}\n"
+                f"🔗 **Source Message:** [Jump to Message]({self.source_msg.jump_url})\n\n"
+                f"📝 **Message Preview:**\n>>> {content_preview}\n\n"
+                f"❓ **Are you sure you want Friday to broadcast this announcement?**"
+            ),
+            color=0x2dd4bf
+        )
+        if self.source_msg.author.display_avatar:
+            embed.set_author(name=f"Initiated by {self.initiator.display_name}", icon_url=self.initiator.display_avatar.url)
+        embed.set_footer(text="Click 'Yes, Broadcast Announcement' to publish, or select a different channel above.")
+        return embed
+
     async def on_timeout(self):
         if self.prompt_message:
             try:
-                gid = str(self.original_msg.guild.id) if self.original_msg.guild else ""
+                gid = str(self.source_msg.guild.id) if self.source_msg.guild else ""
                 msg_tpl = db.custom_responses.get(gid, {}).get("announcement_timeout", "⏳ **Announcement confirmation timed out.**")
-                await self.prompt_message.edit(content=msg_tpl, view=None)
+                await self.prompt_message.edit(content=msg_tpl, embed=None, view=None)
             except Exception:
                 pass
 
-    @discord.ui.button(label="Approve", style=discord.ButtonStyle.success, emoji="✅")
+    @discord.ui.button(label="Yes, Broadcast Announcement", style=discord.ButtonStyle.success, emoji="📢", row=1)
     async def approve_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user != self.original_msg.author:
-            await interaction.response.send_message("Only the command author can approve this.", ephemeral=True)
+        if interaction.user != self.initiator:
+            await interaction.response.send_message("Only the staff member who initiated this announcement can confirm.", ephemeral=True)
             return
+
+        if not self.target_channel:
+            await interaction.response.send_message("⚠️ Please select an announcement destination channel from the dropdown first!", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id) if interaction.guild else ""
+        # Remember chosen announcement channel
+        if gid:
+            db.announcement_channels[gid] = str(self.target_channel.id)
+            db.save_data()
 
         # Prepare attachments
         files = []
-        for att in self.draft_msg.attachments:
+        for att in self.source_msg.attachments:
             try:
                 files.append(await att.to_file())
             except Exception:
                 pass
 
-        # Process content and ensure @everyone mention for broadcast (not during draft)
-        raw_content = self.draft_msg.content or ""
+        # Prepare content & emojis
+        raw_content = self.source_msg.content or ""
+        new_content = format_announcement_broadcast_text(raw_content, interaction.guild, self.bot)
 
-        # 1. Un-sanitize any zero-width space in @everyone or @here
-        processed_content = raw_content.replace('@\u200beveryone', '@everyone').replace('@\u200bhere', '@here')
-
-        # 2. Convert conversational "Hey everyone" or "Hello everyone" to "Hey @everyone!"
-        processed_content = re.sub(
-            r'\b(hey|hello|hi|namaste)\s+everyone\b(!|\?|\.|\,)?',
-            r'\1 @everyone\2',
-            processed_content,
-            flags=re.IGNORECASE
-        )
-
-        # 3. If @everyone is not yet present in the content, ensure @everyone is included
-        if '@everyone' not in processed_content:
-            if processed_content.startswith('# '):
-                lines = processed_content.split('\n')
-                lines.insert(1, '\n@everyone')
-                processed_content = '\n'.join(lines)
-            elif processed_content:
-                processed_content = f"@everyone\n\n{processed_content}"
-            else:
-                processed_content = "@everyone"
-
-        # Process emojis
-        new_content = replace_plain_emojis(processed_content, self.bot, guild=self.original_msg.guild)
+        # Prepare embeds
         new_embeds = []
-        for em in self.draft_msg.embeds:
+        for em in self.source_msg.embeds:
             e = em.copy()
-            if e.title: e.title = replace_plain_emojis(e.title, self.bot, guild=self.original_msg.guild)
-            if e.description: e.description = replace_plain_emojis(e.description, self.bot, guild=self.original_msg.guild)
+            if e.title:
+                e.title = replace_plain_emojis(e.title, self.bot, guild=interaction.guild)
+            if e.description:
+                e.description = replace_plain_emojis(e.description, self.bot, guild=interaction.guild)
             for i, field in enumerate(e.fields):
-                e.set_field_at(i, name=replace_plain_emojis(field.name, self.bot, guild=self.original_msg.guild), 
-                               value=replace_plain_emojis(field.value, self.bot, guild=self.original_msg.guild), 
-                               inline=field.inline)
+                e.set_field_at(
+                    i,
+                    name=replace_plain_emojis(field.name, self.bot, guild=interaction.guild),
+                    value=replace_plain_emojis(field.value, self.bot, guild=interaction.guild),
+                    inline=field.inline
+                )
             new_embeds.append(e)
 
         try:
@@ -130,161 +206,151 @@ class AnnouncementConfirmView(discord.ui.View):
                 allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
             )
 
-            gid = str(interaction.guild.id) if interaction.guild else ""
             default_success = "📢 **Announcement Broadcasted Successfully!**\nPosted to {channel} • [Jump to Announcement]({url})"
             msg_tpl = db.custom_responses.get(gid, {}).get("announcement_broadcast_success", default_success)
             formatted = msg_tpl.replace("{channel}", self.target_channel.mention).replace("{url}", broadcasted.jump_url)
 
             await interaction.response.edit_message(
                 content=formatted,
+                embed=None,
                 view=None
             )
 
             try:
-                await self.original_msg.add_reaction("📢")
-                await self.original_msg.add_reaction("✅")
+                await self.source_msg.add_reaction("📢")
+                await self.source_msg.add_reaction("✅")
             except Exception:
                 pass
 
         except discord.Forbidden:
-            gid = str(interaction.guild.id) if interaction.guild else ""
             default_err = "❌ **Permission Error:** Friday does not have permission to send messages or embed links in {channel}. Please grant appropriate channel permissions."
             err_tpl = db.custom_responses.get(gid, {}).get("announcement_perm_err", default_err)
             await interaction.response.edit_message(
                 content=err_tpl.replace("{channel}", self.target_channel.mention),
+                embed=None,
                 view=None
             )
         except Exception as err:
-            await interaction.response.edit_message(content=f"❌ Error broadcasting announcement: {err}", view=None)
+            await interaction.response.edit_message(content=f"❌ Error broadcasting announcement: {err}", embed=None, view=None)
 
         self.stop()
 
-    @discord.ui.button(label="Deny", style=discord.ButtonStyle.danger, emoji="❌")
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, emoji="❌", row=1)
     async def deny_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if interaction.user != self.original_msg.author:
-            await interaction.response.send_message("Only the command author can deny this.", ephemeral=True)
+        if interaction.user != self.initiator:
+            await interaction.response.send_message("Only the staff member who initiated this announcement can cancel.", ephemeral=True)
             return
 
         gid = str(interaction.guild.id) if interaction.guild else ""
         msg_tpl = db.custom_responses.get(gid, {}).get("announcement_cancel", "❌ **Announcement cancelled.**")
-        await interaction.response.edit_message(content=msg_tpl, view=None)
+        await interaction.response.edit_message(content=msg_tpl, embed=None, view=None)
         self.stop()
 
 class Announcements(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild:
-            return
-
-        # Check if Friday is mentioned in the message
-        is_bot_mentioned = (
-            self.bot.user in message.mentions or 
-            f"<@{self.bot.user.id}>" in message.content or 
-            f"<@!{self.bot.user.id}>" in message.content
+        # Context Menu: Right-click any message -> Apps -> Initiate Announcement
+        self.ctx_menu = app_commands.ContextMenu(
+            name="Initiate Announcement",
+            callback=self.initiate_announcement_context,
         )
-        if not is_bot_mentioned:
+        self.bot.tree.add_command(self.ctx_menu)
+
+    async def cog_unload(self):
+        self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
+
+    async def initiate_announcement_context(self, interaction: discord.Interaction, message: discord.Message):
+        """Context menu action to turn a message or paragraph into a verified server announcement."""
+        if not interaction.guild:
+            await interaction.response.send_message("❌ This command can only be used in a server.", ephemeral=True)
             return
 
-        # Clean content and check whether this is an announcement dispatch command
-        cleaned_text = message.content.replace(f"<@{self.bot.user.id}>", "").replace(f"<@!{self.bot.user.id}>", "").strip()
-        is_reply = bool(message.reference and message.reference.message_id)
-
-        # Dispatch command check: If this is an LLM drafting prompt (e.g. "likh do ek badhiya sa..."), ignore it here!
-        if not is_announcement_dispatch_command(cleaned_text, is_reply=is_reply):
-            return
-
-        gid = str(message.guild.id)
-
-        # Authorization: require Manage Messages, Manage Guild, or Administrator
-        perms = message.author.guild_permissions
+        # Staff Authorization: require Manage Messages, Manage Guild, or Administrator
+        perms = interaction.user.guild_permissions
         if not (perms.administrator or perms.manage_guild or perms.manage_messages):
-            msg_tpl = db.custom_responses.get(gid, {}).get("announcement_access_denied", "🛡️ **Access Denied:** Only staff members with **Manage Messages** or **Administrator** permissions can dispatch announcements.")
-            await message.reply(
-                msg_tpl,
-                mention_author=False
+            gid = str(interaction.guild.id)
+            msg_tpl = db.custom_responses.get(gid, {}).get(
+                "announcement_access_denied",
+                "🛡️ **Access Denied:** Only staff members with **Manage Messages** or **Administrator** permissions can dispatch announcements."
             )
+            await interaction.response.send_message(msg_tpl, ephemeral=True)
             return
+
+        # Ensure the message contains something to broadcast
+        if not message.content and not message.attachments and not message.embeds:
+            await interaction.response.send_message("⚠️ That message does not contain any text, attachments, or embeds to announce.", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
 
         # 1. Target Channel resolution
         target_channel = None
-        if message.channel_mentions:
-            target_channel = message.channel_mentions[0]
-            db.announcement_channels[gid] = str(target_channel.id)
-            db.save_data()
-        else:
-            target_channel_id = db.announcement_channels.get(gid)
-            if target_channel_id:
-                try:
-                    target_channel = message.guild.get_channel(int(target_channel_id))
-                except (ValueError, TypeError):
-                    target_channel = None
-
-            # Fallback auto-detection for announcement channel in the server
-            if not target_channel:
-                for candidate_name in ["announcements", "announcement", "updates", "server-announcements", "news"]:
-                    found = discord.utils.get(message.guild.text_channels, name=candidate_name)
-                    if found:
-                        target_channel = found
-                        db.announcement_channels[gid] = str(found.id)
-                        db.save_data()
-                        break
-
-        if not target_channel or not isinstance(target_channel, discord.TextChannel):
-            await message.reply(
-                "⚠️ **Announcement Channel Not Specified!**\n"
-                "Please specify the target channel in your message (e.g. `@Friday announcement #announcements`) or configure it in the dashboard.",
-                mention_author=False
-            )
-            return
-
-        # 2. Draft message resolution
-        draft_msg = None
-        if message.reference and message.reference.message_id:
+        target_channel_id = db.announcement_channels.get(gid)
+        if target_channel_id:
             try:
-                if message.reference.resolved and isinstance(message.reference.resolved, discord.Message):
-                    draft_msg = message.reference.resolved
-                else:
-                    draft_msg = await message.channel.fetch_message(message.reference.message_id)
-            except Exception:
-                draft_msg = None
+                target_channel = interaction.guild.get_channel(int(target_channel_id))
+            except (ValueError, TypeError):
+                target_channel = None
 
-        if not draft_msg:
-            # Fallback: scan last 15 messages in the channel to find Friday's latest draft
-            try:
-                async for past_msg in message.channel.history(limit=15):
-                    if past_msg.id == message.id:
-                        continue
-                    if past_msg.author.id == self.bot.user.id and past_msg.content:
-                        if past_msg.content.strip().startswith('#') or 'announcement' in past_msg.content.lower():
-                            draft_msg = past_msg
-                            break
-                        elif not past_msg.embeds and not past_msg.components and len(past_msg.content) > 30:
-                            draft_msg = past_msg
-                            break
-            except Exception:
-                pass
+        # Fallback auto-detection for announcement channel in the server
+        if not target_channel:
+            for candidate_name in ["announcements", "announcement", "updates", "server-announcements", "news"]:
+                found = discord.utils.get(interaction.guild.text_channels, name=candidate_name)
+                if found:
+                    target_channel = found
+                    db.announcement_channels[gid] = str(found.id)
+                    db.save_data()
+                    break
 
-        if not draft_msg or (not draft_msg.content and not draft_msg.attachments and not draft_msg.embeds):
-            await message.reply(
-                "⚠️ **No Announcement Draft Found!**\n"
-                "Please reply directly to Friday's announcement draft with `@Friday announcement kardo`, or ask Friday to write one first with `@Friday announcement likh do...`! 🌸",
-                mention_author=False
-            )
-            return
-
-        # Send confirmation prompt with buttons
-        view = AnnouncementConfirmView(message, draft_msg, target_channel, self.bot)
-        prompt_tpl = db.custom_responses.get(gid, {}).get("announcement_confirm_prompt", "❓ **Are you sure you want to broadcast this announcement to {channel}?**")
-        prompt_txt = prompt_tpl.replace("{channel}", target_channel.mention)
-        prompt = await message.reply(
-            prompt_txt,
+        # Send confirmation card with channel selector and buttons (ephemeral for clean staff review)
+        view = AnnouncementConfirmView(interaction.user, message, target_channel, self.bot)
+        await interaction.response.send_message(
+            embed=view.generate_embed(),
             view=view,
-            mention_author=False
+            ephemeral=True
         )
-        view.prompt_message = prompt
+        view.prompt_message = await interaction.original_response()
+
+    @app_commands.command(name="announcement_channel", description="Set or view the server's official announcement destination channel.")
+    @app_commands.describe(channel="The text channel to send server announcements to (leave empty to view current)")
+    @app_commands.default_permissions(manage_messages=True)
+    async def announcement_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
+        """Slash command to configure or inspect the server's official announcement channel."""
+        if not interaction.guild:
+            await interaction.response.send_message("❌ This command can only be used in a server.", ephemeral=True)
+            return
+
+        perms = interaction.user.guild_permissions
+        if not (perms.administrator or perms.manage_guild or perms.manage_messages):
+            await interaction.response.send_message("🛡️ **Access Denied:** Only staff with **Manage Messages** or **Administrator** permissions can configure announcement channels.", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if channel:
+            db.announcement_channels[gid] = str(channel.id)
+            db.save_data()
+            await interaction.response.send_message(
+                f"✅ **Official Announcement Channel Updated!**\n"
+                f"Announcements will now be sent to {channel.mention}.\n\n"
+                f"💡 **Tip:** Right-click any message or paragraph &rarr; **Apps** &rarr; **Initiate Announcement** to broadcast!",
+                ephemeral=True
+            )
+        else:
+            current_id = db.announcement_channels.get(gid)
+            if current_id:
+                ch = interaction.guild.get_channel(int(current_id))
+                ch_mention = ch.mention if ch else f"Channel ID `{current_id}` (Not Found)"
+                await interaction.response.send_message(
+                    f"📢 **Current Announcement Channel:** {ch_mention}\n\n"
+                    f"💡 Right-click any message &rarr; **Apps** &rarr; **Initiate Announcement** to broadcast!",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "⚠️ No official announcement channel configured yet.\n"
+                    "Use `/announcement_channel #channel` or configure it in the dashboard.",
+                    ephemeral=True
+                )
 
 async def setup(bot):
     await bot.add_cog(Announcements(bot))

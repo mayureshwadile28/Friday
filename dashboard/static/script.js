@@ -315,12 +315,17 @@ function setupEventListeners() {
                 targetId = 'rrEmojiInput_' + rowId;
             }
         }
+        if (!targetId && btn.closest('#announcementsSection')) {
+            targetId = 'annContentInput';
+        }
         if (targetId) {
             const richEl = document.getElementById(targetId + '_rich');
             if (richEl) {
                 const sel = window.getSelection();
                 if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
                     richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                    const off = getCaretCharacterOffset(richEl);
+                    if (off !== null) richEl._savedOffset = off;
                 }
             }
             const input = document.getElementById(targetId);
@@ -883,11 +888,19 @@ function setupEventListeners() {
                 }
                 const titleInput = document.getElementById('annTitleInput');
                 if (titleInput) {
-                    const start = titleInput.selectionStart || titleInput.value.length;
-                    const end = titleInput.selectionEnd || titleInput.value.length;
+                    let start = titleInput.value.length;
+                    let end = titleInput.value.length;
+                    if (titleInput._savedCaret && typeof titleInput._savedCaret.start === 'number') {
+                        start = titleInput._savedCaret.start;
+                        end = titleInput._savedCaret.end;
+                    } else if (typeof titleInput.selectionStart === 'number') {
+                        start = titleInput.selectionStart;
+                        end = titleInput.selectionEnd;
+                    }
                     titleInput.value = titleInput.value.substring(0, start) + val + ' ' + titleInput.value.substring(end);
                     titleInput.focus();
                     titleInput.selectionStart = titleInput.selectionEnd = start + val.length + 1;
+                    titleInput._savedCaret = { start: titleInput.selectionStart, end: titleInput.selectionEnd };
                     updateAnnPreview();
                 }
             });
@@ -914,11 +927,19 @@ function setupEventListeners() {
                 }
                 const input = document.getElementById('annFooterInput');
                 if (input) {
-                    const start = input.selectionStart || input.value.length;
-                    const end = input.selectionEnd || input.value.length;
+                    let start = input.value.length;
+                    let end = input.value.length;
+                    if (input._savedCaret && typeof input._savedCaret.start === 'number') {
+                        start = input._savedCaret.start;
+                        end = input._savedCaret.end;
+                    } else if (typeof input.selectionStart === 'number') {
+                        start = input.selectionStart;
+                        end = input.selectionEnd;
+                    }
                     input.value = input.value.substring(0, start) + val + ' ' + input.value.substring(end);
                     input.focus();
                     input.selectionStart = input.selectionEnd = start + val.length + 1;
+                    input._savedCaret = { start: input.selectionStart, end: input.selectionEnd };
                     currentAnnFooterText = input.value;
                     updateAnnPreview();
                 }
@@ -1561,36 +1582,148 @@ function richHtmlToRawMarkdown(el) {
     return sanitizeRawMarkdown(result);
 }
 
-function insertEmojiOrTextIntoRichEditor(richEl, val) {
-    if (!richEl) return;
+function getCaretCharacterOffset(root) {
+    if (!root) return null;
     const sel = window.getSelection();
-    let range = null;
+    if (!sel || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    if (!root.contains(range.startContainer)) return null;
 
-    // 1. Try to restore saved range from when user was interacting with richEl
-    if (richEl._savedRange) {
-        try {
-            range = richEl._savedRange;
-            if (sel) {
-                sel.removeAllRanges();
-                sel.addRange(range);
+    let offset = 0;
+    let found = false;
+
+    function walk(node) {
+        if (found) return;
+
+        if (node === range.startContainer) {
+            if (node.nodeType === Node.TEXT_NODE) {
+                offset += range.startOffset;
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+                for (let i = 0; i < range.startOffset && i < node.childNodes.length; i++) {
+                    const child = node.childNodes[i];
+                    if (child.nodeType === Node.TEXT_NODE) {
+                        offset += child.nodeValue.length;
+                    } else if (child.tagName === 'IMG' || child.tagName === 'BR') {
+                        offset += 1;
+                    } else {
+                        offset += getNodeLength(child);
+                    }
+                }
             }
-        } catch (e) {
-            range = null;
+            found = true;
+            return;
+        }
+
+        if (node.nodeType === Node.TEXT_NODE) {
+            offset += node.nodeValue.length;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.tagName === 'IMG' || node.tagName === 'BR') {
+                offset += 1;
+            } else {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    walk(node.childNodes[i]);
+                    if (found) return;
+                }
+            }
         }
     }
 
-    // 2. Fallback to current selection if still inside richEl
-    if (!range && sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
-        range = sel.getRangeAt(0);
+    function getNodeLength(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.length;
+        if (node.tagName === 'IMG' || node.tagName === 'BR') return 1;
+        let len = 0;
+        for (let i = 0; i < node.childNodes.length; i++) len += getNodeLength(node.childNodes[i]);
+        return len;
+    }
+
+    walk(root);
+    return found ? offset : null;
+}
+
+function setCaretCharacterOffset(root, targetOffset) {
+    if (!root) return null;
+    if (typeof targetOffset !== 'number' || targetOffset < 0) return null;
+    const range = document.createRange();
+    let currentOffset = 0;
+    let found = false;
+
+    function walk(node) {
+        if (found) return;
+
+        if (node.nodeType === Node.TEXT_NODE) {
+            const len = node.nodeValue.length;
+            if (currentOffset + len >= targetOffset) {
+                const subOffset = Math.max(0, Math.min(targetOffset - currentOffset, len));
+                range.setStart(node, subOffset);
+                range.setEnd(node, subOffset);
+                found = true;
+                return;
+            }
+            currentOffset += len;
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.tagName === 'IMG' || node.tagName === 'BR') {
+                if (currentOffset + 1 >= targetOffset) {
+                    if (targetOffset === currentOffset) {
+                        range.setStartBefore(node);
+                    } else {
+                        range.setStartAfter(node);
+                    }
+                    range.collapse(true);
+                    found = true;
+                    return;
+                }
+                currentOffset += 1;
+            } else {
+                for (let i = 0; i < node.childNodes.length; i++) {
+                    walk(node.childNodes[i]);
+                    if (found) return;
+                }
+            }
+        }
+    }
+
+    walk(root);
+
+    if (!found) {
+        range.selectNodeContents(root);
+        range.collapse(false);
+    }
+
+    return range;
+}
+
+function insertEmojiOrTextIntoRichEditor(richEl, val) {
+    if (!richEl) return;
+
+    let range = null;
+
+    // 1. Try saved range if it's still attached to DOM and inside richEl
+    if (richEl._savedRange && richEl.contains(richEl._savedRange.startContainer)) {
+        range = richEl._savedRange.cloneRange();
+    } else if (typeof richEl._savedOffset === 'number') {
+        // 2. Restore using saved character offset
+        range = setCaretCharacterOffset(richEl, richEl._savedOffset);
+    } else {
+        // 3. Fallback to current selection if inside richEl
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+            range = sel.getRangeAt(0).cloneRange();
+        }
+    }
+
+    // 4. Fallback to end of editor (NEVER to the start at 0!)
+    if (!range || !richEl.contains(range.startContainer)) {
+        range = document.createRange();
+        range.selectNodeContents(richEl);
+        range.collapse(false);
     }
 
     richEl.focus();
 
-    // 3. Fallback to end of editor
-    if (!range) {
-        range = document.createRange();
-        range.selectNodeContents(richEl);
-        range.collapse(false);
+    const sel = window.getSelection();
+    if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(range);
     }
 
     range.deleteContents();
@@ -1630,6 +1763,8 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
         }
     }
 
+    let nodeToInsertAfter = null;
+
     if (animMatch || staticMatch) {
         const isAnim = Boolean(animMatch);
         const name = isAnim ? animMatch[1] : staticMatch[1];
@@ -1653,20 +1788,27 @@ function insertEmojiOrTextIntoRichEditor(richEl, val) {
         } else {
             img.parentNode.appendChild(space);
         }
-        range.setStartAfter(space);
-        range.setEndAfter(space);
+        nodeToInsertAfter = space;
     } else {
         const textNode = document.createTextNode(val + ' ');
         range.insertNode(textNode);
-        range.setStartAfter(textNode);
-        range.setEndAfter(textNode);
+        nodeToInsertAfter = textNode;
     }
 
-    if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(range);
+    if (nodeToInsertAfter) {
+        range.setStartAfter(nodeToInsertAfter);
+        range.setEndAfter(nodeToInsertAfter);
+        if (sel) {
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
     }
+
     richEl._savedRange = range.cloneRange();
+    const newOff = getCaretCharacterOffset(richEl);
+    if (newOff !== null) {
+        richEl._savedOffset = newOff;
+    }
     richEl.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
@@ -1700,12 +1842,17 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
         const sel = window.getSelection();
         if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
             richEl._savedRange = sel.getRangeAt(0).cloneRange();
+            const off = getCaretCharacterOffset(richEl);
+            if (off !== null) {
+                richEl._savedOffset = off;
+            }
         }
     }
 
     richEl.addEventListener('keyup', saveRichRange);
     richEl.addEventListener('mouseup', saveRichRange);
     richEl.addEventListener('touchend', saveRichRange);
+    richEl.addEventListener('input', saveRichRange);
     richEl.addEventListener('focus', saveRichRange);
 
     if (isSingleLine) {
@@ -1740,9 +1887,6 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
         saveRichRange();
         const raw = richHtmlToRawMarkdown(richEl);
         targetEl.value = raw;
-        if (typeof targetEl._syncToRich === 'function') {
-            targetEl._syncToRich();
-        }
     });
 
     targetEl._syncToRich = function() {
@@ -2904,11 +3048,21 @@ window.insertAnnVar = function (text) {
     }
     const input = document.getElementById('annContentInput');
     if (!input) return;
-    const start = input.selectionStart || input.value.length;
-    const end = input.selectionEnd || input.value.length;
+
+    let start = input.value.length;
+    let end = input.value.length;
+    if (input._savedCaret && typeof input._savedCaret.start === 'number') {
+        start = input._savedCaret.start;
+        end = input._savedCaret.end;
+    } else if (typeof input.selectionStart === 'number') {
+        start = input.selectionStart;
+        end = input.selectionEnd;
+    }
+
     input.value = input.value.substring(0, start) + text + input.value.substring(end);
     input.focus();
     input.selectionStart = input.selectionEnd = start + text.length;
+    input._savedCaret = { start: input.selectionStart, end: input.selectionEnd };
     updateAnnPreview();
 };
 

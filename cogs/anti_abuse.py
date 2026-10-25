@@ -123,78 +123,120 @@ class AntiAbuse(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @commands.Cog.listener()
-    async def on_message(self, message):
-        if message.author.bot: return
+    def is_immune(self, message: discord.Message) -> bool:
+        """Determines if the message author is immune to anti-abuse message deletion and warnings."""
+        if not message.guild or not message.author:
+            return True
+        if message.author.bot:
+            return True
+
+        # 1. Server Owner is ALWAYS immune
+        if message.author.id == message.guild.owner_id:
+            return True
+
+        # 2. Server Administrators & Guild Managers are ALWAYS immune
+        perms = getattr(message.author, "guild_permissions", None)
+        if perms and (perms.administrator or perms.manage_guild or perms.manage_messages):
+            return True
 
         gid = str(message.guild.id)
-        if message.author.id not in db.abuse_whitelist.get(gid, []):
-            word_list = db.banned_words.get(gid, [])
-            content_lower = message.content.lower()
-            
-            triggered_word = None
-            for word in word_list:
-                if re.search(rf'\b{re.escape(word)}\b', content_lower):
-                    triggered_word = word
-                    break
-            
-            if triggered_word:
-                try:
-                    await message.delete()
-                    resp_tpl = db.custom_responses.get(gid, {}).get("abuse_warning_msg", "⚠️ {member}, that word is not allowed here.")
-                    warning = await message.channel.send(resp_tpl.replace("{member}", message.author.mention))
-                    await warning.delete(delay=5)
-                    
-                    log_id = db.server_logs.get(gid, {}).get("audit-abuse")
-                    if log_id:
-                        log_channel = self.bot.get_channel(log_id)
-                        if log_channel:
-                            embed = discord.Embed(title="🤬 Abuse Word Detected", color=discord.Color.orange())
-                            embed.add_field(name="Author", value=message.author.mention, inline=True)
-                            embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-                            embed.add_field(name="Trigger Word", value=f"`{triggered_word}`", inline=False)
-                            embed.add_field(name="Full Message", value=message.content, inline=False)
-                            embed.set_footer(text=f"Detected on {discord.utils.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}")
-                            await log_channel.send(embed=embed)
-                except discord.Forbidden:
-                    pass
+        uid_int = message.author.id
+        uid_str = str(uid_int)
+
+        # 3. Universal / Master Security Whitelist (db.whitelist)
+        master_wl = db.whitelist.get(gid, []) or db.whitelist.get(int(gid) if gid.isdigit() else 0, [])
+        master_wl_ids = {str(x) for x in master_wl}
+        if uid_str in master_wl_ids:
+            return True
+
+        # 4. Anti-Abuse Dedicated Whitelist (db.abuse_whitelist)
+        abuse_wl = db.abuse_whitelist.get(gid, []) or db.abuse_whitelist.get(int(gid) if gid.isdigit() else 0, [])
+        abuse_wl_ids = {str(x) for x in abuse_wl}
+        if uid_str in abuse_wl_ids:
+            return True
+
+        # 5. Feature Whitelists (db.feature_whitelists for 'anti_abuse' or 'universal')
+        fw = db.feature_whitelists.get(gid, {}) or db.feature_whitelists.get(int(gid) if gid.isdigit() else 0, {})
+        for feat_key in ("anti_abuse", "abuse", "universal"):
+            if feat_key in fw:
+                feat_ids = {str(x) for x in fw[feat_key]}
+                if uid_str in feat_ids:
+                    return True
+
+        return False
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if self.is_immune(message):
+            return
+
+        gid = str(message.guild.id)
+        word_list = db.banned_words.get(gid, [])
+        content_lower = message.content.lower()
+        
+        triggered_word = None
+        for word in word_list:
+            if re.search(rf'\b{re.escape(word)}\b', content_lower):
+                triggered_word = word
+                break
+        
+        if triggered_word:
+            try:
+                await message.delete()
+                resp_tpl = db.custom_responses.get(gid, {}).get("abuse_warning_msg", "⚠️ {member}, that word is not allowed here.")
+                warning = await message.channel.send(resp_tpl.replace("{member}", message.author.mention))
+                await warning.delete(delay=5)
+                
+                log_id = db.server_logs.get(gid, {}).get("audit-abuse")
+                if log_id:
+                    log_channel = self.bot.get_channel(log_id)
+                    if log_channel:
+                        embed = discord.Embed(title="🤬 Abuse Word Detected", color=discord.Color.orange())
+                        embed.add_field(name="Author", value=message.author.mention, inline=True)
+                        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+                        embed.add_field(name="Trigger Word", value=f"`{triggered_word}`", inline=False)
+                        embed.add_field(name="Full Message", value=message.content, inline=False)
+                        embed.set_footer(text=f"Detected on {discord.utils.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}")
+                        await log_channel.send(embed=embed)
+            except discord.Forbidden:
+                pass
 
     @commands.Cog.listener()
     async def on_message_edit(self, before, after):
-        if after.author.bot: return
+        if self.is_immune(after):
+            return
 
         gid = str(after.guild.id)
-        if after.author.id not in db.abuse_whitelist.get(gid, []):
-            word_list = db.banned_words.get(gid, [])
-            content_lower = after.content.lower()
-            
-            triggered_word = None
-            for word in word_list:
-                if re.search(rf'\b{re.escape(word)}\b', content_lower):
-                    triggered_word = word
-                    break
-            
-            if triggered_word:
-                try:
-                    await after.delete()
-                    resp_tpl = db.custom_responses.get(gid, {}).get("abuse_edit_warning_msg", "⚠️ {member}, you cannot edit your message to include a banned word.")
-                    warning = await after.channel.send(resp_tpl.replace("{member}", after.author.mention))
-                    await warning.delete(delay=5)
-                    
-                    log_id = db.server_logs.get(gid, {}).get("audit-abuse")
-                    if log_id:
-                        log_channel = self.bot.get_channel(log_id)
-                        if log_channel:
-                            embed = discord.Embed(title="🤬 Edited Abuse Word Detected", color=discord.Color.orange())
-                            embed.add_field(name="Author", value=after.author.mention, inline=True)
-                            embed.add_field(name="Channel", value=after.channel.mention, inline=True)
-                            embed.add_field(name="Trigger Word", value=f"`{triggered_word}`", inline=False)
-                            embed.add_field(name="Old Message", value=before.content if before.content else "*No text*", inline=False)
-                            embed.add_field(name="New Message", value=after.content, inline=False)
-                            embed.set_footer(text=f"Detected on {discord.utils.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}")
-                            await log_channel.send(embed=embed)
-                except discord.Forbidden:
-                    pass
+        word_list = db.banned_words.get(gid, [])
+        content_lower = after.content.lower()
+        
+        triggered_word = None
+        for word in word_list:
+            if re.search(rf'\b{re.escape(word)}\b', content_lower):
+                triggered_word = word
+                break
+        
+        if triggered_word:
+            try:
+                await after.delete()
+                resp_tpl = db.custom_responses.get(gid, {}).get("abuse_edit_warning_msg", "⚠️ {member}, you cannot edit your message to include a banned word.")
+                warning = await after.channel.send(resp_tpl.replace("{member}", after.author.mention))
+                await warning.delete(delay=5)
+                
+                log_id = db.server_logs.get(gid, {}).get("audit-abuse")
+                if log_id:
+                    log_channel = self.bot.get_channel(log_id)
+                    if log_channel:
+                        embed = discord.Embed(title="🤬 Edited Abuse Word Detected", color=discord.Color.orange())
+                        embed.add_field(name="Author", value=after.author.mention, inline=True)
+                        embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+                        embed.add_field(name="Trigger Word", value=f"`{triggered_word}`", inline=False)
+                        embed.add_field(name="Old Message", value=before.content if before.content else "*No text*", inline=False)
+                        embed.add_field(name="New Message", value=after.content, inline=False)
+                        embed.set_footer(text=f"Detected on {discord.utils.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}")
+                        await log_channel.send(embed=embed)
+            except discord.Forbidden:
+                pass
 
 async def setup(bot):
     await bot.add_cog(AntiAbuse(bot))

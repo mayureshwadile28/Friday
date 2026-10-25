@@ -1594,7 +1594,7 @@
 <span class="badge" id="annActiveChannelBadge" style="background: rgba(45, 212, 191, 0.15); color: #2dd4bf; border: 1px solid rgba(45, 212, 191, 0.3); font-size: 11px; padding: 2px 8px; border-radius: 999px;">Loading...</span>
 </div>
 <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
-                                When staff replies to any drafted message and tags <code>@Friday announcement kardo</code> / <code>@Friday announcement do it</code>, Friday will automatically broadcast that message (with its embeds and file attachments) directly to this channel.
+                                Official server destination channel where Friday broadcasts announcements. Broadcast directly from the dashboard composer, or right-click any message in Discord &rarr; <strong>Apps</strong> &rarr; <strong>Initiate Announcement</strong>.
                             </p>
 </div>
 </div>
@@ -1613,10 +1613,8 @@
 <div style="margin-top: 14px; padding: 12px 14px; background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.1); border-radius: 8px; display: flex; align-items: center; gap: 12px;">
 <div style="font-size: 20px;">💡</div>
 <div style="font-size: 12px; color: #949ba4; line-height: 1.5;">
-<strong style="color: #ffffff;">Discord Chat Shortcut:</strong> In any staff chat, reply to your drafted announcement and tag:
-                            <code style="color: #2dd4bf; background: rgba(45, 212, 191, 0.1); padding: 2px 6px; border-radius: 4px;">@Friday announcement kardo</code> or 
-                            <code style="color: #2dd4bf; background: rgba(45, 212, 191, 0.1); padding: 2px 6px; border-radius: 4px;">@Friday announcement do it</code>.
-                            You can also reconfigure the target channel in Discord anytime with <code style="color: #f59e0b; background: rgba(245, 158, 11, 0.1); padding: 2px 6px; border-radius: 4px;">/announcement &lt;channel&gt;</code>!
+<strong style="color: #ffffff;">Discord Apps Shortcut:</strong> In Discord, right-click any drafted announcement message (or long-press on mobile) &rarr; go to <code style="color: #2dd4bf; background: rgba(45, 212, 191, 0.1); padding: 2px 6px; border-radius: 4px;">Apps</code> &rarr; click <code style="color: #2dd4bf; background: rgba(45, 212, 191, 0.1); padding: 2px 6px; border-radius: 4px;">Initiate Announcement</code>.
+                            Friday will confirm the destination channel and broadcast it upon your approval!
                         </div>
 </div>
 </div>
@@ -1636,7 +1634,7 @@
 <!-- Announcement Title with Server Emoji Button -->
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
 <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Announcement Title</label>
-<button class="btn btn-secondary emoji-picker-btn" id="annTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;" type="button">
+<button class="btn btn-secondary emoji-picker-btn" data-target="annTitleInput" id="annTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;" type="button">
 <svg fill="none" height="12" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="12"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" x2="9.01" y1="9" y2="9"></line><line x1="15" x2="15.01" y1="9" y2="9"></line></svg>
                                 Emojis
                             </button>
@@ -1666,15 +1664,15 @@
 <span style="font-size: 11px; color: var(--text-muted);">Discord Markdown Supported</span>
 </div>
 <div class="var-chips-row" style="margin-top: 4px; margin-bottom: 8px;">
-<button class="var-chip" onclick="insertAnnVar('# ')" type="button"><code>#</code> H1</button>
-<button class="var-chip" onclick="insertAnnVar('## ')" type="button"><code>##</code> H2</button>
-<button class="var-chip" onclick="insertAnnVar('### ')" type="button"><code>###</code> H3</button>
-<button class="var-chip" onclick="insertAnnVar('-# ')" type="button"><code>-#</code> Subtext</button>
-<button class="var-chip" onclick="insertAnnVar('**bold**')" type="button">Bold</button>
-<button class="var-chip" onclick="insertAnnVar('*italic*')" type="button">Italic</button>
-<button class="var-chip" onclick="insertAnnVar('&gt; ')" type="button">Quote</button>
-<button class="var-chip" onclick="insertAnnVar('||spoiler||')" type="button">Spoiler</button>
-<button class="var-chip emoji-picker-btn" id="annContentEmojiBtn" title="Insert server emojis" type="button">
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('# ')" type="button"><code>#</code> H1</button>
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('## ')" type="button"><code>##</code> H2</button>
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('### ')" type="button"><code>###</code> H3</button>
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('-# ')" type="button"><code>-#</code> Subtext</button>
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('**bold**')" type="button">Bold</button>
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('*italic*')" type="button">Italic</button>
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('&gt; ')" type="button">Quote</button>
+<button class="var-chip" data-target="annContentInput" onclick="insertAnnVar('||spoiler||')" type="button">Spoiler</button>
+<button class="var-chip emoji-picker-btn" data-target="annContentInput" id="annContentEmojiBtn" title="Insert server emojis" type="button">
 <svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="14">
 <circle cx="12" cy="12" r="10"></circle>
 <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
@@ -1714,7 +1712,7 @@ We are excited to introduce seamless broadcast capability.
 <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Footer Text (Optional)</label>
 <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
 <input class="text-input" id="annFooterInput" style="flex: 1; font-size: 12px; padding: 6px 10px; margin-top: 0;" type="text" value="Friday Broadcast System • Official Notification"/>
-<button class="btn btn-secondary emoji-picker-btn" id="annFooterEmojiBtn" style="padding: 2px 8px; font-size: 11px; height: 38px;" type="button" title="Insert Server Emoji">😊</button>
+<button class="btn btn-secondary emoji-picker-btn" data-target="annFooterInput" id="annFooterEmojiBtn" style="padding: 2px 8px; font-size: 11px; height: 38px;" type="button" title="Insert Server Emoji">😊</button>
 </div>
 </div>
 </div>

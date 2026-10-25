@@ -598,6 +598,7 @@ body {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
     gap: 16px;
+    align-items: start;
     margin-bottom: 20px;
 }
 
@@ -1415,6 +1416,9 @@ select.text-input option {
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 14px;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 4px;
 }
 
 .tag {
@@ -2569,6 +2573,9 @@ input:checked + .slider:before {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+    max-height: 180px;
+    overflow-y: auto;
+    padding-right: 4px;
 }
 
 .fw-member-chip {
@@ -3375,6 +3382,7 @@ select option:checked {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    align-self: start;
 }
 
 .composer-section-title {
@@ -3438,9 +3446,9 @@ select option:checked {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-height: 480px;
+    max-height: 380px;
     overflow-y: auto;
-    padding-right: 4px;
+    padding-right: 6px;
 }
 
 .auto-rule-card {
@@ -4081,5 +4089,40 @@ textarea,
     color: var(--text-secondary);
     line-height: 1.4;
 }
+
+.autoresponder-rules-scroll::-webkit-scrollbar,
+.sec-drawer-list::-webkit-scrollbar,
+.tag-list::-webkit-scrollbar,
+.whitelist-list::-webkit-scrollbar,
+.custom-select-options::-webkit-scrollbar {
+    width: 6px;
+}
+
+.autoresponder-rules-scroll::-webkit-scrollbar-track,
+.sec-drawer-list::-webkit-scrollbar-track,
+.tag-list::-webkit-scrollbar-track,
+.whitelist-list::-webkit-scrollbar-track,
+.custom-select-options::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.autoresponder-rules-scroll::-webkit-scrollbar-thumb,
+.sec-drawer-list::-webkit-scrollbar-thumb,
+.tag-list::-webkit-scrollbar-thumb,
+.whitelist-list::-webkit-scrollbar-thumb,
+.custom-select-options::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.16);
+    border-radius: 4px;
+}
+
+.autoresponder-rules-scroll::-webkit-scrollbar-thumb:hover,
+.sec-drawer-list::-webkit-scrollbar-thumb:hover,
+.tag-list::-webkit-scrollbar-thumb:hover,
+.whitelist-list::-webkit-scrollbar-thumb:hover,
+.custom-select-options::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.26);
+}
+
 
 

@@ -116,9 +116,54 @@ def sanitize_ai_mentions(text: str) -> str:
 
 # Intent detection for announcements, broadcast drafting, guidelines, and server rules
 ANNOUNCEMENT_INTENT_REGEX = re.compile(
-    r'\b(?:announc(?:e|ement)|announcment|annoucement|anouncement|annonucment|elan|elam|ailaan|aillan|ghoshna|draft|drafting|guideline|guidelines|staff guidelines|server rules|community rules|staff rules|rule|rules|notice|circular|broadcast|policy|code of conduct|write an announcement|make an announcement|draft an announcement|draft rules|draft guidelines|rules draft|rules likho|guidelines banao|announcement banao)\b',
+    r'\b(?:announc(?:e|ement|ements)|announcment|annoucement|anouncement|annonucment|elan|elam|ailaan|aillan|ghoshna|draft|drafting|guideline|guidelines|staff guidelines|server rules|community rules|staff rules|rule|rules|notice|circular|broadcast|policy|code of conduct)\b',
     re.IGNORECASE
 )
+
+def is_announcement_draft_request(text: str) -> bool:
+    """
+    Checks if user is actively asking Friday to draft/write an announcement or server rules.
+    Distinguishes active creation requests from casual conversation mentioning 'announcement'.
+    """
+    if not text:
+        return False
+        
+    t = text.lower().strip()
+    
+    # Casual past-tense narrative or third-party mention guards:
+    # "yesterday my friend wrote an announcement", "i saw an announcement", "read the announcement", "did you see the announcement"
+    casual_patterns = [
+        r'\b(?:yesterday|kal|earlier|previously|past)\b',
+        r'\b(?:my friend|friend|dost|someone|unhone|usne|he|she|they)\s+(?:wrote|said|told|posted|made|likha|bola)\b',
+        r'\b(?:did you (?:see|hear|read|know)|kya tumne (?:dekha|suna|padha))\b',
+        r'\b(?:everyone (?:laughed|laught|enjoyed|liked|reacted)|sab (?:hase|hasne lage))\b',
+        r'\b(?:i (?:saw|read|heard|liked)|maine (?:dekha|padha|suna))\b',
+        r'\b(?:why did|why do|what is an? announcement|announcement kya hota hai)\b'
+    ]
+    for cp in casual_patterns:
+        if re.search(cp, t):
+            # Check if there is also an explicit imperative to draft a new one right now:
+            # e.g., "yesterday my friend wrote one, but can you write an announcement for me now"
+            if not re.search(r'\b(?:but|lekin|par|now|ab)\s+(?:can you|please|plz)?\s*(?:write|draft|make|likh)\b', t):
+                return False
+
+    # Drafting verbs & phrases directed to Friday:
+    # English: write, draft, create, make, compose, prepare, generate, format
+    # Hindi/Hinglish: likh, likho, likh do, likhde, likhna, banao, bana do, banado, taiyar karo, ready karo
+    drafting_verbs = r'(?:write|draft|create|make|compose|prepare|generate|format|likh|likho|likh\s*do|likhde|likhna|banao|bana\s*do|banado|taiyar\s*karo|ready\s*karo)'
+    
+    # Target entities: announcement, announcements, server rules, discord rules, guild rules, guidelines, rules, niyam
+    target_entities = r'(?:announc(?:e|ement|ements)|announcment|annoucement|anouncement|annonucment|elan|ailaan|ghoshna|server\s*rules|community\s*rules|guild\s*rules|rules|rule|guidelines|guideline|niyam)'
+
+    # Pattern A: Verb ... Target Entity (e.g. "write an announcement", "draft server rules", "likh do announcement")
+    if re.search(rf'\b{drafting_verbs}\b[\w\s]{{0,30}}\b{target_entities}\b', t):
+        return True
+        
+    # Pattern B: Target Entity ... Verb (e.g. "announcement likh do", "server rules banao", "tournament announcement chahiye")
+    if re.search(rf'\b{target_entities}\b[\w\s]{{0,30}}\b(?:{drafting_verbs}|chahiye|need|karna hai)\b', t):
+        return True
+
+    return False
 
 
 def format_and_clean_announcement(text: str) -> str:
@@ -988,12 +1033,34 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
         if not clean_text:
             return
 
-        # Announcement Dispatch Command Bypass:
-        # If the user is issuing an announcement dispatch command (e.g. "@Friday announcement", "@Friday announcment kardo", "@Friday announcement #general"),
-        # this workflow belongs exclusively to cogs/announcements.py, NOT the conversational LLM!
-        # (Drafting requests like "@Friday announcement likh do ek badhiya sa..." will NOT match and will proceed to LLM!)
+        # Announcement Dispatch Guidance:
+        # If the user mentions Friday and asks to dispatch/broadcast an announcement in chat
+        # (e.g. "@Friday announcement kardo", "@Friday broadcast this", "@Friday announcement bhej do"),
+        # do NOT activate the LLM. Instead, guide them directly to the Apps Context Menu!
         if is_announcement_dispatch_command(clean_text, is_reply=bool(message.reference)):
+            await message.reply(
+                "📢 **How to Broadcast an Announcement with Friday:**\n"
+                "To announce a message, **right-click** on the message or paragraph (or long-press on mobile) &rarr; go to **Apps** &rarr; click **Initiate Announcement**! 🌸\n\n"
+                "Friday will show a private confirmation card with destination channel selection. Once you click **Yes**, Friday will broadcast it directly!",
+                mention_author=False
+            )
             return
+
+        # Announcement & Rule Drafting Permission Guard:
+        # Only Server Owner & Administrators can ask Friday to draft server announcements or rules
+        if is_announcement_draft_request(clean_text):
+            is_admin_or_owner = (
+                message.author.id == message.guild.owner_id or
+                getattr(message.author.guild_permissions, "administrator", False)
+            )
+            if not is_admin_or_owner:
+                await message.reply(
+                    "🛡️ **Staff Access Required:**\n"
+                    "Only server **Administrators** and the **Server Owner** can request official server announcements or rules to be drafted. 🌸\n\n"
+                    "If you have an announcement suggestion, please submit it to your server's staff team!",
+                    mention_author=True
+                )
+                return
 
         # Standalone Greeting Bypass: If mentioning Friday with no text or simple greeting word
         # Handled specifically by cogs/expressions.py using custom responses in DB
@@ -1193,7 +1260,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
                 user_mems = self._get_user_memory(gid, message.author.id)
 
                 # Check announcement / guidelines / rules drafting intent
-                is_announcement_mode = bool(ANNOUNCEMENT_INTENT_REGEX.search(resolved_user_text))
+                is_announcement_mode = is_announcement_draft_request(resolved_user_text)
 
                 # Query LLM (no typing indicator: instant thinking placeholder already handles visual feedback)
                 sys_prompt = self._build_system_prompt(
@@ -1294,6 +1361,21 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             await interaction.followup.send(censor_reply)
             return
 
+        if is_announcement_draft_request(question):
+            is_admin_or_owner = (
+                interaction.guild and (
+                    interaction.user.id == interaction.guild.owner_id or
+                    getattr(interaction.user.guild_permissions, "administrator", False)
+                )
+            )
+            if not is_admin_or_owner:
+                await interaction.followup.send(
+                    "🛡️ **Staff Access Required:**\n"
+                    "Only server **Administrators** and the **Server Owner** can request official server announcements or rules to be drafted. 🌸\n\n"
+                    "If you have an announcement suggestion, please submit it to your server's staff team!"
+                )
+                return
+
         session_key = (interaction.channel_id, interaction.user.id)
         resolved_question = self._resolve_discord_mentions(interaction.guild, question)
         user_prompt = f"{interaction.user.display_name}: {resolved_question}"
@@ -1323,7 +1405,7 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             except Exception as search_err:
                 print(f"[AIChat Search] Exception: {search_err}")
 
-        is_announcement_mode = bool(ANNOUNCEMENT_INTENT_REGEX.search(resolved_question))
+        is_announcement_mode = is_announcement_draft_request(resolved_question)
 
         async with self.queue_lock:
             user_mems = self._get_user_memory(gid, interaction.user.id)
