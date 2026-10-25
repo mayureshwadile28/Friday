@@ -3563,27 +3563,49 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                 </div>
 
+                <!-- Unified Searchable Member Selector -->
                 <div class="form-group" style="margin-top: 16px;">
-                    <label style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">Select Target Member (Server Member or User ID):</label>
-                    <select class="form-control" id="vipDirectDmMemberSelect">
-                        <option value="">Select a server member...</option>
-                    </select>
-                </div>
+                    <label style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">Target Member (Search Name or Paste User ID):</label>
+                    <div style="position: relative;">
+                        <div style="position: relative; display: flex; align-items: center;">
+                            <span style="position: absolute; left: 12px; color: var(--text-muted); font-size: 13px; pointer-events: none;">🔍</span>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="vipDirectDmSearchInput" 
+                                   placeholder="Type username or paste Discord User ID..." 
+                                   autocomplete="off"
+                                   style="padding-left: 36px; padding-right: 32px; width: 100%; font-size: 13px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); color: #fff; border-radius: 8px;" />
+                            <button type="button" 
+                                    id="vipDirectDmClearBtn" 
+                                    style="display: none; position: absolute; right: 10px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px;">✕</button>
+                        </div>
+                        <div id="vipDirectDmDropdown" 
+                             style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #1e1f22; border: 1px solid var(--border-color); border-radius: 8px; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
+                        </div>
+                    </div>
 
-                <div class="form-group" style="margin-top: 10px;">
-                    <label style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block;">Or enter Discord User ID manually:</label>
-                    <input class="form-control" id="vipDirectDmUserIdInput" placeholder="e.g. 718392819283719283" type="text" />
+                    <!-- Selected Member Pill -->
+                    <div id="vipDirectDmSelectedCard" style="display: none; margin-top: 8px; padding: 8px 12px; background: rgba(88, 101, 242, 0.12); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 8px; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div id="vipDirectDmSelectedAvatar" style="width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #5865f2; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff; font-size: 12px;"></div>
+                            <div>
+                                <span id="vipDirectDmSelectedName" style="font-size: 13px; font-weight: 700; color: #fff;"></span>
+                                <span id="vipDirectDmSelectedId" style="font-size: 11px; color: var(--text-muted); font-family: monospace; margin-left: 6px;"></span>
+                            </div>
+                        </div>
+                        <span style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #10B981; font-weight: 600;">Selected</span>
+                    </div>
+                    <input type="hidden" id="vipDirectDmUserId" value="" />
                 </div>
 
                 <div class="form-group" style="margin-top: 14px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <label style="font-size: 12px; font-weight: 600; color: #fff; margin: 0;">Direct Message Content:</label>
-                        <button class="btn-action-secondary emoji-picker-btn" id="vipDirectDmEmojiBtn" style="padding: 3px 8px; font-size: 12px;" type="button">
+                        <button class="btn btn-secondary emoji-picker-btn" data-target="vipDirectDmContent" id="vipDirectDmEmojiBtn" onmousedown="event.preventDefault()" style="padding: 3px 8px; font-size: 12px;" type="button">
                             😊 Server Emojis
                         </button>
                     </div>
-                    <div class="rich-editable-area" contenteditable="true" id="vipDirectDmContent_rich" style="min-height: 85px; padding: 10px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 13px; outline: none;"></div>
-                    <textarea id="vipDirectDmContent" style="display: none;"></textarea>
+                    <textarea class="form-control text-input" id="vipDirectDmContent" placeholder="Write a direct message to send..." style="min-height: 95px; resize: vertical; font-size: 13px;"></textarea>
 
                     <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
                         <span class="resp-var-badge" data-target="vipDirectDmContent" data-var="{mention}" style="cursor: pointer; background: rgba(88,101,242,0.15); color: #5865F2; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{mention}</span>
@@ -3611,27 +3633,49 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                 </div>
 
+                <!-- Unified Searchable Member Selector -->
                 <div class="form-group" style="margin-top: 16px;">
-                    <label style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">Select Target Member to Grant VIP Access:</label>
-                    <select class="form-control" id="vipInviteMemberSelect">
-                        <option value="">Select a server member...</option>
-                    </select>
-                </div>
+                    <label style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">Target Member to Grant VIP Access:</label>
+                    <div style="position: relative;">
+                        <div style="position: relative; display: flex; align-items: center;">
+                            <span style="position: absolute; left: 12px; color: var(--text-muted); font-size: 13px; pointer-events: none;">🔍</span>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="vipInviteSearchInput" 
+                                   placeholder="Type username or paste Discord User ID..." 
+                                   autocomplete="off"
+                                   style="padding-left: 36px; padding-right: 32px; width: 100%; font-size: 13px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); color: #fff; border-radius: 8px;" />
+                            <button type="button" 
+                                    id="vipInviteClearBtn" 
+                                    style="display: none; position: absolute; right: 10px; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px;">✕</button>
+                        </div>
+                        <div id="vipInviteDropdown" 
+                             style="display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; max-height: 220px; overflow-y: auto; background: #1e1f22; border: 1px solid var(--border-color); border-radius: 8px; z-index: 1000; box-shadow: 0 8px 24px rgba(0,0,0,0.6);">
+                        </div>
+                    </div>
 
-                <div class="form-group" style="margin-top: 10px;">
-                    <label style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block;">Or enter Discord User ID manually:</label>
-                    <input class="form-control" id="vipInviteUserIdInput" placeholder="e.g. 718392819283719283" type="text" />
+                    <!-- Selected Member Pill -->
+                    <div id="vipInviteSelectedCard" style="display: none; margin-top: 8px; padding: 8px 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 8px; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div id="vipInviteSelectedAvatar" style="width: 28px; height: 28px; border-radius: 50%; overflow: hidden; background: #F59E0B; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #111; font-size: 12px;"></div>
+                            <div>
+                                <span id="vipInviteSelectedName" style="font-size: 13px; font-weight: 700; color: #fff;"></span>
+                                <span id="vipInviteSelectedId" style="font-size: 11px; color: var(--text-muted); font-family: monospace; margin-left: 6px;"></span>
+                            </div>
+                        </div>
+                        <span style="font-size: 11px; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #10B981; font-weight: 600;">Selected</span>
+                    </div>
+                    <input type="hidden" id="vipInviteUserId" value="" />
                 </div>
 
                 <div class="form-group" style="margin-top: 14px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                         <label style="font-size: 12px; font-weight: 600; color: #fff; margin: 0;">Congratulatory &amp; Onboarding Invitation Message:</label>
-                        <button class="btn-action-secondary emoji-picker-btn" id="vipInviteEmojiBtn" style="padding: 3px 8px; font-size: 12px;" type="button">
+                        <button class="btn btn-secondary emoji-picker-btn" data-target="vipInviteMsgContent" id="vipInviteEmojiBtn" onmousedown="event.preventDefault()" style="padding: 3px 8px; font-size: 12px;" type="button">
                             😊 Server Emojis
                         </button>
                     </div>
-                    <div class="rich-editable-area" contenteditable="true" id="vipInviteMsgContent_rich" style="min-height: 85px; padding: 10px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 13px; outline: none;">🎉 **Congratulations {mention}!** You have been granted an exclusive VIP pass to chat with me directly in DMs! ✨<br><br>I'm so excited to get to know you better. To make our private conversations feel just right, what should I call you, and what kind of conversations do you enjoy the most? 🌸</div>
-                    <textarea id="vipInviteMsgContent" style="display: none;">🎉 **Congratulations {mention}!** You have been granted an exclusive VIP pass to chat with me directly in DMs! ✨&#10;&#10;I'm so excited to get to know you better. To make our private conversations feel just right, what should I call you, and what kind of conversations do you enjoy the most? 🌸</textarea>
+                    <textarea class="form-control text-input" id="vipInviteMsgContent" style="min-height: 95px; resize: vertical; font-size: 13px;">🎉 **Congratulations {mention}!** You have been granted an exclusive VIP pass to chat with me directly in DMs! ✨&#10;&#10;I'm so excited to get to know you better. To make our private conversations feel just right, what should I call you, and what kind of conversations do you enjoy the most? 🌸</textarea>
 
                     <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
                         <span class="resp-var-badge" data-target="vipInviteMsgContent" data-var="{mention}" style="cursor: pointer; background: rgba(245,158,11,0.15); color: #F59E0B; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{mention}</span>

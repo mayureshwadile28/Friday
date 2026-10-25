@@ -373,7 +373,7 @@ function setupEventListeners() {
         });
     });
 
-    document.querySelectorAll('.resp-emoji-btn').forEach(btn => {
+    document.querySelectorAll('.resp-emoji-btn, .emoji-picker-btn[data-target]').forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -6340,21 +6340,197 @@ function setupSpecialInvitesEvents() {
         showToast("🔄 VIP Member Directory refreshed.");
     });
 
-    const vipDirectSelect = document.getElementById('vipDirectDmMemberSelect');
-    if (vipDirectSelect) {
-        vipDirectSelect.addEventListener('change', () => {
-            const uidInp = document.getElementById('vipDirectDmUserIdInput');
-            if (uidInp && vipDirectSelect.value) uidInp.value = vipDirectSelect.value;
+    // Setup VIP Direct DM and Invite emoji buttons
+    ['vipDirectDmEmojiBtn', 'vipInviteEmojiBtn'].forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn && !btn.dataset.pickerAttached) {
+            btn.dataset.pickerAttached = 'true';
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetId = btn.getAttribute('data-target');
+                const richEl = document.getElementById(targetId + '_rich');
+                if (richEl) {
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                        richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                    }
+                    openEmojiPicker(btn, (emojiVal) => {
+                        if (!emojiVal) return;
+                        insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                    });
+                }
+            });
+        }
+    });
+
+    // Initialize Searchable Member Autocomplete
+    setupMemberAutocomplete('vipDirectDm');
+    setupMemberAutocomplete('vipInvite');
+}
+
+function setupMemberAutocomplete(prefix) {
+    const searchInput = document.getElementById(`${prefix}SearchInput`);
+    const clearBtn = document.getElementById(`${prefix}ClearBtn`);
+    const dropdown = document.getElementById(`${prefix}Dropdown`);
+    const selectedCard = document.getElementById(`${prefix}SelectedCard`);
+    const selectedAvatar = document.getElementById(`${prefix}SelectedAvatar`);
+    const selectedName = document.getElementById(`${prefix}SelectedName`);
+    const selectedId = document.getElementById(`${prefix}SelectedId`);
+    const hiddenUserId = document.getElementById(`${prefix}UserId`);
+
+    if (!searchInput || !dropdown || !hiddenUserId) return;
+
+    function selectMember(member) {
+        hiddenUserId.value = member.id;
+        searchInput.value = '';
+        searchInput.style.display = 'none';
+        if (clearBtn) clearBtn.style.display = 'none';
+        dropdown.style.display = 'none';
+
+        if (selectedCard) {
+            selectedCard.style.display = 'flex';
+            if (selectedAvatar) {
+                if (member.avatar) {
+                    selectedAvatar.innerHTML = `<img src="${member.avatar}" alt="" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;">`;
+                } else {
+                    selectedAvatar.innerHTML = (member.username || 'U').charAt(0).toUpperCase();
+                }
+            }
+            if (selectedName) selectedName.textContent = member.username || member.display_name || `User (${member.id})`;
+            if (selectedId) selectedId.textContent = `(${member.id})`;
+        }
+    }
+
+    function clearSelection() {
+        hiddenUserId.value = '';
+        searchInput.value = '';
+        searchInput.style.display = 'block';
+        if (clearBtn) clearBtn.style.display = 'none';
+        dropdown.style.display = 'none';
+        if (selectedCard) selectedCard.style.display = 'none';
+        searchInput.focus();
+    }
+
+    if (clearBtn) {
+        clearBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            searchInput.value = '';
+            clearBtn.style.display = 'none';
+            renderDropdown('');
+            searchInput.focus();
         });
     }
 
-    const vipInviteSelect = document.getElementById('vipInviteMemberSelect');
-    if (vipInviteSelect) {
-        vipInviteSelect.addEventListener('change', () => {
-            const uidInp = document.getElementById('vipInviteUserIdInput');
-            if (uidInp && vipInviteSelect.value) uidInp.value = vipInviteSelect.value;
+    if (selectedCard) {
+        selectedCard.style.cursor = 'pointer';
+        selectedCard.title = 'Click to change selected member';
+        selectedCard.addEventListener('click', () => {
+            clearSelection();
         });
     }
+
+    function renderDropdown(query) {
+        const q = (query || '').toLowerCase().trim();
+        dropdown.innerHTML = '';
+
+        const members = Array.isArray(currentGuildMembers) ? currentGuildMembers : [];
+        const isSnowflake = /^\d{17,20}$/.test(q);
+
+        let filtered = [];
+        if (q) {
+            filtered = members.filter(m => {
+                const u = (m.username || '').toLowerCase();
+                const d = (m.display_name || '').toLowerCase();
+                const id = String(m.id || '');
+                return u.includes(q) || d.includes(q) || id.includes(q);
+            }).slice(0, 30);
+        } else {
+            filtered = members.slice(0, 20);
+        }
+
+        // If query is a snowflake ID not in list, provide manual option
+        if (isSnowflake && !filtered.some(m => String(m.id) === q)) {
+            const manualItem = document.createElement('div');
+            manualItem.style.padding = '10px 14px';
+            manualItem.style.cursor = 'pointer';
+            manualItem.style.display = 'flex';
+            manualItem.style.alignItems = 'center';
+            manualItem.style.gap = '10px';
+            manualItem.style.borderBottom = '1px solid rgba(255,255,255,0.06)';
+            manualItem.style.background = 'rgba(88, 101, 242, 0.15)';
+            manualItem.innerHTML = `
+                <div style="width: 28px; height: 28px; border-radius: 50%; background: #5865F2; display: flex; align-items: center; justify-content: center; font-size: 13px;">🆔</div>
+                <div>
+                    <div style="font-weight: 700; font-size: 13px; color: #fff;">Use User ID: ${escapeHtml(q)}</div>
+                    <div style="font-size: 11px; color: var(--text-muted);">Direct snowflake ID dispatch</div>
+                </div>
+            `;
+            manualItem.addEventListener('click', () => {
+                selectMember({ id: q, username: `User ${q}`, avatar: null });
+            });
+            dropdown.appendChild(manualItem);
+        }
+
+        if (filtered.length === 0 && !isSnowflake) {
+            dropdown.innerHTML = `
+                <div style="padding: 14px; text-align: center; color: var(--text-muted); font-size: 12px;">
+                    ${q ? `No members matching "<strong>${escapeHtml(q)}</strong>"` : 'No members available'}
+                </div>
+            `;
+            dropdown.style.display = 'block';
+            return;
+        }
+
+        filtered.forEach(m => {
+            const item = document.createElement('div');
+            item.style.padding = '8px 12px';
+            item.style.cursor = 'pointer';
+            item.style.display = 'flex';
+            item.style.alignItems = 'center';
+            item.style.gap = '10px';
+            item.style.transition = 'background 0.15s ease';
+            item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.08)');
+            item.addEventListener('mouseleave', () => item.style.background = 'transparent');
+
+            const avatarHtml = m.avatar 
+                ? `<img src="${m.avatar}" alt="" style="width: 26px; height: 26px; border-radius: 50%; object-fit: cover;">`
+                : `<div style="width: 26px; height: 26px; border-radius: 50%; background: #5865F2; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff;">${(m.username || 'U').charAt(0).toUpperCase()}</div>`;
+
+            item.innerHTML = `
+                ${avatarHtml}
+                <div style="flex: 1; overflow: hidden;">
+                    <div style="font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
+                        ${escapeHtml(m.username)}
+                        ${m.display_name && m.display_name !== m.username ? `<span style="font-size: 11px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">(${escapeHtml(m.display_name)})</span>` : ''}
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${m.id}</div>
+                </div>
+            `;
+            item.addEventListener('click', () => {
+                selectMember(m);
+            });
+            dropdown.appendChild(item);
+        });
+
+        dropdown.style.display = 'block';
+    }
+
+    searchInput.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (clearBtn) clearBtn.style.display = val ? 'block' : 'none';
+        renderDropdown(val);
+    });
+
+    searchInput.addEventListener('focus', () => {
+        renderDropdown(searchInput.value);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!searchInput.contains(e.target) && !dropdown.contains(e.target) && (!clearBtn || !clearBtn.contains(e.target))) {
+            dropdown.style.display = 'none';
+        }
+    });
 }
 
 async function loadSpecialInvitesData() {
@@ -6485,15 +6661,17 @@ function renderSpecialInvites(invites) {
 
 async function sendDirectDm() {
     if (!currentGuildId) return showToast("⚠️ Select a server first!");
-    const uidInp = document.getElementById('vipDirectDmUserIdInput');
-    const sel = document.getElementById('vipDirectDmMemberSelect');
-    const userId = (uidInp && uidInp.value.trim()) || (sel && sel.value) || '';
+    const uidInp = document.getElementById('vipDirectDmUserId');
+    const legacyInp = document.getElementById('vipDirectDmUserIdInput');
+    const legacySel = document.getElementById('vipDirectDmMemberSelect');
+    const userId = (uidInp && uidInp.value.trim()) || (legacyInp && legacyInp.value.trim()) || (legacySel && legacySel.value) || '';
 
-    if (!userId) return showToast("⚠️ Please select a member or enter their Discord User ID!");
+    if (!userId) return showToast("⚠️ Please search & select a target member first!");
 
     const contentInp = document.getElementById('vipDirectDmContent');
-    const msg = (contentInp && contentInp.value.trim()) || '';
-    if (!msg) return showToast("⚠️ Message content cannot be empty!");
+    const richEl = document.getElementById('vipDirectDmContent_rich');
+    const msg = (contentInp && contentInp.value.trim()) || (richEl ? richHtmlToRawMarkdown(richEl).trim() : '');
+    if (!msg) return showToast("⚠️ Direct message content cannot be empty!");
 
     const btn = document.getElementById('sendDirectDmBtn');
     const origHtml = btn ? btn.innerHTML : 'Send Direct DM';
@@ -6511,9 +6689,11 @@ async function sendDirectDm() {
         const data = await resp.json();
         if (data.success) {
             showToast(`✅ ${data.message || 'Direct message sent to user!'}`);
-            const richEl = document.getElementById('vipDirectDmContent_rich');
             if (richEl) richEl.innerHTML = '';
-            if (contentInp) contentInp.value = '';
+            if (contentInp) {
+                contentInp.value = '';
+                contentInp.dispatchEvent(new Event('input', { bubbles: true }));
+            }
         } else {
             showToast(`❌ Error: ${data.error || 'Failed to send DM'}`);
         }
@@ -6529,14 +6709,16 @@ async function sendDirectDm() {
 
 async function sendVipInvite() {
     if (!currentGuildId) return showToast("⚠️ Select a server first!");
-    const uidInp = document.getElementById('vipInviteUserIdInput');
-    const sel = document.getElementById('vipInviteMemberSelect');
-    const userId = (uidInp && uidInp.value.trim()) || (sel && sel.value) || '';
+    const uidInp = document.getElementById('vipInviteUserId');
+    const legacyInp = document.getElementById('vipInviteUserIdInput');
+    const legacySel = document.getElementById('vipInviteMemberSelect');
+    const userId = (uidInp && uidInp.value.trim()) || (legacyInp && legacyInp.value.trim()) || (legacySel && legacySel.value) || '';
 
-    if (!userId) return showToast("⚠️ Please select a member or enter their Discord User ID!");
+    if (!userId) return showToast("⚠️ Please search & select a target member first!");
 
     const contentInp = document.getElementById('vipInviteMsgContent');
-    const msg = (contentInp && contentInp.value.trim()) || '';
+    const richEl = document.getElementById('vipInviteMsgContent_rich');
+    const msg = (contentInp && contentInp.value.trim()) || (richEl ? richHtmlToRawMarkdown(richEl).trim() : '');
 
     const btn = document.getElementById('sendVipInviteBtn');
     const origHtml = btn ? btn.innerHTML : 'Send VIP Invite';

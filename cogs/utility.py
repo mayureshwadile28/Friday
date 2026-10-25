@@ -376,10 +376,18 @@ class Utility(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def sync(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+        for cmd in self.bot.tree.get_commands():
+            if cmd.name in ("avatar", "avtar"):
+                cmd.guild_only = False
+            else:
+                try:
+                    cmd.guild_only = True
+                except Exception:
+                    pass
         synced = await self.bot.tree.sync()
         await reply_box(
             interaction,
-            f"Command tree synced across **{len(synced)}** slash commands.\nPress **Ctrl+R** in your Discord client to reload the command cache.",
+            f"Command tree synced across **{len(synced)}** slash commands (DM restrictions applied: only /avatar in DMs).\nPress **Ctrl+R** in your Discord client to reload the command cache.",
             title="SYNC COMPLETE",
             status="success",
             ephemeral=True

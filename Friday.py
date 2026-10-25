@@ -100,6 +100,14 @@ def get_xp_requirement(level):
 
 @bot.event
 async def on_ready():
+    for cmd in bot.tree.get_commands():
+        if cmd.name in ("avatar", "avtar"):
+            cmd.guild_only = False
+        else:
+            try:
+                cmd.guild_only = True
+            except Exception:
+                pass
     await bot.tree.sync()
     print(f'System online: {bot.user.name} is connected to Discord!')
 
@@ -859,7 +867,15 @@ async def sync(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     bot.tree.clear_commands(guild=interaction.guild)
     await bot.tree.sync(guild=interaction.guild)
+    for cmd in bot.tree.get_commands():
+        if cmd.name in ("avatar", "avtar"):
+            cmd.guild_only = False
+        else:
+            try:
+                cmd.guild_only = True
+            except Exception:
+                pass
     synced = await bot.tree.sync()
-    await interaction.followup.send(f"🧹 Cleaned up local duplicates! {len(synced)} global commands registered. Press Ctrl+R to refresh your Discord client.")
+    await interaction.followup.send(f"🧹 Cleaned up local duplicates! {len(synced)} global commands registered (DM restrictions active: only /avatar in DMs). Press Ctrl+R to refresh your Discord client.")
 
 bot.run(TOKEN)

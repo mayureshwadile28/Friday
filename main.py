@@ -49,6 +49,35 @@ intents.moderation = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 bot.remove_command('help')
 
+def configure_command_dm_restrictions(tree):
+    """
+    Restricts all commands to guilds except /avatar and /avtar.
+    Setting guild_only=True sends dm_permission: False in Discord's API sync payload,
+    which instructs Discord clients to completely hide them in Direct Messages.
+    """
+    for cmd in tree.get_commands():
+        if cmd.name in ("avatar", "avtar"):
+            cmd.guild_only = False
+        else:
+            try:
+                cmd.guild_only = True
+            except Exception:
+                pass
+
+@bot.tree.interaction_check
+async def dm_interaction_guard(interaction: discord.Interaction) -> bool:
+    """Blocks any server commands from executing in Direct Messages (only avatar/avtar allowed)."""
+    if interaction.guild is None:
+        cmd_name = interaction.command.name if interaction.command else ""
+        if cmd_name not in ("avatar", "avtar"):
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "🔒 This command is only available inside servers, not in Direct Messages.",
+                    ephemeral=True
+                )
+            return False
+    return True
+
 @bot.event
 async def on_ready():
     print(f'System online: {bot.user.name} is connected to Discord!')
@@ -117,10 +146,11 @@ async def on_ready():
         except Exception as e:
             print(f"Duplicate cleanup note for '{g.name}': {e}")
 
-    # 2. Register one clean global command list
+    # 2. Register one clean global command list with DM restrictions applied
     try:
+        configure_command_dm_restrictions(bot.tree)
         synced_global = await bot.tree.sync()
-        print(f"✅ One clean list: {len(synced_global)} global slash commands registered.")
+        print(f"✅ One clean list: {len(synced_global)} global slash commands registered (DM restrictions active: only /avatar visible in DMs).")
     except Exception as e:
         print(f"Global sync warning: {e}")
 
@@ -133,7 +163,8 @@ async def prefix_sync(ctx):
         # Clear guild-level duplicate commands
         bot.tree.clear_commands(guild=ctx.guild)
         await bot.tree.sync(guild=ctx.guild)
-        # Sync clean global commands
+        # Sync clean global commands with DM restrictions
+        configure_command_dm_restrictions(bot.tree)
         synced = await bot.tree.sync()
         await msg.edit(content=f"✅ **Duplicates Removed!** {len(synced)} unique slash commands active. Press `Ctrl+R` on Discord to refresh!")
     except Exception as e:
