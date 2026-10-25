@@ -168,6 +168,14 @@
 </div>
                     Server Backups
                 </a>
+<a class="nav-item" data-tab="specialInvitesSection" href="#">
+<div class="nav-icon-wrap">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16">
+<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+</svg>
+</div>
+                    Special VIP Invites &amp; DMs
+                </a>
 </div>
 </div>
 <!-- Sidebar Footer -->
@@ -3484,6 +3492,200 @@ Click an inquiry button below to open a confidential support ticket with our tea
         </ul>
     </div>
 </div> <!-- End #backupSection -->
+
+<!-- ───────────────────── SPECIAL VIP INVITES & DM ACCESS ───────────────────── -->
+<div class="content-section" id="specialInvitesSection" style="display: none;">
+    <div class="section-header" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
+            <div>
+                <h2 style="font-size: 20px; font-weight: 800; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                    <span>✨ Special VIP Invites &amp; Private DMs</span>
+                    <span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 11px; padding: 2px 8px; border-radius: 6px;">VIP Access Only</span>
+                </h2>
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0; max-width: 780px;">
+                    Grant exclusive access for selected users to chat with Friday directly in private DMs. By default, Friday strictly ignores DMs from all unauthorized users. Invited members complete a personal onboarding interview and experience Friday's authentic emotional dynamics and mood swings!
+                </p>
+            </div>
+            <button class="btn btn-secondary syncBtn" id="refreshVipListTopBtn" type="button" style="white-space: nowrap;">
+                <svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="14">
+                    <path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path>
+                    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Sync VIPs
+            </button>
+        </div>
+    </div>
+
+    <!-- Quick Stats Cards Row -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+        <div class="card" style="margin: 0; padding: 18px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(245, 158, 11, 0.15); display: flex; align-items: center; justify-content: center; color: #F59E0B; font-size: 20px;">
+                ⭐
+            </div>
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">VIP DM Members</div>
+                <div style="font-size: 22px; font-weight: 800; color: #fff;" id="vipStatTotal">0</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin: 0; padding: 18px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(16, 185, 129, 0.15); display: flex; align-items: center; justify-content: center; color: #10B981; font-size: 20px;">
+                💬
+            </div>
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Active Personas</div>
+                <div style="font-size: 22px; font-weight: 800; color: #10B981;" id="vipStatActive">0</div>
+            </div>
+        </div>
+
+        <div class="card" style="margin: 0; padding: 18px; display: flex; align-items: center; gap: 14px;">
+            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(88, 101, 242, 0.15); display: flex; align-items: center; justify-content: center; color: #5865F2; font-size: 20px;">
+                🎭
+            </div>
+            <div>
+                <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: 0.5px;">Mood Dynamics</div>
+                <div style="font-size: 13px; font-weight: 700; color: #fff; margin-top: 4px;">5 Living Moods</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dual Actions Grid (Direct DM & VIP LLM Invite) -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 20px; margin-bottom: 24px;">
+
+        <!-- Panel 1: Direct Custom DM Dispatch -->
+        <div class="card" style="margin: 0; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <div style="font-size: 20px;">✉️</div>
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Quick Direct DM Dispatch</h3>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Send a one-off direct message directly to a user's Discord DM from Friday.</p>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">Select Target Member (Server Member or User ID):</label>
+                    <select class="form-control" id="vipDirectDmMemberSelect">
+                        <option value="">Select a server member...</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top: 10px;">
+                    <label style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block;">Or enter Discord User ID manually:</label>
+                    <input class="form-control" id="vipDirectDmUserIdInput" placeholder="e.g. 718392819283719283" type="text" />
+                </div>
+
+                <div class="form-group" style="margin-top: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 12px; font-weight: 600; color: #fff; margin: 0;">Direct Message Content:</label>
+                        <button class="btn-action-secondary emoji-picker-btn" id="vipDirectDmEmojiBtn" style="padding: 3px 8px; font-size: 12px;" type="button">
+                            😊 Server Emojis
+                        </button>
+                    </div>
+                    <div class="rich-editable-area" contenteditable="true" id="vipDirectDmContent_rich" style="min-height: 85px; padding: 10px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 13px; outline: none;"></div>
+                    <textarea id="vipDirectDmContent" style="display: none;"></textarea>
+
+                    <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+                        <span class="resp-var-badge" data-target="vipDirectDmContent" data-var="{mention}" style="cursor: pointer; background: rgba(88,101,242,0.15); color: #5865F2; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{mention}</span>
+                        <span class="resp-var-badge" data-target="vipDirectDmContent" data-var="{username}" style="cursor: pointer; background: rgba(88,101,242,0.15); color: #5865F2; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{username}</span>
+                        <span class="resp-var-badge" data-target="vipDirectDmContent" data-var="{display_name}" style="cursor: pointer; background: rgba(88,101,242,0.15); color: #5865F2; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{display_name}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                <button class="btn btn-secondary btn-action-secondary" id="sendDirectDmBtn" type="button" style="display: inline-flex; align-items: center; gap: 8px;">
+                    <span>📤</span> Send Direct DM
+                </button>
+            </div>
+        </div>
+
+        <!-- Panel 2: Special VIP LLM DM Invite -->
+        <div class="card" style="margin: 0; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid rgba(245, 158, 11, 0.3); background: linear-gradient(180deg, rgba(30, 31, 34, 0.9) 0%, rgba(35, 30, 20, 0.5) 100%);">
+            <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                    <div style="font-size: 20px;">🚀</div>
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Special VIP LLM DM Invite</h3>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Invite this user to talk with Friday in private DMs with customized onboarding &amp; mood swings!</p>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 16px;">
+                    <label style="font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">Select Target Member to Grant VIP Access:</label>
+                    <select class="form-control" id="vipInviteMemberSelect">
+                        <option value="">Select a server member...</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-top: 10px;">
+                    <label style="font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block;">Or enter Discord User ID manually:</label>
+                    <input class="form-control" id="vipInviteUserIdInput" placeholder="e.g. 718392819283719283" type="text" />
+                </div>
+
+                <div class="form-group" style="margin-top: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 12px; font-weight: 600; color: #fff; margin: 0;">Congratulatory &amp; Onboarding Invitation Message:</label>
+                        <button class="btn-action-secondary emoji-picker-btn" id="vipInviteEmojiBtn" style="padding: 3px 8px; font-size: 12px;" type="button">
+                            😊 Server Emojis
+                        </button>
+                    </div>
+                    <div class="rich-editable-area" contenteditable="true" id="vipInviteMsgContent_rich" style="min-height: 85px; padding: 10px; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; color: #fff; font-size: 13px; outline: none;">🎉 **Congratulations {mention}!** You have been granted an exclusive VIP pass to chat with me directly in DMs! ✨<br><br>I'm so excited to get to know you better. To make our private conversations feel just right, what should I call you, and what kind of conversations do you enjoy the most? 🌸</div>
+                    <textarea id="vipInviteMsgContent" style="display: none;">🎉 **Congratulations {mention}!** You have been granted an exclusive VIP pass to chat with me directly in DMs! ✨&#10;&#10;I'm so excited to get to know you better. To make our private conversations feel just right, what should I call you, and what kind of conversations do you enjoy the most? 🌸</textarea>
+
+                    <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+                        <span class="resp-var-badge" data-target="vipInviteMsgContent" data-var="{mention}" style="cursor: pointer; background: rgba(245,158,11,0.15); color: #F59E0B; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{mention}</span>
+                        <span class="resp-var-badge" data-target="vipInviteMsgContent" data-var="{username}" style="cursor: pointer; background: rgba(245,158,11,0.15); color: #F59E0B; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{username}</span>
+                        <span class="resp-var-badge" data-target="vipInviteMsgContent" data-var="{display_name}" style="cursor: pointer; background: rgba(245,158,11,0.15); color: #F59E0B; padding: 2px 6px; border-radius: 4px; font-size: 11px;">{display_name}</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; display: flex; justify-content: flex-end;">
+                <button class="btn btn-primary btn-action-primary" id="sendVipInviteBtn" type="button" style="display: inline-flex; align-items: center; gap: 8px; background: #F59E0B; border-color: #D97706; color: #111; font-weight: 700;">
+                    <span>🚀</span> Send VIP Invite &amp; Grant DM Access
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Card 3: Currently Invited VIP Members Vault -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+                <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 4px;">VIP DM Access Directory</h3>
+                <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">These users are authorized to chat with Friday in private DMs. Friday adapts her mood swings and personality dynamically for them.</p>
+            </div>
+            <button class="btn btn-secondary btn-action-secondary" id="refreshVipListBtn" type="button" style="font-size: 12px;">
+                🔄 Refresh Directory
+            </button>
+        </div>
+
+        <div id="vipInvitesContainer">
+            <div class="whitelist-empty" style="padding: 36px 20px; text-align: center;">
+                <div style="font-size: 32px; margin-bottom: 10px;">⭐</div>
+                <div style="font-weight: 700; font-size: 15px; color: #fff; margin-bottom: 4px;">No VIP DM Members Yet</div>
+                <div style="font-size: 13px; color: var(--text-muted); max-width: 400px; margin: 0 auto;">
+                    Select a member above and dispatch their VIP invite to unlock private 1-on-1 chats with Friday!
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Persona & Mood Swings Guide Card -->
+    <div class="card" style="background: rgba(30, 31, 34, 0.6); border-left: 4px solid #F59E0B;">
+        <h4 style="font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px;">🎭 Friday's Living Mood Swings &amp; DM Dynamics</h4>
+        <ul style="font-size: 12px; color: var(--text-secondary); line-height: 1.8; margin: 0; padding-left: 18px;">
+            <li><strong>✨ Radiant &amp; Cheerful:</strong> Warm, witty, feminine, giving sweet compliments and optimistic conversation.</li>
+            <li><strong>💅 Sassy &amp; Feisty:</strong> Confident, clever roasts, playful comebacks, and stylish eyerolls without ever being truly mean.</li>
+            <li><strong>😜 Cheeky &amp; Playful:</strong> Prankster energy, witty puns, funny jokes, and lighthearted teasing banter.</li>
+            <li><strong>☕ Cozy &amp; Sleepy:</strong> Yawning softly, relaxed late-night cuddle murmur, playfully asking for coffee or naps.</li>
+            <li><strong>🎭 Playfully Melodramatic:</strong> Theatrical gasps, comical mock-shock, and turning little things into funny mini-dramas.</li>
+            <li><strong>Onboarding Memory:</strong> Friday remembers what they ask her to call them, their hobbies, and facts they share in DMs!</li>
+        </ul>
+    </div>
+</div> <!-- End #specialInvitesSection -->
 
 <!-- Restore Confirmation Modal -->
 <div class="modal-backdrop" id="backupRestoreModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; align-items: center; justify-content: center; backdrop-filter: blur(4px);">

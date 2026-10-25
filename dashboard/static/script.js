@@ -182,7 +182,8 @@ const tabTitles = {
     'firstWelcomeSection': 'First Chat Welcome',
     'afkSection': 'AFK System & Pings',
     'tempVoiceSection': 'Temporary Voice Channels (Join-to-Create)',
-    'backupSection': 'Server Backups & Disaster Recovery'
+    'backupSection': 'Server Backups & Disaster Recovery',
+    'specialInvitesSection': 'Special VIP Invites & DM Persona'
 };
 
 // ───────────────────── Bot Profile & Avatar Sync ─────────────────────
@@ -222,6 +223,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setupEventListeners();
     initCustomSelects();
     initAllRichEmojiEditors();
+    setupBackupEvents();
+    setupSpecialInvitesEvents();
 });
 
 function setupEventListeners() {
@@ -308,6 +311,8 @@ function setupEventListeners() {
             else if (btn.id === 'firstWelcomeMsgEmojiBtn') targetId = 'firstWelcomeMsgInput';
             else if (btn.id === 'autoRespEmojiBtn') targetId = 'autoRespEmojiInput';
             else if (btn.id === 'autoReactEmojiBtn') targetId = 'autoReactEmojiInput';
+            else if (btn.id === 'vipDirectDmEmojiBtn') targetId = 'vipDirectDmContent';
+            else if (btn.id === 'vipInviteEmojiBtn') targetId = 'vipInviteMsgContent';
             else if (btn.id.startsWith('ticketBtn') && btn.id.endsWith('EmojiBtn')) {
                 const num = btn.id.replace('ticketBtn', '').replace('EmojiBtn', '');
                 targetId = 'ticketBtn' + num;
@@ -1380,6 +1385,11 @@ async function loadCoreData() {
         if (arMemSelect) arMemSelect.innerHTML = memOpts;
         if (autoRespMemSelect) autoRespMemSelect.innerHTML = memOpts;
 
+        const vipDirectSelect = document.getElementById('vipDirectDmMemberSelect');
+        const vipInviteSelect = document.getElementById('vipInviteMemberSelect');
+        if (vipDirectSelect) vipDirectSelect.innerHTML = memOpts;
+        if (vipInviteSelect) vipInviteSelect.innerHTML = memOpts;
+
         const autoRespIgnChanSelect = document.getElementById('autoRespIgnoreChannelSelect');
         if (autoRespIgnChanSelect) {
             autoRespIgnChanSelect.innerHTML = '<option value="">Select a channel to ignore...</option>' +
@@ -1415,6 +1425,7 @@ async function loadDataForActiveTab() {
     else if (activeTab === 'afkSection') await loadAfkSettings();
     else if (activeTab === 'tempVoiceSection') await loadTempVoiceSettings();
     else if (activeTab === 'backupSection') await loadBackups();
+    else if (activeTab === 'specialInvitesSection') await loadSpecialInvitesData();
 }
 
 // ───────────────────── Emoji Picker Logic ─────────────────────
@@ -2006,6 +2017,8 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('resp_ai_thinking', true);
     attachRichEmojiEditor('firstWelcomeTitleInput', true);
     attachRichEmojiEditor('firstWelcomeMsgInput');
+    attachRichEmojiEditor('vipDirectDmContent');
+    attachRichEmojiEditor('vipInviteMsgContent');
 
     document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
         attachRichEmojiEditor(inp.id, true);
@@ -6302,6 +6315,300 @@ function setupBackupEvents() {
         modal.addEventListener('click', (e) => {
             if (e.target === modal) closeRestoreModal();
         });
+    }
+}
+
+// ───────────────────── SPECIAL VIP INVITES & DM ACCESS ─────────────────────
+let currentSpecialInvites = [];
+
+function setupSpecialInvitesEvents() {
+    const directBtn = document.getElementById('sendDirectDmBtn');
+    if (directBtn) directBtn.addEventListener('click', sendDirectDm);
+
+    const inviteBtn = document.getElementById('sendVipInviteBtn');
+    if (inviteBtn) inviteBtn.addEventListener('click', sendVipInvite);
+
+    const refreshBtn = document.getElementById('refreshVipListBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', async () => {
+        await loadSpecialInvitesData();
+        showToast("🔄 VIP Member Directory refreshed.");
+    });
+
+    const refreshTopBtn = document.getElementById('refreshVipListTopBtn');
+    if (refreshTopBtn) refreshTopBtn.addEventListener('click', async () => {
+        await loadSpecialInvitesData();
+        showToast("🔄 VIP Member Directory refreshed.");
+    });
+
+    const vipDirectSelect = document.getElementById('vipDirectDmMemberSelect');
+    if (vipDirectSelect) {
+        vipDirectSelect.addEventListener('change', () => {
+            const uidInp = document.getElementById('vipDirectDmUserIdInput');
+            if (uidInp && vipDirectSelect.value) uidInp.value = vipDirectSelect.value;
+        });
+    }
+
+    const vipInviteSelect = document.getElementById('vipInviteMemberSelect');
+    if (vipInviteSelect) {
+        vipInviteSelect.addEventListener('change', () => {
+            const uidInp = document.getElementById('vipInviteUserIdInput');
+            if (uidInp && vipInviteSelect.value) uidInp.value = vipInviteSelect.value;
+        });
+    }
+}
+
+async function loadSpecialInvitesData() {
+    if (!currentGuildId) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/special_invites?t=${Date.now()}`);
+        const data = await resp.json();
+        currentSpecialInvites = data || [];
+        renderSpecialInvites(currentSpecialInvites);
+    } catch (err) {
+        showToast("❌ Network error loading VIP invites list");
+    }
+}
+
+function renderSpecialInvites(invites) {
+    const container = document.getElementById('vipInvitesContainer');
+    const totalStat = document.getElementById('vipStatTotal');
+    const activeStat = document.getElementById('vipStatActive');
+
+    if (totalStat) totalStat.textContent = invites.length;
+    const activeCount = invites.filter(i => i.status === 'active').length;
+    if (activeStat) activeStat.textContent = activeCount;
+
+    if (!container) return;
+
+    if (!invites || invites.length === 0) {
+        container.innerHTML = `
+            <div class="whitelist-empty" style="padding: 36px 20px; text-align: center;">
+                <div style="font-size: 32px; margin-bottom: 10px;">⭐</div>
+                <div style="font-weight: 700; font-size: 15px; color: #fff; margin-bottom: 4px;">No VIP DM Members Yet</div>
+                <div style="font-size: 13px; color: var(--text-muted); max-width: 400px; margin: 0 auto;">
+                    Select a member above and dispatch their VIP invite to unlock private 1-on-1 chats with Friday!
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    const moodBadges = {
+        'cheerful': { label: '✨ Cheerful & Radiant', bg: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B' },
+        'sassy': { label: '💅 Sassy & Feisty', bg: 'rgba(236, 72, 153, 0.15)', color: '#EC4899' },
+        'playful': { label: '😜 Cheeky & Playful', bg: 'rgba(59, 130, 246, 0.15)', color: '#60A5FA' },
+        'sleepy': { label: '☕ Cozy & Sleepy', bg: 'rgba(139, 92, 246, 0.15)', color: '#A78BFA' },
+        'dramatic': { label: '🎭 Melodramatic', bg: 'rgba(239, 68, 68, 0.15)', color: '#F87171' }
+    };
+
+    container.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(340px, 1fr))';
+    grid.style.gap = '16px';
+
+    invites.forEach(inv => {
+        const item = document.createElement('div');
+        item.className = 'card';
+        item.style.margin = '0';
+        item.style.padding = '18px';
+        item.style.background = 'rgba(255, 255, 255, 0.03)';
+        item.style.border = '1px solid var(--border-color)';
+        item.style.borderRadius = '14px';
+        item.style.display = 'flex';
+        item.style.flexDirection = 'column';
+        item.style.justifyContent = 'space-between';
+
+        const moodInfo = moodBadges[inv.current_mood] || moodBadges['cheerful'];
+        const avatarHtml = inv.avatar
+            ? `<img src="${inv.avatar}" alt="" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`
+            : `<div style="width: 40px; height: 40px; border-radius: 50%; background: #5865F2; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff;">${(inv.username || 'U').charAt(0).toUpperCase()}</div>`;
+
+        const isActive = inv.status === 'active';
+        const nicknameDisplay = inv.custom_nickname ? `<strong>${escapeHtml(inv.custom_nickname)}</strong>` : `<span style="color: var(--text-muted); font-style: italic;">Awaiting user response...</span>`;
+
+        item.innerHTML = `
+            <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        ${avatarHtml}
+                        <div>
+                            <div style="font-size: 15px; font-weight: 700; color: #fff;">${escapeHtml(inv.username)}</div>
+                            <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">${inv.user_id}</div>
+                        </div>
+                    </div>
+                    <span style="font-size: 11px; padding: 2px 8px; border-radius: 6px; background: ${isActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)'}; color: ${isActive ? '#10B981' : '#F59E0B'}; font-weight: 600;">
+                        ${isActive ? 'Active VIP' : 'Onboarding'}
+                    </span>
+                </div>
+
+                <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; margin-bottom: 14px; font-size: 12px; display: flex; flex-direction: column; gap: 6px;">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Calling Name:</span>
+                        <span>${nicknameDisplay}</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="color: var(--text-muted);">Current Mood:</span>
+                        <span style="font-size: 11px; padding: 1px 6px; border-radius: 4px; background: ${moodInfo.bg}; color: ${moodInfo.color}; font-weight: 600;">
+                            ${moodInfo.label}
+                        </span>
+                    </div>
+                    ${inv.notes ? `
+                    <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.05); color: var(--text-secondary); font-size: 11px;">
+                        💡 <strong>Memory:</strong> ${escapeHtml(inv.notes)}
+                    </div>` : ''}
+                </div>
+
+                <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 14px;">
+                    📅 Granted: ${escapeHtml(inv.invited_at || 'Recently')}
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 12px;">
+                <button class="btn btn-secondary btn-action-secondary btn-reset-vip-persona" type="button" data-uid="${inv.user_id}" style="flex: 1; font-size: 12px; padding: 6px 10px;">
+                    🔄 Reset Persona
+                </button>
+                <button class="btn btn-danger btn-revoke-vip" type="button" data-uid="${inv.user_id}" data-name="${escapeHtml(inv.username)}" style="font-size: 12px; padding: 6px 10px;" title="Revoke VIP DM Access">
+                    🗑️ Revoke
+                </button>
+            </div>
+        `;
+
+        item.querySelector('.btn-reset-vip-persona').addEventListener('click', () => resetVipPersona(inv.user_id));
+        item.querySelector('.btn-revoke-vip').addEventListener('click', () => revokeSpecialInvite(inv.user_id, inv.username));
+
+        grid.appendChild(item);
+    });
+
+    container.appendChild(grid);
+}
+
+async function sendDirectDm() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+    const uidInp = document.getElementById('vipDirectDmUserIdInput');
+    const sel = document.getElementById('vipDirectDmMemberSelect');
+    const userId = (uidInp && uidInp.value.trim()) || (sel && sel.value) || '';
+
+    if (!userId) return showToast("⚠️ Please select a member or enter their Discord User ID!");
+
+    const contentInp = document.getElementById('vipDirectDmContent');
+    const msg = (contentInp && contentInp.value.trim()) || '';
+    if (!msg) return showToast("⚠️ Message content cannot be empty!");
+
+    const btn = document.getElementById('sendDirectDmBtn');
+    const origHtml = btn ? btn.innerHTML : 'Send Direct DM';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> Sending DM...';
+    }
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/special_invites/send_dm`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, message: msg })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(`✅ ${data.message || 'Direct message sent to user!'}`);
+            const richEl = document.getElementById('vipDirectDmContent_rich');
+            if (richEl) richEl.innerHTML = '';
+            if (contentInp) contentInp.value = '';
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to send DM'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error sending direct DM");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
+
+async function sendVipInvite() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+    const uidInp = document.getElementById('vipInviteUserIdInput');
+    const sel = document.getElementById('vipInviteMemberSelect');
+    const userId = (uidInp && uidInp.value.trim()) || (sel && sel.value) || '';
+
+    if (!userId) return showToast("⚠️ Please select a member or enter their Discord User ID!");
+
+    const contentInp = document.getElementById('vipInviteMsgContent');
+    const msg = (contentInp && contentInp.value.trim()) || '';
+
+    const btn = document.getElementById('sendVipInviteBtn');
+    const origHtml = btn ? btn.innerHTML : 'Send VIP Invite';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> Dispatching VIP Invite...';
+    }
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/special_invites/invite`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, invite_message: msg })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(`🚀 ${data.message || 'VIP Invite sent and access granted!'}`);
+            await loadSpecialInvitesData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to send invite'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error sending VIP invite");
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origHtml;
+        }
+    }
+}
+
+async function revokeSpecialInvite(userId, username) {
+    if (!currentGuildId || !userId) return;
+    if (!confirm(`Are you sure you want to revoke VIP DM access for ${username || userId}? Friday will no longer respond to their private DMs.`)) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/special_invites/revoke`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(`🗑️ Revoked VIP DM access for ${username || userId}`);
+            await loadSpecialInvitesData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to revoke'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error revoking VIP access");
+    }
+}
+
+async function resetVipPersona(userId) {
+    if (!currentGuildId || !userId) return;
+    if (!confirm("Reset Friday's DM persona for this user? She will ask them their preferred name again on their next message.")) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/special_invites/reset_persona`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("🔄 VIP Persona reset successfully!");
+            await loadSpecialInvitesData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to reset'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error resetting persona");
     }
 }
 

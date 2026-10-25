@@ -1,8 +1,36 @@
+import io
+from datetime import datetime, timezone
+from typing import Optional, Union
 import discord
 from discord.ext import commands
 from discord import app_commands
 from hinglish_jokes import get_random_joke, build_joke_embed, JokeView
 from response_utils import make_box_embed, reply_box
+
+def extract_dominant_color(image_bytes: bytes) -> int:
+    """Extract dominant matching vibrant color from image bytes to style Discord embed border lines."""
+    try:
+        from PIL import Image
+        img = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        img = img.resize((48, 48), Image.Resampling.LANCZOS)
+        quantized = img.quantize(colors=16)
+        palette = quantized.getpalette()
+        counts = sorted(quantized.getcolors() or [], key=lambda x: x[0], reverse=True)
+        for count, idx in counts:
+            r = palette[idx * 3]
+            g = palette[idx * 3 + 1]
+            b = palette[idx * 3 + 2]
+            if 35 < (r + g + b) < 710:
+                return (r << 16) | (g << 8) | b
+        if counts:
+            top_idx = counts[0][1]
+            r = palette[top_idx * 3]
+            g = palette[top_idx * 3 + 1]
+            b = palette[top_idx * 3 + 2]
+            return (r << 16) | (g << 8) | b
+    except Exception:
+        pass
+    return 0x2dd4bf
 
 # ───────────────────── Help System Data & Components ─────────────────────
 
@@ -112,7 +140,7 @@ HELP_MODULES = [
         "desc": "Get All Utility & Expression Commands",
         "sections": [
             ("System", ["ping", "serverinfo", "bot_status", "sync", "joke", "afk"]),
-            ("Expressions & Media", ["emoji_steal", "media"])
+            ("Expressions & Media", ["avatar", "emoji_steal", "media"])
         ]
     },
     {
@@ -398,6 +426,66 @@ class Utility(commands.Cog):
             footer="Friday Operations Center"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def _handle_avatar(self, interaction: discord.Interaction, user: Optional[Union[discord.Member, discord.User]] = None):
+        target = user or interaction.user
+        await interaction.response.defer()
+
+        # Extract avatar bytes and dominant matching color
+        color_int = 0x2dd4bf
+        try:
+            avatar_bytes = await target.display_avatar.read()
+            color_int = extract_dominant_color(avatar_bytes)
+        except Exception:
+            if hasattr(target, "accent_color") and target.accent_color:
+                color_int = target.accent_color.value
+            elif hasattr(target, "color") and target.color and target.color.value != 0:
+                color_int = target.color.value
+
+        hex_str = hex(color_int)[2:].zfill(6).upper()
+
+        embed = discord.Embed(
+            title=f"Avatar of {target.display_name}",
+            color=discord.Color(color_int),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_image(url=target.display_avatar.url)
+        embed.description = f"• **User:** {target.mention} (`{target.name}`)\n• **Matching Color Line:** `#{hex_str}`"
+        
+        avatar_type = "Server Avatar" if (isinstance(target, discord.Member) and target.guild_avatar) else "Global Avatar"
+        embed.set_footer(
+            text=f"{avatar_type} • Requested by {interaction.user.display_name}",
+            icon_url=interaction.user.display_avatar.url
+        )
+
+        view = discord.ui.View(timeout=180)
+        view.add_item(discord.ui.Button(
+            label="Open Full Resolution",
+            style=discord.ButtonStyle.link,
+            url=target.display_avatar.url,
+            emoji="🔍"
+        ))
+
+        # If user has a separate global and guild avatar, provide button for both
+        if isinstance(target, discord.Member) and target.guild_avatar and target.avatar:
+            view.add_item(discord.ui.Button(
+                label="Global Avatar",
+                style=discord.ButtonStyle.link,
+                url=target.avatar.url,
+                emoji="🌐"
+            ))
+
+        await interaction.followup.send(embed=embed, view=view)
+
+    @app_commands.command(name="avatar", description="View a member's avatar in full resolution with an avatar-matching color line.")
+    @app_commands.describe(user="The member or user whose avatar you want to view (defaults to you)")
+    async def avatar_cmd(self, interaction: discord.Interaction, user: Optional[Union[discord.Member, discord.User]] = None):
+        await self._handle_avatar(interaction, user)
+
+    @app_commands.command(name="avtar", description="View a member's avatar in full resolution with an avatar-matching color line.")
+    @app_commands.describe(user="The member or user whose avatar you want to view (defaults to you)")
+    async def avtar_cmd(self, interaction: discord.Interaction, user: Optional[Union[discord.Member, discord.User]] = None):
+        await self._handle_avatar(interaction, user)
 
 async def setup(bot):
     await bot.add_cog(Utility(bot))

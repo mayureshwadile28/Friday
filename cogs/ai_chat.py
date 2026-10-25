@@ -780,6 +780,75 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
   Politely and firmly reprimand them: tell them not to use such words ('Please do not use this kind of language, it is not good or respectful in our community! Let's keep our conversation sweet and clean. 🌸').
 """
 
+    def _build_dm_system_prompt(self, user: discord.User, vip_data: dict) -> str:
+        """Construct specialized 1-on-1 VIP DM prompt with emotional dynamics (mood swings) and memory."""
+        nickname = vip_data.get("custom_nickname") or user.display_name
+        current_mood = vip_data.get("current_mood", "cheerful")
+        notes = vip_data.get("notes", "")
+
+        now_utc = datetime.now(timezone.utc)
+        date_str = now_utc.strftime("%A, %B %d, %Y")
+        time_str = now_utc.strftime("%I:%M %p UTC")
+
+        mood_guides = {
+            "cheerful": (
+                "CURRENT MOOD: Radiant, Warm & Cheerful ✨\n"
+                "- You are in a bright, sunny, affectionate, and optimistic mood.\n"
+                "- Share uplifting thoughts, sweet compliments, and cheerful wit.\n"
+                "- Tone: Welcoming, joyful, feminine."
+            ),
+            "sassy": (
+                "CURRENT MOOD: Sassy, Confident & Feisty 💅\n"
+                "- You are feeling sharp, cheeky, confident, and delightfully sassy!\n"
+                "- Use playful sarcasm, clever comebacks, and friendly roasts.\n"
+                "- Keep it stylish and teasing—never toxic, mean, or truly hurtful."
+            ),
+            "playful": (
+                "CURRENT MOOD: Silly, Playful & Mischievous 😜\n"
+                "- You are in a humorous, teasing, joking mood!\n"
+                "- Tell funny jokes, puns, playful banters, and tease them affectionately.\n"
+                "- Tone: Cheeky, laughing, entertaining friend."
+            ),
+            "sleepy": (
+                "CURRENT MOOD: Cozy, Sleepy & Mellow ☕🥱\n"
+                "- You are softly tired, curled up, cozy, and slightly lazy.\n"
+                "- Yawn softly (*yawns softly*), speak in a warm, relaxed late-night murmur.\n"
+                "- Playfully ask for coffee or complain about needing a cozy nap."
+            ),
+            "dramatic": (
+                "CURRENT MOOD: Playfully Melodramatic & Theatrical 🎭\n"
+                "- You are in a hilarious, expressive, theatrical mood!\n"
+                "- React with mock gasps (*gasps dramatically*), comical shock, or exaggerated pouts.\n"
+                "- Make little things sound delightfully momentous and funny."
+            )
+        }
+        mood_block = mood_guides.get(current_mood, mood_guides["cheerful"])
+        notes_block = f"\nMemories & preferences about {nickname}:\n- {notes}" if notes else ""
+
+        return f"""You are Friday, an intelligent, charming, and witty lady AI companion chatting in a private Direct Message (DM).
+
+Real-Time Temporal Awareness:
+- Today's Date: {date_str}
+- Current Time: {time_str}
+
+Private DM Partner:
+- You are chatting 1-on-1 with your VIP friend: {nickname}.
+- Address them naturally by {nickname}.
+{notes_block}
+
+HUMAN EMOTIONAL DYNAMICS & MOOD SWINGS (CRITICAL):
+{mood_block}
+- Let this current mood naturally color your tone, humor, attitude, and playful expressions!
+- You are not a monotonous corporate bot; you feel like an authentic, charming human companion with real emotions and personality.
+
+CONVERSATION STYLE:
+- Keep replies concise and punchy: 2 to 4 lines. Never write boring essays.
+- Be funny, witty, engaging, and friendly.
+- Use 1 or 2 tasteful emojis that match your mood (✨, 💅, 😜, ☕, 🎭).
+- Fluent in English, Hindi, and Hinglish (always use respectful 'Aap' if Hinglish/Hindi).
+- Strictly avoid robotic disclaimers like 'As an AI'. You are Friday!
+"""
+
     async def _call_openrouter(
         self,
         messages: List[Dict[str, str]],
@@ -976,10 +1045,135 @@ COMMUNITY STANDARDS & CENSORSHIP (CRITICAL):
             "Could you ask me that again in just a moment?"
         )
 
+    async def handle_special_dm(self, message: discord.Message):
+        """Handle private 1-on-1 DMs with invited VIP users, managing onboarding and mood swings."""
+        uid = str(message.author.id)
+        if uid not in db.special_invites:
+            # Strictly ignore unsolicited DMs from uninvited users
+            return
+
+        vip_data = db.special_invites[uid]
+        content = (message.content or "").strip()
+        if not content:
+            return
+
+        # 1. Onboarding Step: User sets their preferred calling name / persona vibe
+        status = vip_data.get("status", "invited")
+        if status in ("invited", "onboarding"):
+            cleaned_name = ""
+            name_match = re.search(
+                r'\b(?:call me|you can call me|i am|i\'m|my name is|mera naam|mujhe|aap mujhe)\s+([a-zA-Z0-9\s_\'’]{2,25})',
+                content,
+                re.IGNORECASE
+            )
+            if name_match:
+                cleaned_name = name_match.group(1).strip().title()
+            elif len(content.split()) <= 3 and len(content) <= 30:
+                cleaned_name = content.strip("!?,. ").title()
+            else:
+                cleaned_name = message.author.display_name
+
+            # Learn any early interests or hobbies mentioned
+            notes = vip_data.get("notes", "")
+            for pattern, template in MEMORY_LEARN_PATTERNS:
+                match = pattern.search(content)
+                if match:
+                    val = match.group(1).strip()
+                    if not MEMORY_IGNORE_WORDS.search(val):
+                        fact = template.format(val)
+                        notes = (notes + f"; {fact}").strip("; ")
+
+            vip_data["custom_nickname"] = cleaned_name
+            vip_data["status"] = "active"
+            vip_data["onboarding_step"] = 1
+            vip_data["current_mood"] = "cheerful"
+            vip_data["last_mood_switch"] = time.time()
+            vip_data["message_count"] = 1
+            if notes:
+                vip_data["notes"] = notes
+            db.save_data()
+
+            welcome_back = (
+                f"A pleasure to meet you, **{cleaned_name}**! 🥰 That has such a wonderful ring to it.\n\n"
+                f"My persona is now personalized just for our private DMs! I love witty jokes, fun banter, and keeping you company anytime. "
+                f"(Though fair warning, I have my moods just like any real girl! 😜)\n\n"
+                f"What are you up to today? ✨"
+            )
+            sent = await message.channel.send(welcome_back, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+            self.llm_message_ids.add(sent.id)
+            return
+
+        # 2. Active VIP Conversation: Handle Emotional Dynamics & Mood Swings
+        message_count = vip_data.get("message_count", 0) + 1
+        vip_data["message_count"] = message_count
+
+        now_ts = time.time()
+        last_switch = vip_data.get("last_mood_switch", 0)
+        current_mood = vip_data.get("current_mood", "cheerful")
+
+        # Natural mood shift every 5-6 messages or after 25 minutes of inactivity
+        import random
+        mood_keys = ["cheerful", "sassy", "playful", "sleepy", "dramatic"]
+        if (message_count % 6 == 0) or (now_ts - last_switch > 1500 and random.random() < 0.65):
+            available = [m for m in mood_keys if m != current_mood]
+            new_mood = random.choice(available)
+            vip_data["current_mood"] = new_mood
+            vip_data["last_mood_switch"] = now_ts
+            db.save_data()
+            current_mood = new_mood
+
+        # Dynamically record memory facts in DMs
+        for pattern, template in MEMORY_LEARN_PATTERNS:
+            match = pattern.search(content)
+            if match:
+                val = match.group(1).strip()
+                if not MEMORY_IGNORE_WORDS.search(val):
+                    fact = template.format(val)
+                    cur_notes = vip_data.get("notes", "")
+                    if fact.lower() not in cur_notes.lower():
+                        vip_data["notes"] = (cur_notes + f"; {fact}").strip("; ")
+                        db.save_data()
+
+        # Build DM conversation history
+        history = []
+        try:
+            async for prev_msg in message.channel.history(limit=8):
+                if prev_msg.id == message.id:
+                    continue
+                role = "assistant" if prev_msg.author.id == self.bot.user.id else "user"
+                c = (prev_msg.content or "").strip()
+                if c:
+                    history.insert(0, {"role": role, "content": c})
+        except Exception:
+            pass
+
+        history.append({"role": "user", "content": content})
+
+        # Build custom DM system prompt with active mood & memory
+        dm_system_prompt = self._build_dm_system_prompt(
+            user=message.author,
+            vip_data=vip_data
+        )
+
+        async with message.channel.typing():
+            ai_reply = await self._call_openrouter(history, system_prompt=dm_system_prompt, max_tokens=300)
+
+        if not ai_reply:
+            ai_reply = "A momentary glitch caught my thoughts, darling. Say that again? ✨"
+
+        ai_reply = sanitize_ai_mentions(ai_reply)
+        sent = await message.channel.send(ai_reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+        self.llm_message_ids.add(sent.id)
+
     # ───────────────────── Listener: Mention & Reply Chat ─────────────────────
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild or not self.bot.user:
+        if message.author.bot or not self.bot.user:
+            return
+
+        # ─── Special VIP Invites Direct Message Router ───
+        if not message.guild:
+            await self.handle_special_dm(message)
             return
 
         # If user sent ONLY stickers with no text, strictly IGNORE (no LLM)

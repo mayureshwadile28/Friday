@@ -40,6 +40,7 @@ class Database:
         self.server_instructions = self.data.get("server_instructions", {})
         self.temp_voice = self.data.get("temp_voice", {})
         self.server_backups = self.data.get("server_backups", {})
+        self.special_invites = self.data.get("special_invites", {})
 
     def load_data(self):
         try:
@@ -77,7 +78,8 @@ class Database:
                 "user_memories": {},
                 "server_instructions": {},
                 "temp_voice": {},
-                "server_backups": {}
+                "server_backups": {},
+                "special_invites": {}
             }
 
     def __getattr__(self, name):

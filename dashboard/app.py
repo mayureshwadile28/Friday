@@ -2034,6 +2034,191 @@ def delete_guild_backup(gid):
         return jsonify({"success": True})
     return jsonify({"success": False, "error": f"Backup '{backup_id}' not found."})
 
+# ───────────────────── API: Special VIP Invites & Direct DMs ─────────────────────
+
+@app.route('/api/guild/<gid>/special_invites', methods=['GET'])
+def get_special_invites(gid):
+    try:
+        db.reload()
+    except Exception:
+        pass
+    invites_data = getattr(db, "special_invites", {}) or {}
+    results = []
+    for uid, data in invites_data.items():
+        user_info = fetch_user_info(uid)
+        results.append({
+            "user_id": str(uid),
+            "username": user_info.get("username", f"User {uid}"),
+            "avatar": user_info.get("avatar"),
+            "status": data.get("status", "invited"),
+            "custom_nickname": data.get("custom_nickname", ""),
+            "current_mood": data.get("current_mood", "cheerful"),
+            "invited_at": data.get("invited_at", ""),
+            "notes": data.get("notes", ""),
+            "message_count": data.get("message_count", 0)
+        })
+    return jsonify(results)
+
+@app.route('/api/guild/<gid>/special_invites/invite', methods=['POST'])
+def send_special_invite(gid):
+    body = flask_request.json or {}
+    user_id = str(body.get("user_id", "")).strip()
+    invite_msg = body.get("invite_message", "").strip()
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Please provide a valid User ID or select a member."})
+
+    if not bot_instance or not bot_instance.loop:
+        return jsonify({"success": False, "error": "Friday bot is not connected."})
+
+    if not invite_msg:
+        invite_msg = (
+            "🎉 **Congratulations {mention}!** You have been granted an exclusive VIP pass to chat with me directly in DMs! ✨\n\n"
+            "I'm so excited to get to know you better. To make our private conversations feel just right, what should I call you, and what kind of conversations do you enjoy the most? 🌸"
+        )
+
+    invite_msg = replace_plain_emojis(invite_msg)
+
+    async def do_send_invite():
+        uid_int = int(user_id) if user_id.isdigit() else None
+        if not uid_int:
+            raise Exception("Invalid User ID format.")
+        user = bot_instance.get_user(uid_int) or await bot_instance.fetch_user(uid_int)
+        if not user:
+            raise Exception("Discord user not found.")
+        
+        final_text = (
+            invite_msg
+            .replace("{mention}", user.mention)
+            .replace("{username}", user.name)
+            .replace("{display_name}", getattr(user, "display_name", user.name))
+            .replace("{id}", str(user.id))
+        )
+
+        dm_channel = await user.create_dm()
+        sent = await dm_channel.send(final_text)
+
+        ai_cog = bot_instance.get_cog("AIChat")
+        if ai_cog and hasattr(ai_cog, "llm_message_ids"):
+            ai_cog.llm_message_ids.add(sent.id)
+
+        import time
+        from datetime import datetime, timezone
+        try:
+            db.reload()
+        except Exception:
+            pass
+        if not hasattr(db, "special_invites") or db.special_invites is None:
+            db.special_invites = {}
+
+        db.special_invites[str(user_id)] = {
+            "invited_by": "Dashboard Owner",
+            "invited_at": datetime.now(timezone.utc).strftime("%B %d, %Y %I:%M %p"),
+            "status": "onboarding",
+            "onboarding_step": 0,
+            "custom_nickname": "",
+            "current_mood": "cheerful",
+            "last_mood_switch": time.time(),
+            "message_count": 0,
+            "notes": ""
+        }
+        db.save_data()
+        return getattr(user, "display_name", user.name)
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(do_send_invite(), bot_instance.loop)
+        name = future.result(timeout=10)
+        return jsonify({"success": True, "message": f"Special VIP Invite delivered to {name}'s DM!"})
+    except discord.Forbidden:
+        return jsonify({"success": False, "error": "Cannot send DM to this user. Their Discord DMs are closed or they do not accept DMs from bots."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/guild/<gid>/special_invites/send_dm', methods=['POST'])
+def send_custom_dm(gid):
+    body = flask_request.json or {}
+    user_id = str(body.get("user_id", "")).strip()
+    msg_text = body.get("message", "").strip()
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Please provide a valid User ID or select a member."})
+    if not msg_text:
+        return jsonify({"success": False, "error": "Message content cannot be empty."})
+
+    if not bot_instance or not bot_instance.loop:
+        return jsonify({"success": False, "error": "Friday bot is not connected."})
+
+    msg_text = replace_plain_emojis(msg_text)
+
+    async def do_send_dm():
+        uid_int = int(user_id) if user_id.isdigit() else None
+        if not uid_int:
+            raise Exception("Invalid User ID format.")
+        user = bot_instance.get_user(uid_int) or await bot_instance.fetch_user(uid_int)
+        if not user:
+            raise Exception("Discord user not found.")
+
+        final_text = (
+            msg_text
+            .replace("{mention}", user.mention)
+            .replace("{username}", user.name)
+            .replace("{display_name}", getattr(user, "display_name", user.name))
+            .replace("{id}", str(user.id))
+        )
+
+        dm_channel = await user.create_dm()
+        await dm_channel.send(final_text)
+        return getattr(user, "display_name", user.name)
+
+    try:
+        future = asyncio.run_coroutine_threadsafe(do_send_dm(), bot_instance.loop)
+        name = future.result(timeout=10)
+        return jsonify({"success": True, "message": f"Direct message sent successfully to {name}'s DM!"})
+    except discord.Forbidden:
+        return jsonify({"success": False, "error": "Cannot send DM to this user. Their Discord DMs are closed or they do not accept DMs from bots."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/guild/<gid>/special_invites/revoke', methods=['POST'])
+def revoke_special_invite(gid):
+    body = flask_request.json or {}
+    user_id = str(body.get("user_id", "")).strip()
+    if not user_id:
+        return jsonify({"success": False, "error": "User ID is required."})
+
+    try:
+        db.reload()
+    except Exception:
+        pass
+
+    if hasattr(db, "special_invites") and user_id in db.special_invites:
+        del db.special_invites[user_id]
+        db.save_data()
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "User is not in the VIP invites list."})
+
+@app.route('/api/guild/<gid>/special_invites/reset_persona', methods=['POST'])
+def reset_special_invite_persona(gid):
+    body = flask_request.json or {}
+    user_id = str(body.get("user_id", "")).strip()
+    if not user_id:
+        return jsonify({"success": False, "error": "User ID is required."})
+
+    try:
+        db.reload()
+    except Exception:
+        pass
+
+    if hasattr(db, "special_invites") and user_id in db.special_invites:
+        db.special_invites[user_id]["status"] = "onboarding"
+        db.special_invites[user_id]["onboarding_step"] = 0
+        db.special_invites[user_id]["custom_nickname"] = ""
+        db.special_invites[user_id]["notes"] = ""
+        db.special_invites[user_id]["current_mood"] = "cheerful"
+        db.save_data()
+        return jsonify({"success": True, "message": "VIP Persona reset. Friday will re-interview them on next DM!"})
+    return jsonify({"success": False, "error": "User is not in the VIP invites list."})
+
 # ───────────────────── Bot Lifecycle ─────────────────────
 
 @app.route('/api/bot/stop', methods=['POST'])
