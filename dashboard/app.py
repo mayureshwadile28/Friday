@@ -178,7 +178,11 @@ def get_channels(gid):
             channels = []
             for c in guild.channels:
                 if c.type in (discord.ChannelType.text, discord.ChannelType.news):
-                    channels.append({"id": str(c.id), "name": c.name})
+                    channels.append({
+                        "id": str(c.id),
+                        "name": c.name,
+                        "category": c.category.name if c.category else "General / Uncategorized"
+                    })
             return jsonify(channels)
 
     try:

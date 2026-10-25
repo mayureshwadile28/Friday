@@ -1269,8 +1269,22 @@ async function loadCoreData() {
 
         const annDestSelect = document.getElementById('annDestChannelSelect');
         if (annDestSelect) {
-            annDestSelect.innerHTML = '<option value="">Select official announcement channel...</option>' +
-                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            const categories = {};
+            currentGuildChannels.forEach(c => {
+                const cat = c.category || 'General / Uncategorized';
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(c);
+            });
+
+            let optsHtml = '<option value="">Select official announcement channel...</option>';
+            for (const [catName, chList] of Object.entries(categories)) {
+                optsHtml += `<optgroup label="📁 ${escapeHtml(catName)}">`;
+                chList.forEach(c => {
+                    optsHtml += `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`;
+                });
+                optsHtml += '</optgroup>';
+            }
+            annDestSelect.innerHTML = optsHtml;
             if (configuredAnnChannelId) {
                 annDestSelect.value = configuredAnnChannelId;
             } else if (prevAnnDest) {
@@ -1324,8 +1338,22 @@ async function loadCoreData() {
 
         const annComposeSelect = document.getElementById('annComposeChannelSelect');
         if (annComposeSelect) {
-            annComposeSelect.innerHTML = '<option value="">Use Configured Channel (Default)</option>' +
-                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            const categories = {};
+            currentGuildChannels.forEach(c => {
+                const cat = c.category || 'General / Uncategorized';
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(c);
+            });
+
+            let optsHtml = '<option value="">Use Configured Channel (Default)</option>';
+            for (const [catName, chList] of Object.entries(categories)) {
+                optsHtml += `<optgroup label="📁 ${escapeHtml(catName)}">`;
+                chList.forEach(c => {
+                    optsHtml += `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`;
+                });
+                optsHtml += '</optgroup>';
+            }
+            annComposeSelect.innerHTML = optsHtml;
             if (prevAnnCompose) {
                 annComposeSelect.value = prevAnnCompose;
             }
