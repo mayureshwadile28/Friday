@@ -21,6 +21,7 @@ let currentAnnColor = "#2dd4bf";
 let currentAnnShowThumbnail = true;
 let currentAnnFooterText = "Friday Broadcast System • Official Notification";
 let currentAnnPing = "none";
+let currentAnnFormat = "embed";
 let configuredAnnChannelId = null;
 
 const STANDARD_EMOJI_LIBRARY = [
@@ -946,6 +947,41 @@ function setupEventListeners() {
             });
         });
     }
+
+    // Format pills selection (Rich Embed vs Normal Message)
+    document.querySelectorAll('.ann-format-pill').forEach(pill => {
+        pill.addEventListener('click', () => {
+            document.querySelectorAll('.ann-format-pill').forEach(p => {
+                p.classList.remove('active');
+                p.style.background = 'rgba(255,255,255,0.05)';
+                p.style.borderColor = 'rgba(255,255,255,0.1)';
+                p.style.color = '#dbdee1';
+                p.style.fontWeight = 'normal';
+            });
+            pill.classList.add('active');
+            pill.style.background = 'rgba(45, 212, 191, 0.15)';
+            pill.style.borderColor = 'rgba(45, 212, 191, 0.4)';
+            pill.style.color = '#2dd4bf';
+            pill.style.fontWeight = '600';
+
+            currentAnnFormat = pill.dataset.format || 'embed';
+            const radio = pill.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+
+            const stylingCard = document.getElementById('annEmbedStylingCard');
+            if (stylingCard) {
+                if (currentAnnFormat === 'normal') {
+                    stylingCard.style.opacity = '0.35';
+                    stylingCard.style.pointerEvents = 'none';
+                } else {
+                    stylingCard.style.opacity = '1';
+                    stylingCard.style.pointerEvents = 'auto';
+                }
+            }
+
+            updateAnnPreview();
+        });
+    });
 
     // Ping pills selection
     document.querySelectorAll('.ann-ping-pill').forEach(pill => {
@@ -3111,6 +3147,9 @@ function updateAnnPreview() {
     const simMentionRow = document.getElementById('annSimMentionRow');
     const simMentionPill = document.getElementById('annSimMentionPill');
     const simEmbed = document.getElementById('annEmbedSimulation');
+    const simNormal = document.getElementById('annNormalSimulation');
+    const simNormalTitle = document.getElementById('annSimNormalTitle');
+    const simNormalContent = document.getElementById('annSimNormalContent');
     const simThumb = document.getElementById('annSimThumbnail');
     const simThumbImg = document.getElementById('annSimThumbnailImg');
     const simFooterText = document.getElementById('annSimFooterText');
@@ -3138,34 +3177,59 @@ function updateAnnPreview() {
         }
     }
 
-    // Title
     const rawTitle = titleEl ? titleEl.value.trim() : '';
-    simTitle.innerHTML = rawTitle ? renderDiscordMarkdown(rawTitle) : '📢 Official Announcement';
-
-    // Content body with line-by-line markdown
     const rawContent = contentEl ? contentEl.value : '';
-    simContent.innerHTML = renderDiscordMarkdown(rawContent);
 
-    // Thumbnail
-    if (simThumb && simThumbImg) {
-        if (currentAnnShowThumbnail && currentBotAvatar) {
-            simThumb.style.display = 'block';
-            simThumbImg.src = currentBotAvatar;
-        } else {
-            simThumb.style.display = 'none';
+    if (currentAnnFormat === 'normal') {
+        // Normal chat message format (no embed container, matches screenshot)
+        if (simEmbed) simEmbed.style.display = 'none';
+        if (simNormal) {
+            simNormal.style.display = 'block';
+            if (simNormalTitle) {
+                if (rawTitle) {
+                    simNormalTitle.style.display = 'block';
+                    simNormalTitle.innerHTML = renderDiscordMarkdown(rawTitle);
+                } else {
+                    simNormalTitle.style.display = 'none';
+                    simNormalTitle.innerHTML = '';
+                }
+            }
+            if (simNormalContent) {
+                simNormalContent.innerHTML = renderDiscordMarkdown(rawContent);
+            }
         }
-    }
+    } else {
+        // Rich Embed Box format
+        if (simNormal) simNormal.style.display = 'none';
+        if (simEmbed) simEmbed.style.display = 'block';
 
-    // Footer
-    if (simFooterText) {
-        simFooterText.innerHTML = renderDiscordMarkdown(currentAnnFooterText || 'Friday Broadcast System • Official Notification');
-    }
-    if (simFooterIcon) {
-        if (currentBotAvatar && currentAnnShowThumbnail) {
-            simFooterIcon.style.display = 'block';
-            simFooterIcon.src = currentBotAvatar;
-        } else {
-            simFooterIcon.style.display = 'none';
+        // Title
+        simTitle.innerHTML = rawTitle ? renderDiscordMarkdown(rawTitle) : '📢 Official Announcement';
+
+        // Content body with line-by-line markdown
+        simContent.innerHTML = renderDiscordMarkdown(rawContent);
+
+        // Thumbnail
+        if (simThumb && simThumbImg) {
+            if (currentAnnShowThumbnail && currentBotAvatar) {
+                simThumb.style.display = 'block';
+                simThumbImg.src = currentBotAvatar;
+            } else {
+                simThumb.style.display = 'none';
+            }
+        }
+
+        // Footer
+        if (simFooterText) {
+            simFooterText.innerHTML = renderDiscordMarkdown(currentAnnFooterText || 'Friday Broadcast System • Official Notification');
+        }
+        if (simFooterIcon) {
+            if (currentBotAvatar && currentAnnShowThumbnail) {
+                simFooterIcon.style.display = 'block';
+                simFooterIcon.src = currentBotAvatar;
+            } else {
+                simFooterIcon.style.display = 'none';
+            }
         }
     }
 
@@ -3205,6 +3269,7 @@ async function broadcastAnnouncement() {
                 channel_id: targetChannelId,
                 title: title,
                 content: content,
+                format: currentAnnFormat,
                 ping: currentAnnPing,
                 color: currentAnnColor,
                 show_thumbnail: currentAnnShowThumbnail,

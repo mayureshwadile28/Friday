@@ -1186,6 +1186,7 @@ def broadcast_announcement(gid):
     color_hex = data.get("color", "#2dd4bf")
     show_thumbnail = data.get("show_thumbnail", False)
     footer_text = data.get("footer", "").strip()
+    ann_format = data.get("format", "embed").strip().lower()
 
     if not content and not title:
         return jsonify({"success": False, "error": "Announcement content or title is required."})
@@ -1212,25 +1213,43 @@ def broadcast_announcement(gid):
         processed_title = replace_plain_emojis(title, bot_instance, guild_id=gid)
         processed_content = replace_plain_emojis(content, bot_instance, guild_id=gid)
 
-        embed = discord.Embed(
-            title=processed_title if processed_title else None,
-            description=processed_content if processed_content else None,
-            color=discord.Color(color_int)
-        )
+        if ann_format == "normal":
+            # Normal clean chat text format (no embed box)
+            msg_parts = []
+            if mention_str:
+                msg_parts.append(mention_str)
+            if processed_title:
+                msg_parts.append(f"# {processed_title}")
+            if processed_content:
+                msg_parts.append(processed_content)
 
-        avatar_url = str(bot_instance.user.display_avatar.url) if bot_instance.user and bot_instance.user.display_avatar else None
-        if show_thumbnail and avatar_url:
-            embed.set_thumbnail(url=avatar_url)
+            full_msg = "\n\n".join(msg_parts)
+            msg = await channel.send(
+                content=full_msg,
+                allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
+            )
+            return channel.name, msg.jump_url
+        else:
+            # Rich Embed Box format
+            embed = discord.Embed(
+                title=processed_title if processed_title else None,
+                description=processed_content if processed_content else None,
+                color=discord.Color(color_int)
+            )
 
-        if footer_text:
-            embed.set_footer(text=footer_text, icon_url=avatar_url if show_thumbnail else None)
+            avatar_url = str(bot_instance.user.display_avatar.url) if bot_instance.user and bot_instance.user.display_avatar else None
+            if show_thumbnail and avatar_url:
+                embed.set_thumbnail(url=avatar_url)
 
-        msg = await channel.send(
-            content=mention_str if mention_str else None,
-            embed=embed,
-            allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
-        )
-        return channel.name, msg.jump_url
+            if footer_text:
+                embed.set_footer(text=footer_text, icon_url=avatar_url if show_thumbnail else None)
+
+            msg = await channel.send(
+                content=mention_str if mention_str else None,
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
+            )
+            return channel.name, msg.jump_url
 
     try:
         fut = asyncio.run_coroutine_threadsafe(do_broadcast(), bot_instance.loop)

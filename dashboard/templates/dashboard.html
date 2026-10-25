@@ -1658,6 +1658,20 @@
 </label>
 </div>
 </div>
+<!-- Announcement Display Format (Rich Embed vs Normal Message) -->
+<div style="margin-bottom: 14px;">
+<label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Announcement Display Format</label>
+<div class="ann-format-selector" style="display: flex; gap: 8px; flex-wrap: wrap;">
+<label class="ann-format-pill active" data-format="embed" id="annFormatEmbedLabel" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: rgba(45, 212, 191, 0.15); border: 1px solid rgba(45, 212, 191, 0.4); border-radius: 6px; cursor: pointer; font-size: 12px; color: #2dd4bf; font-weight: 600; transition: all 0.2s ease;">
+<input checked="" name="annFormatRadio" style="display: none;" type="radio" value="embed"/>
+<span>📦 Rich Embed Box (Line &amp; Footer)</span>
+</label>
+<label class="ann-format-pill" data-format="normal" id="annFormatNormalLabel" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; cursor: pointer; font-size: 12px; color: #dbdee1; transition: all 0.2s ease;">
+<input name="annFormatRadio" style="display: none;" type="radio" value="normal"/>
+<span>💬 Normal Message (Clean Chat Text)</span>
+</label>
+</div>
+</div>
 <!-- Markdown & Server Emoji Toolbar -->
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
 <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Announcement Message Body</label>
@@ -1686,7 +1700,7 @@
 We are excited to introduce seamless broadcast capability.
 -# Check out all the new features and improvements.</textarea>
 <!-- Creative Theme & Embed Styling -->
-<div style="margin-bottom: 18px; padding: 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px;">
+<div id="annEmbedStylingCard" style="margin-bottom: 18px; padding: 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; transition: opacity 0.25s ease;">
 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
 <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase;">🎨 Announcement Theme Color</label>
 <div style="display: flex; align-items: center; gap: 8px;">
@@ -1744,7 +1758,12 @@ We are excited to introduce seamless broadcast capability.
 <div id="annSimMentionRow" style="display: none; margin-bottom: 6px; font-size: 14px;">
 <span class="discord-mention" id="annSimMentionPill" style="background: rgba(88, 101, 242, 0.3); color: #c9cdfb; font-weight: 600; padding: 2px 6px; border-radius: 4px;">@everyone</span>
 </div>
-<!-- Embed Body -->
+<!-- Normal Clean Chat Text Simulation (Active when format === 'normal') -->
+<div id="annNormalSimulation" style="display: none; margin-top: 4px; max-width: 500px;">
+<div id="annSimNormalTitle" style="font-size: 18px; font-weight: 700; color: #ffffff; margin-bottom: 8px; word-break: break-word;"></div>
+<div id="annSimNormalContent" style="font-size: 14px; color: #dbdee1; line-height: 1.5; word-break: break-word; overflow-wrap: break-word;"></div>
+</div>
+<!-- Embed Body (Active when format === 'embed') -->
 <div id="annEmbedSimulation" style="border-left: 4px solid #2dd4bf; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 500px; transition: border-left-color 0.25s ease;">
 <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
 <div style="flex: 1;">

@@ -98,6 +98,11 @@ class ChannelSelectDropdown(discord.ui.ChannelSelect):
             await interaction.response.send_message("Only the staff member who initiated this announcement can change the channel.", ephemeral=True)
             return
         selected_channel = self.values[0]
+        # Resolve AppCommandChannel to concrete guild channel
+        if hasattr(selected_channel, 'id') and interaction.guild:
+            resolved = interaction.guild.get_channel(int(selected_channel.id))
+            if resolved:
+                selected_channel = resolved
         self.parent_view.target_channel = selected_channel
         embed = self.parent_view.generate_embed()
         await interaction.response.edit_message(embed=embed, view=self.parent_view)
@@ -110,6 +115,7 @@ class AnnouncementConfirmView(discord.ui.View):
         self.target_channel = target_channel
         self.bot = bot
         self.prompt_message = None
+        self.format_mode = "normal"  # Default: clean normal message text (toggleable to Rich Embed)
 
         # Add destination channel selector
         self.add_item(ChannelSelectDropdown(self))
@@ -119,8 +125,8 @@ class AnnouncementConfirmView(discord.ui.View):
         
         # Build snippet of source content
         content_preview = (self.source_msg.content or "").strip()
-        if len(content_preview) > 350:
-            content_preview = content_preview[:350] + "..."
+        if len(content_preview) > 300:
+            content_preview = content_preview[:300] + "..."
         if not content_preview and self.source_msg.attachments:
             content_preview = f"*[File Attachment: {self.source_msg.attachments[0].filename}]*"
         elif not content_preview and self.source_msg.embeds:
@@ -128,20 +134,23 @@ class AnnouncementConfirmView(discord.ui.View):
         elif not content_preview:
             content_preview = "*[No Text]*"
 
+        fmt_desc = "💬 **Normal Message** (clean text, no embed box)" if self.format_mode == "normal" else "📦 **Rich Embed Box** (colored side line, thumbnail & footer)"
+
         embed = discord.Embed(
             title="📢 Confirm Announcement Broadcast",
             description=(
                 f"🎯 **Destination Channel:** {chan_mention}\n"
+                f"📋 **Broadcast Format:** {fmt_desc}\n"
                 f"👤 **Drafted By:** {self.source_msg.author.mention}\n"
                 f"🔗 **Source Message:** [Jump to Message]({self.source_msg.jump_url})\n\n"
                 f"📝 **Message Preview:**\n>>> {content_preview}\n\n"
                 f"❓ **Are you sure you want Friday to broadcast this announcement?**"
             ),
-            color=0x2dd4bf
+            color=0x2dd4bf if self.format_mode == "embed" else 0x5865f2
         )
         if self.source_msg.author.display_avatar:
             embed.set_author(name=f"Initiated by {self.initiator.display_name}", icon_url=self.initiator.display_avatar.url)
-        embed.set_footer(text="Click 'Yes, Broadcast Announcement' to publish, or select a different channel above.")
+        embed.set_footer(text="Click 'Format' to toggle between Normal Message and Embed Box, or confirm below.")
         return embed
 
     async def on_timeout(self):
@@ -153,6 +162,24 @@ class AnnouncementConfirmView(discord.ui.View):
             except Exception:
                 pass
 
+    @discord.ui.button(label="Format: 💬 Normal Message", style=discord.ButtonStyle.secondary, row=1)
+    async def toggle_format_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.initiator:
+            await interaction.response.send_message("Only the staff member who initiated this announcement can toggle the format.", ephemeral=True)
+            return
+
+        if self.format_mode == "normal":
+            self.format_mode = "embed"
+            button.label = "Format: 📦 Rich Embed Box"
+            button.style = discord.ButtonStyle.primary
+        else:
+            self.format_mode = "normal"
+            button.label = "Format: 💬 Normal Message"
+            button.style = discord.ButtonStyle.secondary
+
+        embed = self.generate_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
+
     @discord.ui.button(label="Yes, Broadcast Announcement", style=discord.ButtonStyle.success, emoji="📢", row=1)
     async def approve_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user != self.initiator:
@@ -163,10 +190,24 @@ class AnnouncementConfirmView(discord.ui.View):
             await interaction.response.send_message("⚠️ Please select an announcement destination channel from the dropdown first!", ephemeral=True)
             return
 
+        # Resolve target channel to concrete sendable channel
+        target = self.target_channel
+        if not hasattr(target, 'send') and hasattr(target, 'id') and interaction.guild:
+            target = interaction.guild.get_channel(int(target.id))
+            if not target:
+                try:
+                    target = await self.bot.fetch_channel(int(self.target_channel.id))
+                except Exception:
+                    target = None
+
+        if not target or not hasattr(target, 'send'):
+            await interaction.response.send_message("❌ Could not resolve destination channel to a sendable channel. Please re-select it.", ephemeral=True)
+            return
+
         gid = str(interaction.guild.id) if interaction.guild else ""
         # Remember chosen announcement channel
         if gid:
-            db.announcement_channels[gid] = str(self.target_channel.id)
+            db.announcement_channels[gid] = str(target.id)
             db.save_data()
 
         # Prepare attachments
@@ -181,34 +222,54 @@ class AnnouncementConfirmView(discord.ui.View):
         raw_content = self.source_msg.content or ""
         new_content = format_announcement_broadcast_text(raw_content, interaction.guild, self.bot)
 
-        # Prepare embeds
-        new_embeds = []
-        for em in self.source_msg.embeds:
-            e = em.copy()
-            if e.title:
-                e.title = replace_plain_emojis(e.title, self.bot, guild=interaction.guild)
-            if e.description:
-                e.description = replace_plain_emojis(e.description, self.bot, guild=interaction.guild)
-            for i, field in enumerate(e.fields):
-                e.set_field_at(
-                    i,
-                    name=replace_plain_emojis(field.name, self.bot, guild=interaction.guild),
-                    value=replace_plain_emojis(field.value, self.bot, guild=interaction.guild),
-                    inline=field.inline
-                )
-            new_embeds.append(e)
-
         try:
-            broadcasted = await self.target_channel.send(
-                content=new_content if new_content else None,
-                embeds=new_embeds,
-                files=files if files else [],
-                allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
-            )
+            if self.format_mode == "embed":
+                # Rich Embed Box format
+                lines = [l for l in new_content.split('\n')]
+                embed_title = None
+                embed_desc = new_content
+                if lines and lines[0].startswith('# '):
+                    embed_title = lines[0].replace('# ', '').strip()
+                    embed_desc = '\n'.join(lines[1:]).strip()
+
+                embed = discord.Embed(
+                    title=embed_title,
+                    description=embed_desc if embed_desc else None,
+                    color=0x2dd4bf
+                )
+                if interaction.guild.icon:
+                    embed.set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
+                if self.bot.user and self.bot.user.display_avatar:
+                    embed.set_thumbnail(url=self.bot.user.display_avatar.url)
+                embed.set_footer(text=f"Official Server Announcement • Initiated by {self.initiator.display_name}")
+
+                broadcasted = await target.send(
+                    content="@everyone" if "@everyone" in new_content and embed_title else None,
+                    embed=embed,
+                    files=files if files else [],
+                    allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
+                )
+            else:
+                # Normal Clean Chat Message format (as seen in screenshot, no embed box)
+                source_embeds = []
+                for em in self.source_msg.embeds:
+                    e = em.copy()
+                    if e.title:
+                        e.title = replace_plain_emojis(e.title, self.bot, guild=interaction.guild)
+                    if e.description:
+                        e.description = replace_plain_emojis(e.description, self.bot, guild=interaction.guild)
+                    source_embeds.append(e)
+
+                broadcasted = await target.send(
+                    content=new_content if new_content else None,
+                    embeds=source_embeds if source_embeds else None,
+                    files=files if files else [],
+                    allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
+                )
 
             default_success = "📢 **Announcement Broadcasted Successfully!**\nPosted to {channel} • [Jump to Announcement]({url})"
             msg_tpl = db.custom_responses.get(gid, {}).get("announcement_broadcast_success", default_success)
-            formatted = msg_tpl.replace("{channel}", self.target_channel.mention).replace("{url}", broadcasted.jump_url)
+            formatted = msg_tpl.replace("{channel}", target.mention).replace("{url}", broadcasted.jump_url)
 
             await interaction.response.edit_message(
                 content=formatted,
@@ -226,7 +287,7 @@ class AnnouncementConfirmView(discord.ui.View):
             default_err = "❌ **Permission Error:** Friday does not have permission to send messages or embed links in {channel}. Please grant appropriate channel permissions."
             err_tpl = db.custom_responses.get(gid, {}).get("announcement_perm_err", default_err)
             await interaction.response.edit_message(
-                content=err_tpl.replace("{channel}", self.target_channel.mention),
+                content=err_tpl.replace("{channel}", target.mention),
                 embed=None,
                 view=None
             )
