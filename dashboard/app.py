@@ -632,21 +632,9 @@ def get_antiabuse(gid):
     except Exception:
         pass
     raw_abuse = db.abuse_whitelist.get(gid_str) or db.abuse_whitelist.get(gid_int) or []
-    raw_universal = db.whitelist.get(gid_str) or db.whitelist.get(gid_int) or []
-    combined_ids = []
-    seen = set()
-    for uid in (raw_universal + raw_abuse):
-        try:
-            u_int = int(uid)
-            if u_int not in seen:
-                seen.add(u_int)
-                combined_ids.append(u_int)
-        except (ValueError, TypeError):
-            pass
-
     return jsonify({
         "words": db.banned_words.get(gid_str) or db.banned_words.get(gid_int) or [],
-        "whitelist": [fetch_user_info(uid) for uid in combined_ids]
+        "whitelist": [fetch_user_info(uid) for uid in raw_abuse]
     })
 
 @app.route('/api/guild/<gid>/antiabuse/words', methods=['POST'])

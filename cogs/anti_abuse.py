@@ -143,25 +143,11 @@ class AntiAbuse(commands.Cog):
         uid_int = message.author.id
         uid_str = str(uid_int)
 
-        # 3. Universal / Master Security Whitelist (db.whitelist)
-        master_wl = db.whitelist.get(gid, []) or db.whitelist.get(int(gid) if gid.isdigit() else 0, [])
-        master_wl_ids = {str(x) for x in master_wl}
-        if uid_str in master_wl_ids:
-            return True
-
-        # 4. Anti-Abuse Dedicated Whitelist (db.abuse_whitelist)
+        # Anti-Abuse Dedicated Whitelist (db.abuse_whitelist)
         abuse_wl = db.abuse_whitelist.get(gid, []) or db.abuse_whitelist.get(int(gid) if gid.isdigit() else 0, [])
         abuse_wl_ids = {str(x) for x in abuse_wl}
         if uid_str in abuse_wl_ids:
             return True
-
-        # 5. Feature Whitelists (db.feature_whitelists for 'anti_abuse' or 'universal')
-        fw = db.feature_whitelists.get(gid, {}) or db.feature_whitelists.get(int(gid) if gid.isdigit() else 0, {})
-        for feat_key in ("anti_abuse", "abuse", "universal"):
-            if feat_key in fw:
-                feat_ids = {str(x) for x in fw[feat_key]}
-                if uid_str in feat_ids:
-                    return True
 
         return False
 
