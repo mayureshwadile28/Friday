@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import io
+import asyncio
 import chat_exporter
 import re
 from database import db
@@ -194,10 +195,15 @@ class TicketPanelView(discord.ui.View):
 class Tickets(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.bot.loop.create_task(self.restore_views())
+
+    async def cog_load(self):
+        asyncio.create_task(self.restore_views())
 
     async def restore_views(self):
-        await self.bot.wait_until_ready()
+        try:
+            await self.bot.wait_until_ready()
+        except Exception:
+            pass
         # We restore the generic close ticket view. Panel buttons require panel_id, 
         # so we will dynamically construct them during on_ready or just use persistent views if possible.
         # For simplicity, TicketActiveView has no dynamic init args, so we can add it.

@@ -160,18 +160,16 @@ class HelpSelect(discord.ui.Select):
     def __init__(self, current_page: int):
         options = [
             discord.SelectOption(
-                label="Home / Overview",
+                label="⌂  Home / Overview",
                 value="home",
-                emoji="⌂",
                 description="Return to the main overview page",
                 default=(current_page == 0)
             )
         ]
         for idx, mod in enumerate(HELP_MODULES):
             options.append(discord.SelectOption(
-                label=mod["name"],
+                label=f"{mod['emoji']}  {mod['name']}",
                 value=str(idx + 1),
-                emoji=mod["emoji"],
                 description=mod["desc"][:100],
                 default=(current_page == idx + 1)
             ))
@@ -289,7 +287,7 @@ class HelpView(discord.ui.View):
             self.current_page -= 1
         await self.update_view(interaction)
 
-    @discord.ui.button(emoji="✕", style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(label="✕", style=discord.ButtonStyle.danger, row=1)
     async def close_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             await interaction.message.delete()
