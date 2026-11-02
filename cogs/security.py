@@ -188,30 +188,10 @@ class Security(commands.Cog):
         return False
 
     async def safe_delete_violating_message(self, message: discord.Message, violation_label: str = "violation") -> bool:
-        """Attempts to delete a violating message. Returns True if deleted or already gone; False if blocked by permissions/hierarchy."""
+        """Directly attempts to delete a violating message. Returns True if deleted or already gone; False if forbidden by Discord API."""
         guild = message.guild
         if not guild:
             return False
-
-        channel = message.channel
-        me = guild.me or guild.get_member(self.bot.user.id)
-        if me and hasattr(channel, "permissions_for"):
-            perms = channel.permissions_for(me)
-            if not perms.manage_messages:
-                embed = discord.Embed(
-                    title="⚠️ Message Deletion Blocked: Missing Permission",
-                    description=(
-                        f"**Culprit:** {message.author.mention} (`{message.author.id}`)\n"
-                        f"**Channel:** {channel.mention}\n"
-                        f"**Violation:** {violation_label}\n"
-                        f"**Problem:** Friday lacks `Manage Messages` permission in {channel.mention}.\n"
-                        f"**Fix:** Grant Friday's role `Manage Messages` in channel settings."
-                    ),
-                    color=discord.Color.red(),
-                    timestamp=discord.utils.utcnow()
-                )
-                await self.log_security_event(guild, "audit-antispam", embed)
-                return False
 
         try:
             await message.delete()
@@ -219,6 +199,7 @@ class Security(commands.Cog):
         except discord.NotFound:
             return True  # Already deleted
         except discord.Forbidden as e:
+            channel = message.channel
             embed = discord.Embed(
                 title="⛔ Message Deletion Forbidden (403)",
                 description=(
@@ -226,7 +207,7 @@ class Security(commands.Cog):
                     f"**Channel:** {channel.mention}\n"
                     f"**Violation:** {violation_label}\n"
                     f"**Discord Error:** `{e}`\n"
-                    f"**Fix:** Ensure Friday's role is positioned high in Server Settings > Roles and channel permissions allow message deletion."
+                    f"**Fix:** Discord rejected the deletion with HTTP 403 Forbidden. Ensure Friday has Administrator or Manage Messages."
                 ),
                 color=discord.Color.red(),
                 timestamp=discord.utils.utcnow()

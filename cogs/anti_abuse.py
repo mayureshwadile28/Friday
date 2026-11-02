@@ -171,14 +171,13 @@ class AntiAbuse(commands.Cog):
         
         if triggered_word:
             deleted = False
-            channel = message.channel
-            me = message.guild.me or message.guild.get_member(self.bot.user.id)
-            if me and channel.permissions_for(me).manage_messages:
-                try:
-                    await message.delete()
-                    deleted = True
-                except (discord.NotFound, discord.Forbidden):
-                    pass
+            try:
+                await message.delete()
+                deleted = True
+            except (discord.NotFound, discord.Forbidden):
+                pass
+            except Exception:
+                pass
             
             try:
                 resp_tpl = db.custom_responses.get(gid, {}).get("abuse_warning_msg", "⚠️ {member}, that word is not allowed here.")
@@ -223,14 +222,13 @@ class AntiAbuse(commands.Cog):
         
         if triggered_word:
             deleted = False
-            channel = after.channel
-            me = after.guild.me or after.guild.get_member(self.bot.user.id)
-            if me and channel.permissions_for(me).manage_messages:
-                try:
-                    await after.delete()
-                    deleted = True
-                except (discord.NotFound, discord.Forbidden):
-                    pass
+            try:
+                await after.delete()
+                deleted = True
+            except (discord.NotFound, discord.Forbidden):
+                pass
+            except Exception:
+                pass
             
             try:
                 resp_tpl = db.custom_responses.get(gid, {}).get("abuse_edit_warning_msg", "⚠️ {member}, you cannot edit your message to include a banned word.")
