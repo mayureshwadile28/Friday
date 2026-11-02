@@ -1,4 +1,5 @@
 import io
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Union
 import discord
@@ -41,7 +42,7 @@ HELP_MODULES = [
         "emoji": "⛨",
         "desc": "Fastest Antinuke & Core Server Protection",
         "sections": [
-            ("Antinuke", ["antinuke_toggle", "antinuke_limit", "antinuke_refresh", "antinuke_sync", "antiraid", "antispam", "security_status"]),
+            ("Antinuke", ["antinuke_toggle", "antinuke_limit", "antinuke_refresh", "antinuke_sync", "antiraid", "antispam", "security_status", "diagnose"]),
             ("Whitelist", ["whitelist_add", "whitelist_remove"])
         ]
     },
@@ -433,6 +434,102 @@ class Utility(commands.Cog):
             footer="Friday Operations Center"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @app_commands.command(name="diagnose", description="Diagnose Friday's permissions, roles, and message deletion capabilities in this channel.")
+    @app_commands.default_permissions(manage_guild=True)
+    async def diagnose_cmd(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        channel = interaction.channel
+        me = guild.me or guild.get_member(self.bot.user.id)
+
+        # 1. Guild Permissions
+        gp = me.guild_permissions if me else None
+        has_admin = gp.administrator if gp else False
+        has_manage_msgs_guild = gp.manage_messages if gp else False
+
+        # 2. Channel Permissions
+        cp = channel.permissions_for(me) if me and hasattr(channel, "permissions_for") else None
+        cp_admin = cp.administrator if cp else False
+        cp_manage_msgs = cp.manage_messages if cp else False
+        cp_send_msgs = cp.send_messages if cp else False
+        cp_view = cp.view_channel if cp else False
+
+        # 3. Roles and hierarchy
+        roles_list = [r for r in me.roles if not r.is_default()] if me else []
+        roles_str = ", ".join([f"`{r.name}` (pos {r.position})" for r in sorted(roles_list, key=lambda r: r.position, reverse=True)]) or "None"
+
+        # 4. Live Message Deletion Test
+        deletion_test_status = "Not Tested"
+        try:
+            test_msg = await channel.send("🔍 *Friday live diagnostic test... (auto-deleting)*")
+            await asyncio.sleep(0.5)
+            await test_msg.delete()
+            deletion_test_status = "✅ PASSED (Friday can send and delete messages in this channel)"
+        except discord.Forbidden as e:
+            deletion_test_status = f"❌ FAILED (HTTP 403 Forbidden: {e})"
+        except Exception as e:
+            deletion_test_status = f"⚠️ FAILED ({type(e).__name__}: {e})"
+
+        # 5. Security Feature Status
+        sec_cog = self.bot.get_cog("Security")
+        sec_info = "Security Cog not loaded"
+        if sec_cog:
+            cfg = sec_cog.get_security_config(str(guild.id))
+            det = cfg.get("detect", {})
+            anti_gif = det.get("anti_gif", {}).get("enabled", False)
+            anti_link = det.get("anti_link", {}).get("enabled", False)
+            allow_gifs = det.get("anti_link", {}).get("allow_gifs", True)
+            sec_info = (
+                f"• **Anti-GIF Rule:** `{'ENABLED' if anti_gif else 'DISABLED (Turn ON in Dashboard -> Security)'}`\n"
+                f"• **Anti-Link Rule:** `{'ENABLED' if anti_link else 'DISABLED'}`\n"
+                f"• **Anti-Link Allows GIFs:** `{'YES' if allow_gifs else 'NO'}`"
+            )
+
+        # 6. Server 2FA
+        mfa_level = getattr(guild, "mfa_level", "Unknown")
+        mfa_text = "⚠️ Enforced (Requires 2FA on Bot Developer account!)" if str(mfa_level) in ("1", "MFALevel.elevated", "elevated") else "Not enforced"
+
+        embed = discord.Embed(
+            title=f"🛠️ Friday Diagnostic Report: #{getattr(channel, 'name', 'current-channel')}",
+            color=0x2dd4bf if (has_admin and "PASSED" in deletion_test_status) else 0xef4444,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.add_field(
+            name="🤖 Friday Role Hierarchy",
+            value=(
+                f"• **Top Role:** `{me.top_role.name if me else 'Unknown'}` (position `{me.top_role.position if me else '?'}`)\n"
+                f"• **Assigned Roles:** {roles_str}"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🛡️ Discord Permissions",
+            value=(
+                f"• **Guild Administrator:** `{'✅ YES' if has_admin else '❌ NO (Turn ON in Server Settings -> Roles)'}`\n"
+                f"• **Guild Manage Messages:** `{'✅ YES' if has_manage_msgs_guild else '❌ NO'}`\n"
+                f"• **Channel View Channel:** `{'✅ YES' if cp_view else '❌ NO'}`\n"
+                f"• **Channel Send Messages:** `{'✅ YES' if cp_send_msgs else '❌ NO'}`\n"
+                f"• **Channel Manage Messages:** `{'✅ YES' if cp_manage_msgs else '❌ NO'}`"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="🧪 Live Message Deletion Test",
+            value=deletion_test_status,
+            inline=False
+        )
+        embed.add_field(
+            name="⚙️ Security Feature Status",
+            value=sec_info,
+            inline=False
+        )
+        embed.add_field(
+            name="🔐 Server 2FA Moderation Requirement",
+            value=mfa_text,
+            inline=False
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def _handle_avatar(self, interaction: discord.Interaction, user: Optional[Union[discord.Member, discord.User]] = None):
         target = user or interaction.user

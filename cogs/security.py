@@ -189,34 +189,71 @@ class Security(commands.Cog):
         return False
 
     async def safe_delete_violating_message(self, message: discord.Message, violation_label: str = "violation") -> bool:
-        """Directly attempts to delete a violating message. Returns True if deleted or already gone; False if forbidden by Discord API."""
+        """Directly attempts to delete a violating message. Returns True if deleted or already gone.
+        Tries message.delete() first, then channel.delete_messages() as a fallback.
+        Only returns False if Discord API explicitly denies deletion with 403 Forbidden."""
         guild = message.guild
         if not guild:
             return False
 
+        # --- Attempt 1: Standard single-message delete ---
         try:
             await message.delete()
             return True
         except discord.NotFound:
-            return True  # Already deleted
-        except discord.Forbidden as e:
-            channel = message.channel
-            embed = discord.Embed(
-                title="⛔ Message Deletion Forbidden (403)",
-                description=(
-                    f"**Culprit:** {message.author.mention} (`{message.author.id}`)\n"
-                    f"**Channel:** {channel.mention}\n"
-                    f"**Violation:** {violation_label}\n"
-                    f"**Discord Error:** `{e}`\n"
-                    f"**Fix:** Discord rejected the deletion with HTTP 403 Forbidden. Ensure Friday has Administrator or Manage Messages."
-                ),
-                color=discord.Color.red(),
-                timestamp=discord.utils.utcnow()
-            )
-            await self.log_security_event(guild, "audit-antispam", embed)
-            return False
+            return True  # Already deleted, that's fine
+        except discord.Forbidden:
+            pass  # Fall through to Attempt 2
         except Exception:
-            return False
+            pass
+
+        # --- Attempt 2: Bulk-delete fallback (different API endpoint, bypasses some channel quirks) ---
+        if hasattr(message.channel, "delete_messages"):
+            try:
+                await message.channel.delete_messages([message])
+                return True
+            except discord.NotFound:
+                return True
+            except Exception:
+                pass
+
+        # Both attempts failed or raised Forbidden. Log full diagnostic info to audit channel.
+        channel = message.channel
+        me = guild.me or guild.get_member(self.bot.user.id)
+        if me:
+            gp = me.guild_permissions
+            try:
+                cp = channel.permissions_for(me)
+                cp_admin = cp.administrator
+                cp_manage = cp.manage_messages
+                cp_admin_bits = gp.administrator
+            except Exception:
+                cp_admin = cp_manage = cp_admin_bits = "unknown"
+        else:
+            cp_admin = cp_manage = cp_admin_bits = "bot member not found"
+
+        embed = discord.Embed(
+            title="⛔ Message Deletion Forbidden — Both Methods Failed",
+            description=(
+                f"**Culprit:** {message.author.mention} (`{message.author.id}`)\n"
+                f"**Channel:** {channel.mention} (`{channel.id}`)\n"
+                f"**Message ID:** `{message.id}`\n"
+                f"**Violation:** {violation_label}\n"
+                f"**Friday's Guild Admin Perm:** `{cp_admin_bits}`\n"
+                f"**Friday's Channel Admin Override:** `{cp_admin}`\n"
+                f"**Friday's Channel Manage Messages:** `{cp_manage}`\n\n"
+                f"⚠️ **Action Required:** Go to **Server Settings → Roles**, ensure Friday's role has "
+                f"**Administrator** checked AND is **above all other roles** in the list. "
+                f"If Friday has Administrator, channel overwrites cannot block her."
+            ),
+            color=discord.Color.dark_red(),
+            timestamp=discord.utils.utcnow()
+        )
+        try:
+            await self.log_security_event(guild, "audit-antispam", embed)
+        except Exception:
+            pass
+        return False
 
     def record_action_and_check(self, guild_id, user_id, action_type):
         gid = str(guild_id)
@@ -1074,7 +1111,7 @@ class Security(commands.Cog):
                     resp_tpl = db.custom_responses.get(gid, {}).get("security_invite_warn", "🔗 {member}, discord invite links are not allowed in this server.")
                     warn_text = resp_tpl.replace("{member}", author.mention)
                     if not deleted:
-                        warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                        warn_text += " *(⚠️ Warning: Discord API rejected the deletion — check bot permissions)*"
                     warn_msg = await message.channel.send(warn_text)
                     await warn_msg.delete(delay=5)
                 except Exception:
@@ -1249,6 +1286,24 @@ class Security(commands.Cog):
         embed_added = len(after.embeds) > len(before.embeds)  # Discord appended a GIF embed
         if content_changed or attachment_changed or embed_added:
             await self.on_message(after)
+
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
+        """Catch message updates (e.g. Discord resolving Tenor/Giphy GIF picker embeds)
+        even if the original message was not in discord.py's internal cache."""
+        if not payload.guild_id:
+            return
+        if payload.cached_message:
+            return  # Handled by on_message_edit
+        channel = self.bot.get_channel(payload.channel_id)
+        if not channel or not hasattr(channel, "fetch_message"):
+            return
+        try:
+            msg = await channel.fetch_message(payload.message_id)
+            if msg and not msg.author.bot:
+                await self.on_message(msg)
+        except Exception:
+            pass
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):
