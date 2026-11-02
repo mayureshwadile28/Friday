@@ -130,25 +130,28 @@ class AntiAbuse(commands.Cog):
         if message.author.bot:
             return True
 
-        # 1. Server Owner is ALWAYS immune
-        if message.author.id == message.guild.owner_id:
-            return True
-
-        # 2. Server Administrators & Guild Managers are ALWAYS immune
-        perms = getattr(message.author, "guild_permissions", None)
-        if perms and (perms.administrator or perms.manage_guild or perms.manage_messages):
+        # 1. Server Owner & Bot are ALWAYS immune
+        if message.author.id == message.guild.owner_id or message.author.id == self.bot.user.id:
             return True
 
         gid = str(message.guild.id)
-        uid_int = message.author.id
-        uid_str = str(uid_int)
+        uid_str = str(message.author.id)
 
-        # Anti-Abuse Dedicated Whitelist (db.abuse_whitelist)
+        # Anti-Abuse Dedicated Whitelist & Main Whitelist
         abuse_wl = db.abuse_whitelist.get(gid, []) or db.abuse_whitelist.get(int(gid) if gid.isdigit() else 0, [])
-        abuse_wl_ids = {str(x) for x in abuse_wl}
-        if uid_str in abuse_wl_ids:
+        main_wl = db.whitelist.get(gid, []) or db.whitelist.get(int(gid) if gid.isdigit() else 0, [])
+        wl_set = {str(x) for x in abuse_wl} | {str(x) for x in main_wl}
+
+        if uid_str in wl_set:
             return True
 
+        # Check role whitelist
+        if isinstance(message.author, discord.Member):
+            for role in message.author.roles:
+                if str(role.id) in wl_set:
+                    return True
+
+        # Note: Administrators and higher roles are NOT automatically immune to anti-abuse word filters.
         return False
 
     @commands.Cog.listener()
@@ -167,24 +170,40 @@ class AntiAbuse(commands.Cog):
                 break
         
         if triggered_word:
+            deleted = False
+            channel = message.channel
+            me = message.guild.me or message.guild.get_member(self.bot.user.id)
+            if me and channel.permissions_for(me).manage_messages:
+                try:
+                    await message.delete()
+                    deleted = True
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+            
             try:
-                await message.delete()
                 resp_tpl = db.custom_responses.get(gid, {}).get("abuse_warning_msg", "⚠️ {member}, that word is not allowed here.")
-                warning = await message.channel.send(resp_tpl.replace("{member}", message.author.mention))
+                warn_text = resp_tpl.replace("{member}", message.author.mention)
+                if not deleted:
+                    warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                warning = await message.channel.send(warn_text)
                 await warning.delete(delay=5)
+            except Exception:
+                pass
                 
+            try:
                 log_id = db.server_logs.get(gid, {}).get("audit-abuse")
                 if log_id:
                     log_channel = self.bot.get_channel(log_id)
                     if log_channel:
-                        embed = discord.Embed(title="🤬 Abuse Word Detected", color=discord.Color.orange())
+                        embed = discord.Embed(title="🤬 Abuse Word Detected", color=discord.Color.orange() if deleted else discord.Color.red())
                         embed.add_field(name="Author", value=message.author.mention, inline=True)
                         embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+                        embed.add_field(name="Status", value="✅ Deleted" if deleted else "⚠️ Not Deleted (Permission Denied)", inline=True)
                         embed.add_field(name="Trigger Word", value=f"`{triggered_word}`", inline=False)
                         embed.add_field(name="Full Message", value=message.content, inline=False)
                         embed.set_footer(text=f"Detected on {discord.utils.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}")
                         await log_channel.send(embed=embed)
-            except discord.Forbidden:
+            except Exception:
                 pass
 
     @commands.Cog.listener()
@@ -203,25 +222,41 @@ class AntiAbuse(commands.Cog):
                 break
         
         if triggered_word:
+            deleted = False
+            channel = after.channel
+            me = after.guild.me or after.guild.get_member(self.bot.user.id)
+            if me and channel.permissions_for(me).manage_messages:
+                try:
+                    await after.delete()
+                    deleted = True
+                except (discord.NotFound, discord.Forbidden):
+                    pass
+            
             try:
-                await after.delete()
                 resp_tpl = db.custom_responses.get(gid, {}).get("abuse_edit_warning_msg", "⚠️ {member}, you cannot edit your message to include a banned word.")
-                warning = await after.channel.send(resp_tpl.replace("{member}", after.author.mention))
+                warn_text = resp_tpl.replace("{member}", after.author.mention)
+                if not deleted:
+                    warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                warning = await after.channel.send(warn_text)
                 await warning.delete(delay=5)
+            except Exception:
+                pass
                 
+            try:
                 log_id = db.server_logs.get(gid, {}).get("audit-abuse")
                 if log_id:
                     log_channel = self.bot.get_channel(log_id)
                     if log_channel:
-                        embed = discord.Embed(title="🤬 Edited Abuse Word Detected", color=discord.Color.orange())
+                        embed = discord.Embed(title="🤬 Edited Abuse Word Detected", color=discord.Color.orange() if deleted else discord.Color.red())
                         embed.add_field(name="Author", value=after.author.mention, inline=True)
                         embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+                        embed.add_field(name="Status", value="✅ Deleted" if deleted else "⚠️ Not Deleted (Permission Denied)", inline=True)
                         embed.add_field(name="Trigger Word", value=f"`{triggered_word}`", inline=False)
                         embed.add_field(name="Old Message", value=before.content if before.content else "*No text*", inline=False)
                         embed.add_field(name="New Message", value=after.content, inline=False)
                         embed.set_footer(text=f"Detected on {discord.utils.utcnow().strftime('%B %d, %Y at %I:%M %p UTC')}")
                         await log_channel.send(embed=embed)
-            except discord.Forbidden:
+            except Exception:
                 pass
 
 async def setup(bot):

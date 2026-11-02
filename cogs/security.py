@@ -96,14 +96,33 @@ class Security(commands.Cog):
         if member_or_user.id == self.bot.user.id: return True
         if member_or_user.id == guild.owner_id: return True
         gid = str(guild.id)
-        if member_or_user.id in db.whitelist.get(gid, []): return True
+        
+        # 1. Direct user whitelist
+        wl_raw = db.whitelist.get(gid, []) or []
+        wl_set = {str(x) for x in wl_raw}
+        if str(member_or_user.id) in wl_set:
+            return True
+
+        # 2. Feature-specific whitelist
+        feat_set = set()
         if feature:
-            feat_wl = db.feature_whitelists.get(gid, {}).get(feature, [])
-            if member_or_user.id in feat_wl: return True
-        # Server Administrators and Managers are always considered whitelisted/immune
-        if isinstance(member_or_user, discord.Member):
-            if member_or_user.guild_permissions.administrator:
+            feat_raw = db.feature_whitelists.get(gid, {}).get(feature, []) or []
+            feat_set = {str(x) for x in feat_raw}
+            if str(member_or_user.id) in feat_set:
                 return True
+
+        # 3. Check role-based whitelisting (if member)
+        member = member_or_user if hasattr(member_or_user, "roles") else (guild.get_member(member_or_user.id) if guild else None)
+        if member and hasattr(member, "roles"):
+            for role in member.roles:
+                rid_str = str(role.id)
+                if rid_str in wl_set:
+                    return True
+                if feature and rid_str in feat_set:
+                    return True
+
+        # Note: Administrators and higher-role members are NOT automatically immune to anti-nuke or security rules.
+        # Only the Server Owner, bot, or explicitly whitelisted users/roles have immunity.
         return False
 
     def is_gif_url(self, url: str) -> bool:
@@ -168,6 +187,55 @@ class Security(commands.Cog):
                 pass
         return False
 
+    async def safe_delete_violating_message(self, message: discord.Message, violation_label: str = "violation") -> bool:
+        """Attempts to delete a violating message. Returns True if deleted or already gone; False if blocked by permissions/hierarchy."""
+        guild = message.guild
+        if not guild:
+            return False
+
+        channel = message.channel
+        me = guild.me or guild.get_member(self.bot.user.id)
+        if me and hasattr(channel, "permissions_for"):
+            perms = channel.permissions_for(me)
+            if not perms.manage_messages:
+                embed = discord.Embed(
+                    title="⚠️ Message Deletion Blocked: Missing Permission",
+                    description=(
+                        f"**Culprit:** {message.author.mention} (`{message.author.id}`)\n"
+                        f"**Channel:** {channel.mention}\n"
+                        f"**Violation:** {violation_label}\n"
+                        f"**Problem:** Friday lacks `Manage Messages` permission in {channel.mention}.\n"
+                        f"**Fix:** Grant Friday's role `Manage Messages` in channel settings."
+                    ),
+                    color=discord.Color.red(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-antispam", embed)
+                return False
+
+        try:
+            await message.delete()
+            return True
+        except discord.NotFound:
+            return True  # Already deleted
+        except discord.Forbidden as e:
+            embed = discord.Embed(
+                title="⛔ Message Deletion Forbidden (403)",
+                description=(
+                    f"**Culprit:** {message.author.mention} (`{message.author.id}`)\n"
+                    f"**Channel:** {channel.mention}\n"
+                    f"**Violation:** {violation_label}\n"
+                    f"**Discord Error:** `{e}`\n"
+                    f"**Fix:** Ensure Friday's role is positioned high in Server Settings > Roles and channel permissions allow message deletion."
+                ),
+                color=discord.Color.red(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-antispam", embed)
+            return False
+        except Exception:
+            return False
+
     def record_action_and_check(self, guild_id, user_id, action_type):
         gid = str(guild_id)
         uid = str(user_id)
@@ -214,6 +282,17 @@ class Security(commands.Cog):
         action_name = punishment_type.upper()
         gid = str(guild.id)
         
+        # Resolve culprit to Member if passed as discord.User
+        if not isinstance(culprit, discord.Member):
+            mem = guild.get_member(culprit.id)
+            if not mem:
+                try:
+                    mem = await guild.fetch_member(culprit.id)
+                except Exception:
+                    mem = None
+            if mem:
+                culprit = mem
+
         if timeout_mins is None:
             timeout_mins = 10
         try:
@@ -227,36 +306,62 @@ class Security(commands.Cog):
                 await guild.ban(culprit, reason=reason)
                 success = True
             elif punishment_type == "kick":
-                await guild.kick(culprit, reason=reason)
-                success = True
+                if isinstance(culprit, discord.Member):
+                    await guild.kick(culprit, reason=reason)
+                    success = True
+                else:
+                    await guild.ban(culprit, reason=f"{reason} (Kicked via ban as user was not in cache)")
+                    await guild.unban(culprit, reason="Unbanning after simulated kick")
+                    success = True
             elif punishment_type == "strip_roles":
-                dangerous_roles = [r for r in culprit.roles if (r.permissions.administrator or r.permissions.manage_guild or r.permissions.ban_members or r.permissions.manage_roles or r.permissions.manage_channels) and r < guild.me.top_role]
-                if dangerous_roles:
-                    await culprit.remove_roles(*dangerous_roles, reason=reason)
-                success = True
+                if isinstance(culprit, discord.Member):
+                    dangerous_roles = [r for r in culprit.roles if (r.permissions.administrator or r.permissions.manage_guild or r.permissions.ban_members or r.permissions.manage_roles or r.permissions.manage_channels) and r < guild.me.top_role]
+                    if dangerous_roles:
+                        await culprit.remove_roles(*dangerous_roles, reason=reason)
+                    success = True
+                else:
+                    success = True
             elif punishment_type == "timeout":
-                # DISCORD API SPEC: Discord strictly prohibits timing out users with ADMINISTRATOR permission.
-                # If culprit has Administrator permission from roles lower than Friday, revoke those roles first!
-                if culprit.guild_permissions.administrator:
-                    admin_roles = [r for r in culprit.roles if (r.permissions.administrator or r.permissions.manage_guild or r.permissions.manage_roles) and r < guild.me.top_role]
-                    if admin_roles:
-                        try:
-                            await culprit.remove_roles(*admin_roles, reason=f"Revoking admin role before timeout: {reason}")
-                        except Exception:
-                            pass
-                await culprit.timeout(datetime.timedelta(minutes=timeout_mins), reason=reason)
-                success = True
+                if isinstance(culprit, discord.Member):
+                    # DISCORD API SPEC: Discord strictly prohibits timing out users with ADMINISTRATOR permission.
+                    # If culprit has Administrator permission from roles lower than Friday, revoke those roles first!
+                    if culprit.guild_permissions.administrator:
+                        admin_roles = [r for r in culprit.roles if (r.permissions.administrator or r.permissions.manage_guild or r.permissions.manage_roles) and r < guild.me.top_role]
+                        if admin_roles:
+                            try:
+                                await culprit.remove_roles(*admin_roles, reason=f"Revoking admin role before timeout: {reason}")
+                            except Exception:
+                                pass
+                    await culprit.timeout(datetime.timedelta(minutes=timeout_mins), reason=reason)
+                    success = True
+                else:
+                    success = False
+                    error_detail = "Target is not currently a member in this server."
             else:
-                await guild.kick(culprit, reason=reason)
+                if isinstance(culprit, discord.Member):
+                    await guild.kick(culprit, reason=reason)
+                else:
+                    await guild.ban(culprit, reason=reason)
                 success = True
         except discord.Forbidden:
-            # Diagnose the exact reason for accurate feedback
-            if guild.me.top_role <= culprit.top_role:
-                error_detail = "Friday's role is below this user in role hierarchy. Immediate manual action required!"
-            elif culprit.guild_permissions.administrator:
+            is_member = isinstance(culprit, discord.Member)
+            if is_member and guild.me.top_role <= culprit.top_role:
+                error_detail = "Friday's role is below this user in role hierarchy. Place Friday at top of Roles in Server Settings!"
+                # Emergency mitigation: attempt to strip any subordinate dangerous roles below Friday
+                try:
+                    subordinate_dangerous_roles = [
+                        r for r in culprit.roles 
+                        if (r.permissions.administrator or r.permissions.manage_guild or r.permissions.ban_members or r.permissions.manage_roles or r.permissions.manage_channels) 
+                        and r < guild.me.top_role
+                    ]
+                    if subordinate_dangerous_roles:
+                        await culprit.remove_roles(*subordinate_dangerous_roles, reason=f"Emergency partial mitigation: {reason}")
+                except Exception:
+                    pass
+            elif is_member and culprit.guild_permissions.administrator:
                 error_detail = "Discord forbids timing out users with Administrator permission. Dangerous roles could not be removed."
             else:
-                error_detail = "Discord permission error (403 Forbidden). Ensure Friday has 'Moderate Members' and 'Manage Roles'."
+                error_detail = "Discord permission error (403 Forbidden). Ensure Friday has required moderation permissions."
 
             if guild.owner:
                 try:
@@ -315,12 +420,16 @@ class Security(commands.Cog):
         if interaction.user.id == guild.owner_id:
             return True
         user = interaction.user
-        if not isinstance(user, discord.Member):
-            return False
-        bot_member = guild.me
-        if not bot_member:
-            return False
-        return user.top_role > bot_member.top_role
+        gid = str(guild.id)
+        wl_raw = db.whitelist.get(gid, []) or []
+        wl_set = {str(x) for x in wl_raw}
+        if str(user.id) in wl_set:
+            return True
+        if hasattr(user, "roles"):
+            for role in user.roles:
+                if str(role.id) in wl_set:
+                    return True
+        return False
 
     @app_commands.command(name="antinuke_toggle", description="Turn the Anti-Nuke system ON or OFF.")
     @app_commands.choices(status=[
@@ -331,7 +440,7 @@ class Security(commands.Cog):
     async def antinuke_toggle(self, interaction: discord.Interaction, status: app_commands.Choice[int]):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
@@ -971,34 +1080,27 @@ class Security(commands.Cog):
         if not db.antinuke_active.get(gid, True): return
         cfg = self.get_security_config(gid)
 
-        # Check if author is Server Owner, Administrator, or Whitelisted
-        is_admin_or_owner = False
-        if isinstance(author, discord.Member):
-            is_admin_or_owner = (
-                author.id == guild.owner_id or
-                author.guild_permissions.administrator or
-                author.guild_permissions.manage_guild or
-                author.guild_permissions.manage_messages
-            )
-        is_immune = is_admin_or_owner or self.is_whitelisted(guild, author)
+        # Check if author is Server Owner, Bot, or explicitly Whitelisted
+        is_owner_or_bot = (author.id == guild.owner_id or author.id == self.bot.user.id)
+        is_immune = is_owner_or_bot or self.is_whitelisted(guild, author)
 
         # 1. Detect Only: Anti Invite Link (Auto-Delete & Log)
         if cfg.get("detect", {}).get("invite_link", {}).get("enabled", True) and self.invite_regex.search(message.content):
             if not is_immune and not self.is_whitelisted(guild, author, feature="invite_link"):
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
+                deleted = await self.safe_delete_violating_message(message, violation_label="Invite Link")
                 try:
                     resp_tpl = db.custom_responses.get(gid, {}).get("security_invite_warn", "🔗 {member}, discord invite links are not allowed in this server.")
-                    warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
+                    warn_text = resp_tpl.replace("{member}", author.mention)
+                    if not deleted:
+                        warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                    warn_msg = await message.channel.send(warn_text)
                     await warn_msg.delete(delay=5)
                 except Exception:
                     pass
                 embed = discord.Embed(
-                    title="🔗 Invite Link Removed",
+                    title="🔗 Invite Link Removed" if deleted else "🔗 Invite Link Detected (Deletion Blocked)",
                     description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
-                    color=discord.Color.orange(),
+                    color=discord.Color.orange() if deleted else discord.Color.red(),
                     timestamp=discord.utils.utcnow()
                 )
                 await self.log_security_event(guild, "audit-antispam", embed)
@@ -1009,20 +1111,20 @@ class Security(commands.Cog):
         if anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
             can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
             if not can_send_gif:
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
+                deleted = await self.safe_delete_violating_message(message, violation_label="GIF Content")
                 try:
                     resp_tpl = db.custom_responses.get(gid, {}).get("security_gif_warn", "🎞️ {member}, GIFs are not allowed in this server.")
-                    warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
+                    warn_text = resp_tpl.replace("{member}", author.mention)
+                    if not deleted:
+                        warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                    warn_msg = await message.channel.send(warn_text)
                     await warn_msg.delete(delay=5)
                 except Exception:
                     pass
                 embed = discord.Embed(
-                    title="🎞️ GIF Removed",
+                    title="🎞️ GIF Removed" if deleted else "🎞️ GIF Detected (Deletion Blocked)",
                     description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
-                    color=discord.Color.orange(),
+                    color=discord.Color.orange() if deleted else discord.Color.red(),
                     timestamp=discord.utils.utcnow()
                 )
                 await self.log_security_event(guild, "audit-antispam", embed)
@@ -1048,23 +1150,23 @@ class Security(commands.Cog):
                         if gif_links and not non_gif_links and allow_gifs and (has_embed_perm or is_gif_whitelisted):
                             pass  # Legitimate GIF with embed permission allowed!
                         else:
-                            try:
-                                await message.delete()
-                            except Exception:
-                                pass
+                            deleted = await self.safe_delete_violating_message(message, violation_label="External Link")
                             try:
                                 if not non_gif_links and gif_links and not has_embed_perm:
                                     resp_tpl = "🎞️ {member}, you need the **Embed Links** permission to send GIFs here."
                                 else:
                                     resp_tpl = db.custom_responses.get(gid, {}).get("security_link_warn", "🔗 {member}, external links are not allowed in this server.")
-                                warn_msg = await message.channel.send(resp_tpl.replace("{member}", author.mention))
+                                warn_text = resp_tpl.replace("{member}", author.mention)
+                                if not deleted:
+                                    warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                                warn_msg = await message.channel.send(warn_text)
                                 await warn_msg.delete(delay=5)
                             except Exception:
                                 pass
                             embed = discord.Embed(
-                                title="🔗 Link Removed" if non_gif_links else "🎞️ GIF Link Removed (No Embed Perm)",
+                                title=("🔗 Link Removed" if non_gif_links else "🎞️ GIF Link Removed (No Embed Perm)") if deleted else ("🔗 Link Detected (Deletion Blocked)" if non_gif_links else "🎞️ GIF Link Detected (Deletion Blocked)"),
                                 description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
-                                color=discord.Color.orange(),
+                                color=discord.Color.orange() if deleted else discord.Color.red(),
                                 timestamp=discord.utils.utcnow()
                             )
                             await self.log_security_event(guild, "audit-antispam", embed)
@@ -1144,6 +1246,13 @@ class Security(commands.Cog):
                     await self.execute_punishment(guild, author, action, "Anti-Spam: Repeated identical message flood.", log_channel="audit-antispam", timeout_mins=tm)
                     self.message_tracker[gid][uid] = []
                     return
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before, after):
+        if not after.guild or after.author.bot:
+            return
+        if before.content != after.content or len(before.attachments) != len(after.attachments) or len(before.embeds) != len(after.embeds):
+            await self.on_message(after)
 
     @commands.Cog.listener()
     async def on_message_delete(self, message):

@@ -38,8 +38,8 @@ HELP_MODULES = [
     {
         "id": "antinuke",
         "name": "Antinuke",
-        "emoji": "🛡",
-        "desc": "Get All Antinuke & Security Commands",
+        "emoji": "⛨",
+        "desc": "Fastest Antinuke & Core Server Protection",
         "sections": [
             ("Antinuke", ["antinuke_toggle", "antinuke_limit", "antinuke_refresh", "antinuke_sync", "antiraid", "antispam", "security_status"]),
             ("Whitelist", ["whitelist_add", "whitelist_remove"])
@@ -49,7 +49,7 @@ HELP_MODULES = [
         "id": "antiabuse",
         "name": "Anti-Abuse",
         "emoji": "⚔",
-        "desc": "Get All Anti-Abuse & Word Filter Commands",
+        "desc": "Word Filter & Message Abuse Protection",
         "sections": [
             ("Word Filters", ["anti_abuse", "anti_abuse_remove", "anti_abuse_list"]),
             ("Filter Immunity", ["anti_abuse_whitelist_add", "anti_abuse_whitelist_remove"])
@@ -58,8 +58,8 @@ HELP_MODULES = [
     {
         "id": "moderation",
         "name": "Moderation",
-        "emoji": "🔨",
-        "desc": "Get All Moderation Commands",
+        "emoji": "⚒",
+        "desc": "Member Moderation & Infraction System",
         "sections": [
             ("Member Moderation", ["ban", "unban", "timeout", "untimeout", "purge"]),
             ("Infractions", ["warn", "warnings", "clearwarns"])
@@ -68,8 +68,8 @@ HELP_MODULES = [
     {
         "id": "music",
         "name": "Music",
-        "emoji": "🎵",
-        "desc": "Get All Music & Audio Commands",
+        "emoji": "♫",
+        "desc": "High Quality Audio & Queue Controls",
         "sections": [
             ("Playback", ["play", "pause", "resume", "skip", "stop", "volume"]),
             ("Queue & Sound Effects", ["queue", "shuffle", "filter", "likes", "join", "leave", "soundtest"])
@@ -78,8 +78,8 @@ HELP_MODULES = [
     {
         "id": "tickets",
         "name": "Ticket",
-        "emoji": "🎫",
-        "desc": "Get All Ticket Commands",
+        "emoji": "⊞",
+        "desc": "Interactive Support Ticket System",
         "sections": [
             ("Interactive Panels", ["create_ticket_panel"])
         ]
@@ -87,8 +87,8 @@ HELP_MODULES = [
     {
         "id": "voice",
         "name": "Voice",
-        "emoji": "🔊",
-        "desc": "Get All Temporary Voice (Join-to-Create) Commands",
+        "emoji": "☊",
+        "desc": "Temporary Join-to-Create Voice Rooms",
         "sections": [
             ("Hub Setup", ["voice setup", "voice autohub", "voice status"]),
             ("Room Controls", ["voice lock", "voice unlock", "voice hide", "voice unhide", "voice limit", "voice name", "voice kick", "voice claim"])
@@ -97,8 +97,8 @@ HELP_MODULES = [
     {
         "id": "privacy",
         "name": "Privacy",
-        "emoji": "🔒",
-        "desc": "Get All Privacy & Channel Lockdown Commands",
+        "emoji": "⚿",
+        "desc": "Channel & Category Privacy Lockdowns",
         "sections": [
             ("Lockdown Actions", ["private", "unprivate", "force_private"]),
             ("Categories", ["private_category", "unprivate_category"]),
@@ -108,8 +108,8 @@ HELP_MODULES = [
     {
         "id": "reactionroles",
         "name": "ReactionRoles",
-        "emoji": "🔥",
-        "desc": "Get All Reaction Role Commands",
+        "emoji": "✦",
+        "desc": "Self-Assignable Role Panels",
         "sections": [
             ("Interactive Panels", ["reaction_panel"])
         ]
@@ -117,8 +117,8 @@ HELP_MODULES = [
     {
         "id": "leveling",
         "name": "Leveling",
-        "emoji": "🏆",
-        "desc": "Get All XP & Rank Commands",
+        "emoji": "▲",
+        "desc": "XP Progression, Ranks & Leaderboards",
         "sections": [
             ("Rank & Progression", ["rank", "leaderboard", "level_setup", "level_mode"])
         ]
@@ -126,8 +126,8 @@ HELP_MODULES = [
     {
         "id": "announcements",
         "name": "Announcements",
-        "emoji": "📢",
-        "desc": "Get All Announcement Broadcast Commands",
+        "emoji": "⚑",
+        "desc": "Scheduled & Category Broadcast Dispatcher",
         "sections": [
             ("Dispatcher", ["announcement_channel"]),
             ("Quick Broadcast", ["Apps -> Initiate Announcement"])
@@ -137,7 +137,7 @@ HELP_MODULES = [
         "id": "utility",
         "name": "Utility",
         "emoji": "⚙",
-        "desc": "Get All Utility & Expression Commands",
+        "desc": "Server Utility & Identity Tools",
         "sections": [
             ("System", ["ping", "serverinfo", "bot_status", "sync", "joke", "afk"]),
             ("Expressions & Media", ["avatar", "emoji_steal", "media"])
@@ -146,8 +146,8 @@ HELP_MODULES = [
     {
         "id": "welcomer",
         "name": "Welcomer",
-        "emoji": "🚪",
-        "desc": "Get All Welcomer Commands",
+        "emoji": "⎆",
+        "desc": "Automated Member Welcomes & Canvas Cards",
         "sections": [
             ("Member Welcomes", ["welcomer_setup", "welcome_test"])
         ]
@@ -162,7 +162,7 @@ class HelpSelect(discord.ui.Select):
             discord.SelectOption(
                 label="Home / Overview",
                 value="home",
-                emoji="🏠",
+                emoji="⌂",
                 description="Return to the main overview page",
                 default=(current_page == 0)
             )
@@ -212,33 +212,34 @@ class HelpView(discord.ui.View):
 
     def generate_embed(self) -> discord.Embed:
         if self.current_page == 0:
-            module_lines = "\n".join([f"  {m['emoji']} » **{m['name']}**" for m in HELP_MODULES])
+            module_lines = "\n".join([f" `{m['emoji']}`  **{m['name']}** — *{m['desc']}*" for m in HELP_MODULES])
             embed = discord.Embed(
-                title="Hey , I'm Friday™",
+                title="⌂  Friday™ Security & Management",
                 description=(
-                    "A powerful multipurpose bot with Fastest Antinuke & Community Security.\n\n"
-                    "• **My Prefix is** `/`\n"
-                    f"• **Total Commands:** `{TOTAL_COMMANDS}`\n"
-                    "• **Choose a Specific Module of your Desire**\n\n"
+                    "Next-generation Discord infrastructure with instant Anti-Nuke and automated community security.\n\n"
+                    "• **Prefix:** `/` (Slash Commands)\n"
+                    f"• **Commands Available:** `{TOTAL_COMMANDS}`\n"
+                    "• **Navigation:** Select a module from the menu below to view commands.\n\n"
+                    "**SYSTEM MODULES**\n"
                     f"{module_lines}"
                 ),
                 color=0x2b2d31
             )
-            embed.set_footer(text=f"Requested by {self.author.name} | Page 1 / {self.total_pages}")
+            embed.set_footer(text=f"Requested by {self.author.name} • Page 1 / {self.total_pages}")
         else:
             mod_idx = self.current_page - 1
             mod = HELP_MODULES[mod_idx]
             sections_text = []
             for sec_name, cmds in mod["sections"]:
-                cmd_tags = " , ".join([f"`{c}`" for c in cmds])
+                cmd_tags = " ".join([f"`/{c}`" for c in cmds])
                 sections_text.append(f"**{sec_name}**\n{cmd_tags}\n")
 
             embed = discord.Embed(
-                title=f"{mod['emoji']} {mod['name']}",
-                description="\n".join(sections_text).strip(),
+                title=f"{mod['emoji']}  {mod['name']} Module",
+                description=f"*{mod['desc']}*\n\n" + "\n".join(sections_text).strip(),
                 color=0x2b2d31
             )
-            embed.set_footer(text=f"Requested by {self.author.name} | Page {self.current_page + 1} / {self.total_pages}")
+            embed.set_footer(text=f"Requested by {self.author.name} • Page {self.current_page + 1} / {self.total_pages}")
 
         if self.bot.user and self.bot.user.display_avatar:
             embed.set_thumbnail(url=self.bot.user.display_avatar.url)
@@ -288,7 +289,7 @@ class HelpView(discord.ui.View):
             self.current_page -= 1
         await self.update_view(interaction)
 
-    @discord.ui.button(emoji="🗑", style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(emoji="✕", style=discord.ButtonStyle.danger, row=1)
     async def close_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             await interaction.message.delete()
