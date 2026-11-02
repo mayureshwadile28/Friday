@@ -170,12 +170,13 @@ class Security(commands.Cog):
         return False
 
     def member_has_embed_permission(self, member, channel) -> bool:
-        """Check if a member has permission to embed links or attach files (server-wide or channel override)."""
+        """Check if a member explicitly has embed_links or attach_files via role.
+        NOTE: Administrator does NOT count here — admins are still subject to anti-gif/anti-link rules
+        unless they are explicitly whitelisted. manage_guild / manage_messages also do NOT exempt."""
         if not isinstance(member, discord.Member):
             return False
         gp = member.guild_permissions
-        if gp.administrator or gp.manage_guild or gp.manage_messages:
-            return True
+        # Only explicit embed/attach bits grant bypass — NOT administrator or manage_guild.
         if gp.embed_links or gp.attach_files:
             return True
         if hasattr(channel, "permissions_for"):
@@ -1088,8 +1089,12 @@ class Security(commands.Cog):
                 return
 
         # 2. Detect Only: Anti GIF (Auto-Delete & Log)
+        # Note: has_gif_content checks attachments, URL text, AND embeds (e.g. Tenor GIFs from Discord picker).
+        # anti_gif_cfg.enabled must be True (default is False — admin must enable it in dashboard).
         anti_gif_cfg = cfg.get("detect", {}).get("anti_gif", {})
         if anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
+            # ONLY Server Owner and explicitly whitelisted users bypass anti-gif.
+            # Administrators, staff roles, etc. do NOT get automatic immunity.
             can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
             if not can_send_gif:
                 deleted = await self.safe_delete_violating_message(message, violation_label="GIF Content")
@@ -1097,7 +1102,7 @@ class Security(commands.Cog):
                     resp_tpl = db.custom_responses.get(gid, {}).get("security_gif_warn", "🎞️ {member}, GIFs are not allowed in this server.")
                     warn_text = resp_tpl.replace("{member}", author.mention)
                     if not deleted:
-                        warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                        warn_text += " *(⚠️ Warning: Discord API rejected the deletion — check bot permissions)*"
                     warn_msg = await message.channel.send(warn_text)
                     await warn_msg.delete(delay=5)
                 except Exception:
@@ -1122,30 +1127,33 @@ class Security(commands.Cog):
                     if not can_send_all_links:
                         gif_links = [l for l in non_invite_links if self.is_gif_url(l)]
                         non_gif_links = [l for l in non_invite_links if not self.is_gif_url(l)]
-                        
+
                         allow_gifs = anti_link_cfg.get("allow_gifs", True)
+                        # member_has_embed_permission now only checks explicit embed_links/attach_files bits.
+                        # Administrator privilege does NOT count as embed permission here.
                         has_embed_perm = self.member_has_embed_permission(author, message.channel)
                         is_gif_whitelisted = self.is_whitelisted(guild, author, feature="anti_gif")
-                        
-                        # If all links are GIFs, GIFs are allowed, and member has embed permission or is GIF-whitelisted:
+
+                        # Allow GIF links only when: anti_link allows GIFs AND member explicitly has
+                        # embed_links bit OR is specifically GIF-whitelisted. Admins are NOT exempt.
                         if gif_links and not non_gif_links and allow_gifs and (has_embed_perm or is_gif_whitelisted):
-                            pass  # Legitimate GIF with embed permission allowed!
+                            pass  # Member has explicit embed permission, allow their GIF
                         else:
                             deleted = await self.safe_delete_violating_message(message, violation_label="External Link")
                             try:
-                                if not non_gif_links and gif_links and not has_embed_perm:
-                                    resp_tpl = "🎞️ {member}, you need the **Embed Links** permission to send GIFs here."
+                                if not non_gif_links and gif_links:
+                                    resp_tpl = "🎞️ {member}, GIFs and external media links are not allowed in this server."
                                 else:
                                     resp_tpl = db.custom_responses.get(gid, {}).get("security_link_warn", "🔗 {member}, external links are not allowed in this server.")
                                 warn_text = resp_tpl.replace("{member}", author.mention)
                                 if not deleted:
-                                    warn_text += " *(⚠️ Warning: Could not delete message due to channel permissions)*"
+                                    warn_text += " *(⚠️ Warning: Discord API rejected the deletion — check bot permissions)*"
                                 warn_msg = await message.channel.send(warn_text)
                                 await warn_msg.delete(delay=5)
                             except Exception:
                                 pass
                             embed = discord.Embed(
-                                title=("🔗 Link Removed" if non_gif_links else "🎞️ GIF Link Removed (No Embed Perm)") if deleted else ("🔗 Link Detected (Deletion Blocked)" if non_gif_links else "🎞️ GIF Link Detected (Deletion Blocked)"),
+                                title=("🔗 Link Removed" if non_gif_links else "🎞️ GIF Link Removed") if deleted else ("🔗 Link Detected (Deletion Blocked)" if non_gif_links else "🎞️ GIF Link Detected (Deletion Blocked)"),
                                 description=f"**User:** {author.mention}\n**Channel:** {message.channel.mention}\n**Content:** `{message.content[:200]}`",
                                 color=discord.Color.orange() if deleted else discord.Color.red(),
                                 timestamp=discord.utils.utcnow()
@@ -1230,9 +1238,16 @@ class Security(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message_edit(self, before, after):
+        """Re-run security checks when a message is edited OR when Discord appends embed metadata.
+        Discord GIF picker GIFs (from Tenor/Giphy) start with NO embeds and NO text URL.
+        Discord servers then update the message with embed data ~1s later, firing on_message_edit.
+        We must re-check on BOTH content changes AND embed count changes."""
         if not after.guild or after.author.bot:
             return
-        if before.content != after.content or len(before.attachments) != len(after.attachments) or len(before.embeds) != len(after.embeds):
+        content_changed = before.content != after.content
+        attachment_changed = len(before.attachments) != len(after.attachments)
+        embed_added = len(after.embeds) > len(before.embeds)  # Discord appended a GIF embed
+        if content_changed or attachment_changed or embed_added:
             await self.on_message(after)
 
     @commands.Cog.listener()
