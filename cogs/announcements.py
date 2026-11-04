@@ -504,6 +504,7 @@ class Announcements(commands.Cog):
         self.ctx_menu = app_commands.ContextMenu(
             name="Initiate Announcement",
             callback=self.initiate_announcement_context,
+            default_permissions=discord.Permissions(manage_messages=True)
         )
         self.bot.tree.add_command(self.ctx_menu)
 

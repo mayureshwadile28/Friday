@@ -1626,8 +1626,8 @@ def get_first_welcome(gid):
         "config": {
             "enabled": cfg.get("enabled", False),
             "channel_id": cfg.get("channel_id"),
-            "title": cfg.get("title", "WELCOME TO {server}"),
-            "message": cfg.get("message", "Welcome to **{server}**, {user}! We are thrilled to have you here. Feel free to introduce yourself and make yourself at home! 💫"),
+            "title": cfg.get("title", "WELCOME TO {server}!"),
+            "message": cfg.get("message", "Hey {user}, welcome to **{server}**! 🎉\n\n> We're thrilled to have you here with us.\n> Feel free to introduce yourself and say hello!\n\n📌 Review {rules} to get started and enjoy your stay."),
             "show_avatar": cfg.get("show_avatar", True),
             "status_color": cfg.get("status_color", "success"),
             "custom_hex": cfg.get("custom_hex", "#10b981")
@@ -1642,13 +1642,20 @@ def update_first_welcome(gid):
     if gid_str not in db.first_welcome or not isinstance(db.first_welcome[gid_str], dict):
         db.first_welcome[gid_str] = {}
 
-    db.first_welcome[gid_str]["enabled"] = bool(data.get("enabled", False))
-    db.first_welcome[gid_str]["channel_id"] = str(data.get("channel_id")).strip() if data.get("channel_id") else None
-    db.first_welcome[gid_str]["title"] = str(data.get("title", "WELCOME TO {server}")).strip()
-    db.first_welcome[gid_str]["message"] = str(data.get("message", "Welcome to **{server}**, {user}! Glad to have you here!")).strip()
-    db.first_welcome[gid_str]["show_avatar"] = bool(data.get("show_avatar", True))
-    db.first_welcome[gid_str]["status_color"] = str(data.get("status_color", "success"))
-    db.first_welcome[gid_str]["custom_hex"] = str(data.get("custom_hex", "#10b981"))
+    if "enabled" in data:
+        db.first_welcome[gid_str]["enabled"] = bool(data.get("enabled", False))
+    if "channel_id" in data:
+        db.first_welcome[gid_str]["channel_id"] = str(data.get("channel_id")).strip() if data.get("channel_id") else None
+    if "title" in data:
+        db.first_welcome[gid_str]["title"] = str(data.get("title", "WELCOME TO {server}!")).strip()
+    if "message" in data:
+        db.first_welcome[gid_str]["message"] = str(data.get("message", "Hey {user}, welcome to **{server}**! 🎉\n\n> We're thrilled to have you here with us.\n> Feel free to introduce yourself and say hello!\n\n📌 Review {rules} to get started and enjoy your stay.")).strip()
+    if "show_avatar" in data:
+        db.first_welcome[gid_str]["show_avatar"] = bool(data.get("show_avatar", True))
+    if "status_color" in data:
+        db.first_welcome[gid_str]["status_color"] = str(data.get("status_color", "success"))
+    if "custom_hex" in data:
+        db.first_welcome[gid_str]["custom_hex"] = str(data.get("custom_hex", "#10b981"))
 
     db.save_data()
     return jsonify({"success": True, "config": db.first_welcome[gid_str]})

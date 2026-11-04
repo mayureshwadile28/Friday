@@ -152,12 +152,13 @@ Managed by [`cogs/afk.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Disc
 ### 5. 👋 First Message Welcome Engine
 Managed by [`cogs/welcomer.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/welcomer.py), Friday greets new members on their **very first message** in the server.
 
-#### Core Behavior:
-- **First Message Detection:** Monitors incoming messages and greets members who joined the server within the last 7 days upon posting their first-ever chat message.
-- **Customizable Embed:** Displays a sleek box embed with the user's avatar thumbnail, personalized server title, and welcome text.
-- **Dynamic Template Variables:** Supports `{user}`, `{username}`, `{name}`, `{server}`, `{member_count}`, and `{channel}`.
-- **Theme Color Accents:** Selectable presets (`success`, `info`, `warning`, `danger`) or custom hex codes (e.g. `#10b981`).
-- **Dashboard Studio Integration:** Fully configurable via the Web Control Center with real-time card previews and live test dispatch.
+#### Core Behavior & Security Hardening:
+- **Multi-Signal Old Member Detection:** Analyzes member join date, message history, server roles, and XP levels. If an established member with >= 2 prior channel messages, custom roles, or existing leveling activity speaks, they are silently indexed without being greeted. Only genuine newcomers receive the welcome card.
+- **Squeezed Vertical Card Layout:** Squeezes the card into a proportioned, compact vertical embed with author header, member avatar thumbnail on the right, and structured blockquotes that prevent horizontal stretching.
+- **Clean Clickable Channel Links (No Pill Box):** Replaces `{rules}` and `{channel}` with Discord markdown links `[#rules](https://discord.com/channels/...)` that render as sleek, bright-blue clickable text without Discord's default hashtag pill/box. Also supports dynamic channel lookup `{link:#channel_name}`.
+- **Dynamic Template Variables:** Supports `{user}`, `{username}`, `{name}`, `{server}`, `{member_count}`, `{rules}`, `{rules_link}`, `{channel}`, `{channel_link}`, and `{link:channel}`.
+- **Administrator Permission Enforcement:** The `/first_welcome` command group, standalone shortcuts, and dashboard settings are strictly restricted to server Administrators via `@app_commands.default_permissions(administrator=True)` and runtime permission validation.
+- **Dashboard Studio Integration:** Fully configurable via the Web Control Center with real-time card previews, clickable channel links, and live test dispatch.
 
 | Command | Syntax & Options | Description | Permission Required |
 |---|---|---|---|

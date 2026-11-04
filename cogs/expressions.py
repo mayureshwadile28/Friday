@@ -164,7 +164,7 @@ class Expressions(commands.Cog):
             await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ───────────────────── Autoreact Slash Commands Group ─────────────────────
-    autoreact = app_commands.Group(name="autoreact", description="Manage emoji reactions when specific members are mentioned")
+    autoreact = app_commands.Group(name="autoreact", description="Manage emoji reactions when specific members are mentioned", default_permissions=discord.Permissions(manage_guild=True))
 
     @autoreact.command(name="add", description="Set Friday to auto-react with an emoji when a member is tagged.")
     @app_commands.describe(member="The member to trigger reaction on mention", emoji="The emoji or custom emoji to react with")
@@ -252,7 +252,7 @@ class Expressions(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     # ───────────────────── Autoresponder Slash Commands Group ─────────────────────
-    autoresponder = app_commands.Group(name="autoresponder", description="Manage automated replies and reactions on mentions or keywords")
+    autoresponder = app_commands.Group(name="autoresponder", description="Manage automated replies and reactions on mentions or keywords", default_permissions=discord.Permissions(manage_guild=True))
 
     @autoresponder.command(name="add", description="Set Friday to auto-reply and/or react on member mention or standalone keyword.")
     @app_commands.describe(

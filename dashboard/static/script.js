@@ -2232,6 +2232,9 @@ function renderDiscordMarkdown(rawText) {
         // Spoiler: ||text||
         processed = processed.replace(/\|\|(.*?)\|\|/g, '<span class="discord-spoiler" onclick="this.classList.toggle(\'revealed\')">$1</span>');
 
+        // Markdown Hyperlinks: [label](url) -> bright-blue clickable text without hashtag box
+        processed = processed.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:underline font-medium">$1</a>');
+
         // 6. Block-Level Line Rendering (Strictly line-by-line)
         const quoteMatch = line.match(/^\s*(?:&gt;|>)+\s*(.*)$/);
         const h3Match = line.match(/^\s*(?:([•\-\*]|\S+)\s+)?###\s+(.*)$/);
@@ -5500,13 +5503,19 @@ function updateFirstWelcomePreview() {
     }
 
     if (simMsg && msgInput) {
-        let m = msgInput.value || "Welcome to **{server}**, {user}!";
+        let m = msgInput.value || "Hey {user}, welcome to **{server}**! 🎉\n\n> We're thrilled to have you here with us.\n> Feel free to introduce yourself and say hello!\n\n📌 Review {rules} to get started and enjoy your stay.";
+        const dummyGid = currentGuildId || "123456789";
         m = m.replace(/{server}/g, guildName)
              .replace(/{username}/g, "Alex")
              .replace(/{user}/g, "@Alex")
              .replace(/{name}/g, "Alex")
              .replace(/{member_count}/g, "1,420")
-             .replace(/{channel}/g, "#general");
+             .replace(/{rules}/g, `[#rules](https://discord.com/channels/${dummyGid}/rules)`)
+             .replace(/{rules_link}/g, `[#rules](https://discord.com/channels/${dummyGid}/rules)`)
+             .replace(/{rules_box}/g, `<span class="discord-mention">#rules</span>`)
+             .replace(/{channel}/g, `[#general](https://discord.com/channels/${dummyGid}/general)`)
+             .replace(/{channel_link}/g, `[#general](https://discord.com/channels/${dummyGid}/general)`)
+             .replace(/{channel_box}/g, `<span class="discord-mention">#general</span>`);
         simMsg.innerHTML = renderDiscordMarkdown(m);
     }
 

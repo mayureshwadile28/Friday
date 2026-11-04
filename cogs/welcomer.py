@@ -1,3 +1,4 @@
+import re
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -5,8 +6,13 @@ from datetime import datetime, timezone
 from database import db
 from response_utils import make_box_embed, reply_box
 
-DEFAULT_WELCOME_TITLE = "WELCOME TO {server}"
-DEFAULT_WELCOME_MSG = "Welcome to **{server}**, {user}! We are thrilled to have you here. Feel free to introduce yourself and make yourself at home! 💫"
+DEFAULT_WELCOME_TITLE = "WELCOME TO {server}!"
+DEFAULT_WELCOME_MSG = (
+    "Hey {user}, welcome to **{server}**! 🎉\n\n"
+    "> We're thrilled to have you here with us.\n"
+    "> Feel free to introduce yourself and say hello!\n\n"
+    "📌 Review {rules} to get started and enjoy your stay."
+)
 DEFAULT_WELCOME_COLOR = "success"
 
 def get_welcome_config(gid: str) -> dict:
@@ -21,67 +27,190 @@ def get_welcome_config(gid: str) -> dict:
         "message": cfg.get("message", DEFAULT_WELCOME_MSG),
         "show_avatar": cfg.get("show_avatar", True),
         "status_color": cfg.get("status_color", DEFAULT_WELCOME_COLOR),
-        "custom_hex": cfg.get("custom_hex", None)
+        "custom_hex": cfg.get("custom_hex", "#10b981")
     }
 
+def get_channel_markdown_link(channel: discord.abc.GuildChannel) -> str:
+    """Returns a clean bright-blue clickable Discord markdown link without the hashtag pill box."""
+    if not channel or not getattr(channel, "guild", None):
+        return "#chat"
+    return f"[#{channel.name}](https://discord.com/channels/{channel.guild.id}/{channel.id})"
+
+def get_rules_channel(guild: discord.Guild) -> discord.TextChannel:
+    """Finds the server's rules channel (guild.rules_channel or searches candidate names)."""
+    if not guild:
+        return None
+    if getattr(guild, "rules_channel", None):
+        return guild.rules_channel
+    candidate_names = ["rules", "rule", "server-rules", "guidelines", "server_rules", "welcome-and-rules"]
+    for name in candidate_names:
+        ch = discord.utils.get(guild.text_channels, name=name)
+        if ch:
+            return ch
+    return None
+
 def format_welcome_text(text: str, member: discord.Member, guild: discord.Guild, channel: discord.abc.GuildChannel = None) -> str:
-    """Replaces placeholders with real member/server data."""
+    """Replaces placeholders with real member/server data and clean bright-blue channel links."""
     if not text:
         return ""
-    channel_mention = channel.mention if channel else "#chat"
-    return (
-        text.replace("{user}", member.mention)
-            .replace("{username}", member.display_name)
-            .replace("{name}", member.name)
-            .replace("{server}", guild.name)
-            .replace("{member_count}", str(guild.member_count))
-            .replace("{channel}", channel_mention)
+
+    rules_ch = get_rules_channel(guild)
+    rules_link = get_channel_markdown_link(rules_ch) if rules_ch else (get_channel_markdown_link(channel) if channel else "#rules")
+    channel_link = get_channel_markdown_link(channel) if channel else "#chat"
+
+    # Dynamic channel pattern: {link:channel-name} or {link:#channel-name}
+    def replace_channel_pattern(m):
+        target_name = m.group(1).lstrip("#").strip().lower()
+        found_ch = discord.utils.get(guild.text_channels, name=target_name)
+        if found_ch:
+            return get_channel_markdown_link(found_ch)
+        return f"#{target_name}"
+
+    res = re.sub(r'\{link:([^\}]+)\}', replace_channel_pattern, text, flags=re.IGNORECASE)
+
+    # Replace standard placeholders
+    res = (
+        res.replace("{user}", member.mention)
+           .replace("{username}", member.display_name)
+           .replace("{name}", member.name)
+           .replace("{server}", guild.name)
+           .replace("{member_count}", f"{guild.member_count:,}")
+           .replace("{rules}", rules_link)
+           .replace("{rules_link}", rules_link)
+           .replace("{rules_box}", rules_ch.mention if rules_ch else "#rules")
+           .replace("{channel}", channel_link)
+           .replace("{channel_link}", channel_link)
+           .replace("{channel_box}", channel.mention if channel else "#chat")
     )
+    return res
 
 def build_welcome_embed(member: discord.Member, guild: discord.Guild, cfg: dict, channel: discord.abc.GuildChannel = None) -> discord.Embed:
-    """Builds a polished welcome box embed with member avatar thumbnail."""
+    """Builds a polished, vertically proportioned welcome box embed with member avatar thumbnail."""
     title_raw = cfg.get("title", DEFAULT_WELCOME_TITLE)
     msg_raw = cfg.get("message", DEFAULT_WELCOME_MSG)
-    status = cfg.get("status_color", DEFAULT_WELCOME_COLOR)
     show_avatar = cfg.get("show_avatar", True)
+    custom_hex = cfg.get("custom_hex", "#10b981")
 
     formatted_title = format_welcome_text(title_raw, member, guild, channel)
     formatted_msg = format_welcome_text(msg_raw, member, guild, channel)
 
-    embed = make_box_embed(
-        title=formatted_title,
-        description=formatted_msg,
-        status=status,
-        footer=f"Member #{guild.member_count} • Welcome to our community"
-    )
-
-    custom_hex = cfg.get("custom_hex")
+    color_val = 0x10b981
     if custom_hex and str(custom_hex).startswith("#") and len(custom_hex) == 7:
         try:
-            embed.color = discord.Color(int(custom_hex[1:], 16))
+            color_val = int(custom_hex[1:], 16)
         except Exception:
-            pass
+            color_val = 0x10b981
 
+    embed = discord.Embed(
+        title=formatted_title,
+        description=formatted_msg,
+        color=color_val,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+    if member.display_avatar:
+        embed.set_author(name=f"{member.display_name} joined!", icon_url=member.display_avatar.url)
+    else:
+        embed.set_author(name=f"{member.display_name} joined!")
+
+    # Member avatar thumbnail on the right squeezes description horizontally into a clean box
     if show_avatar and member.display_avatar:
         embed.set_thumbnail(url=member.display_avatar.url)
 
+    footer_text = f"Member #{guild.member_count:,} • {guild.name}"
+    if guild.icon:
+        embed.set_footer(text=footer_text, icon_url=guild.icon.url)
+    else:
+        embed.set_footer(text=footer_text)
+
     return embed
+
+async def is_established_member(member: discord.Member, message: discord.Message) -> bool:
+    """
+    Determines whether a member is an established / old member who should NOT be greeted.
+    If an old member is detected, silently marks them in first_chat_welcomes history to prevent future checks.
+    """
+    if member.bot or not message.guild:
+        return True
+
+    gid = str(message.guild.id)
+    uid = str(member.id)
+    guild_history = db.first_chat_welcomes.setdefault(gid, [])
+
+    # 1. Already processed in welcome history
+    if uid in guild_history:
+        return True
+
+    # 2. Activity / XP check in leveling database
+    user_xp_data = db.xp_data.get(gid, {}).get(uid, {})
+    if user_xp_data.get("xp", 0) > 15 or user_xp_data.get("level", 0) > 0:
+        guild_history.append(uid)
+        db.save_data()
+        return True
+
+    # 3. Server tenure check: joined over 7 days ago
+    if member.joined_at:
+        days_in_guild = (datetime.now(timezone.utc) - member.joined_at).total_seconds() / 86400.0
+        if days_in_guild > 7:
+            guild_history.append(uid)
+            db.save_data()
+            return True
+
+    # 4. Roles check: has 2+ custom non-default roles, or staff/moderator permissions
+    custom_roles = [
+        r for r in member.roles
+        if hasattr(r, 'is_default') and not r.is_default() and not (hasattr(r, 'is_premium_subscriber') and r.is_premium_subscriber()) and not (hasattr(r, 'is_integration') and r.is_integration()) and not (hasattr(r, 'is_bot_managed') and r.is_bot_managed())
+    ]
+    has_staff_perms = False
+    for r in member.roles:
+        perms = getattr(r, 'permissions', None)
+        if perms and isinstance(perms, discord.Permissions):
+            if perms.administrator or perms.manage_messages or perms.kick_members or perms.ban_members:
+                has_staff_perms = True
+                break
+    if len(custom_roles) >= 2 or has_staff_perms:
+        guild_history.append(uid)
+        db.save_data()
+        return True
+
+    # 5. Channel message history check: has already sent 2 or more messages in this channel
+    prior_msgs = 0
+    try:
+        async for past_msg in message.channel.history(limit=35, before=message):
+            if past_msg.author.id == member.id:
+                prior_msgs += 1
+                if prior_msgs >= 2:
+                    break
+    except Exception:
+        pass
+
+    if prior_msgs >= 2:
+        guild_history.append(uid)
+        db.save_data()
+        return True
+
+    # Genuine new member sending their first message!
+    return False
 
 class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
     """Greets new members on their very first message in the server or general chat."""
     def __init__(self, bot):
         self.bot = bot
 
-    # Slash Command Group: /first_welcome
+    # Slash Command Group: /first_welcome strictly protected with Administrator permissions
     first_welcome_group = app_commands.Group(
         name="first_welcome",
-        description="Configure first message welcome greetings for new members"
+        description="Configure first message welcome greetings for new members",
+        default_permissions=discord.Permissions(administrator=True)
     )
 
     @first_welcome_group.command(name="set", description="Set welcome channel. Leave empty to use THIS current channel!")
     @app_commands.describe(channel="Channel to use (Leave empty to automatically use THIS channel where you run the command!)")
-    @commands.has_permissions(administrator=True)
     async def set_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
         target_channel = channel or interaction.channel
         gid = str(interaction.guild.id)
         if gid not in db.first_welcome:
@@ -95,15 +224,18 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
             interaction,
             f"• **Welcome Channel Set:** {target_channel.mention}\n"
             f"• **Status:** Active\n"
-            f"• Friday will now greet new members with their avatar on their very first message here in {target_channel.mention}!",
+            f"• Friday will now greet new members with their avatar on their very first message in {target_channel.mention}!",
             title="FIRST WELCOME ACTIVATED",
             status="success",
             ephemeral=True
         )
 
     @first_welcome_group.command(name="disable", description="Disable first-chat welcome greetings.")
-    @commands.has_permissions(administrator=True)
     async def disable(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
         gid = str(interaction.guild.id)
         if gid in db.first_welcome:
             db.first_welcome[gid]["enabled"] = False
@@ -119,6 +251,10 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
 
     @first_welcome_group.command(name="status", description="View current first-welcome configuration.")
     async def status(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
         gid = str(interaction.guild.id)
         cfg = get_welcome_config(gid)
 
@@ -143,21 +279,27 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @first_welcome_group.command(name="test", description="Send a test welcome card to preview the layout.")
-    @commands.has_permissions(administrator=True)
     async def test(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
         gid = str(interaction.guild.id)
         cfg = get_welcome_config(gid)
         embed = build_welcome_embed(interaction.user, interaction.guild, cfg, interaction.channel)
         await interaction.response.send_message(
-            content="🔍 **Test Preview of First Chat Welcome Card:**",
+            content="🔍 **Test Preview of Squeezed First Chat Welcome Card:**",
             embed=embed,
             ephemeral=True
         )
 
     @first_welcome_group.command(name="message", description="Update the welcome message format.")
-    @app_commands.describe(template="New template (use {user}, {username}, {server}, {member_count}, {channel})")
-    @commands.has_permissions(administrator=True)
+    @app_commands.describe(template="New template (use {user}, {username}, {server}, {member_count}, {rules}, {channel})")
     async def set_message(self, interaction: discord.Interaction, template: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
         gid = str(interaction.guild.id)
         if gid not in db.first_welcome:
             db.first_welcome[gid] = {}
@@ -176,8 +318,11 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
 
     @first_welcome_group.command(name="reset", description="Reset first-welcome history for a member or all members to re-test greetings.")
     @app_commands.describe(member="Member to reset (leave empty to reset all members in this server)")
-    @commands.has_permissions(administrator=True)
     async def reset_history(self, interaction: discord.Interaction, member: discord.Member = None):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
         gid = str(interaction.guild.id)
         if member:
             uid = str(member.id)
@@ -215,13 +360,16 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
     @app_commands.choices(mode=[
         app_commands.Choice(name="First Message Greeting (Default)", value="first"),
     ])
-    @commands.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
     async def set_welcomer_command(
         self,
         interaction: discord.Interaction,
         mode: str = "first",
         channel: discord.TextChannel = None
     ):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
         await self.set_channel.callback(self, interaction, channel=channel)
 
     @app_commands.command(
@@ -229,12 +377,15 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         description="Quick shortcut to set first welcome channel (Leave empty for THIS channel)."
     )
     @app_commands.describe(channel="Channel to use (Leave empty to use THIS channel automatically!)")
-    @commands.has_permissions(administrator=True)
+    @app_commands.default_permissions(administrator=True)
     async def set_first_welcome_standalone(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel = None
     ):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
         await self.set_channel.callback(self, interaction, channel=channel)
 
     @commands.Cog.listener()
@@ -245,22 +396,21 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         gid = str(message.guild.id)
         uid = str(message.author.id)
 
-        # Check if first-welcome is configured and enabled
+        # 1. Check if first-welcome is configured and enabled
         cfg = get_welcome_config(gid)
         if not cfg.get("enabled"):
             return
 
-        guild_history = db.first_chat_welcomes.setdefault(gid, [])
-
-        # Check if user has already received their first chat welcome
-        if uid in guild_history:
+        # 2. Check if member is an old/established member
+        if await is_established_member(message.author, message):
             return
 
-        # Mark user as having spoken their first message
+        # 3. Mark user as greeted in database
+        guild_history = db.first_chat_welcomes.setdefault(gid, [])
         guild_history.append(uid)
         db.save_data()
 
-        # 3. Determine destination channel
+        # 4. Determine destination channel
         target_channel_id = cfg.get("channel_id")
         destination_channel = None
         if target_channel_id:
@@ -298,7 +448,6 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
                 return
             except Exception as dest_err:
                 print(f"[FirstWelcome] Failed sending to dedicated channel {destination_channel.id}: {dest_err}")
-                # Fallback to replying in the current channel where they actually typed
                 try:
                     await message.reply(embed=embed, mention_author=True)
                 except Exception:
