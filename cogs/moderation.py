@@ -382,52 +382,111 @@ class Moderation(commands.Cog):
         if message.author.bot or not message.guild:
             return
 
-        # Trigger 1: Nickname Change via Mention: @Friday @User New Nickname
+        # Trigger 1: Nickname Change via Mention: @Friday nick @User [New Nickname] OR @Friday @User [New Nickname]
         bot_mention_str1 = f"<@{self.bot.user.id}>"
         bot_mention_str2 = f"<@!{self.bot.user.id}>"
-        
-        content = message.content.strip()
-        if content.startswith(bot_mention_str1) or content.startswith(bot_mention_str2):
-            parts = content.split()
+
+        raw_content = message.content.strip()
+        if raw_content.startswith(bot_mention_str1) or raw_content.startswith(bot_mention_str2):
+            import re
+            parts = raw_content.split()
             if len(parts) >= 2:
-                import re
-                target_match = re.match(r'^<@!?(\d+)>$', parts[1])
-                if target_match:
-                    target_id = int(target_match.group(1))
-                    target_member = message.guild.get_member(target_id)
-                    
-                    if target_member:
-                        # Validate permissions
-                        perms = message.author.guild_permissions
-                        gid = str(message.guild.id)
-                        if not (perms.administrator or perms.manage_nicknames):
+                # Detect explicit nickname commands or mention syntax
+                is_explicit_cmd = False
+                target_member = None
+                new_nickname = None
+
+                # Format A: @Friday nick/setnick/nickname @User [New Nickname]
+                if parts[1].lower() in ("nick", "setnick", "nickname", "resetnick") and len(parts) >= 3:
+                    is_explicit_cmd = True
+                    target_match = re.match(r'^<@!?(\d+)>$', parts[2])
+                    if target_match:
+                        target_member = message.guild.get_member(int(target_match.group(1)))
+                        if parts[1].lower() != "resetnick" and len(parts) > 3:
+                            new_nickname = " ".join(parts[3:])
+
+                # Format B: @Friday @User [New Nickname]
+                else:
+                    target_match = re.match(r'^<@!?(\d+)>$', parts[1])
+                    if target_match:
+                        potential_target = message.guild.get_member(int(target_match.group(1)))
+                        if potential_target:
+                            remainder = " ".join(parts[2:]).strip()
+                            # Check conversational indicators: question marks, common question/chat words, or long sentences
+                            conversational_keywords = re.compile(
+                                r'(?:who|what|why|where|when|how|is|are|tell|help|kya|kaun|kaise|kaisi|batao|kyun|kaisa|hi|hello|hey|listen|sun|suno)|\?',
+                                re.IGNORECASE
+                            )
+                            # If it looks conversational or has question marks, ignore in moderation cog and let AI handle it!
+                            if not conversational_keywords.search(remainder) and len(remainder) <= 32 and len(parts[2:]) <= 3:
+                                target_member = potential_target
+                                new_nickname = remainder if remainder else None
+                                is_explicit_cmd = len(parts) == 2 or bool(remainder)
+
+                if target_member:
+                    perms = message.author.guild_permissions
+                    gid = str(message.guild.id)
+
+                    # 1. Author Permission Check
+                    if not (perms.administrator or perms.manage_nicknames):
+                        # If user typed an explicit nickname command without permission, reject cleanly
+                        if is_explicit_cmd and (parts[1].lower() in ("nick", "setnick", "nickname", "resetnick") or len(parts) == 2):
                             err_tpl = db.custom_responses.get(gid, {}).get("nick_perm_err", "Only staff with Manage Nicknames or Administrator permissions can change nicknames.")
                             embed = make_box_embed(title="ACCESS DENIED", description=err_tpl, status="danger")
                             await message.reply(embed=embed, mention_author=False)
                             return
-                            
-                        # If a new nickname is provided, use it. Otherwise, if empty, reset the nickname.
-                        new_nickname = " ".join(parts[2:]) if len(parts) > 2 else None
-                        
-                        try:
-                            await target_member.edit(nick=new_nickname)
-                            if new_nickname:
-                                resp_tpl = db.custom_responses.get(gid, {}).get("nick_success", "Nickname of {member} changed to **{nick}**.")
-                                desc = resp_tpl.replace("{member}", target_member.mention).replace("{nick}", new_nickname)
-                                embed = make_box_embed(title="NICKNAME UPDATED", description=desc, status="success")
-                                await message.reply(embed=embed, mention_author=False)
-                            else:
-                                resp_tpl = db.custom_responses.get(gid, {}).get("nick_reset", "Nickname of {member} has been successfully reset.")
-                                desc = resp_tpl.replace("{member}", target_member.mention)
-                                embed = make_box_embed(title="NICKNAME RESET", description=desc, status="success")
-                                await message.reply(embed=embed, mention_author=False)
-                        except discord.Forbidden:
-                            err_tpl = db.custom_responses.get(gid, {}).get("nick_bot_err", "Friday does not have permission or role hierarchy to modify this user's nickname.")
-                            embed = make_box_embed(title="PERMISSION FAULT", description=err_tpl, status="danger")
+                        # Otherwise, let Friday AI conversationally answer the comment/question!
+                        return
+
+                    # 2. Server Owner Protection Check
+                    if target_member.id == message.guild.owner_id and message.author.id != message.guild.owner_id:
+                        embed = make_box_embed(
+                            title="HIERARCHY RESTRICTION",
+                            description="You cannot change the nickname of the Server Owner.",
+                            status="danger"
+                        )
+                        await message.reply(embed=embed, mention_author=False)
+                        return
+
+                    # 3. Author Role Hierarchy Check
+                    if target_member.top_role >= message.author.top_role and message.author.id != message.guild.owner_id:
+                        embed = make_box_embed(
+                            title="HIERARCHY RESTRICTION",
+                            description=f"You cannot modify {target_member.mention}'s nickname because their role is higher than or equal to yours.",
+                            status="danger"
+                        )
+                        await message.reply(embed=embed, mention_author=False)
+                        return
+
+                    # 4. Friday Bot Role Hierarchy Check
+                    if target_member.top_role >= message.guild.me.top_role or target_member.id == message.guild.owner_id:
+                        err_tpl = db.custom_responses.get(gid, {}).get("nick_bot_err", "Friday does not have permission or role hierarchy to modify this user's nickname.")
+                        embed = make_box_embed(title="PERMISSION FAULT", description=err_tpl, status="danger")
+                        await message.reply(embed=embed, mention_author=False)
+                        return
+
+                    # 5. Execute Nickname Update
+                    try:
+                        await target_member.edit(nick=new_nickname, reason=f"Nickname update commanded by {message.author.name} ({message.author.id})")
+                        if new_nickname:
+                            resp_tpl = db.custom_responses.get(gid, {}).get("nick_success", "Nickname of {member} changed to **{nick}**.")
+                            desc = resp_tpl.replace("{member}", target_member.mention).replace("{nick}", new_nickname)
+                            embed = make_box_embed(title="NICKNAME UPDATED", description=desc, status="success")
                             await message.reply(embed=embed, mention_author=False)
-                        except Exception as e:
-                            embed = make_box_embed(title="EXECUTION ERROR", description=f"Error changing nickname: {e}", status="danger")
+                        else:
+                            resp_tpl = db.custom_responses.get(gid, {}).get("nick_reset", "Nickname of {member} has been successfully reset.")
+                            desc = resp_tpl.replace("{member}", target_member.mention)
+                            embed = make_box_embed(title="NICKNAME RESET", description=desc, status="success")
                             await message.reply(embed=embed, mention_author=False)
+                        return
+                    except discord.Forbidden:
+                        err_tpl = db.custom_responses.get(gid, {}).get("nick_bot_err", "Friday does not have permission or role hierarchy to modify this user's nickname.")
+                        embed = make_box_embed(title="PERMISSION FAULT", description=err_tpl, status="danger")
+                        await message.reply(embed=embed, mention_author=False)
+                        return
+                    except Exception as e:
+                        embed = make_box_embed(title="EXECUTION ERROR", description=f"Error changing nickname: {e}", status="danger")
+                        await message.reply(embed=embed, mention_author=False)
                         return
 
 async def setup(bot):

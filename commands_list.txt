@@ -10,7 +10,7 @@ Friday Bot - Complete Command List
 /timeout @member <minutes> [reason] - Mutes a member for a duration
 /untimeout @member [reason] - Removes an active timeout early
 /purge <amount> - Bulk-deletes messages in the current channel
-@Friday @member <new nickname> - Changes a user's nickname (requires Manage Nicknames perm)
+@Friday @member <new nickname> (or @Friday nick @member <new nickname>) - Changes a user's nickname (requires Manage Nicknames perm; strictly checks Discord role hierarchy, cannot rename server owner or equal/higher roles; conversational queries are automatically passed to AI without false errors)
 
 ⚙️ Security (Anti-Nuke, Anti-Raid & Command Center)
 /antinuke_toggle <ON/OFF> - Enables or disables the entire master anti-nuke engine
@@ -30,6 +30,13 @@ Friday Bot - Complete Command List
 /clearchat - Reset your recent multi-turn conversation memory with Friday in the current channel
 /mymemory <view/clear> - Inspect what friendly personal memories Friday remembers about you, or clear them
 /server_instruction <add/view/clear> [instruction] - Configure server-wide behavioral instructions for Friday (Admin & Owner only)
+/vip add @member - Invite a member as an exclusive VIP guest for private 1-on-1 DM chat with Friday (Bot Owner & Server Owner only)
+/vip remove @member - Revoke VIP DM chat access for a member (Bot Owner & Server Owner only)
+/vip list - View all currently authorized VIP guests and their onboarding status (Bot Owner & Server Owner only)
+/vip reset @member - Reset onboarding questionnaire and conversation notes for a VIP guest (Bot Owner & Server Owner only)
+  • VIP Multi-Step Onboarding: Friday asks structured introductory questions in DM ('What should I call you?', favorite hobbies/topics) instead of treating 'hi' as a name
+  • Resource & Storage Safe: Learns up to 8 short facts with LRU pruning (<= 75 chars per fact) to prevent VM storage bloat
+  • Groq Free Tier Rate Limiter: Protects API limits with Burst (5/min), Hourly (35/hr), and Daily (150/24h) in-character cooldown gates
 Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conversation with contextual memory, live Google news search, live date/time handling, safe mention sanitization, and ironclad Anti-Manipulation / Anti-Parrot / Hinglish Prompt Injection protection
 
 💤 Member AFK System
@@ -162,5 +169,6 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 - Announcements: Destination channel selector & save, title, audience notification ping (@everyone/@here/none), Discord markdown chips & server emojis, embed theme colors, thumbnail & footer controls, live simulator, one-click web broadcasting.
 - Ticket System: Interactive studio with live Discord simulator, panel channel and ticket category routing, support staff role, soft rounded secondary action buttons (border-radius: 8px), direct transcript destination text channel, optional transcript category, private ticket toggle, draft save button, one-click deploy.
 - Music Customizer: Full suite of customizable bot replies for VC events (join, leave, play, pause, queue, filter).
+- Live LLM Telemetry Monitor: Real-time dashboard monitor displaying active AI provider, remaining Groq free requests/tokens per minute, and session token usage (strictly numerical telemetry; zero private chat or message logs captured).
 - State Persistence: Complete multi-module synchronization ensuring no configurations or drafts are reset upon clicking "Sync State".
 

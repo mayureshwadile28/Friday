@@ -6345,6 +6345,15 @@ function setupSpecialInvitesEvents() {
         showToast("🔄 VIP Member Directory refreshed.");
     });
 
+    const refreshLlmBtn = document.getElementById('refreshLlmStatsBtn');
+    if (refreshLlmBtn) {
+        refreshLlmBtn.addEventListener('click', async () => {
+            showToast("⚡ Refreshing live LLM API telemetry...");
+            await loadLLMTelemetry();
+            showToast("✓ LLM telemetry updated!");
+        });
+    }
+
     const refreshTopBtn = document.getElementById('refreshVipListTopBtn');
     if (refreshTopBtn) refreshTopBtn.addEventListener('click', async () => {
         await loadSpecialInvitesData();
@@ -6544,6 +6553,52 @@ function setupMemberAutocomplete(prefix) {
     });
 }
 
+async function loadLLMTelemetry() {
+    try {
+        const resp = await fetch('/api/llm/telemetry?t=' + Date.now());
+        const data = await resp.json();
+        if (data.success && data.telemetry) {
+            const t = data.telemetry;
+            const rl = t.rate_limits || {};
+            const remReq = rl.remaining_requests !== undefined ? rl.remaining_requests : 30;
+            const limReq = rl.limit_requests || 30;
+            const remTok = rl.remaining_tokens !== undefined ? rl.remaining_tokens : 6000;
+            const limTok = rl.limit_tokens || 6000;
+
+            const elReq = document.getElementById('llmStatRemainingReq');
+            if (elReq) elReq.textContent = `${remReq} / ${limReq} RPM`;
+
+            const elTok = document.getElementById('llmStatRemainingTok');
+            if (elTok) elTok.textContent = `${Number(remTok).toLocaleString()} / ${Number(limTok).toLocaleString()} TPM avail`;
+
+            const elTotalTok = document.getElementById('llmStatTotalTokens');
+            if (elTotalTok) elTotalTok.textContent = `${Number(t.total_tokens || 0).toLocaleString()} Tokens`;
+
+            const elCost = document.getElementById('llmStatCost');
+            if (elCost) {
+                const cost = Number(t.estimated_cost_usd || 0);
+                elCost.textContent = cost > 0 ? `$${cost.toFixed(4)}` : "$0.00 (Free Tier)";
+            }
+
+            const elCalls = document.getElementById('llmTotalCalls');
+            if (elCalls) elCalls.textContent = t.total_requests || 0;
+
+            const elSuccess = document.getElementById('llmSuccessCalls');
+            if (elSuccess) elSuccess.textContent = t.successful_requests || 0;
+
+            const elRateHits = document.getElementById('llmRateLimitHits');
+            if (elRateHits) elRateHits.textContent = t.failed_requests || 0;
+
+            const elProvModel = document.getElementById('llmActiveProviderModel');
+            if (elProvModel) {
+                elProvModel.textContent = `Provider: ${t.active_provider || 'Groq'} • Model: ${t.last_model_used || 'llama-3.3-70b-versatile'}`;
+            }
+        }
+    } catch (e) {
+        console.error("Error loading LLM telemetry:", e);
+    }
+}
+
 async function loadSpecialInvitesData() {
     if (!currentGuildId) return;
     try {
@@ -6551,6 +6606,7 @@ async function loadSpecialInvitesData() {
         const data = await resp.json();
         currentSpecialInvites = data || [];
         renderSpecialInvites(currentSpecialInvites);
+        loadLLMTelemetry();
     } catch (err) {
         showToast("❌ Network error loading VIP invites list");
     }

@@ -2041,6 +2041,13 @@ def delete_guild_backup(gid):
         return jsonify({"success": True})
     return jsonify({"success": False, "error": f"Backup '{backup_id}' not found."})
 
+# ───────────────────── API: Live LLM Usage & Rate Limit Telemetry ─────────────────────
+
+@app.route('/api/llm/telemetry', methods=['GET'])
+def get_llm_telemetry():
+    from cogs.ai_chat import llm_telemetry
+    return jsonify({"success": True, "telemetry": llm_telemetry})
+
 # ───────────────────── API: Special VIP Invites & Direct DMs ─────────────────────
 
 @app.route('/api/guild/<gid>/special_invites', methods=['GET'])

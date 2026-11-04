@@ -348,11 +348,101 @@ def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str
         return []
 
 
+llm_telemetry = {
+    "total_requests": 0,
+    "successful_requests": 0,
+    "failed_requests": 0,
+    "total_prompt_tokens": 0,
+    "total_completion_tokens": 0,
+    "total_tokens": 0,
+    "active_provider": "Groq",
+    "last_model_used": "llama-3.3-70b-versatile",
+    "last_used_timestamp": 0,
+    "rate_limits": {
+        "limit_requests": 30,
+        "remaining_requests": 30,
+        "limit_tokens": 6000,
+        "remaining_tokens": 6000,
+        "reset_requests": "0s",
+        "reset_tokens": "0s"
+    }
+}
+
+MAX_VIP_MEMORIES = 8
+
+def record_llm_telemetry(provider: str, model: str, usage: dict = None, headers: dict = None, success: bool = True):
+    llm_telemetry["total_requests"] += 1
+    llm_telemetry["active_provider"] = provider
+    llm_telemetry["last_model_used"] = model
+    llm_telemetry["last_used_timestamp"] = time.time()
+    
+    if success:
+        llm_telemetry["successful_requests"] += 1
+    else:
+        llm_telemetry["failed_requests"] += 1
+
+    if usage:
+        p_tok = int(usage.get("prompt_tokens") or 0)
+        c_tok = int(usage.get("completion_tokens") or 0)
+        t_tok = int(usage.get("total_tokens") or (p_tok + c_tok))
+        llm_telemetry["total_prompt_tokens"] += p_tok
+        llm_telemetry["total_completion_tokens"] += c_tok
+        llm_telemetry["total_tokens"] += t_tok
+
+    if headers:
+        rem_req = headers.get("x-ratelimit-remaining-requests")
+        lim_req = headers.get("x-ratelimit-limit-requests")
+        rem_tok = headers.get("x-ratelimit-remaining-tokens")
+        lim_tok = headers.get("x-ratelimit-limit-tokens")
+        res_req = headers.get("x-ratelimit-reset-requests")
+        res_tok = headers.get("x-ratelimit-reset-tokens")
+        if rem_req:
+            try: llm_telemetry["rate_limits"]["remaining_requests"] = int(rem_req)
+            except Exception: pass
+        if lim_req:
+            try: llm_telemetry["rate_limits"]["limit_requests"] = int(lim_req)
+            except Exception: pass
+        if rem_tok:
+            try: llm_telemetry["rate_limits"]["remaining_tokens"] = int(rem_tok)
+            except Exception: pass
+        if lim_tok:
+            try: llm_telemetry["rate_limits"]["limit_tokens"] = int(lim_tok)
+            except Exception: pass
+        if res_req: llm_telemetry["rate_limits"]["reset_requests"] = str(res_req)
+        if res_tok: llm_telemetry["rate_limits"]["reset_tokens"] = str(res_tok)
+
+class VIPRateLimiter:
+    """In-memory rate limiter for VIP DMs to protect Groq free tier API limits."""
+    def __init__(self):
+        self.history: Dict[str, List[float]] = {}
+
+    def check(self, uid: str) -> Optional[str]:
+        now = time.time()
+        stamps = self.history.setdefault(uid, [])
+        stamps = [t for t in stamps if t > (now - 86400)]
+        self.history[uid] = stamps
+
+        # 1. Burst Limit: Max 5 messages in 60s
+        if len([t for t in stamps if t > (now - 60)]) >= 5:
+            return "Slow down a tiny bit, darling! Let me catch my breath before I reply again 💨 Give me just a few seconds! 🌸"
+
+        # 2. Hourly Limit: Max 35 messages per hour
+        if len([t for t in stamps if t > (now - 3600)]) >= 35:
+            return "We've been chatting so much this hour, sweetheart! 🥰 My thoughts need a short little rest. Let's catch up again in a bit! ✨"
+
+        # 3. Daily Limit: Max 150 messages per 24 hours
+        if len(stamps) >= 150:
+            return "You've truly made my day with all our conversations! 💫 But I've reached my daily energy cap for private chats today. Let's talk again tomorrow, darling! 🌸"
+
+        stamps.append(now)
+        return None
+
 class AIChat(commands.Cog):
     """Friday's conversational AI personality with multi-turn memory, Google search integration, and guardrails."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.vip_limiter = VIPRateLimiter()
         # In-memory session cache: (channel_id, user_id) -> list of turns
         self.sessions: Dict[tuple, List[Dict[str, Any]]] = {}
         # Per-user cooldown tracker to prevent spam
@@ -1120,6 +1210,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                         async with session.post(GROQ_URL, headers=groq_headers, json=g_payload) as g_resp:
                             if g_resp.status == 200:
                                 g_data = await g_resp.json()
+                                record_llm_telemetry("Groq", g_model, g_data.get("usage"), dict(g_resp.headers), success=True)
                                 g_choices = g_data.get("choices", [])
                                 if g_choices and "message" in g_choices[0]:
                                     msg_obj = g_choices[0]["message"]
@@ -1127,6 +1218,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                                     if g_content and len(str(g_content).strip()) > 0:
                                         return str(g_content).strip()
                             else:
+                                record_llm_telemetry("Groq", g_model, None, None, success=False)
                                 err_txt = await g_resp.text()
                                 print(f"[AIChat Groq Engine] HTTP {g_resp.status} on {g_model}: {err_txt}")
                     except Exception as g_err:
@@ -1161,12 +1253,14 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                         async with session.post(GOOGLE_AI_URL, headers=gemini_headers, json=gm_payload) as gm_resp:
                             if gm_resp.status == 200:
                                 gm_data = await gm_resp.json()
+                                record_llm_telemetry("Google Gemini", gm, gm_data.get("usage"), dict(gm_resp.headers), success=True)
                                 gm_choices = gm_data.get("choices", [])
                                 if gm_choices and "message" in gm_choices[0]:
                                     gm_content = gm_choices[0]["message"].get("content")
                                     if gm_content and len(str(gm_content).strip()) > 0:
                                         return str(gm_content).strip()
                             else:
+                                record_llm_telemetry("Google Gemini", gm, None, None, success=False)
                                 gm_err_txt = await gm_resp.text()
                                 print(f"[AIChat Google AI Studio Engine] HTTP {gm_resp.status} on {gm}: {gm_err_txt}")
                     except Exception as gm_err:
@@ -1207,6 +1301,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                             async with session.post(OPENROUTER_URL, headers=headers, json=payload) as resp:
                                 if resp.status == 200:
                                     data = await resp.json()
+                                    record_llm_telemetry("OpenRouter", model_id, data.get("usage"), dict(resp.headers), success=True)
                                     choices = data.get("choices", [])
                                     if choices and "message" in choices[0]:
                                         content = choices[0]["message"].get("content")
@@ -1257,8 +1352,40 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             "Could you ask me that again in just a moment?"
         )
 
+    def _save_vip_memory_note(self, vip_data: dict, content: str):
+        """
+        Extracts and stores key personal facts about a VIP user with strict deduplication,
+        length capping, and FIFO pruning to prevent database growth or VM storage issues.
+        """
+        existing_notes_raw = vip_data.get("notes", "")
+        existing_notes = [n.strip() for n in existing_notes_raw.split(";") if n.strip()]
+
+        new_facts = []
+        for pattern, template in MEMORY_LEARN_PATTERNS:
+            match = pattern.search(content)
+            if match:
+                groups = [g.strip() for g in match.groups() if g]
+                if groups and not any(MEMORY_IGNORE_WORDS.search(g) for g in groups):
+                    try:
+                        fact = (template.format(*[g[:60] for g in groups]) if len(groups) > 1 else template.format(groups[0][:60])).strip()
+                        if fact and len(fact) <= 75:
+                            new_facts.append(fact)
+                    except (IndexError, KeyError, ValueError):
+                        continue
+
+        for fact in new_facts:
+            fact_lower = fact.lower()
+            if any(fact_lower in n.lower() or n.lower() in fact_lower for n in existing_notes):
+                continue
+            existing_notes.append(fact)
+
+        if len(existing_notes) > MAX_VIP_MEMORIES:
+            existing_notes = existing_notes[-MAX_VIP_MEMORIES:]
+
+        vip_data["notes"] = "; ".join(existing_notes)
+
     async def handle_special_dm(self, message: discord.Message):
-        """Handle private 1-on-1 DMs with invited VIP users, managing onboarding and mood swings."""
+        """Handle private 1-on-1 DMs with invited VIP users, managing rate limits, onboarding, and mood swings."""
         uid = str(message.author.id)
         if uid not in db.special_invites:
             # Strictly ignore unsolicited DMs from uninvited users
@@ -1269,51 +1396,89 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         if not content:
             return
 
-        # 1. Onboarding Step: User sets their preferred calling name / persona vibe
+        # 0. VIP Rate Limiter: Protect Groq free tier API limits from excessive spam
+        rate_limit_msg = self.vip_limiter.check(uid)
+        if rate_limit_msg:
+            sent = await message.channel.send(rate_limit_msg, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+            self.llm_message_ids.add(sent.id)
+            return
+
+        # 1. Multi-Step Onboarding Questionnaire: Get to know the VIP friend properly
         status = vip_data.get("status", "invited")
+        step = vip_data.get("onboarding_step", 0)
+
         if status in ("invited", "onboarding"):
-            cleaned_name = ""
+            # Check if user explicitly stated their name in this message
             name_match = re.search(
-                r'\b(?:call me|you can call me|i am|i\'m|my name is|mera naam|mujhe|aap mujhe)\s+([a-zA-Z0-9\s_\'’]{2,25})',
+                r'\b(?:call me|you can call me|i am|i\'m|my name is|mera naam|naam hai|mujhe|aap mujhe)\s+([a-zA-Z0-9\s_\'’]{2,25})',
                 content,
                 re.IGNORECASE
             )
-            if name_match:
-                cleaned_name = name_match.group(1).strip().title()
-            elif len(content.split()) <= 3 and len(content) <= 30:
-                cleaned_name = content.strip("!?,. ").title()
-            else:
-                cleaned_name = message.author.display_name
 
-            # Learn any early interests or hobbies mentioned
-            notes = vip_data.get("notes", "")
-            for pattern, template in MEMORY_LEARN_PATTERNS:
-                match = pattern.search(content)
-                if match:
-                    val = match.group(1).strip()
-                    if not MEMORY_IGNORE_WORDS.search(val):
-                        fact = template.format(val)
-                        notes = (notes + f"; {fact}").strip("; ")
+            # Step 0: First message from VIP member (e.g. "hi", "hello")
+            if step == 0:
+                if name_match:
+                    chosen_name = name_match.group(1).strip().title()
+                    vip_data["custom_nickname"] = chosen_name
+                    vip_data["onboarding_step"] = 2
+                    db.save_data()
+                    reply_text = (
+                        f"A pleasure to meet you, **{chosen_name}**! 🥰 That has such a wonderful ring to it.\n\n"
+                        f"Tell me a little about yourself—**what are some of your favorite hobbies, games, or topics you love to talk about?** 💫"
+                    )
+                else:
+                    vip_data["onboarding_step"] = 1
+                    db.save_data()
+                    reply_text = (
+                        f"Hey there, {message.author.mention}! ✨ I'm so excited to chat with you in private DMs!\n\n"
+                        f"Before we dive in, **what should I call you?** (Any preferred name, nickname, or title you like?) 🌸"
+                    )
+                sent = await message.channel.send(reply_text, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+                self.llm_message_ids.add(sent.id)
+                return
 
-            vip_data["custom_nickname"] = cleaned_name
-            vip_data["status"] = "active"
-            vip_data["onboarding_step"] = 1
-            vip_data["current_mood"] = "cheerful"
-            vip_data["last_mood_switch"] = time.time()
-            vip_data["message_count"] = 1
-            if notes:
-                vip_data["notes"] = notes
-            db.save_data()
+            # Step 1: User is answering "what should I call you?"
+            elif step == 1:
+                if name_match:
+                    chosen_name = name_match.group(1).strip().title()
+                elif len(content.split()) <= 4 and len(content) <= 32:
+                    chosen_name = content.strip("!?,. ").title()
+                else:
+                    chosen_name = message.author.display_name
 
-            welcome_back = (
-                f"A pleasure to meet you, **{cleaned_name}**! 🥰 That has such a wonderful ring to it.\n\n"
-                f"My persona is now personalized just for our private DMs! I love witty jokes, fun banter, and keeping you company anytime. "
-                f"(Though fair warning, I have my moods just like any real girl! 😜)\n\n"
-                f"What are you up to today? ✨"
-            )
-            sent = await message.channel.send(welcome_back, allowed_mentions=SAFE_ALLOWED_MENTIONS)
-            self.llm_message_ids.add(sent.id)
-            return
+                vip_data["custom_nickname"] = chosen_name
+                vip_data["onboarding_step"] = 2
+                db.save_data()
+
+                reply_text = (
+                    f"A pleasure to meet you, **{chosen_name}**! 🥰 That has such a wonderful ring to it.\n\n"
+                    f"Tell me a little about yourself—**what are some of your favorite hobbies, games, or topics you love to talk about?** 💫"
+                )
+                sent = await message.channel.send(reply_text, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+                self.llm_message_ids.add(sent.id)
+                return
+
+            # Step 2: User is answering their hobbies / interests
+            elif step == 2:
+                self._save_vip_memory_note(vip_data, content)
+                vip_data["status"] = "active"
+                vip_data["onboarding_step"] = 3
+                vip_data["current_mood"] = "cheerful"
+                vip_data["last_mood_switch"] = time.time()
+                vip_data["message_count"] = 1
+                db.save_data()
+
+                nickname = vip_data.get("custom_nickname") or message.author.display_name
+                reply_text = (
+                    f"I love that! I've tucked that into my memory notes so I'll always remember. ✨\n\n"
+                    f"My persona is now personalized just for our private DMs, **{nickname}**! "
+                    f"I love witty jokes, fun banter, and keeping you company anytime. "
+                    f"(Though fair warning, I have my moods just like any real girl! 😜)\n\n"
+                    f"What are you up to right now? 🌸"
+                )
+                sent = await message.channel.send(reply_text, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+                self.llm_message_ids.add(sent.id)
+                return
 
         # 2. Active VIP Conversation: Handle Emotional Dynamics & Mood Swings
         message_count = vip_data.get("message_count", 0) + 1
@@ -1342,17 +1507,9 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             self.llm_message_ids.add(sent.id)
             return
 
-        # Dynamically record memory facts in DMs
-        for pattern, template in MEMORY_LEARN_PATTERNS:
-            match = pattern.search(content)
-            if match:
-                val = match.group(1).strip()
-                if not MEMORY_IGNORE_WORDS.search(val):
-                    fact = template.format(val)
-                    cur_notes = vip_data.get("notes", "")
-                    if fact.lower() not in cur_notes.lower():
-                        vip_data["notes"] = (cur_notes + f"; {fact}").strip("; ")
-                        db.save_data()
+        # Dynamically record memory facts in DMs with strict capping to prevent database bloating
+        self._save_vip_memory_note(vip_data, content)
+        db.save_data()
 
         # Build DM conversation history
         history = []
@@ -1989,6 +2146,170 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             self._clear_server_instructions(gid)
             await interaction.response.send_message(
                 "🌸 All custom server instructions have been cleared for this server!",
+                ephemeral=True
+            )
+
+
+    # ───────────────────── VIP Guest Management Slash Commands ─────────────────────
+    vip_group = app_commands.Group(
+        name="vip",
+        description="Manage exclusive 1-on-1 VIP DM chat access for special guests (Owner only)",
+        default_permissions=discord.Permissions(administrator=True)
+    )
+
+    @vip_group.command(name="add", description="Grant exclusive VIP DM chat access to a member (Owner only).")
+    @app_commands.describe(
+        member="The member to grant VIP DM access to",
+        nickname="Optional initial nickname to call them in private DMs"
+    )
+    async def vip_add(self, interaction: discord.Interaction, member: discord.Member, nickname: Optional[str] = None):
+        is_owner = (
+            (interaction.guild and interaction.user.id == interaction.guild.owner_id) or
+            (await self.bot.is_owner(interaction.user))
+        )
+        if not is_owner:
+            await interaction.response.send_message(
+                "❌ **Access Denied:** Only the Server Owner or Bot Owner can grant VIP DM access.",
+                ephemeral=True
+            )
+            return
+
+        if member.bot:
+            await interaction.response.send_message("❌ Cannot grant VIP access to a bot.", ephemeral=True)
+            return
+
+        uid = str(member.id)
+        if not hasattr(db, "special_invites") or db.special_invites is None:
+            db.special_invites = {}
+
+        db.special_invites[uid] = {
+            "invited_by": interaction.user.display_name,
+            "invited_at": datetime.now(timezone.utc).strftime("%B %d, %Y %I:%M %p"),
+            "status": "onboarding",
+            "onboarding_step": 0,
+            "custom_nickname": nickname.strip().title() if nickname else "",
+            "current_mood": "cheerful",
+            "last_mood_switch": time.time(),
+            "message_count": 0,
+            "notes": ""
+        }
+        db.save_data()
+
+        dm_delivered = False
+        try:
+            dm_channel = await member.create_dm()
+            greeting = (
+                f"🎉 **Congratulations {member.mention}!**\n\n"
+                f"You have been granted an exclusive VIP pass to chat with me 1-on-1 directly in DMs by **{interaction.user.display_name}**! ✨\n\n"
+                f"I'm so excited to get to know you better. To make our private conversations feel just right, what should I call you? 🌸"
+            )
+            sent = await dm_channel.send(greeting)
+            self.llm_message_ids.add(sent.id)
+            dm_delivered = True
+        except Exception:
+            dm_delivered = False
+
+        status_note = "VIP Invitation sent directly to their DMs! ✓" if dm_delivered else "VIP access granted, but user's DMs are closed/blocked ✕"
+        await interaction.response.send_message(
+            f"✨ **VIP Access Granted!**\n"
+            f"• **Member:** {member.mention} (`{member.id}`)\n"
+            f"• **Status:** Active Onboarding\n"
+            f"• **DM Delivery:** {status_note}\n\n"
+            f"*Friday will ask them what to call them and learn their preferences when they reply in DM!* 🌸",
+            ephemeral=True
+        )
+
+    @vip_group.command(name="remove", description="Revoke VIP DM chat access from a member (Owner only).")
+    @app_commands.describe(member="The member to revoke VIP access from")
+    async def vip_remove(self, interaction: discord.Interaction, member: discord.Member):
+        is_owner = (
+            (interaction.guild and interaction.user.id == interaction.guild.owner_id) or
+            (await self.bot.is_owner(interaction.user))
+        )
+        if not is_owner:
+            await interaction.response.send_message(
+                "❌ **Access Denied:** Only the Server Owner or Bot Owner can revoke VIP DM access.",
+                ephemeral=True
+            )
+            return
+
+        uid = str(member.id)
+        if hasattr(db, "special_invites") and uid in db.special_invites:
+            del db.special_invites[uid]
+            db.save_data()
+            await interaction.response.send_message(
+                f"🛑 **VIP Access Revoked:** {member.mention} can no longer chat with Friday in private DMs.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"ℹ️ {member.mention} is not currently registered as a VIP member.",
+                ephemeral=True
+            )
+
+    @vip_group.command(name="list", description="List all members with VIP DM access (Owner only).")
+    async def vip_list(self, interaction: discord.Interaction):
+        is_owner = (
+            (interaction.guild and interaction.user.id == interaction.guild.owner_id) or
+            (await self.bot.is_owner(interaction.user))
+        )
+        if not is_owner:
+            await interaction.response.send_message(
+                "❌ **Access Denied:** Only the Server Owner or Bot Owner can view the VIP list.",
+                ephemeral=True
+            )
+            return
+
+        invites = getattr(db, "special_invites", {}) or {}
+        if not invites:
+            await interaction.response.send_message(
+                "🌸 No VIP members are currently registered.",
+                ephemeral=True
+            )
+            return
+
+        lines = []
+        for uid, data in invites.items():
+            nick = data.get("custom_nickname") or "Not set"
+            mood = data.get("current_mood", "cheerful")
+            status = data.get("status", "active")
+            msgs = data.get("message_count", 0)
+            lines.append(f"• <@{uid}> (`{uid}`) — Name: **{nick}** | Mood: `{mood}` | Chats: `{msgs}` | Status: `{status}`")
+
+        await interaction.response.send_message(
+            f"👑 **VIP DM Guests List ({len(invites)} members):**\n" + "\n".join(lines[:25]),
+            ephemeral=True
+        )
+
+    @vip_group.command(name="reset", description="Reset a VIP member's persona and onboarding questionnaire (Owner only).")
+    @app_commands.describe(member="The VIP member to reset")
+    async def vip_reset(self, interaction: discord.Interaction, member: discord.Member):
+        is_owner = (
+            (interaction.guild and interaction.user.id == interaction.guild.owner_id) or
+            (await self.bot.is_owner(interaction.user))
+        )
+        if not is_owner:
+            await interaction.response.send_message(
+                "❌ **Access Denied:** Only the Server Owner or Bot Owner can reset VIP profiles.",
+                ephemeral=True
+            )
+            return
+
+        uid = str(member.id)
+        if hasattr(db, "special_invites") and uid in db.special_invites:
+            db.special_invites[uid]["status"] = "onboarding"
+            db.special_invites[uid]["onboarding_step"] = 0
+            db.special_invites[uid]["custom_nickname"] = ""
+            db.special_invites[uid]["notes"] = ""
+            db.special_invites[uid]["message_count"] = 0
+            db.save_data()
+            await interaction.response.send_message(
+                f"🔄 **VIP Profile Reset:** {member.mention}'s onboarding has been restarted. On their next DM message, Friday will greet them and ask what to call them.",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"ℹ️ {member.mention} is not currently registered as a VIP member.",
                 ephemeral=True
             )
 
