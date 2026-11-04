@@ -30,7 +30,7 @@ Friday Bot - Complete Command List
 /clearchat - Reset your recent multi-turn conversation memory with Friday in the current channel
 /mymemory <view/clear> - Inspect what friendly personal memories Friday remembers about you, or clear them
 /server_instruction <add/view/clear> [instruction] - Configure server-wide behavioral instructions for Friday (Admin & Owner only)
-Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conversation with contextual memory, live Google news search, live date/time handling, and safe mention sanitization
+Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conversation with contextual memory, live Google news search, live date/time handling, safe mention sanitization, and ironclad Anti-Manipulation / Anti-Parrot / Hinglish Prompt Injection protection
 
 💤 Member AFK System
 /afk [reason] - Sets your status to AFK with an optional reason (e.g. Studying, Lunch, Sleeping)

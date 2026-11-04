@@ -4062,7 +4062,8 @@ const ALL_RESPONSE_FIELDS = [
     'resp_nick_bot_err',
     'resp_level_up_msg',
     'resp_lockdown_initiated',
-    'resp_lockdown_lifted'
+    'resp_lockdown_lifted',
+    'resp_ai_manipulation_refusal'
 ];
 
 async function loadResponsesSettings() {
@@ -4147,7 +4148,8 @@ const CUSTOM_RESPONSES_SCHEMA = [
     {"id": "music_skipped", "label": "Track Skipped Notice", "category": "Music & Audio", "vars": []},
     {"id": "music_stopped", "label": "Playback Stopped Notice", "category": "Music & Audio", "vars": []},
     {"id": "music_queue_empty", "label": "Queue Empty Alert", "category": "Music & Audio", "vars": []},
-    {"id": "ai_thinking", "label": "AI Processing / Thinking Message", "category": "AI Assistant & Conversation", "vars": ["{user}"]}
+    {"id": "ai_thinking", "label": "AI Processing / Thinking Message", "category": "AI Assistant & Conversation", "vars": ["{user}"]},
+    {"id": "ai_manipulation_refusal", "label": "Anti-Manipulation & Anti-Parrot Refusal", "category": "AI Assistant & Conversation", "vars": ["{user}"]}
 ];
 
 function initCustomResponsesControls() {

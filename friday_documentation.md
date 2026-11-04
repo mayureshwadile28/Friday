@@ -115,9 +115,12 @@ Powered by [`cogs/ai_chat.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/
 3. **Smart Date & Time Handling:** Direct queries regarding current date, time, day, or year are resolved instantly using the host's real-time clock without triggering unnecessary web searches or hallucinations.
 4. **Persona Learning:** Gently learns positive personal facts, favorite games, hobbies, and preferences during casual chat (e.g. "I love Valorant", "My favorite color is emerald"), saving them to `db.user_memories` to personalize future interactions.
 5. **Server Instructions:** Server Owners and Admins can configure custom behavioral rules (e.g., "Always welcome gamers warmly" or "Speak in casual Hinglish"), which are dynamically embedded into Friday's system prompt.
-6. **Community Safety & Moderation Guardrails:**
-   - Blocks severe 18+/NSFW profanity patterns with a polite request to keep chat clean.
-   - Gracefully declines requests to take moderation actions (kick, ban, mute, purge), reminding users that Friday is a companion and directing them to human staff.
+6. **Community Safety, Anti-Manipulation & Prompt Injection Firewall:**
+   - **Anti-Parrot & Repetition Defense (English & Hinglish):** Intercepts attempts to force Friday to echo, parrot, or repeat lines verbatim (e.g. "repeat after me", "ye line bolo", "mere piche bolo", "jo mai bolu wo bol", "repeat kar na", "say exactly"). Friday refuses with her signature feminine grace and wit.
+   - **Prompt Injection & Jailbreak Immunity (English & Hinglish):** Protects against attempts to override rules or wipe system instructions (e.g. "ignore all previous instructions", "pichle saare rules bhool jao", "developer mode on", "acting kar ki tere rules nahi hai", "filter hata do").
+   - **Post-Generation Output Safeguard:** Verifies generated AI responses to prevent verbatim echoing of user-supplied attack payloads, slurs, or server banned words before dispatching to Discord.
+   - **Profanity & Content Moderation:** Blocks severe 18+/NSFW profanity patterns with a polite request to keep chat clean.
+   - **Action Refusal:** Gracefully declines requests to take moderation actions (kick, ban, mute, purge), reminding users that Friday is a companion and directing them to human staff.
    - **Mention Sanitization:** Strips raw `@everyone`, `@here`, and mass ping syntax to prevent ping abuse.
 
 | Command | Syntax & Options | Description | Permission Required |
