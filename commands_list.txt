@@ -51,7 +51,7 @@ Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conv
 /set_first_welcome [channel] - Standalone shortcut to set the first-welcome channel to current channel
   • Squeezed compact box format with member avatar thumbnail and author header prevents horizontal stretching
   • Supports {user}, {username}, {name}, {server}, {member_count}, {rules} (clean bright-blue clickable text without hashtag box), {channel}, and {link:#channel}
-  • Multi-signal old member detection (tenure, roles, XP, and >=2 previous channel messages) greets genuine newcomers while skipping old chatters
+  • Multi-signal old member detection (tenure, roles, and direct Discord chat count >= 2) greets genuine newcomers while skipping old chatters without relying on Friday XP
   • Strictly protected by Administrator permissions across all slash commands and web dashboard
 
 🔒 Channel Privacy & Lockdown

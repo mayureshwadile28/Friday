@@ -125,10 +125,59 @@ def build_welcome_embed(member: discord.Member, guild: discord.Guild, cfg: dict,
 
     return embed
 
-async def is_established_member(member: discord.Member, message: discord.Message) -> bool:
+async def count_member_past_messages(member: discord.Member, message: discord.Message, cfg: dict = None) -> int:
+    """
+    Counts the number of past messages sent by this member across the current channel
+    and main server chat channels, without relying on any XP or leveling system.
+    """
+    prior_msgs = 0
+
+    # 1. Scan recent history of the current channel
+    try:
+        async for past_msg in message.channel.history(limit=50, before=message):
+            if past_msg.author.id == member.id:
+                prior_msgs += 1
+                if prior_msgs >= 2:
+                    return prior_msgs
+    except Exception:
+        pass
+
+    # 2. If fewer than 2 found in current channel, check the target welcome channel or #general
+    candidate_channels = []
+    if cfg:
+        target_cid = cfg.get("channel_id")
+        if target_cid:
+            try:
+                target_ch = message.guild.get_channel(int(target_cid))
+                if target_ch and target_ch.id != message.channel.id and target_ch.permissions_for(message.guild.me).read_message_history:
+                    candidate_channels.append(target_ch)
+            except Exception:
+                pass
+
+    for ch_name in ["general", "chat", "main", "lounge", "general-chat", "discussion"]:
+        found_ch = discord.utils.get(message.guild.text_channels, name=ch_name)
+        if found_ch and found_ch.id != message.channel.id and found_ch not in candidate_channels:
+            if found_ch.permissions_for(message.guild.me).read_message_history:
+                candidate_channels.append(found_ch)
+                break
+
+    for ch in candidate_channels:
+        try:
+            async for past_msg in ch.history(limit=50):
+                if past_msg.id != message.id and past_msg.author.id == member.id:
+                    prior_msgs += 1
+                    if prior_msgs >= 2:
+                        return prior_msgs
+        except Exception:
+            pass
+
+    return prior_msgs
+
+async def is_established_member(member: discord.Member, message: discord.Message, cfg: dict = None) -> bool:
     """
     Determines whether a member is an established / old member who should NOT be greeted.
-    If an old member is detected, silently marks them in first_chat_welcomes history to prevent future checks.
+    Directly checks the amount of chat that the member has done so far (message history >= 2).
+    Does NOT rely on Friday XP system to ensure compatibility across all servers.
     """
     if member.bot or not message.guild:
         return True
@@ -141,9 +190,10 @@ async def is_established_member(member: discord.Member, message: discord.Message
     if uid in guild_history:
         return True
 
-    # 2. Activity / XP check in leveling database
-    user_xp_data = db.xp_data.get(gid, {}).get(uid, {})
-    if user_xp_data.get("xp", 0) > 15 or user_xp_data.get("level", 0) > 0:
+    # 2. Direct chat count check: counts how many texts/messages this specific member has done so far
+    # If user has sent 2 or more messages, consider them an old member!
+    prior_msgs = await count_member_past_messages(member, message, cfg)
+    if prior_msgs >= 2:
         guild_history.append(uid)
         db.save_data()
         return True
@@ -169,22 +219,6 @@ async def is_established_member(member: discord.Member, message: discord.Message
                 has_staff_perms = True
                 break
     if len(custom_roles) >= 2 or has_staff_perms:
-        guild_history.append(uid)
-        db.save_data()
-        return True
-
-    # 5. Channel message history check: has already sent 2 or more messages in this channel
-    prior_msgs = 0
-    try:
-        async for past_msg in message.channel.history(limit=35, before=message):
-            if past_msg.author.id == member.id:
-                prior_msgs += 1
-                if prior_msgs >= 2:
-                    break
-    except Exception:
-        pass
-
-    if prior_msgs >= 2:
         guild_history.append(uid)
         db.save_data()
         return True
@@ -402,7 +436,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
             return
 
         # 2. Check if member is an old/established member
-        if await is_established_member(message.author, message):
+        if await is_established_member(message.author, message, cfg):
             return
 
         # 3. Mark user as greeted in database
