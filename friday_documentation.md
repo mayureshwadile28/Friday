@@ -123,7 +123,7 @@ Powered by [`cogs/ai_chat.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/
    - **Action Refusal:** Gracefully declines requests to take moderation actions (kick, ban, mute, purge), reminding users that Friday is a companion and directing them to human staff.
    - **Mention Sanitization:** Strips raw `@everyone`, `@here`, and mass ping syntax to prevent ping abuse.
 7. **Exclusive VIP 1-on-1 DM Chat & Onboarding:**
-   - **Exclusive Invitation Gate:** Authorized strictly via `/vip add @member` by the Bot Owner or Server Owner. Friday ignores unsolicited DMs from non-VIP users.
+   - **Exclusive Invitation Gate:** Authorized strictly via the Web Dashboard VIP Studio by the Bot Owner (no public Discord slash commands). Friday ignores unsolicited DMs from non-VIP users.
    - **Multi-Step Onboarding Questionnaire:** When an invited member first chats with Friday in DM, Friday initiates a charming onboarding interview (asking *"What should I call you?"*, followed by their favorite hobbies and topics) before switching to active conversational mode.
    - **Storage-Safe Persona Memory Capping:** Stores at most 8 core personal facts per VIP (`MAX_VIP_MEMORIES = 8`, <= 75 chars per fact) with LRU FIFO pruning. Never stores chat history or heavy embeddings to ensure zero risk to VM disk storage.
    - **Groq Free Tier Multi-Gate Rate Limiting:** Enforces in-memory rate limiting to protect free Groq/OpenRouter quotas (Burst: 5 msgs/min, Hourly: 35 msgs/hr, Daily: 150 msgs/24h) with witty, graceful in-character refusal replies that consume 0 API tokens.
@@ -135,10 +135,6 @@ Powered by [`cogs/ai_chat.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/
 | `/clearchat` | *None* | Resets recent multi-turn conversation memory with Friday in the channel | Everyone |
 | `/mymemory` | `<action: view/clear>` | Views or clears personal persona facts Friday has learned about you | Everyone |
 | `/server_instruction` | `<action: add/view/clear> [instruction]` | Configures server-wide custom behavioral instructions for Friday | `Administrator` |
-| `/vip` | `add @member` | Authorizes an exclusive VIP guest for 1-on-1 private DM chat with Friday | Bot Owner / Server Owner |
-| `/vip` | `remove @member` | Revokes VIP 1-on-1 private DM chat access for a member | Bot Owner / Server Owner |
-| `/vip` | `list` | Lists all authorized VIP guests and their onboarding status | Bot Owner / Server Owner |
-| `/vip` | `reset @member` | Resets the onboarding questionnaire and notes for a VIP guest | Bot Owner / Server Owner |
 | In-Chat Mention | `@Friday <message>` or Reply | Triggers intelligent conversational response with multi-turn context | Everyone |
 
 ---

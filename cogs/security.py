@@ -95,18 +95,20 @@ class Security(commands.Cog):
         if not member_or_user: return True
         if member_or_user.id == self.bot.user.id: return True
         if member_or_user.id == guild.owner_id: return True
-        gid = str(guild.id)
+        gid_str = str(guild.id)
+        gid_int = int(guild.id) if str(guild.id).isdigit() else None
         
-        # 1. Direct user whitelist
-        wl_raw = db.whitelist.get(gid, []) or []
+        # 1. Direct user whitelist (Master / Universal Immunity: covers ALL security, links, gifs, invites, antinuke)
+        wl_raw = (db.whitelist.get(gid_str, []) or []) + (db.whitelist.get(gid_int, []) or [] if gid_int else [])
         wl_set = {str(x) for x in wl_raw}
         if str(member_or_user.id) in wl_set:
             return True
 
-        # 2. Feature-specific whitelist
+        # 2. Feature-specific whitelist (Granular per-action overrides)
         feat_set = set()
         if feature:
-            feat_raw = db.feature_whitelists.get(gid, {}).get(feature, []) or []
+            feat_dict = db.feature_whitelists.get(gid_str, {}) or db.feature_whitelists.get(gid_int, {}) or {}
+            feat_raw = feat_dict.get(feature, []) or []
             feat_set = {str(x) for x in feat_raw}
             if str(member_or_user.id) in feat_set:
                 return True
