@@ -131,14 +131,17 @@ class Security(commands.Cog):
         """Check if a URL points to a GIF or GIF service (Tenor, Giphy, Gfycat, Discord, Imgur)."""
         if not url:
             return False
-        # Common GIF providers (including subdomains like media.tenor.com, c.tenor.com, i.giphy.com)
-        if re.search(r'(?:tenor\.com|giphy\.com|gfycat\.com)', url, re.IGNORECASE):
+        # Common GIF providers (including subdomains and shortlinks like tenor.co, gph.is, media.tenor.com, c.tenor.com, i.giphy.com)
+        if re.search(r'(?:tenor\.(?:com|co)|giphy\.com|gph\.is|gfycat\.com)', url, re.IGNORECASE):
             return True
-        # Direct .gif or .gifv extensions or imgur gifv
-        if re.search(r'\.(?:gif|gifv)(?:[?&#].*)?$', url, re.IGNORECASE):
+        # Direct .gif or .gifv extensions or imgur gifv with optional query parameters/fragments
+        if re.search(r'\.(?:gif|gifv)(?:[?&#/].*)?$', url, re.IGNORECASE) or re.search(r'\.(?:gif|gifv)\b', url, re.IGNORECASE):
             return True
         # Discord attachments/media links ending in .gif or .gifv
         if re.search(r'(?:cdn|media)\.discordapp\.(?:com|net)/attachments/.*\.(?:gif|gifv)', url, re.IGNORECASE):
+            return True
+        # Imgur image / gif links
+        if re.search(r'imgur\.com/.*\.(?:gif|gifv)', url, re.IGNORECASE):
             return True
         return False
 
@@ -1164,19 +1167,25 @@ class Security(commands.Cog):
                 if non_invite_links:
                     can_send_all_links = is_immune or self.is_whitelisted(guild, author, feature="anti_link")
                     if not can_send_all_links:
+                        is_gif_whitelisted = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
+                        has_embed_perm = self.member_has_embed_permission(author, message.channel)
+                        allow_gifs = anti_link_cfg.get("allow_gifs", True)
+
                         gif_links = [l for l in non_invite_links if self.is_gif_url(l)]
                         non_gif_links = [l for l in non_invite_links if not self.is_gif_url(l)]
 
-                        allow_gifs = anti_link_cfg.get("allow_gifs", True)
-                        # member_has_embed_permission now only checks explicit embed_links/attach_files bits.
-                        # Administrator privilege does NOT count as embed permission here.
-                        has_embed_perm = self.member_has_embed_permission(author, message.channel)
-                        is_gif_whitelisted = self.is_whitelisted(guild, author, feature="anti_gif")
+                        # If Discord resolved a GIF embed/attachment and there is only 1 link, it's definitely the GIF
+                        if self.has_gif_content(message) and len(non_invite_links) == 1 and not gif_links:
+                            gif_links = non_invite_links
+                            non_gif_links = []
 
-                        # Allow GIF links only when: anti_link allows GIFs AND member explicitly has
-                        # embed_links bit OR is specifically GIF-whitelisted. Admins are NOT exempt.
-                        if gif_links and not non_gif_links and allow_gifs and (has_embed_perm or is_gif_whitelisted):
-                            pass  # Member has explicit embed permission, allow their GIF
+                        # A member can send GIF links without being deleted by anti-link if:
+                        # 1. They are explicitly GIF-whitelisted (or immune) — completely bypassing the allow_gifs toggle!
+                        # 2. OR the server allows GIFs (allow_gifs is True) AND the member has embed permission.
+                        is_gif_permitted = is_gif_whitelisted or (allow_gifs and has_embed_perm)
+
+                        if is_gif_permitted and (gif_links or self.has_gif_content(message)) and not non_gif_links:
+                            pass  # GIF is authorized, do NOT delete as external link!
                         else:
                             deleted = await self.safe_delete_violating_message(message, violation_label="External Link")
                             try:
