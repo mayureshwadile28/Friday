@@ -504,13 +504,14 @@ class Announcements(commands.Cog):
         self.ctx_menu = app_commands.ContextMenu(
             name="Initiate Announcement",
             callback=self.initiate_announcement_context,
-            default_permissions=discord.Permissions(manage_messages=True)
         )
+        self.ctx_menu.default_permissions = discord.Permissions(manage_messages=True)
         self.bot.tree.add_command(self.ctx_menu)
 
     async def cog_unload(self):
         self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
 
+    @app_commands.default_permissions(manage_messages=True)
     async def initiate_announcement_context(self, interaction: discord.Interaction, message: discord.Message):
         """Context menu action to turn a message or paragraph into a verified server announcement."""
         if not interaction.guild:
