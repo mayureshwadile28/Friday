@@ -212,28 +212,33 @@ class GiveawayApprovalView(discord.ui.View):
         emoji_ends = cfg.get("emoji_ends", "⏳")
 
         end_timestamp = int(end_time)
+        image_url = req.get("image_url") or cfg.get("default_banner")
+
+        desc_body = (
+            f"• **Winners:** {winners_count}\n"
+            f"• **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
+            f"• **Hosted By:** <@{sponsor_id}>\n\n"
+            f"• {description or 'Click the button below to participate!'}"
+        )
+
         embed = discord.Embed(
-            title=f"{emoji_prize} GIVEAWAY: {prize} {emoji_prize}",
-            description=(
-                f"{description}\n\n" if description else ""
-            ) + (
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "> React or click below to enter! Winners will be randomly selected.\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=discord.Color.from_rgb(88, 101, 242), # Modern Discord Blurple
+            title=f"{emoji_prize} {prize} {emoji_prize}",
+            description=desc_body,
+            color=discord.Color.from_rgb(43, 45, 49),
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
-        embed.add_field(name=f"{emoji_host} Sponsored by", value=f"<@{sponsor_id}>", inline=True)
-        embed.add_field(name=f"{emoji_winners} Winners", value=f"**{winners_count}**", inline=True)
-        embed.add_field(name=f"{emoji_entries} Entries", value="**0**", inline=True)
-        embed.add_field(name=f"{emoji_ends} Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
-        embed.set_footer(text=f"Giveaway ID: {self.request_id} • Ends at", icon_url=guild.icon.url if guild.icon else None)
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        if image_url:
+            embed.set_image(url=image_url)
+
+        ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
+        embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
         gw_key = f"{guild.id}_{self.request_id}"
         view = GiveawayEnterView(giveaway_key=gw_key, entry_count=0, emoji=emoji_prize)
 
-        gw_msg = await gw_channel.send(content="🎉 **NEW GIVEAWAY!** 🎉", embed=embed, view=view)
+        gw_msg = await gw_channel.send(content="🎉 **New Giveaway** 🎉", embed=embed, view=view)
 
         # Re-key with the real message id
         real_key = f"{guild.id}_{gw_msg.id}"
@@ -250,7 +255,8 @@ class GiveawayApprovalView(discord.ui.View):
             "status": "active",
             "entries": [],
             "winners": [],
-            "description": description
+            "description": description,
+            "image_url": image_url or ""
         }
         db.giveaways[real_key] = gw_data
         req["status"] = "approved"
@@ -649,16 +655,23 @@ class Giveaways(commands.Cog):
                 old_embed = msg.embeds[0]
                 winners_text = ", ".join(f"<@{w}>" for w in chosen) if chosen else "No valid entries received."
 
+                ended_desc = (
+                    f"• **Winners:** {winners_text}\n"
+                    f"• **Hosted By:** <@{sponsor_id}>\n"
+                    f"• **Total Entries:** **{len(entries)}**\n\n"
+                    f"• {gw.get('description') or 'Giveaway has ended.'}"
+                )
                 ended_embed = discord.Embed(
-                    title=f"🎉 GIVEAWAY ENDED: {prize} 🎉",
-                    description=old_embed.description,
+                    title=f"🔒 GIVEAWAY ENDED: {prize}",
+                    description=ended_desc,
                     color=discord.Color.from_rgb(47, 49, 54), # Sleek dark
                     timestamp=datetime.now(timezone.utc)
                 )
-                ended_embed.add_field(name="Winners", value=winners_text, inline=False)
-                ended_embed.add_field(name="Hosted / Sponsored by", value=f"<@{sponsor_id}>", inline=True)
-                ended_embed.add_field(name="Total Entries", value=f"**{len(entries)}**", inline=True)
-                ended_embed.set_footer(text="Giveaway Ended • Friday Engine", icon_url=guild.icon.url if guild.icon else None)
+                if guild.icon:
+                    ended_embed.set_thumbnail(url=guild.icon.url)
+                if gw.get("image_url"):
+                    ended_embed.set_image(url=gw.get("image_url"))
+                ended_embed.set_footer(text="Ended • Friday Engine", icon_url=guild.icon.url if guild.icon else None)
 
                 disabled_view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), disabled=True)
                 await msg.edit(embed=ended_embed, view=disabled_view)
@@ -775,6 +788,7 @@ class Giveaways(commands.Cog):
         duration="Duration of the giveaway (e.g. 10m, 1h, 2d, 1w)",
         winners="Number of winners to pick (default: 1)",
         description="Optional detailed description or rules",
+        image="Optional image or GIF banner URL for the embed",
         channel="Optional channel to post in (defaults to configured giveaway channel)"
     )
     async def gcreate(
@@ -784,6 +798,7 @@ class Giveaways(commands.Cog):
         duration: str,
         winners: Optional[int] = 1,
         description: Optional[str] = None,
+        image: Optional[str] = None,
         channel: Optional[discord.TextChannel] = None
     ):
         """Creates a giveaway. Admins launch instantly; regular members submit for staff approval."""
@@ -851,6 +866,7 @@ class Giveaways(commands.Cog):
                 return
 
             request_id = str(uuid.uuid4())[:8]
+            banner_url = image.strip() if image else ""
             req_data = {
                 "request_id": request_id,
                 "sponsor_id": interaction.user.id,
@@ -860,6 +876,7 @@ class Giveaways(commands.Cog):
                 "duration_str": duration,
                 "winners_count": winners_count,
                 "description": description or "",
+                "image_url": banner_url,
                 "status": "pending",
                 "submitted_at": time.time()
             }
@@ -875,11 +892,14 @@ class Giveaways(commands.Cog):
                     f"**Sponsor:** {interaction.user.mention} (`{interaction.user.name}`)\n"
                     f"**Duration:** `{format_duration(duration_sec)}`\n"
                     f"**Winners:** `{winners_count}`\n"
-                    f"**Description:** {description or '*None provided*'}"
+                    f"**Description:** {description or '*None provided*'}\n"
+                    + (f"**Banner:** [Preview Image]({banner_url})" if banner_url else "")
                 ),
                 color=discord.Color.from_rgb(245, 158, 11), # Amber
                 timestamp=datetime.now(timezone.utc)
             )
+            if banner_url:
+                app_embed.set_thumbnail(url=banner_url)
             app_embed.set_footer(text=f"Request ID: {request_id}")
             view = GiveawayApprovalView(request_id=request_id)
             await app_ch.send(embed=app_embed, view=view)
@@ -901,31 +921,35 @@ class Giveaways(commands.Cog):
         now = time.time()
         end_time = now + duration_sec
         end_timestamp = int(end_time)
+        image_url = (image.strip() if image else None) or cfg.get("default_banner")
+
+        desc_body = (
+            f"• **Winners:** {winners_count}\n"
+            f"• **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
+            f"• **Hosted By:** {interaction.user.mention}\n\n"
+            f"• {description or 'Click the button below to participate!'}"
+        )
 
         embed = discord.Embed(
-            title=f"{emoji_prize} GIVEAWAY: {prize} {emoji_prize}",
-            description=(
-                f"{description}\n\n" if description else ""
-            ) + (
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "> React or click below to enter! Winners will be randomly selected.\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=discord.Color.from_rgb(88, 101, 242), # Blurple
+            title=f"{emoji_prize} {prize} {emoji_prize}",
+            description=desc_body,
+            color=discord.Color.from_rgb(43, 45, 49),
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
-        embed.add_field(name=f"{emoji_host} Hosted by", value=interaction.user.mention, inline=True)
-        embed.add_field(name=f"{emoji_winners} Winners", value=f"**{winners_count}**", inline=True)
-        embed.add_field(name=f"{emoji_entries} Entries", value="**0**", inline=True)
-        embed.add_field(name=f"{emoji_ends} Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
-        embed.set_footer(text="Friday Giveaway Engine • Ends at", icon_url=guild.icon.url if guild.icon else None)
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        if image_url:
+            embed.set_image(url=image_url)
+
+        ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
+        embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
         # Temporary key before message is sent
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{guild.id}_{temp_id}"
         view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize)
 
-        gw_msg = await target_channel.send(content="🎉 **NEW GIVEAWAY!** 🎉", embed=embed, view=view)
+        gw_msg = await target_channel.send(content="🎉 **New Giveaway** 🎉", embed=embed, view=view)
 
         real_key = f"{guild.id}_{gw_msg.id}"
         real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
@@ -945,7 +969,8 @@ class Giveaways(commands.Cog):
             "status": "active",
             "entries": [],
             "winners": [],
-            "description": description or ""
+            "description": description or "",
+            "image_url": image_url or ""
         }
         db.giveaways[real_key] = gw_data
         db.save_data()

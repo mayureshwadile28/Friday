@@ -1,5 +1,6 @@
 // Friday Dashboard Client Script
 let currentGuildId = null;
+let currentGuildIcon = null;
 let currentGuildMembers = [];
 let currentGuildChannels = [];
 let currentGuildRoles = [];
@@ -1170,6 +1171,7 @@ async function loadGuilds() {
 async function selectGuild(guild) {
     if (!guild) return;
     currentGuildId = String(guild.id);
+    currentGuildIcon = guild.icon || null;
     try { localStorage.setItem('friday_selected_guild', currentGuildId); } catch (e) {}
     guildNameDisplay.textContent = guild.name;
     guildIconSmall.innerHTML = guild.icon ? `<img src="${guild.icon}" alt="">` : guild.name.charAt(0).toUpperCase();
@@ -7401,6 +7403,8 @@ function updateGwPreview() {
     const durInput = document.getElementById('gwDurationInput');
     const winInput = document.getElementById('gwWinnersInput');
     const descInput = document.getElementById('gwDescInput');
+    const bannerInput = document.getElementById('gwBannerInput');
+    const defaultBannerInput = document.getElementById('gwDefaultBanner');
 
     const emojiPrize = (document.getElementById('gwEmojiPrize')?.value.trim()) || "🎁";
     const emojiHost = (document.getElementById('gwEmojiHost')?.value.trim()) || "👑";
@@ -7418,19 +7422,27 @@ function updateGwPreview() {
     const simWinners = document.getElementById('gwSimWinners');
     const simEnds = document.getElementById('gwSimEnds');
     const simAvatar = document.getElementById('gwSimAvatar');
-
-    const simHostIcon = document.getElementById('gwSimHostIcon');
-    const simWinnersIcon = document.getElementById('gwSimWinnersIcon');
-    const simEntriesIcon = document.getElementById('gwSimEntriesIcon');
-    const simEndsIcon = document.getElementById('gwSimEndsIcon');
+    const simThumbnail = document.getElementById('gwSimThumbnail');
+    const simFooterIcon = document.getElementById('gwSimFooterIcon');
+    const simFooterText = document.getElementById('gwSimFooterText');
+    const simBannerWrap = document.getElementById('gwSimBannerWrap');
+    const simBanner = document.getElementById('gwSimBanner');
     const simButtonIcon = document.getElementById('gwSimButtonIcon');
 
     if (simAvatar && currentBotAvatar) {
         simAvatar.src = currentBotAvatar;
     }
 
+    const iconUrl = currentGuildIcon || currentBotAvatar || '/static/avatar.png';
+    if (simThumbnail) {
+        simThumbnail.src = iconUrl;
+    }
+    if (simFooterIcon) {
+        simFooterIcon.src = iconUrl;
+    }
+
     if (simTitle) {
-        simTitle.innerHTML = renderDiscordMarkdown(`${emojiPrize} **GIVEAWAY: ${prize}** ${emojiPrize}`);
+        simTitle.innerHTML = renderDiscordMarkdown(`${emojiPrize} **${prize}** ${emojiPrize}`);
     }
 
     if (simDesc) {
@@ -7445,10 +7457,31 @@ function updateGwPreview() {
         simEnds.textContent = `in ${duration}`;
     }
 
-    if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
-    if (simWinnersIcon) simWinnersIcon.innerHTML = renderDiscordMarkdown(emojiWinners);
-    if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiEntries);
-    if (simEndsIcon) simEndsIcon.innerHTML = renderDiscordMarkdown(emojiEnds);
+    if (simFooterText) {
+        let addMs = 3600 * 1000;
+        const dur = duration.toLowerCase();
+        if (dur.includes('m')) addMs = (parseInt(dur) || 60) * 60 * 1000;
+        if (dur.includes('h')) addMs = (parseInt(dur) || 1) * 3600 * 1000;
+        if (dur.includes('d')) addMs = (parseInt(dur) || 1) * 86400 * 1000;
+        if (dur.includes('w')) addMs = (parseInt(dur) || 1) * 7 * 86400 * 1000;
+        const endDate = new Date(Date.now() + addMs);
+        const mm = String(endDate.getMonth() + 1).padStart(2, '0');
+        const dd = String(endDate.getDate()).padStart(2, '0');
+        const yy = String(endDate.getFullYear()).slice(-2);
+        simFooterText.textContent = `Ends • ${mm}/${dd}/${yy}`;
+    }
+
+    // Banner image / GIF handling
+    const bannerUrl = (bannerInput && bannerInput.value.trim()) || (defaultBannerInput && defaultBannerInput.value.trim()) || '';
+    if (simBannerWrap && simBanner) {
+        if (bannerUrl) {
+            simBanner.src = bannerUrl;
+            simBannerWrap.style.display = 'block';
+        } else {
+            simBannerWrap.style.display = 'none';
+        }
+    }
+
     if (simButtonIcon) simButtonIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
 }
 
@@ -7478,6 +7511,9 @@ async function loadGiveawaysData() {
         setGwEmojiVisual('gwEmojiWinners', cfg.emoji_winners || '🏆');
         setGwEmojiVisual('gwEmojiEntries', cfg.emoji_entries || '🎟️');
         setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
+        if (document.getElementById('gwDefaultBanner')) {
+            document.getElementById('gwDefaultBanner').value = cfg.default_banner || '';
+        }
         if (document.getElementById('gwWinnerTitle') && cfg.winner_title) {
             document.getElementById('gwWinnerTitle').value = cfg.winner_title;
             if (typeof document.getElementById('gwWinnerTitle')._syncToRich === 'function') {
@@ -7681,6 +7717,7 @@ async function saveGwConfig() {
         emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
         emoji_entries: document.getElementById('gwEmojiEntries')?.value.trim() || '🎟️',
         emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳',
+        default_banner: document.getElementById('gwDefaultBanner')?.value.trim() || null,
         winner_title: document.getElementById('gwWinnerTitle')?.value.trim() || '🎉 GIVEAWAY CONCLUDED! 🎉',
         winner_message: document.getElementById('gwWinnerMessage')?.value.trim() || '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}',
         reroll_title: document.getElementById('gwRerollTitle')?.value.trim() || '🎲 GIVEAWAY REROLLED! 🎲',
@@ -7760,6 +7797,7 @@ async function launchGiveaway() {
                 winners,
                 description: desc,
                 channel_id: channelId,
+                image_url: document.getElementById('gwBannerInput')?.value.trim() || null,
                 emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
                 emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
                 emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
@@ -7772,6 +7810,7 @@ async function launchGiveaway() {
             showToast("🎉 Giveaway launched successfully in Discord!");
             if (prizeInput) prizeInput.value = "";
             if (descInput) descInput.value = "React with the button below to participate! Must be a verified server member to claim.";
+            if (document.getElementById('gwBannerInput')) document.getElementById('gwBannerInput').value = "";
             syncAllRichEmojiEditors();
             updateGwPreview();
             await loadGiveawaysData();
@@ -7861,6 +7900,11 @@ function setupGiveawayEvents() {
     if (durInput) durInput.addEventListener('input', updateGwPreview);
     if (winInput) winInput.addEventListener('input', updateGwPreview);
     if (descInput) descInput.addEventListener('input', updateGwPreview);
+
+    const bannerInput = document.getElementById('gwBannerInput');
+    const defaultBanner = document.getElementById('gwDefaultBanner');
+    if (bannerInput) bannerInput.addEventListener('input', updateGwPreview);
+    if (defaultBanner) defaultBanner.addEventListener('input', updateGwPreview);
 
     const saveCfgBtn = document.getElementById('gwSaveConfigBtn');
     if (saveCfgBtn) saveCfgBtn.addEventListener('click', saveGwConfig);

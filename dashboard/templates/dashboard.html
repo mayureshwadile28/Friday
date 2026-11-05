@@ -3344,6 +3344,15 @@ Click an inquiry button below to open a confidential support ticket with our tea
                         <input class="gw-emoji-input" id="gwEmojiEnds" type="hidden" value="⏳" />
                     </div>
                 </div>
+
+                <!-- Server Default Giveaway Banner -->
+                <div style="grid-column: 1 / -1; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px; margin-top: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Default Server Giveaway Banner (Image or GIF URL)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Applied automatically to new giveaways unless overridden</span>
+                    </div>
+                    <input class="text-input" id="gwDefaultBanner" placeholder="https://media.discordapp.net/.../banner.gif or https://... (.gif / .png / .jpg)" type="text" style="font-size: 12px;" />
+                </div>
             </div>
         </div>
 
@@ -3559,6 +3568,15 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </select>
                 </div>
 
+                <!-- Banner Image or GIF URL -->
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Banner Image or GIF URL (Optional)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Embed banner (.gif / .png / .jpg)</span>
+                    </div>
+                    <input class="text-input" id="gwBannerInput" placeholder="https://media.discordapp.net/attachments/.../giveaway_banner.gif" type="text" />
+                </div>
+
                 <!-- Description Textarea with Markdown Chips & Emojis -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Giveaway Description / Rules</label>
@@ -3602,26 +3620,39 @@ Click an inquiry button below to open a confidential support ticket with our tea
                             <span style="background: #5865f2; color: #ffffff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 3px;">BOT</span>
                             <span style="font-size: 11px; color: #949ba4;">Today at 1:00 PM</span>
                         </div>
-                        <div style="font-size: 12px; color: #b5bac1;">🎉 NEW GIVEAWAY! 🎉</div>
+                        <div id="gwSimHeaderContent" style="font-size: 13px; color: #dbdee1; font-weight: 600; margin-top: 2px;">🎉 New Giveaway 🎉</div>
                     </div>
                 </div>
 
-                <!-- Embed Simulator -->
-                <div style="border-left: 4px solid #5865F2; background: #2b2d31; border-radius: 0 4px 4px 0; padding: 12px 16px; margin-bottom: 12px;">
-                    <div id="gwSimTitle" style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">
-                        🎁 GIVEAWAY: 1 Month Discord Nitro Classic 🎁
+                <!-- Clean Embed Simulator (Matching sleek reference layout) -->
+                <div style="border-left: 4px solid #5865F2; background: #2b2d31; border-radius: 0 4px 4px 0; padding: 14px 16px; margin-bottom: 12px;">
+                    <!-- Top Row: Title + Server Thumbnail -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px;">
+                        <div id="gwSimTitle" style="font-size: 16px; font-weight: 700; color: #ffffff; line-height: 1.3;">
+                            🎁 1 Month Discord Nitro Classic 🎁
+                        </div>
+                        <img id="gwSimThumbnail" src="/static/avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 56px; height: 56px; border-radius: 6px; object-fit: cover; flex-shrink: 0;" />
                     </div>
-                    <div id="gwSimDesc" style="font-size: 13px; color: #dbdee1; line-height: 1.4; margin-bottom: 12px;">
-                        React with the button below to participate! Must be a verified server member to claim.
+
+                    <!-- Clean Bullet List Format -->
+                    <div style="font-size: 13px; color: #dbdee1; line-height: 1.7; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #949ba4;">•</span> <strong>Winners:</strong> <span id="gwSimWinners">1</span></div>
+                        <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #949ba4;">•</span> <strong>Ends In:</strong> <span id="gwSimEnds">in 1 hour</span></div>
+                        <div style="display: flex; align-items: center; gap: 6px;"><span style="color: #949ba4;">•</span> <strong>Hosted By:</strong> <span id="gwSimHost" class="discord-mention">@ServerStaff</span></div>
+                        <div id="gwSimDescRow" style="margin-top: 8px;">
+                            <span style="color: #949ba4;">•</span> <span id="gwSimDesc">React with the button below to participate! Must be a verified server member to claim.</span>
+                        </div>
                     </div>
-                    <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; margin-bottom: 10px; font-size: 12px; color: #dbdee1; line-height: 1.6;">
-                        <div><span id="gwSimHostIcon">👑</span> <strong>Host:</strong> <span id="gwSimHost" style="color: #c9cdfb;">@ServerStaff</span></div>
-                        <div><span id="gwSimWinnersIcon">🏆</span> <strong>Winners:</strong> <span id="gwSimWinners">1</span></div>
-                        <div><span id="gwSimEntriesIcon">🎟️</span> <strong>Entries:</strong> <span id="gwSimEntries">0</span></div>
-                        <div><span id="gwSimEndsIcon">⏳</span> <strong>Ends:</strong> <span id="gwSimEnds" style="color: #f59e0b;">in 1 hour</span></div>
+
+                    <!-- Large Embedded Image / GIF Banner Preview -->
+                    <div id="gwSimBannerWrap" style="margin-bottom: 12px; border-radius: 4px; overflow: hidden; display: none;">
+                        <img id="gwSimBanner" src="" style="width: 100%; height: auto; max-height: 240px; object-fit: cover; border-radius: 4px; display: block;" onerror="document.getElementById('gwSimBannerWrap').style.display='none';" />
                     </div>
+
+                    <!-- Sleek Footer -->
                     <div style="font-size: 11px; color: #949ba4; display: flex; align-items: center; gap: 6px;">
-                        <span>Friday Giveaway Engine • Ends at Today at 2:00 PM</span>
+                        <img id="gwSimFooterIcon" src="/static/avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 16px; height: 16px; border-radius: 50%;" />
+                        <span id="gwSimFooterText">Ends • 11/07/26</span>
                     </div>
                 </div>
 

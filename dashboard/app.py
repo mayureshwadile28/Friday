@@ -2347,6 +2347,10 @@ def save_guild_giveaway_config(gid):
             if val:
                 cfg[emoji_key] = val
 
+    if "default_banner" in body:
+        val = str(body.get("default_banner", "")).strip()
+        cfg["default_banner"] = val or None
+
     # Announcement formatting templates
     for text_key in ["winner_title", "winner_message", "reroll_title", "reroll_message"]:
         if text_key in body:
@@ -2497,35 +2501,39 @@ def create_guild_giveaway(gid):
         end_timestamp = int(end_time)
 
         cfg = db.giveaways_config.get(str(gid), {})
+        image_url = str(body.get("image_url", "")).strip() or cfg.get("default_banner")
         emoji_prize = body.get("emoji_prize") or cfg.get("emoji_prize", "🎁")
         emoji_host = body.get("emoji_host") or cfg.get("emoji_host", "👑")
         emoji_winners = body.get("emoji_winners") or cfg.get("emoji_winners", "🏆")
         emoji_entries = body.get("emoji_entries") or cfg.get("emoji_entries", "🎟️")
         emoji_ends = body.get("emoji_ends") or cfg.get("emoji_ends", "⏳")
 
+        desc_body = (
+            f"• **Winners:** {winners_count}\n"
+            f"• **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
+            f"• **Hosted By:** {guild.owner.mention if guild.owner else 'Server Staff'}\n\n"
+            f"• {description or 'Click the button below to participate!'}"
+        )
+
         embed = discord.Embed(
-            title=f"{emoji_prize} GIVEAWAY: {prize} {emoji_prize}",
-            description=(
-                f"{description}\n\n" if description else ""
-            ) + (
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "> React or click below to enter! Winners will be randomly selected.\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=discord.Color.from_rgb(88, 101, 242),
+            title=f"{emoji_prize} {prize} {emoji_prize}",
+            description=desc_body,
+            color=discord.Color.from_rgb(43, 45, 49),
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
-        embed.add_field(name=f"{emoji_host} Host", value=guild.owner.mention if guild.owner else "Server Staff", inline=True)
-        embed.add_field(name=f"{emoji_winners} Winners", value=f"**{winners_count}**", inline=True)
-        embed.add_field(name=f"{emoji_entries} Entries", value="**0**", inline=True)
-        embed.add_field(name=f"{emoji_ends} Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
-        embed.set_footer(text="Friday Giveaway Engine • Ends at", icon_url=guild.icon.url if guild.icon else None)
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        if image_url:
+            embed.set_image(url=image_url)
+
+        ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
+        embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{gid}_{temp_id}"
         view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize)
 
-        msg = await channel.send(content="🎉 **NEW GIVEAWAY!** 🎉", embed=embed, view=view)
+        msg = await channel.send(content="🎉 **New Giveaway** 🎉", embed=embed, view=view)
 
         real_key = f"{gid}_{msg.id}"
         real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
@@ -2544,7 +2552,8 @@ def create_guild_giveaway(gid):
             "status": "active",
             "entries": [],
             "winners": [],
-            "description": description
+            "description": description,
+            "image_url": image_url or ""
         }
         db.giveaways[real_key] = gw_data
         db.save_data()
