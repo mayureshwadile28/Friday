@@ -7331,6 +7331,44 @@ function updateGwWinnerPreview() {
     }
 }
 
+function setGwEmojiVisual(id, val) {
+    val = (val || '').trim();
+    if (!val) {
+        const defaults = {
+            'gwEmojiPrize': '🎁',
+            'gwEmojiHost': '👑',
+            'gwEmojiWinners': '🏆',
+            'gwEmojiEntries': '🎟️',
+            'gwEmojiEnds': '⏳'
+        };
+        val = defaults[id] || '🎁';
+    }
+
+    const input = document.getElementById(id);
+    if (input) input.value = val;
+
+    const preview = document.getElementById(id + 'Preview');
+    const imgEl = document.getElementById(id + 'Img');
+    const textEl = document.getElementById(id + 'Text');
+
+    const renderedLarge = renderEmojiHtmlOrChar(val, 28);
+    const renderedSmall = renderEmojiHtmlOrChar(val, 20);
+
+    if (preview) preview.innerHTML = renderedLarge;
+    if (imgEl) imgEl.innerHTML = renderedSmall;
+
+    if (textEl) {
+        const match = val.match(/:([a-zA-Z0-9_]+):/);
+        if (match) {
+            textEl.textContent = `:${match[1]}:`;
+        } else if (/^[0-9]{15,22}$/.test(val)) {
+            textEl.textContent = ':custom_emoji:';
+        } else {
+            textEl.textContent = val;
+        }
+    }
+}
+
 function updateGwPreview() {
     const prizeInput = document.getElementById('gwPrizeInput');
     const durInput = document.getElementById('gwDurationInput');
@@ -7408,11 +7446,11 @@ async function loadGiveawaysData() {
         if (appSelect && (cfg.approval_channel || cfg.approval_channel_id)) appSelect.value = String(cfg.approval_channel || cfg.approval_channel_id);
         if (logSelect && (cfg.log_channel || cfg.log_channel_id)) logSelect.value = String(cfg.log_channel || cfg.log_channel_id);
 
-        if (document.getElementById('gwEmojiPrize') && cfg.emoji_prize) document.getElementById('gwEmojiPrize').value = cfg.emoji_prize;
-        if (document.getElementById('gwEmojiHost') && cfg.emoji_host) document.getElementById('gwEmojiHost').value = cfg.emoji_host;
-        if (document.getElementById('gwEmojiWinners') && cfg.emoji_winners) document.getElementById('gwEmojiWinners').value = cfg.emoji_winners;
-        if (document.getElementById('gwEmojiEntries') && cfg.emoji_entries) document.getElementById('gwEmojiEntries').value = cfg.emoji_entries;
-        if (document.getElementById('gwEmojiEnds') && cfg.emoji_ends) document.getElementById('gwEmojiEnds').value = cfg.emoji_ends;
+        setGwEmojiVisual('gwEmojiPrize', cfg.emoji_prize || '🎁');
+        setGwEmojiVisual('gwEmojiHost', cfg.emoji_host || '👑');
+        setGwEmojiVisual('gwEmojiWinners', cfg.emoji_winners || '🏆');
+        setGwEmojiVisual('gwEmojiEntries', cfg.emoji_entries || '🎟️');
+        setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
         if (document.getElementById('gwWinnerTitle') && cfg.winner_title) document.getElementById('gwWinnerTitle').value = cfg.winner_title;
         if (document.getElementById('gwWinnerMessage') && cfg.winner_message) document.getElementById('gwWinnerMessage').value = cfg.winner_message;
         if (document.getElementById('gwRerollTitle') && cfg.reroll_title) document.getElementById('gwRerollTitle').value = cfg.reroll_title;
@@ -7792,39 +7830,44 @@ function setupGiveawayEvents() {
         if (el) el.addEventListener('input', updateGwPreview);
     });
 
-    // Universal Emoji Pickers for custom giveaway icons
-    const bindGwEmojiBtn = (btnId, inputId) => {
-        const btn = document.getElementById(btnId);
-        const input = document.getElementById(inputId);
-        if (btn && input) {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                openEmojiPicker(btn, (chosenEmoji) => {
-                    input.value = chosenEmoji;
-                    updateGwPreview();
-                });
+    // Universal Visual Emoji Selectors for custom giveaway icons
+    const bindGwEmojiTile = (id) => {
+        const btn = document.getElementById(id + 'Btn');
+        const visual = document.getElementById(id + 'Visual');
+        const trigger = (e) => {
+            e.preventDefault();
+            const targetBtn = btn || visual;
+            openEmojiPicker(targetBtn, (chosenEmoji) => {
+                if (!chosenEmoji) return;
+                setGwEmojiVisual(id, chosenEmoji);
+                updateGwPreview();
             });
-        }
+        };
+        if (btn) btn.addEventListener('click', trigger);
+        if (visual) visual.addEventListener('click', trigger);
     };
 
-    bindGwEmojiBtn('gwEmojiPrizeBtn', 'gwEmojiPrize');
-    bindGwEmojiBtn('gwEmojiHostBtn', 'gwEmojiHost');
-    bindGwEmojiBtn('gwEmojiWinnersBtn', 'gwEmojiWinners');
-    bindGwEmojiBtn('gwEmojiEntriesBtn', 'gwEmojiEntries');
-    bindGwEmojiBtn('gwEmojiEndsBtn', 'gwEmojiEnds');
+    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds'].forEach(bindGwEmojiTile);
 
     const resetEmojisBtn = document.getElementById('gwResetEmojisBtn');
     if (resetEmojisBtn) {
         resetEmojisBtn.addEventListener('click', () => {
-            if (document.getElementById('gwEmojiPrize')) document.getElementById('gwEmojiPrize').value = '🎁';
-            if (document.getElementById('gwEmojiHost')) document.getElementById('gwEmojiHost').value = '👑';
-            if (document.getElementById('gwEmojiWinners')) document.getElementById('gwEmojiWinners').value = '🏆';
-            if (document.getElementById('gwEmojiEntries')) document.getElementById('gwEmojiEntries').value = '🎟️';
-            if (document.getElementById('gwEmojiEnds')) document.getElementById('gwEmojiEnds').value = '⏳';
+            setGwEmojiVisual('gwEmojiPrize', '🎁');
+            setGwEmojiVisual('gwEmojiHost', '👑');
+            setGwEmojiVisual('gwEmojiWinners', '🏆');
+            setGwEmojiVisual('gwEmojiEntries', '🎟️');
+            setGwEmojiVisual('gwEmojiEnds', '⏳');
             updateGwPreview();
             showToast("Reset to default giveaway emojis");
         });
     }
+
+    // Set initial visual state for giveaway emojis
+    setGwEmojiVisual('gwEmojiPrize', document.getElementById('gwEmojiPrize')?.value || '🎁');
+    setGwEmojiVisual('gwEmojiHost', document.getElementById('gwEmojiHost')?.value || '👑');
+    setGwEmojiVisual('gwEmojiWinners', document.getElementById('gwEmojiWinners')?.value || '🏆');
+    setGwEmojiVisual('gwEmojiEntries', document.getElementById('gwEmojiEntries')?.value || '🎟️');
+    setGwEmojiVisual('gwEmojiEnds', document.getElementById('gwEmojiEnds')?.value || '⏳');
 
     // Announcement designer tab switching
     const tabWinBtn = document.getElementById('gwTabWinnerBtn');

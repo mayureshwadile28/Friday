@@ -3269,49 +3269,79 @@ Click an inquiry button below to open a confidential support ticket with our tea
                 </button>
             </div>
 
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
                 <!-- Prize / Header Icon -->
-                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
-                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🎁 Prize &amp; Button Icon</label>
-                    <div style="display: flex; gap: 6px;">
-                        <input class="text-input gw-emoji-input" id="gwEmojiPrize" type="text" value="🎁" style="font-size: 13px;" />
-                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiPrizeBtn" type="button" style="padding: 0 10px;">😊</button>
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Prize &amp; Button Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiPrizeBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiPrizePreview" style="display: inline-flex; align-items: center; justify-content: center;">🎁</span>
+                        </button>
+                        <div id="gwEmojiPrizeVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiPrizeImg" style="display: inline-flex; align-items: center;">🎁</span>
+                            <span id="gwEmojiPrizeText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">🎁 Prize Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiPrize" type="hidden" value="🎁" />
                     </div>
                 </div>
 
                 <!-- Host / Sponsor Icon -->
-                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
-                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">👑 Host / Sponsor Icon</label>
-                    <div style="display: flex; gap: 6px;">
-                        <input class="text-input gw-emoji-input" id="gwEmojiHost" type="text" value="👑" style="font-size: 13px;" />
-                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiHostBtn" type="button" style="padding: 0 10px;">😊</button>
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Host / Sponsor Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiHostBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiHostPreview" style="display: inline-flex; align-items: center; justify-content: center;">👑</span>
+                        </button>
+                        <div id="gwEmojiHostVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiHostImg" style="display: inline-flex; align-items: center;">👑</span>
+                            <span id="gwEmojiHostText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">👑 Host Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiHost" type="hidden" value="👑" />
                     </div>
                 </div>
 
                 <!-- Winners Icon -->
-                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
-                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🏆 Winners Icon</label>
-                    <div style="display: flex; gap: 6px;">
-                        <input class="text-input gw-emoji-input" id="gwEmojiWinners" type="text" value="🏆" style="font-size: 13px;" />
-                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiWinnersBtn" type="button" style="padding: 0 10px;">😊</button>
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Winners Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiWinnersBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiWinnersPreview" style="display: inline-flex; align-items: center; justify-content: center;">🏆</span>
+                        </button>
+                        <div id="gwEmojiWinnersVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiWinnersImg" style="display: inline-flex; align-items: center;">🏆</span>
+                            <span id="gwEmojiWinnersText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">🏆 Winners Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiWinners" type="hidden" value="🏆" />
                     </div>
                 </div>
 
                 <!-- Entries Icon -->
-                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
-                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🎟️ Entries Icon</label>
-                    <div style="display: flex; gap: 6px;">
-                        <input class="text-input gw-emoji-input" id="gwEmojiEntries" type="text" value="🎟️" style="font-size: 13px;" />
-                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiEntriesBtn" type="button" style="padding: 0 10px;">😊</button>
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Entries Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiEntriesBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiEntriesPreview" style="display: inline-flex; align-items: center; justify-content: center;">🎟️</span>
+                        </button>
+                        <div id="gwEmojiEntriesVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiEntriesImg" style="display: inline-flex; align-items: center;">🎟️</span>
+                            <span id="gwEmojiEntriesText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">🎟️ Entries Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiEntries" type="hidden" value="🎟️" />
                     </div>
                 </div>
 
                 <!-- Ends Icon -->
-                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
-                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">⏳ Countdown / Ends Icon</label>
-                    <div style="display: flex; gap: 6px;">
-                        <input class="text-input gw-emoji-input" id="gwEmojiEnds" type="text" value="⏳" style="font-size: 13px;" />
-                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiEndsBtn" type="button" style="padding: 0 10px;">😊</button>
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Countdown / Ends Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiEndsBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiEndsPreview" style="display: inline-flex; align-items: center; justify-content: center;">⏳</span>
+                        </button>
+                        <div id="gwEmojiEndsVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiEndsImg" style="display: inline-flex; align-items: center;">⏳</span>
+                            <span id="gwEmojiEndsText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">⏳ Ends Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiEnds" type="hidden" value="⏳" />
                     </div>
                 </div>
             </div>
