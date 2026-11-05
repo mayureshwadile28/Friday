@@ -489,5 +489,470 @@ class Moderation(commands.Cog):
                         await message.reply(embed=embed, mention_author=False)
                         return
 
+
+    # ───────────────────── Voice Move Commands ─────────────────────
+
+    def _check_voice_perms(self, member: discord.Member, guild: discord.Guild) -> bool:
+        """Verify user is Server Owner, Administrator, or possesses Manage Channels / Move Members."""
+        if not member or not guild:
+            return False
+        if member.id == guild.owner_id:
+            return True
+        perms = member.guild_permissions
+        return bool(perms.administrator or perms.manage_channels or perms.move_members or perms.manage_guild)
+
+    def _resolve_members_from_input(
+        self,
+        guild: discord.Guild,
+        text: Optional[str],
+        single_member: Optional[discord.Member] = None,
+        direct_mentions: Optional[List[discord.Member]] = None
+    ) -> List[discord.Member]:
+        """Resolves Discord members from mentions, IDs, and names without duplicates."""
+        results = []
+        seen_ids = set()
+
+        if single_member:
+            results.append(single_member)
+            seen_ids.add(single_member.id)
+
+        if direct_mentions:
+            for m in direct_mentions:
+                if isinstance(m, discord.Member) and m.id not in seen_ids:
+                    results.append(m)
+                    seen_ids.add(m.id)
+
+        if not text:
+            return results
+
+        # 1. Regex find all user mentions <@!?(\d+)>
+        for match in re.finditer(r'<@!?(\d+)>', text):
+            uid = int(match.group(1))
+            if uid not in seen_ids:
+                m = guild.get_member(uid)
+                if m:
+                    results.append(m)
+                    seen_ids.add(uid)
+
+        # 2. Split remainder by whitespace and commas
+        cleaned_text = re.sub(r'<@!?\d+>', ' ', text)
+        tokens = [t.strip() for t in re.split(r'[,;\s]+', cleaned_text) if t.strip()]
+
+        for token in tokens:
+            if token.isdigit():
+                uid = int(token)
+                if uid not in seen_ids:
+                    m = guild.get_member(uid)
+                    if m:
+                        results.append(m)
+                        seen_ids.add(uid)
+                continue
+
+            t_lower = token.lstrip("@").lower()
+            if len(t_lower) >= 2:
+                for m in guild.members:
+                    if m.id in seen_ids:
+                        continue
+                    d_name = m.display_name.lower()
+                    u_name = m.name.lower()
+                    if d_name == t_lower or u_name == t_lower:
+                        results.append(m)
+                        seen_ids.add(m.id)
+                        break
+
+        return results
+
+    async def _resolve_voice_channel(self, guild: discord.Guild, text: str) -> Optional[discord.VoiceChannel]:
+        """Resolve a voice channel from a mention, ID, or name."""
+        if not text or not guild:
+            return None
+        text_str = str(text).strip()
+        m = re.search(r'<#(\d+)>', text_str)
+        if m:
+            ch = guild.get_channel(int(m.group(1)))
+            if isinstance(ch, discord.VoiceChannel):
+                return ch
+        if text_str.isdigit():
+            ch = guild.get_channel(int(text_str))
+            if isinstance(ch, discord.VoiceChannel):
+                return ch
+        clean = text_str.lstrip("#").lower()
+        for ch in guild.voice_channels:
+            if ch.name.lower() == clean:
+                return ch
+        for ch in guild.voice_channels:
+            if clean in ch.name.lower():
+                return ch
+        return None
+
+    @app_commands.command(name="move", description="Move specific member(s) to a voice channel.")
+    @app_commands.describe(
+        target_channel="The destination voice channel to move member(s) to",
+        members="Mention members, enter IDs, or names separated by spaces (e.g. @Alex @Bob @Charlie)",
+        member="Or pick a single member from the list"
+    )
+    async def move(
+        self,
+        interaction: discord.Interaction,
+        target_channel: discord.VoiceChannel,
+        members: Optional[str] = None,
+        member: Optional[discord.Member] = None
+    ):
+        if not self._check_voice_perms(interaction.user, interaction.guild):
+            embed = make_box_embed(
+                title="ACCESS DENIED",
+                description="Only Server Owners, Administrators, and staff with **Manage Channels** or **Move Members** permissions can shift voice members.",
+                status="danger"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if not interaction.guild.me.guild_permissions.move_members:
+            embed = make_box_embed(
+                title="PERMISSION FAULT",
+                description="Friday lacks the **Move Members** permission in this server to transfer members between voice channels.",
+                status="danger"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        members_to_process = self._resolve_members_from_input(interaction.guild, members, member)
+        if not members_to_process:
+            embed = make_box_embed(
+                title="NO MEMBERS SPECIFIED",
+                description="Please mention or specify at least one member to move (e.g. `/move target_channel: #Voice members: @user1 @user2`).",
+                status="warning"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        moved = []
+        not_in_vc = []
+        already_there = []
+        failed = []
+
+        for m in members_to_process:
+            if not m.voice or not m.voice.channel:
+                not_in_vc.append(m)
+            elif m.voice.channel.id == target_channel.id:
+                already_there.append(m)
+            else:
+                try:
+                    await m.move_to(target_channel, reason=f"Moved by {interaction.user.name} ({interaction.user.id})")
+                    moved.append(m)
+                except Exception as e:
+                    failed.append((m, str(e)))
+
+        lines = []
+        if moved:
+            m_list = ", ".join(m.mention for m in moved)
+            lines.append(f"✓ **Transferred ({len(moved)}):** {m_list} ➔ {target_channel.mention}")
+        if already_there:
+            a_list = ", ".join(m.mention for m in already_there)
+            lines.append(f"• **Already in {target_channel.mention} ({len(already_there)}):** {a_list}")
+        if not_in_vc:
+            n_list = ", ".join(m.mention for m in not_in_vc)
+            lines.append(f"▲ **Not in any voice channel ({len(not_in_vc)}):** {n_list}")
+        if failed:
+            f_list = ", ".join(f"{m.mention} ({err})" for m, err in failed)
+            lines.append(f"✕ **Failed to move ({len(failed)}):** {f_list}")
+
+        status = "success" if moved else ("warning" if already_there or not_in_vc else "danger")
+        embed = make_box_embed(
+            title="VOICE MEMBERS SHIFT",
+            description="\n\n".join(lines) or "No members were moved.",
+            status=status
+        )
+        await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="moveall", description="Move all members from one voice channel to another.")
+    @app_commands.describe(
+        target_channel="The destination voice channel to move all members to",
+        source_channel="The source voice channel (defaults to your current voice channel)"
+    )
+    async def moveall(
+        self,
+        interaction: discord.Interaction,
+        target_channel: discord.VoiceChannel,
+        source_channel: Optional[discord.VoiceChannel] = None
+    ):
+        if not self._check_voice_perms(interaction.user, interaction.guild):
+            embed = make_box_embed(
+                title="ACCESS DENIED",
+                description="Only Server Owners, Administrators, and staff with **Manage Channels** or **Move Members** permissions can shift voice members.",
+                status="danger"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if not interaction.guild.me.guild_permissions.move_members:
+            embed = make_box_embed(
+                title="PERMISSION FAULT",
+                description="Friday lacks the **Move Members** permission in this server to transfer members between voice channels.",
+                status="danger"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if source_channel is None:
+            if interaction.user.voice and interaction.user.voice.channel:
+                source_channel = interaction.user.voice.channel
+            else:
+                embed = make_box_embed(
+                    title="SOURCE CHANNEL REQUIRED",
+                    description="You are not currently in any voice channel! Please join a voice channel or specify the `source_channel` parameter.",
+                    status="warning"
+                )
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+
+        if source_channel.id == target_channel.id:
+            embed = make_box_embed(
+                title="IDENTICAL CHANNELS",
+                description=f"Source and destination voice channels are identical ({target_channel.mention})!",
+                status="warning"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        members_to_move = list(source_channel.members)
+        if not members_to_move:
+            embed = make_box_embed(
+                title="CHANNEL EMPTY",
+                description=f"There are no members currently connected to {source_channel.mention}!",
+                status="warning"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        moved = []
+        failed = []
+        for m in members_to_move:
+            try:
+                await m.move_to(target_channel, reason=f"Mass voice shift commanded by {interaction.user.name} ({interaction.user.id})")
+                moved.append(m)
+            except Exception as e:
+                failed.append((m, str(e)))
+
+        desc = f"Successfully shifted **{len(moved)}** member(s) from {source_channel.mention} to {target_channel.mention}!"
+        if moved:
+            desc += f"\n\n**Transferred Members ({len(moved)}):**\n> " + ", ".join(m.mention for m in moved)
+        if failed:
+            desc += f"\n\n✕ **Failed ({len(failed)}):** " + ", ".join(f"{m.mention} ({err})" for m, err in failed)
+
+        embed = make_box_embed(
+            title="MASS VOICE MIGRATION",
+            description=desc,
+            status="success" if moved else "danger"
+        )
+        await interaction.followup.send(embed=embed)
+
+    # ───────────────────── Prefix Voice Move Commands ─────────────────────
+
+    @commands.command(name="move")
+    async def prefix_move(self, ctx: commands.Context, *args):
+        """
+        Move members to a voice channel via prefix command.
+        Usage:
+          !move <#target_channel> <@member1 @member2...>
+          !move all <#target_channel> [#source_channel]
+        """
+        if not self._check_voice_perms(ctx.author, ctx.guild):
+            embed = make_box_embed(
+                title="ACCESS DENIED",
+                description="Only Server Owners, Administrators, and staff with **Manage Channels** or **Move Members** permissions can shift voice members.",
+                status="danger"
+            )
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        if not ctx.guild.me.guild_permissions.move_members:
+            embed = make_box_embed(
+                title="PERMISSION FAULT",
+                description="Friday lacks the **Move Members** permission in this server to transfer members between voice channels.",
+                status="danger"
+            )
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        if not args:
+            embed = make_box_embed(
+                title="COMMAND USAGE: MOVE",
+                description=(
+                    "**Move specific members:**\n"
+                    f"`{ctx.prefix}move <#destination> @member1 @member2...`\n\n"
+                    "**Move all members:**\n"
+                    f"`{ctx.prefix}move all <#destination> [#source]`\n\n"
+                    "*(Or use the slash commands `/move` and `/moveall`)*"
+                ),
+                status="info"
+            )
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        if args[0].lower() == "all":
+            remaining = args[1:]
+            if not remaining:
+                embed = make_box_embed(title="USAGE ERROR", description=f"Usage: `{ctx.prefix}move all <#destination_channel> [#source_channel]`", status="warning")
+                await ctx.reply(embed=embed, mention_author=False)
+                return
+
+            target_ch = await self._resolve_voice_channel(ctx.guild, remaining[0])
+            if not target_ch:
+                embed = make_box_embed(title="INVALID CHANNEL", description=f"Could not find destination voice channel `{remaining[0]}`.", status="warning")
+                await ctx.reply(embed=embed, mention_author=False)
+                return
+
+            source_ch = None
+            if len(remaining) > 1:
+                source_ch = await self._resolve_voice_channel(ctx.guild, remaining[1])
+            elif ctx.author.voice and ctx.author.voice.channel:
+                source_ch = ctx.author.voice.channel
+
+            if not source_ch:
+                embed = make_box_embed(title="SOURCE CHANNEL REQUIRED", description="You are not in a voice channel! Please join one or specify: `!move all <#dest> <#source>`", status="warning")
+                await ctx.reply(embed=embed, mention_author=False)
+                return
+
+            await self._run_mass_move(ctx, target_ch, source_ch)
+            return
+
+        target_ch = await self._resolve_voice_channel(ctx.guild, args[0])
+        if not target_ch:
+            embed = make_box_embed(title="INVALID CHANNEL", description=f"First argument must be the destination voice channel. Could not find `{args[0]}`.", status="warning")
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        raw_members_text = " ".join(args[1:])
+        members_list = self._resolve_members_from_input(ctx.guild, raw_members_text, direct_mentions=ctx.message.mentions)
+        if not members_list:
+            embed = make_box_embed(title="NO MEMBERS SPECIFIED", description=f"Please specify members to move! E.g. `{ctx.prefix}move #{target_ch.name} @user1 @user2`", status="warning")
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        await self._run_members_move(ctx, target_ch, members_list)
+
+    @commands.command(name="moveall")
+    async def prefix_moveall(self, ctx: commands.Context, target: str = None, source: str = None):
+        """Move all members from one voice channel to another: !moveall <#dest> [#source]"""
+        if not self._check_voice_perms(ctx.author, ctx.guild):
+            embed = make_box_embed(
+                title="ACCESS DENIED",
+                description="Only Server Owners, Administrators, and staff with **Manage Channels** or **Move Members** permissions can shift voice members.",
+                status="danger"
+            )
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        if not target:
+            embed = make_box_embed(title="USAGE ERROR", description=f"Usage: `{ctx.prefix}moveall <#destination_channel> [#source_channel]`", status="info")
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        target_ch = await self._resolve_voice_channel(ctx.guild, target)
+        if not target_ch:
+            embed = make_box_embed(title="INVALID CHANNEL", description=f"Could not find voice channel `{target}`.", status="warning")
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        source_ch = None
+        if source:
+            source_ch = await self._resolve_voice_channel(ctx.guild, source)
+        elif ctx.author.voice and ctx.author.voice.channel:
+            source_ch = ctx.author.voice.channel
+
+        if not source_ch:
+            embed = make_box_embed(title="SOURCE CHANNEL REQUIRED", description="You are not in a voice channel! Please join one or specify: `!moveall <#dest> <#source>`", status="warning")
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        await self._run_mass_move(ctx, target_ch, source_ch)
+
+    async def _run_members_move(self, ctx: commands.Context, target_channel: discord.VoiceChannel, members: List[discord.Member]):
+        moved = []
+        not_in_vc = []
+        already_there = []
+        failed = []
+
+        for m in members:
+            if not m.voice or not m.voice.channel:
+                not_in_vc.append(m)
+            elif m.voice.channel.id == target_channel.id:
+                already_there.append(m)
+            else:
+                try:
+                    await m.move_to(target_channel, reason=f"Moved by {ctx.author.name} ({ctx.author.id})")
+                    moved.append(m)
+                except Exception as e:
+                    failed.append((m, str(e)))
+
+        lines = []
+        if moved:
+            m_list = ", ".join(m.mention for m in moved)
+            lines.append(f"✓ **Transferred ({len(moved)}):** {m_list} ➔ {target_channel.mention}")
+        if already_there:
+            a_list = ", ".join(m.mention for m in already_there)
+            lines.append(f"• **Already in {target_channel.mention} ({len(already_there)}):** {a_list}")
+        if not_in_vc:
+            n_list = ", ".join(m.mention for m in not_in_vc)
+            lines.append(f"▲ **Not in any voice channel ({len(not_in_vc)}):** {n_list}")
+        if failed:
+            f_list = ", ".join(f"{m.mention} ({err})" for m, err in failed)
+            lines.append(f"✕ **Failed to move ({len(failed)}):** {f_list}")
+
+        status = "success" if moved else ("warning" if already_there or not_in_vc else "danger")
+        embed = make_box_embed(
+            title="VOICE MEMBERS SHIFT",
+            description="\n\n".join(lines) or "No members were moved.",
+            status=status
+        )
+        await ctx.reply(embed=embed, mention_author=False)
+
+    async def _run_mass_move(self, ctx: commands.Context, target_channel: discord.VoiceChannel, source_channel: discord.VoiceChannel):
+        if source_channel.id == target_channel.id:
+            embed = make_box_embed(
+                title="IDENTICAL CHANNELS",
+                description=f"Source and destination voice channels are identical ({target_channel.mention})!",
+                status="warning"
+            )
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        members_to_move = list(source_channel.members)
+        if not members_to_move:
+            embed = make_box_embed(
+                title="CHANNEL EMPTY",
+                description=f"There are no members currently connected to {source_channel.mention}!",
+                status="warning"
+            )
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        moved = []
+        failed = []
+        for m in members_to_move:
+            try:
+                await m.move_to(target_channel, reason=f"Mass voice shift commanded by {ctx.author.name} ({ctx.author.id})")
+                moved.append(m)
+            except Exception as e:
+                failed.append((m, str(e)))
+
+        desc = f"Successfully shifted **{len(moved)}** member(s) from {source_channel.mention} to {target_channel.mention}!"
+        if moved:
+            desc += f"\n\n**Transferred Members ({len(moved)}):**\n> " + ", ".join(m.mention for m in moved)
+        if failed:
+            desc += f"\n\n✕ **Failed ({len(failed)}):** " + ", ".join(f"{m.mention} ({err})" for m, err in failed)
+
+        embed = make_box_embed(
+            title="MASS VOICE MIGRATION",
+            description=desc,
+            status="success" if moved else "danger"
+        )
+        await ctx.reply(embed=embed, mention_author=False)
+
 async def setup(bot):
     await bot.add_cog(Moderation(bot))

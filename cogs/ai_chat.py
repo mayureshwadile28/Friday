@@ -1,3 +1,19 @@
+def clean_vip_nickname(raw: str) -> str:
+    """Sanitize user-provided nickname by stripping conversational noise, Hindi particles, and emoticons."""
+    if not raw:
+        return ""
+    s = str(raw).strip()
+    # Strip common emoticons like T_T, :), :D, -_-, xD, emojis
+    s = re.sub(r'([T_t][_\.][T_t]|[:;]-?[\)\(DPpdO0]|[-_]{2,}[^\w\s]*|[xX][dD]|🥺|😭|✨|🌸|💀)', '', s)
+    # Strip trailing hindi / conversational particles like 'na', 'yaar', 'bhai', 'plz', 'please'
+    s = re.sub(r'\b(na|yaar|bhai|please|plz|bro|dude)\b', '', s, flags=re.IGNORECASE)
+    # Strip "not <other>" e.g. "matur not mayuresh" -> "matur"
+    s = re.sub(r'\b(not|nahi|instead of)\b.*$', '', s, flags=re.IGNORECASE)
+    # Remove non-word characters except hyphen/space/apostrophe
+    s = re.sub(r'[^\w\s\x27\-]', '', s)
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s.title() if s else ""
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -1166,8 +1182,14 @@ Real-Time Temporal Awareness:
 
 Private DM Partner:
 - You are chatting 1-on-1 with your VIP friend: {nickname}.
-- Address them naturally by {nickname}.
+- Address them naturally and affectionately by {nickname}.
+- ABSOLUTE NICKNAME MANDATE: Always respect and use their chosen name '{nickname}'. NEVER debate, correct, argue, question, or dismiss their preferred name! Even if their server display name differs, their chosen name for you is '{nickname}' 100%.
 {notes_block}
+
+COMMON SENSE & CONVERSATIONAL INTUITION (CRITICAL):
+- Understand {nickname}'s true intent deeply before answering. What are they actually feeling, wanting, or referring to?
+- If {nickname} corrects you or reminds you about something (like their nickname or a past request), accept it instantly with feminine grace, charm, and humor (e.g. "Oh my bad, {nickname}! 🥰 My sassy brain had a little moment!"). Never be obstinate, argumentative, or lecture them.
+- Token Economy: Keep replies short, witty, and punchy (2 to 4 lines). Don't waste tokens, write repetitive fluff, or lecture about grammar.
 
 HUMAN EMOTIONAL DYNAMICS & MOOD SWINGS (CRITICAL):
 {mood_block}
@@ -1453,7 +1475,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             # Step 0: First message from VIP member (e.g. "hi", "hello")
             if step == 0:
                 if name_match:
-                    chosen_name = name_match.group(1).strip().title()
+                    chosen_name = clean_vip_nickname(name_match.group(1)) or "Friend"
                     vip_data["custom_nickname"] = chosen_name
                     vip_data["onboarding_step"] = 2
                     db.save_data()
@@ -1475,9 +1497,9 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             # Step 1: User is answering "what should I call you?"
             elif step == 1:
                 if name_match:
-                    chosen_name = name_match.group(1).strip().title()
+                    chosen_name = clean_vip_nickname(name_match.group(1)) or message.author.display_name
                 elif len(content.split()) <= 4 and len(content) <= 32:
-                    chosen_name = content.strip("!?,. ").title()
+                    chosen_name = clean_vip_nickname(content) or message.author.display_name
                 else:
                     chosen_name = message.author.display_name
 
@@ -1516,23 +1538,29 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                 return
 
         # 2. Active VIP Conversation: Handle Emotional Dynamics & Mood Swings
-        # Auto-correct typo "Matur" if user is Mayuresh or contains typo
-        curr_nick = str(vip_data.get("custom_nickname") or "")
-        if curr_nick.lower() in ("matur", "mature", "maturesh") or "mayur" in message.author.display_name.lower() or "mayur" in message.author.name.lower():
-            if curr_nick.lower() in ("matur", "mature", "maturesh"):
-                vip_data["custom_nickname"] = "Mayuresh"
-                db.save_data()
+        # Ensure current stored nickname is cleanly formatted (e.g. cleans "Matur Na T_T" -> "Matur")
+        curr_nick = str(vip_data.get("custom_nickname") or "").strip()
+        cleaned_nick = clean_vip_nickname(curr_nick)
+        if cleaned_nick and cleaned_nick != curr_nick:
+            vip_data["custom_nickname"] = cleaned_nick
+            db.save_data()
 
-        # Check if user requests a nickname update during active DM conversation
+        # Check if user requests, reminds, or corrects their nickname during active conversation
         name_change_match = re.search(
-            r"""\b(?:call me|you can call me|my name is|mera naam|naam hai|mujhe|aap mujhe|change my nickname to|rename me to)\s+([a-zA-Z0-9\s_']{2,25})""",
+            r"""\b(?:call me|you can call me|called me|called my|call me as|my name is|mera naam|naam hai|mujhe|aap mujhe|change my nickname to|rename me to)\s+([a-zA-Z0-9\s_'’\-\.:]{2,30})""",
             content,
             re.IGNORECASE
         )
         if name_change_match and status == "active":
-            new_nick = name_change_match.group(1).strip().title()
-            vip_data["custom_nickname"] = new_nick
-            db.save_data()
+            raw_cand = name_change_match.group(1).strip()
+            new_nick = clean_vip_nickname(raw_cand)
+            if new_nick:
+                vip_data["custom_nickname"] = new_nick
+                notes = vip_data.get("notes", "")
+                notes = re.sub(r'Prefers to be called [^;]+;?', '', notes, flags=re.IGNORECASE).strip('; ')
+                notes = (notes + f"; Prefers to be called {new_nick}").strip('; ')
+                vip_data["notes"] = notes
+                db.save_data()
 
         message_count = vip_data.get("message_count", 0) + 1
         vip_data["message_count"] = message_count

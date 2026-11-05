@@ -7062,9 +7062,12 @@ function renderSpecialInvites(invites) {
                 </div>
 
                 <div style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px; margin-bottom: 14px; font-size: 12px; display: flex; flex-direction: column; gap: 6px;">
-                    <div style="display: flex; justify-content: space-between;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: var(--text-muted);">Calling Name:</span>
-                        <span>${nicknameDisplay}</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span>${nicknameDisplay}</span>
+                            <button type="button" class="btn btn-secondary" onclick="editVipNickname('${inv.user_id}', '${escapeHtml(inv.custom_nickname || '')}')" style="font-size: 10px; padding: 1px 6px; border-radius: 4px;" title="Edit Calling Name">✏️</button>
+                        </div>
                     </div>
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <span style="color: var(--text-muted);">Current Mood:</span>
@@ -7212,6 +7215,28 @@ async function revokeSpecialInvite(userId, username) {
         }
     } catch (e) {
         showToast("❌ Network error revoking VIP access");
+    }
+}
+
+async function editVipNickname(userId, currentNick) {
+    if (!currentGuildId || !userId) return;
+    const newNick = prompt("Enter preferred calling name for Friday's private DMs:", currentNick || "");
+    if (newNick === null) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/special_invites/update_nickname`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, nickname: newNick })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(`✅ Calling name updated to "${data.nickname}"!`);
+            await loadSpecialInvitesData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to update'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error updating nickname");
     }
 }
 
