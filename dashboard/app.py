@@ -227,7 +227,7 @@ def get_guild_emojis(gid):
         seen_ids = set()
         guild = bot_instance.get_guild(int(gid))
         
-        # Current guild emojis first
+        # 1. Current guild emojis first
         if guild:
             for e in guild.emojis:
                 if not e.available: continue
@@ -237,10 +237,26 @@ def get_guild_emojis(gid):
                     "name": e.name,
                     "animated": bool(e.animated),
                     "url": str(e.url),
-                    "code": f"<a:{e.name}:{e.id}>" if e.animated else f"<:{e.name}:{e.id}>"
+                    "code": f"<a:{e.name}:{e.id}>" if e.animated else f"<:{e.name}:{e.id}>",
+                    "server": guild.name,
+                    "current_guild": True
                 })
                 
-        # Removed global loop so it ONLY shows the current server's emojis to prevent confusion.
+        # 2. Other connected servers Friday is in
+        for g in bot_instance.guilds:
+            if guild and g.id == guild.id: continue
+            for e in g.emojis:
+                if not e.available or e.id in seen_ids: continue
+                seen_ids.add(e.id)
+                result.append({
+                    "id": str(e.id),
+                    "name": e.name,
+                    "animated": bool(e.animated),
+                    "url": str(e.url),
+                    "code": f"<a:{e.name}:{e.id}>" if e.animated else f"<:{e.name}:{e.id}>",
+                    "server": g.name,
+                    "current_guild": False
+                })
         return jsonify(result)
 
     try:
@@ -2313,6 +2329,21 @@ def validate_image_url(url):
         pass
     return None
 
+def resolve_safe_emoji(bot, emoji_str, fallback="🎁"):
+    if not emoji_str:
+        return fallback
+    emoji_str = str(emoji_str).strip()
+    if not emoji_str:
+        return fallback
+    if emoji_str.startswith("<") and emoji_str.endswith(">"):
+        match = re.search(r":(\d+)>$", emoji_str)
+        if match:
+            eid = int(match.group(1))
+            if bot and bot.get_emoji(eid):
+                return emoji_str
+            return fallback
+    return emoji_str
+
 def parse_hex_color(hex_str, default=0x5865F2):
     if not hex_str:
         return discord.Color(default)
@@ -2379,7 +2410,16 @@ def get_guild_giveaways(gid):
             continue
         if str(item.get("guild_id")) == gid_str:
             gw_copy = dict(item)
+            msg_id_val = str(item.get("message_id") or key.split("_")[-1])
             gw_copy["key"] = key
+            gw_copy["id"] = msg_id_val
+            gw_copy["message_id"] = msg_id_val
+            gw_copy["channel_id"] = str(item.get("channel_id") or "")
+            gw_copy["guild_id"] = str(item.get("guild_id") or "")
+            gw_copy["host_id"] = str(item.get("host_id") or "")
+            gw_copy["sponsor_id"] = str(item.get("sponsor_id") or "")
+            gw_copy["entries"] = [str(e) for e in item.get("entries", [])]
+            gw_copy["winners"] = [str(w) for w in item.get("winners", [])]
             gw_copy["entries_count"] = len(item.get("entries", []))
             gw_copy["time_left_seconds"] = max(0, int(item.get("end_time", now) - now))
             if item.get("status") == "active":
@@ -2425,7 +2465,7 @@ def save_guild_giveaway_config(gid):
         cfg["embed_color"] = str(body.get("embed_color", "#5865F2")).strip() or "#5865F2" 
 
     # Custom styling emojis
-    for emoji_key in ["emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends"]:
+    for emoji_key in ["emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended"]:
         if emoji_key in body:
             val = str(body.get(emoji_key, "")).strip()
             if val:
@@ -2436,7 +2476,7 @@ def save_guild_giveaway_config(gid):
         cfg["default_banner"] = val or None
 
     # Announcement formatting templates
-    for text_key in ["winner_title", "winner_message", "reroll_title", "reroll_message"]:
+    for text_key in ["winner_title", "winner_message", "winner_ping", "reroll_title", "reroll_message", "reroll_ping"]:
         if text_key in body:
             val = str(body.get(text_key, "")).strip()
             if val:
@@ -2523,9 +2563,9 @@ def autohub_guild_giveaways(gid):
             )
 
         cfg = db.giveaways_config.get(str(gid), {})
-        cfg["giveaway_channel"] = gw_ch.id
-        cfg["approval_channel"] = app_ch.id
-        cfg["log_channel"] = log_ch.id
+        cfg["giveaway_channel"] = str(gw_ch.id)
+        cfg["approval_channel"] = str(app_ch.id)
+        cfg["log_channel"] = str(log_ch.id)
         db.giveaways_config[str(gid)] = cfg
         db.save_data()
         return {
@@ -2540,6 +2580,37 @@ def autohub_guild_giveaways(gid):
         return jsonify({"success": True, "created": created})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/giveaways/<gw_id>/entries', methods=['GET'])
+def get_giveaway_entries(gid, gw_id):
+    clean_id = str(gw_id).strip()
+    if "_" in clean_id:
+        clean_id = clean_id.split("_")[-1]
+    key = f"{gid}_{clean_id}"
+    gw = db.giveaways.get(key)
+    if not gw:
+        gw = db.giveaways.get(str(gw_id))
+    if not gw:
+        return jsonify({"success": False, "error": "Giveaway not found."}), 404
+
+    entry_ids = gw.get("entries", [])
+    participants = []
+    
+    for uid in entry_ids:
+        info = fetch_user_info(uid)
+        participants.append({
+            "id": str(uid),
+            "username": info.get("username", f"User {uid}"),
+            "display_name": info.get("display_name", f"User {uid}"),
+            "avatar": info.get("avatar_url") or "https://cdn.discordapp.com/embed/avatars/0.png"
+        })
+        
+    return jsonify({
+        "success": True,
+        "prize": gw.get("prize", "Giveaway"),
+        "total": len(entry_ids),
+        "participants": participants
+    })
 
 @app.route('/api/guild/<gid>/giveaways/create', methods=['POST'])
 def create_guild_giveaway(gid):
@@ -2585,15 +2656,20 @@ def create_guild_giveaway(gid):
         end_timestamp = int(end_time)
 
         cfg = db.giveaways_config.get(str(gid), {})
-        raw_image = str(body.get("image_url", "")).strip() or cfg.get("default_banner")
+        raw_img_val = body.get("image_url")
+        raw_image = str(raw_img_val).strip() if raw_img_val is not None else ""
+        if not raw_image or raw_image.lower() in ("none", "null", "undefined"):
+            raw_image = str(cfg.get("default_banner") or "").strip()
+
         embed_color_hex = body.get("embed_color") or cfg.get("embed_color") or "#5865F2"
         embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
 
-        emoji_prize = body.get("emoji_prize") or cfg.get("emoji_prize", "🎁")
-        emoji_host = body.get("emoji_host") or cfg.get("emoji_host", "👑")
-        emoji_winners = body.get("emoji_winners") or cfg.get("emoji_winners", "🏆")
-        emoji_entries = body.get("emoji_entries") or cfg.get("emoji_entries", "🎟️")
-        emoji_ends = body.get("emoji_ends") or cfg.get("emoji_ends", "⏳")
+        emoji_prize = resolve_safe_emoji(bot_instance, body.get("emoji_prize") or cfg.get("emoji_prize"), fallback="🎁")
+        emoji_host = resolve_safe_emoji(bot_instance, body.get("emoji_host") or cfg.get("emoji_host"), fallback="👑")
+        emoji_winners = resolve_safe_emoji(bot_instance, body.get("emoji_winners") or cfg.get("emoji_winners"), fallback="🏆")
+        emoji_entries = resolve_safe_emoji(bot_instance, body.get("emoji_entries") or cfg.get("emoji_entries"), fallback="🎟️")
+        emoji_ends = resolve_safe_emoji(bot_instance, body.get("emoji_ends") or cfg.get("emoji_ends"), fallback="⏳")
+        emoji_ended = resolve_safe_emoji(bot_instance, body.get("emoji_ended") or cfg.get("emoji_ended"), fallback="🔒")
 
         desc_body = (
             f"• **Winners:** {winners_count}\n"
@@ -2641,6 +2717,26 @@ def create_guild_giveaway(gid):
             send_kwargs["file"] = discord_file
 
         msg = await channel.send(**send_kwargs)
+
+        # Add reaction to message so users can react on Discord directly!
+        try:
+            if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
+                m = re.search(r":(\d+)>$", emoji_prize)
+                if m:
+                    rx = bot_instance.get_emoji(int(m.group(1)))
+                    if rx:
+                        await msg.add_reaction(rx)
+                    else:
+                        await msg.add_reaction("🎁")
+                else:
+                    await msg.add_reaction("🎁")
+            else:
+                await msg.add_reaction(emoji_prize)
+        except Exception:
+            try:
+                await msg.add_reaction("🎁")
+            except Exception:
+                pass
 
         # If uploaded as attachment, store permanent Discord CDN attachment URL
         if discord_file and msg.attachments:
@@ -2705,12 +2801,13 @@ def end_guild_giveaway(gid):
         return jsonify({"success": False, "error": "Friday bot is not connected."}), 503
 
     body = flask_request.json or {}
-    msg_id = str(body.get("message_id", "")).strip()
-    if not msg_id:
-        return jsonify({"success": False, "error": "Message ID required."})
+    raw_id = str(body.get("message_id") or body.get("id") or body.get("key") or "").strip()
+    if not raw_id or raw_id == "undefined":
+        return jsonify({"success": False, "error": "Valid Giveaway Message ID required."})
 
+    msg_id = raw_id.split("_")[-1]
     key = f"{gid}_{msg_id}"
-    gw = db.giveaways.get(key)
+    gw = db.giveaways.get(key) or db.giveaways.get(raw_id)
     if not gw or gw.get("status") != "active":
         return jsonify({"success": False, "error": "Active giveaway not found."})
 
@@ -2734,11 +2831,15 @@ def reroll_guild_giveaway(gid):
         return jsonify({"success": False, "error": "Friday bot is not connected."}), 503
 
     body = flask_request.json or {}
-    msg_id = str(body.get("message_id", "")).strip()
+    raw_id = str(body.get("message_id") or body.get("id") or body.get("key") or "").strip()
+    if not raw_id or raw_id == "undefined":
+        return jsonify({"success": False, "error": "Valid Giveaway Message ID required."})
+
+    msg_id = raw_id.split("_")[-1]
     winners = int(body.get("winners", 1))
 
     key = f"{gid}_{msg_id}"
-    gw = db.giveaways.get(key)
+    gw = db.giveaways.get(key) or db.giveaways.get(raw_id)
     if not gw:
         return jsonify({"success": False, "error": "Giveaway not found."})
 
@@ -2795,9 +2896,13 @@ def cancel_guild_giveaway(gid):
         return jsonify({"success": False, "error": "Friday bot is not connected."}), 503
 
     body = flask_request.json or {}
-    msg_id = str(body.get("message_id", "")).strip()
+    raw_id = str(body.get("message_id") or body.get("id") or body.get("key") or "").strip()
+    if not raw_id or raw_id == "undefined":
+        return jsonify({"success": False, "error": "Valid Giveaway Message ID required."})
+
+    msg_id = raw_id.split("_")[-1]
     key = f"{gid}_{msg_id}"
-    gw = db.giveaways.get(key)
+    gw = db.giveaways.get(key) or db.giveaways.get(raw_id)
     if not gw or gw.get("status") != "active":
         return jsonify({"success": False, "error": "Active giveaway not found."})
 

@@ -1588,7 +1588,7 @@ function renderEmojiGrid() {
         btn.className = 'emoji-item';
 
         if (item.type === 'custom') {
-            btn.title = `:${item.name}: (${item.animated ? 'Animated GIF' : 'Static'})`;
+            btn.title = `:${item.name}: (${item.server ? item.server + ' • ' : ''}${item.animated ? 'Animated GIF' : 'Static'})`;
             btn.innerHTML = `<img src="${item.url}" alt="${item.name}">`;
             btn.addEventListener('click', () => {
                 if (emojiSelectCallback) {
@@ -2318,8 +2318,10 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('gwDescInput');
     attachRichEmojiEditor('gwWinnerTitle', true);
     attachRichEmojiEditor('gwWinnerMessage');
+    attachRichEmojiEditor('gwWinnerPing', true);
     attachRichEmojiEditor('gwRerollTitle', true);
     attachRichEmojiEditor('gwRerollMessage');
+    attachRichEmojiEditor('gwRerollPing', true);
 
     document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
         attachRichEmojiEditor(inp.id, true);
@@ -7370,10 +7372,17 @@ function updateGwWinnerPreview() {
     if (currentGwAnnouncementMode === 'winner') {
         const titleVal = document.getElementById('gwWinnerTitle')?.value || '🎉 GIVEAWAY CONCLUDED! 🎉';
         const msgVal = document.getElementById('gwWinnerMessage')?.value || '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}';
+        const pingVal = (document.getElementById('gwWinnerPing')?.value.trim()) || '🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}';
         
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
-        if (simPing) simPing.innerHTML = `🎉 <strong style="color: #ffffff;">Congratulations</strong> <span class="discord-mention">@Tony Daddy</span>! You won <strong style="color: #facc15;">1M OWO</strong>! ${renderDiscordMarkdown(emojiPrize)}`;
+        const renderedPing = pingVal.replace(/{winners}/g, '<span class="discord-mention">@Tony Daddy</span>')
+                                    .replace(/{prize}/g, '<strong style="color: #facc15;">1M OWO</strong>')
+                                    .replace(/{emoji_prize}/g, emojiPrize)
+                                    .replace(/{host}/g, '<span class="discord-mention">@Tony Daddy</span>')
+                                    .replace(/{entries}/g, '42');
+        if (simPing) simPing.innerHTML = renderDiscordMarkdown(renderedPing);
+        if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
         if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
         if (simHostLabel) simHostLabel.textContent = 'Hosted by:';
         if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiEntries);
@@ -7381,10 +7390,15 @@ function updateGwWinnerPreview() {
     } else {
         const titleVal = document.getElementById('gwRerollTitle')?.value || '🎲 GIVEAWAY REROLLED! 🎲';
         const msgVal = document.getElementById('gwRerollMessage')?.value || '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}';
+        const pingVal = (document.getElementById('gwRerollPing')?.value.trim()) || '🎲 **Giveaway Rerolled!** Congratulations {winners}!';
         
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
-        if (simPing) simPing.innerHTML = `🎲 <strong style="color: #ffffff;">Giveaway Rerolled!</strong> Congratulations <span class="discord-mention">@Tony Daddy</span>!`;
+        const renderedRerollPing = pingVal.replace(/{winners}/g, '<span class="discord-mention">@Tony Daddy</span>')
+                                          .replace(/{prize}/g, '<strong style="color: #facc15;">1M OWO</strong>')
+                                          .replace(/{emoji_prize}/g, emojiPrize);
+        if (simPing) simPing.innerHTML = renderDiscordMarkdown(renderedRerollPing);
+        if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
         if (simHostIcon) simHostIcon.innerHTML = '🎲';
         if (simHostLabel) simHostLabel.textContent = 'Rerolled by:';
         if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiWinners);
@@ -7400,7 +7414,8 @@ function setGwEmojiVisual(id, val) {
             'gwEmojiHost': '👑',
             'gwEmojiWinners': '🏆',
             'gwEmojiEntries': '🎟️',
-            'gwEmojiEnds': '⏳'
+            'gwEmojiEnds': '⏳',
+            'gwEmojiEnded': '🔒'
         };
         val = defaults[id] || '🎁';
     }
@@ -7577,7 +7592,33 @@ async function loadGiveawaysData() {
         setGwEmojiVisual('gwEmojiHost', cfg.emoji_host || '👑');
         setGwEmojiVisual('gwEmojiWinners', cfg.emoji_winners || '🏆');
         setGwEmojiVisual('gwEmojiEntries', cfg.emoji_entries || '🎟️');
-        setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
+        setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
+        setGwEmojiVisual('gwEmojiEnded', cfg.emoji_ended || '🔒');
+        if (document.getElementById('gwWinnerPing')) {
+            document.getElementById('gwWinnerPing').value = cfg.winner_ping || '🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}';
+            if (typeof document.getElementById('gwWinnerPing')._syncToRich === 'function') {
+                document.getElementById('gwWinnerPing')._syncToRich();
+            }
+        }
+        if (document.getElementById('gwRerollPing')) {
+            document.getElementById('gwRerollPing').value = cfg.reroll_ping || '🎲 **Giveaway Rerolled!** Congratulations {winners}!';
+            if (typeof document.getElementById('gwRerollPing')._syncToRich === 'function') {
+                document.getElementById('gwRerollPing')._syncToRich();
+            }
+        }
+        setGwEmojiVisual('gwEmojiEnded', cfg.emoji_ended || '🔒');
+        if (document.getElementById('gwWinnerPing')) {
+            document.getElementById('gwWinnerPing').value = cfg.winner_ping || '🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}';
+            if (typeof document.getElementById('gwWinnerPing')._syncToRich === 'function') {
+                document.getElementById('gwWinnerPing')._syncToRich();
+            }
+        }
+        if (document.getElementById('gwRerollPing')) {
+            document.getElementById('gwRerollPing').value = cfg.reroll_ping || '🎲 **Giveaway Rerolled!** Congratulations {winners}!';
+            if (typeof document.getElementById('gwRerollPing')._syncToRich === 'function') {
+                document.getElementById('gwRerollPing')._syncToRich();
+            }
+        }
         if (document.getElementById('gwDefaultBanner')) {
             document.getElementById('gwDefaultBanner').value = cfg.default_banner || '';
         }
@@ -7654,18 +7695,21 @@ async function loadGiveawaysData() {
                                 ${gw.winners_count || 1}
                             </td>
                             <td style="padding: 12px; color: #fff;">
-                                <span class="badge" style="background: rgba(88, 101, 242, 0.2); color: #818cf8; padding: 2px 8px; border-radius: 4px; font-weight: 700;">
-                                    ${entriesCount} entries
+                                <span class="badge" onclick="openGwEntriesModal('${gw.id || gw.message_id || gw.key}')" style="background: rgba(88, 101, 242, 0.2); color: #818cf8; padding: 3px 8px; border-radius: 4px; font-weight: 700; cursor: pointer;" title="Click to view participant list">
+                                    👥 ${entriesCount} entries
                                 </span>
                             </td>
                             <td style="padding: 12px; font-size: 13px; font-family: monospace;" data-end-ts="${endTs}">
                                 <span class="gw-countdown" data-ts="${endTs}">${formatCountdown(endTs)}</span>
                             </td>
                             <td style="padding: 12px; text-align: right; white-space: nowrap;">
-                                <button class="btn btn-secondary" onclick="endGiveaway('${gw.id}')" style="font-size: 11px; padding: 3px 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); margin-right: 6px;" title="Draw winners and end immediately">
+                                <button class="btn btn-secondary" onclick="openGwEntriesModal('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); margin-right: 6px;" title="View all entered participants">
+                                    👥 Entries
+                                </button>
+                                <button class="btn btn-secondary" onclick="endGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); margin-right: 6px;" title="Draw winners and end immediately">
                                     ⏹️ End Early
                                 </button>
-                                <button class="btn btn-secondary" onclick="cancelGiveaway('${gw.id}')" style="font-size: 11px; padding: 3px 8px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" title="Cancel without drawing winners">
+                                <button class="btn btn-secondary" onclick="cancelGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" title="Cancel without drawing winners">
                                     ❌ Cancel
                                 </button>
                             </td>
@@ -7720,14 +7764,16 @@ async function loadGiveawaysData() {
                                 ${winnersDisplay}
                             </td>
                             <td style="padding: 12px; color: #fff;">
-                                ${entriesCount}
+                                <span class="badge" onclick="openGwEntriesModal('${gw.id || gw.message_id || gw.key}')" style="background: rgba(255, 255, 255, 0.05); color: #fff; padding: 2px 8px; border-radius: 4px; cursor: pointer;" title="Click to view participant list">
+                                    👥 ${entriesCount}
+                                </span>
                             </td>
                             <td style="padding: 12px;">
                                 ${statusBadge}
                             </td>
                             <td style="padding: 12px; text-align: right; white-space: nowrap;">
                                 ${!gw.cancelled ? `
-                                    <button class="btn btn-secondary" onclick="rerollGiveaway('${gw.id}')" style="font-size: 11px; padding: 3px 8px; color: #818cf8; border-color: rgba(88, 101, 242, 0.4);" title="Reroll new winner(s)">
+                                    <button class="btn btn-secondary" onclick="rerollGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #818cf8; border-color: rgba(88, 101, 242, 0.4);" title="Reroll new winner(s)">
                                         🎲 Reroll
                                     </button>
                                 ` : ''}
@@ -7742,13 +7788,83 @@ async function loadGiveawaysData() {
     }
 }
 
+
+async function openGwEntriesModal(gwKeyOrId) {
+    if (!currentGuildId || !gwKeyOrId) return;
+    const modal = document.getElementById('gwEntriesModal');
+    const titleEl = document.getElementById('gwEntriesModalTitle');
+    const subtitleEl = document.getElementById('gwEntriesModalSubtitle');
+    const listEl = document.getElementById('gwEntriesModalList');
+    if (!modal || !listEl) return;
+
+    modal.style.display = 'flex';
+    listEl.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 24px;">Loading participants...</div>';
+    if (subtitleEl) subtitleEl.textContent = 'Fetching entry records from Friday...';
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/${encodeURIComponent(gwKeyOrId)}/entries`);
+        const data = await resp.json();
+        if (data.success) {
+            const prize = data.prize || 'Giveaway';
+            if (titleEl) titleEl.textContent = `Participants: ${prize}`;
+            if (subtitleEl) subtitleEl.textContent = `${data.count || 0} member${data.count === 1 ? '' : 's'} entered`;
+
+            const entries = data.entries || [];
+            if (entries.length === 0) {
+                listEl.innerHTML = `
+                    <div style="text-align: center; color: var(--text-muted); padding: 32px 16px;">
+                        <div style="font-size: 28px; margin-bottom: 8px;">📭</div>
+                        <div style="font-weight: 600; color: #dbdee1;">No Entries Yet</div>
+                        <div style="font-size: 12px; margin-top: 4px;">Members who click the button or react on Discord will appear here.</div>
+                    </div>
+                `;
+            } else {
+                listEl.innerHTML = entries.map((u, idx) => {
+                    const avatarUrl = u.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+                    const tag = u.tag || u.username || `Member ${u.id}`;
+                    const globalName = u.global_name ? `<span style="font-size: 11px; color: var(--text-muted); margin-left: 6px;">(${escapeHtml(u.global_name)})</span>` : '';
+                    return `
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 6px;">
+                            <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
+                                <span style="font-size: 12px; font-weight: 700; color: var(--text-muted); width: 20px;">#${idx + 1}</span>
+                                <img src="${avatarUrl}" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" />
+                                <div style="min-width: 0;">
+                                    <div style="font-size: 13px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                        @${escapeHtml(tag)}${globalName}
+                                    </div>
+                                    <div style="font-size: 11px; color: var(--text-muted); font-family: monospace;">ID: ${escapeHtml(u.id)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        } else {
+            listEl.innerHTML = `<div style="text-align: center; color: #ef4444; padding: 24px;">❌ Error: ${escapeHtml(data.error || 'Failed to load entries')}</div>`;
+        }
+    } catch (e) {
+        listEl.innerHTML = '<div style="text-align: center; color: #ef4444; padding: 24px;">❌ Network error loading participants</div>';
+    }
+}
+
+function closeGwEntriesModal() {
+    const modal = document.getElementById('gwEntriesModal');
+    if (modal) modal.style.display = 'none';
+}
+
 function getChannelNameById(chId) {
     if (!chId) return null;
-    if (typeof currentGuildChannels !== 'undefined' && currentGuildChannels.length) {
-        const found = currentGuildChannels.find(c => String(c.id) === String(chId));
-        if (found) return found.name;
+    const strId = String(chId).trim();
+    if (typeof currentGuildChannels !== 'undefined' && Array.isArray(currentGuildChannels) && currentGuildChannels.length) {
+        const exact = currentGuildChannels.find(c => String(c.id) === strId);
+        if (exact) return exact.name;
+        if (strId.length >= 14) {
+            const prefix = strId.slice(0, 14);
+            const fuzzy = currentGuildChannels.find(c => String(c.id).startsWith(prefix));
+            if (fuzzy) return fuzzy.name;
+        }
     }
-    return String(chId);
+    return strId;
 }
 
 function formatCountdown(endTs) {
@@ -7798,7 +7914,11 @@ async function saveGwConfig() {
         emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
         emoji_entries: document.getElementById('gwEmojiEntries')?.value.trim() || '🎟️',
         emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳',
+        emoji_ended: document.getElementById('gwEmojiEnded')?.value.trim() || '🔒',
         default_banner: document.getElementById('gwDefaultBanner')?.value.trim() || null,
+        winner_ping: document.getElementById('gwWinnerPing')?.value.trim() || '🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}',
+        reroll_ping: document.getElementById('gwRerollPing')?.value.trim() || '🎲 **Giveaway Rerolled!** Congratulations {winners}!',
+
         winner_title: document.getElementById('gwWinnerTitle')?.value.trim() || '🎉 GIVEAWAY CONCLUDED! 🎉',
         winner_message: document.getElementById('gwWinnerMessage')?.value.trim() || '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}',
         reroll_title: document.getElementById('gwRerollTitle')?.value.trim() || '🎲 GIVEAWAY REROLLED! 🎲',
@@ -7933,7 +8053,7 @@ async function endGiveaway(gwId) {
         const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/end`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: gwId })
+            body: JSON.stringify({ message_id: gwId, id: gwId, key: gwId })
         });
         const data = await resp.json();
         if (data.success) {
@@ -7955,7 +8075,7 @@ async function rerollGiveaway(gwId) {
         const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/reroll`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: gwId })
+            body: JSON.stringify({ message_id: gwId, id: gwId, key: gwId })
         });
         const data = await resp.json();
         if (data.success) {
@@ -7977,7 +8097,7 @@ async function cancelGiveaway(gwId) {
         const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: gwId })
+            body: JSON.stringify({ message_id: gwId, id: gwId, key: gwId })
         });
         const data = await resp.json();
         if (data.success) {
@@ -8094,7 +8214,7 @@ function setupGiveawayEvents() {
     if (launchBtn) launchBtn.addEventListener('click', launchGiveaway);
 
     // Emoji input live preview listeners
-    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds'].forEach(id => {
+    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', updateGwPreview);
     });
@@ -8116,8 +8236,16 @@ function setupGiveawayEvents() {
         if (visual) visual.addEventListener('click', trigger);
     };
 
-    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds'].forEach(bindGwEmojiTile);
+    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded'].forEach(bindGwEmojiTile);
 
+        ['gwWinnerPing', 'gwRerollPing'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateGwWinnerPreview);
+    });
+        ['gwWinnerPing', 'gwRerollPing'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateGwWinnerPreview);
+    });
     const resetEmojisBtn = document.getElementById('gwResetEmojisBtn');
     if (resetEmojisBtn) {
         resetEmojisBtn.addEventListener('click', () => {
@@ -8125,7 +8253,9 @@ function setupGiveawayEvents() {
             setGwEmojiVisual('gwEmojiHost', '👑');
             setGwEmojiVisual('gwEmojiWinners', '🏆');
             setGwEmojiVisual('gwEmojiEntries', '🎟️');
-            setGwEmojiVisual('gwEmojiEnds', '⏳');
+            setGwEmojiVisual('gwEmojiEnds', '⏳');
+            setGwEmojiVisual('gwEmojiEnded', '🔒');
+            setGwEmojiVisual('gwEmojiEnded', '🔒');
             updateGwPreview();
             showToast("Reset to default giveaway emojis");
         });

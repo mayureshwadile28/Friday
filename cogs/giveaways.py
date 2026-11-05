@@ -122,6 +122,21 @@ def parse_hex_color(hex_str: Optional[str], default: int = 0x5865F2) -> discord.
         pass
     return discord.Color(default)
 
+def resolve_safe_emoji(bot, emoji_str: Optional[str], fallback: str = "🎁") -> str:
+    if not emoji_str:
+        return fallback
+    emoji_str = str(emoji_str).strip()
+    if not emoji_str:
+        return fallback
+    if emoji_str.startswith("<") and emoji_str.endswith(">"):
+        match = re.search(r":(\d+)>$", emoji_str)
+        if match:
+            eid = int(match.group(1))
+            if bot and bot.get_emoji(eid):
+                return emoji_str
+            return fallback
+    return emoji_str
+
 def parse_discord_button_emoji(emoji_str: Optional[str]):
     if not emoji_str:
         return "🎁"
@@ -467,9 +482,9 @@ class SetupWizardView(discord.ui.View):
             return
 
         cfg = get_giveaway_config(guild.id)
-        cfg["giveaway_channel"] = gw_ch.id
-        cfg["approval_channel"] = app_ch.id
-        cfg["log_channel"] = log_ch.id
+        cfg["giveaway_channel"] = str(gw_ch.id)
+        cfg["approval_channel"] = str(app_ch.id)
+        cfg["log_channel"] = str(log_ch.id)
         db.giveaways_config[str(guild.id)] = cfg
         db.save_data()
 
@@ -646,7 +661,7 @@ class ChannelInCatStepView(discord.ui.View):
         await interaction.response.defer()
         ch_id = int(self.ch_select.values[0])
         cfg = get_giveaway_config(interaction.guild.id)
-        cfg[self.role_type] = ch_id
+        cfg[self.role_type] = str(ch_id)
         db.giveaways_config[str(interaction.guild.id)] = cfg
         db.save_data()
 
@@ -700,7 +715,7 @@ class DirectChannelPickView(discord.ui.View):
         ch = self.ch_select.values[0]
         ch_id = int(ch.id if hasattr(ch, "id") else ch)
         cfg = get_giveaway_config(interaction.guild.id)
-        cfg[self.role_type] = ch_id
+        cfg[self.role_type] = str(ch_id)
         db.giveaways_config[str(interaction.guild.id)] = cfg
         db.save_data()
 
@@ -820,6 +835,62 @@ class Giveaways(commands.Cog):
     # ─────────────────────────────────────────────────────────────
     # Background Worker: Check Expired Giveaways
     # ─────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────
+    # Reaction Listeners: React with emoji to enter / unenter
+    # ─────────────────────────────────────────────────────────────
+    @commands.Cog.listener()
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        """Allow members to enter the giveaway by reacting to the giveaway card."""
+        if payload.user_id == self.bot.user.id or not payload.guild_id:
+            return
+
+        key = f"{payload.guild_id}_{payload.message_id}"
+        gw = db.giveaways.get(key)
+        if not gw or gw.get("status") != "active":
+            return
+
+        entries = gw.setdefault("entries", [])
+        if payload.user_id not in entries:
+            entries.append(payload.user_id)
+            db.save_data()
+
+            # Update button entry counter on the message
+            try:
+                channel = self.bot.get_channel(payload.channel_id) or await self.bot.fetch_channel(payload.channel_id)
+                msg = await channel.fetch_message(payload.message_id)
+                cfg = get_giveaway_config(payload.guild_id)
+                emoji_prize = cfg.get("emoji_prize", "🎁")
+                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize)
+                await msg.edit(view=view)
+            except Exception:
+                pass
+
+    @commands.Cog.listener()
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+        """Allow members to leave the giveaway by removing their reaction."""
+        if payload.user_id == self.bot.user.id or not payload.guild_id:
+            return
+
+        key = f"{payload.guild_id}_{payload.message_id}"
+        gw = db.giveaways.get(key)
+        if not gw or gw.get("status") != "active":
+            return
+
+        entries = gw.setdefault("entries", [])
+        if payload.user_id in entries:
+            entries.remove(payload.user_id)
+            db.save_data()
+
+            try:
+                channel = self.bot.get_channel(payload.channel_id) or await self.bot.fetch_channel(payload.channel_id)
+                msg = await channel.fetch_message(payload.message_id)
+                cfg = get_giveaway_config(payload.guild_id)
+                emoji_prize = cfg.get("emoji_prize", "🎁")
+                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize)
+                await msg.edit(view=view)
+            except Exception:
+                pass
+
     @tasks.loop(seconds=10)
     async def giveaway_checker(self):
         """Monitors active giveaways every 10 seconds and automatically draws winners upon expiration."""
@@ -880,8 +951,11 @@ class Giveaways(commands.Cog):
                     f"• **Total Entries:** **{len(entries)}**\n\n"
                     f"• {gw.get('description') or 'Giveaway has ended.'}"
                 )
+                cfg = get_giveaway_config(guild_id)
+                emoji_ended = cfg.get("emoji_ended", "🔒")
+
                 ended_embed = discord.Embed(
-                    title=f"🔒 GIVEAWAY ENDED: {prize}",
+                    title=f"{emoji_ended} GIVEAWAY ENDED: {prize}",
                     description=ended_desc,
                     color=discord.Color.from_rgb(47, 49, 54), # Sleek dark
                     timestamp=datetime.now(timezone.utc)
@@ -894,7 +968,7 @@ class Giveaways(commands.Cog):
                         ended_embed.set_image(url=valid_ended_img)
                 ended_embed.set_footer(text="Ended • Friday Engine", icon_url=guild.icon.url if guild.icon else None)
 
-                disabled_view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), disabled=True)
+                disabled_view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), disabled=True, emoji=emoji_ended)
                 await msg.edit(embed=ended_embed, view=disabled_view)
         except Exception as e:
             print(f"[Giveaways] Failed to edit ended message {message_id}: {e}")
@@ -938,7 +1012,12 @@ class Giveaways(commands.Cog):
                 view = discord.ui.View()
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
                 
-                ping_content = f"🎉 **Congratulations** {mentions_str}! You won **{prize}**! {emoji_prize}"
+                default_ping = f"🎉 **Congratulations** {mentions_str}! You won **{prize}**! {emoji_prize}"
+                raw_ping = cfg.get("winner_ping") or default_ping
+                ping_content = raw_ping.replace("{winners}", mentions_str)\
+                                       .replace("{prize}", prize)\
+                                       .replace("{emoji_prize}", emoji_prize)\
+                                       .replace("{host}", f"<@{sponsor_id}>")
                 await channel.send(content=ping_content, embed=embed, view=view)
             else:
                 embed = discord.Embed(
@@ -1176,6 +1255,26 @@ class Giveaways(commands.Cog):
 
         gw_msg = await target_channel.send(content="🎉 **New Giveaway** 🎉", embed=embed, view=view)
 
+        # Add reaction so members can react directly on Discord
+        try:
+            if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
+                m = re.search(r":(\d+)>$", emoji_prize)
+                if m:
+                    rx = self.bot.get_emoji(int(m.group(1)))
+                    if rx:
+                        await gw_msg.add_reaction(rx)
+                    else:
+                        await gw_msg.add_reaction("🎁")
+                else:
+                    await gw_msg.add_reaction("🎁")
+            else:
+                await gw_msg.add_reaction(emoji_prize)
+        except Exception:
+            try:
+                await gw_msg.add_reaction("🎁")
+            except Exception:
+                pass
+
         real_key = f"{guild.id}_{gw_msg.id}"
         real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
         await gw_msg.edit(view=real_view)
@@ -1336,7 +1435,11 @@ class Giveaways(commands.Cog):
             view = discord.ui.View()
             view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
             
-            ping_content = f"🎲 **Giveaway Rerolled!** Congratulations {mentions_str}!"
+            default_reroll_ping = f"🎲 **Giveaway Rerolled!** Congratulations {mentions_str}!"
+            raw_reroll_ping = cfg.get("reroll_ping") or default_reroll_ping
+            ping_content = raw_reroll_ping.replace("{winners}", mentions_str)\
+                                          .replace("{prize}", prize)\
+                                          .replace("{emoji_prize}", emoji_prize)
             await channel.send(content=ping_content, embed=embed, view=view)
 
         # Log reroll

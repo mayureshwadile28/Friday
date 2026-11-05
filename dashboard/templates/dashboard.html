@@ -1054,6 +1054,27 @@
             </label>
         </div>
     </div>
+    <!-- Giveaway Participants / Entries Modal -->
+    <div id="gwEntriesModal" style="display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(4px); z-index: 9999; align-items: center; justify-content: center; padding: 20px;">
+        <div style="background: #2b2d31; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; width: 100%; max-width: 520px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 20px;">👥</span>
+                    <div>
+                        <h3 id="gwEntriesModalTitle" style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Giveaway Participants</h3>
+                        <div id="gwEntriesModalSubtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Loading entries...</div>
+                    </div>
+                </div>
+                <button type="button" onclick="closeGwEntriesModal()" style="background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: 4px;" title="Close">✕</button>
+            </div>
+            <div id="gwEntriesModalList" style="padding: 16px 20px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+                <!-- Rendered member entries -->
+            </div>
+            <div style="display: flex; justify-content: flex-end; padding: 14px 20px; border-top: 1px solid rgba(255, 255, 255, 0.08); background: rgba(0, 0, 0, 0.2);">
+                <button type="button" class="btn btn-secondary" onclick="closeGwEntriesModal()" style="font-size: 12px; padding: 6px 14px;">Close</button>
+            </div>
+        </div>
+    </div>
 </div>
 <div class="sec-wl-cell">
     <button class="btn-fw-add" data-feature="anti_link" title="Add whitelisted member for Anti Link">
@@ -3345,6 +3366,21 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                 </div>
 
+                <!-- Ended / Lock Icon -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Ended / Closed Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiEndedBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiEndedPreview" style="display: inline-flex; align-items: center; justify-content: center;">🔒</span>
+                        </button>
+                        <div id="gwEmojiEndedVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiEndedImg" style="display: inline-flex; align-items: center;">🔒</span>
+                            <span id="gwEmojiEndedText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">🔒 Ended Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiEnded" type="hidden" value="🔒" />
+                    </div>
+                </div>
+
                 <!-- Server Default Giveaway Banner -->
                 <div style="grid-column: 1 / -1; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px; margin-top: 4px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -3407,6 +3443,23 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                 <!-- Winner Announcement Panel -->
                 <div id="gwWinnerPanel">
+                    <!-- Celebratory Ping & Mention Text sent above embed -->
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Celebratory Ping &amp; Mention Message</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Sent above the embed card</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerPing" data-var="{winners}" type="button">+ {winners}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerPing" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerPing" data-var="{emoji_prize}" type="button">+ {emoji_prize}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwWinnerPingEmojiBtn" data-target="gwWinnerPing" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <input class="text-input" id="gwWinnerPing" type="text" value="🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}" style="font-size: 13px; font-weight: 600;" />
+                    </div>
+
                     <div style="margin-bottom: 14px;">
                         <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Embed Card Title</label>
                         <div style="display: flex; gap: 6px;">
@@ -3440,6 +3493,22 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                 <!-- Reroll Announcement Panel -->
                 <div id="gwRerollPanel" style="display: none;">
+                    <!-- Reroll Ping & Mention Text sent above embed -->
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Reroll Ping &amp; Mention Message</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Sent above the embed card</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwRerollPing" data-var="{winners}" type="button">+ {winners}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwRerollPing" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwRerollPingEmojiBtn" data-target="gwRerollPing" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <input class="text-input" id="gwRerollPing" type="text" value="🎲 **Giveaway Rerolled!** Congratulations {winners}!" style="font-size: 13px; font-weight: 600;" />
+                    </div>
+
                     <div style="margin-bottom: 14px;">
                         <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Reroll Embed Card Title</label>
                         <div style="display: flex; gap: 6px;">
