@@ -189,7 +189,12 @@ def get_channels(gid):
         resp = requests.get(f"{DISCORD_API}/guilds/{gid}/channels", headers=discord_headers(), timeout=5)
         if resp.status_code == 200:
             channels = resp.json()
-            result = [{"id": str(c["id"]), "name": c["name"]} for c in channels if c.get("type") in (0, 5)]
+            cat_map = {str(ch["id"]): ch.get("name", "Category") for ch in channels if ch.get("type") == 4}
+            result = [{
+                "id": str(ch["id"]),
+                "name": ch["name"],
+                "category": cat_map.get(str(ch.get("parent_id")), "General / Uncategorized")
+            } for ch in channels if ch.get("type") in (0, 5)]
             return jsonify(result)
     except Exception:
         pass

@@ -58,13 +58,43 @@ def format_welcome_text(text: str, member: discord.Member, guild: discord.Guild,
     rules_link = get_channel_markdown_link(rules_ch) if rules_ch else (get_channel_markdown_link(channel) if channel else "#rules")
     channel_link = get_channel_markdown_link(channel) if channel else "#chat"
 
-    # Dynamic channel pattern: {link:channel-name} or {link:#channel-name}
+    # Dynamic channel pattern: {link:channel-name}, {link:#channel-name}, or {link:channel_id}
     def replace_channel_pattern(m):
-        target_name = m.group(1).lstrip("#").strip().lower()
-        found_ch = discord.utils.get(guild.text_channels, name=target_name)
+        raw = m.group(1).strip()
+        clean = raw.lstrip("#").strip()
+        if not clean:
+            return "#channel"
+
+        # 1. Match by channel ID if numeric
+        if clean.isdigit():
+            ch = guild.get_channel(int(clean))
+            if ch:
+                return get_channel_markdown_link(ch)
+
+        # 2. Match exact name
+        found_ch = discord.utils.get(guild.text_channels, name=clean)
         if found_ch:
             return get_channel_markdown_link(found_ch)
-        return f"#{target_name}"
+
+        # 3. Match case-insensitive
+        clean_lower = clean.lower()
+        for ch in guild.text_channels:
+            if ch.name.lower() == clean_lower:
+                return get_channel_markdown_link(ch)
+
+        # 4. Match stripped symbols (ignoring unicode dashes, emojis, dots, spaces)
+        def strip_symbols(s):
+            return re.sub(r'[^\w]+', '', s, flags=re.UNICODE).lower()
+        target_stripped = strip_symbols(clean)
+        if target_stripped:
+            for ch in guild.text_channels:
+                if strip_symbols(ch.name) == target_stripped:
+                    return get_channel_markdown_link(ch)
+            for ch in guild.text_channels:
+                if target_stripped in strip_symbols(ch.name):
+                    return get_channel_markdown_link(ch)
+
+        return f"#{clean}"
 
     res = re.sub(r'\{link:([^\}]+)\}', replace_channel_pattern, text, flags=re.IGNORECASE)
 

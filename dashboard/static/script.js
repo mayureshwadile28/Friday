@@ -294,7 +294,7 @@ function setupEventListeners() {
 
     // Capture active selection on any editor before button clicks cause blur
     document.addEventListener('mousedown', (e) => {
-        const btn = e.target.closest('.resp-emoji-btn, .emoji-picker-btn, .resp-var-badge, .btn-emoji-trigger, .rr-emoji-preview-btn, .var-chip, [id$="EmojiBtn"]');
+        const btn = e.target.closest('.resp-emoji-btn, .emoji-picker-btn, .resp-var-badge, .btn-emoji-trigger, .rr-emoji-preview-btn, .var-chip, .resp-channel-picker-btn, [id$="EmojiBtn"], [id$="ChannelPickerBtn"]');
         if (!btn) return;
         let targetId = btn.getAttribute('data-target');
         if (!targetId && btn.id) {
@@ -308,7 +308,7 @@ function setupEventListeners() {
             else if (btn.id === 'ticketDescEmojiBtn') targetId = 'ticketDescInput';
             else if (btn.id === 'emojiPickerBtn') targetId = 'levelMessageInput';
             else if (btn.id === 'firstWelcomeTitleEmojiBtn') targetId = 'firstWelcomeTitleInput';
-            else if (btn.id === 'firstWelcomeMsgEmojiBtn') targetId = 'firstWelcomeMsgInput';
+            else if (btn.id === 'firstWelcomeMsgEmojiBtn' || btn.id === 'firstWelcomeChannelPickerBtn') targetId = 'firstWelcomeMsgInput';
             else if (btn.id === 'autoRespEmojiBtn') targetId = 'autoRespEmojiInput';
             else if (btn.id === 'autoReactEmojiBtn') targetId = 'autoReactEmojiInput';
             else if (btn.id === 'vipDirectDmEmojiBtn') targetId = 'vipDirectDmContent';
@@ -1540,6 +1540,230 @@ function renderEmojiGrid() {
         serverEmojiGrid.appendChild(btn);
     });
 }
+
+// ───────────────────── Channel Link Picker Logic (Category -> Channel) ─────────────────────
+let channelPickerCallback = null;
+let channelPickerActiveCategory = null;
+
+function openChannelLinkPicker(triggerEl, callback) {
+    channelPickerCallback = callback;
+    channelPickerActiveCategory = null;
+    const clPopover = document.getElementById('channelLinkPopover');
+    const clSearchInput = document.getElementById('channelLinkSearchInput');
+    if (!clPopover) return;
+
+    const rect = triggerEl.getBoundingClientRect();
+    const popoverWidth = 370;
+    const popoverHeight = 380;
+
+    let left = rect.left;
+    if (left + popoverWidth > window.innerWidth - 20) {
+        left = window.innerWidth - popoverWidth - 20;
+    }
+
+    let top = rect.bottom + 8;
+    if (top + popoverHeight > window.innerHeight - 20) {
+        top = rect.top - popoverHeight - 8;
+    }
+
+    clPopover.style.position = 'fixed';
+    clPopover.style.left = `${Math.max(10, Math.round(left))}px`;
+    clPopover.style.top = `${Math.max(10, Math.round(top))}px`;
+    clPopover.style.bottom = 'auto';
+    clPopover.style.right = 'auto';
+    clPopover.classList.add('open');
+
+    if (clSearchInput) {
+        clSearchInput.value = '';
+        clSearchInput.focus();
+    }
+    renderChannelPickerContent();
+}
+
+function closeChannelLinkPicker() {
+    const clPopover = document.getElementById('channelLinkPopover');
+    if (clPopover) clPopover.classList.remove('open');
+    channelPickerActiveCategory = null;
+}
+
+function renderChannelPickerContent() {
+    const clBody = document.getElementById('channelLinkBody');
+    const clSearchInput = document.getElementById('channelLinkSearchInput');
+    if (!clBody) return;
+
+    if (!currentGuildChannels || currentGuildChannels.length === 0) {
+        clBody.innerHTML = `
+            <div class="cl-empty-state">
+                <div style="font-size: 20px; margin-bottom: 6px;">📁</div>
+                <div style="font-weight: 600; color: #e2e8f0; margin-bottom: 4px;">No channels loaded</div>
+                <div>Please select a Discord server first to browse channels.</div>
+            </div>`;
+        return;
+    }
+
+    const query = (clSearchInput ? clSearchInput.value : '').trim().toLowerCase();
+
+    // 1. If searching, filter all channels across all categories
+    if (query) {
+        const matches = currentGuildChannels.filter(c => 
+            c.name.toLowerCase().includes(query) || 
+            (c.category && c.category.toLowerCase().includes(query)) ||
+            String(c.id).includes(query)
+        );
+
+        if (matches.length === 0) {
+            clBody.innerHTML = `
+                <div class="cl-empty-state">
+                    <div>No channels matching "<b>${escapeHtml(query)}</b>"</div>
+                </div>`;
+            return;
+        }
+
+        let html = '';
+        matches.forEach(c => {
+            html += `
+                <div class="cl-channel-item" data-chan-id="${c.id}" title="Click to insert #${escapeHtml(c.name)}">
+                    <div class="cl-channel-left">
+                        <span class="cl-channel-hash">#</span>
+                        <span>${escapeHtml(c.name)}</span>
+                    </div>
+                    <span class="cl-channel-badge">${escapeHtml(c.category || 'General')}</span>
+                </div>`;
+        });
+        clBody.innerHTML = html;
+        attachChannelClickEvents();
+        return;
+    }
+
+    // 2. If category is selected, show channels in that category
+    if (channelPickerActiveCategory !== null) {
+        const catChannels = currentGuildChannels.filter(c => 
+            (c.category || 'General / Uncategorized') === channelPickerActiveCategory
+        );
+
+        let html = `
+            <div class="cl-header-nav">
+                <button type="button" class="cl-back-btn" id="clBackToCatsBtn">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    Categories
+                </button>
+                <span class="cl-active-cat-name" title="${escapeHtml(channelPickerActiveCategory)}">
+                    📁 ${escapeHtml(channelPickerActiveCategory)}
+                </span>
+            </div>`;
+
+        if (catChannels.length === 0) {
+            html += `<div class="cl-empty-state">No text channels in this category.</div>`;
+        } else {
+            catChannels.forEach(c => {
+                html += `
+                    <div class="cl-channel-item" data-chan-id="${c.id}" title="Click to insert #${escapeHtml(c.name)}">
+                        <div class="cl-channel-left">
+                            <span class="cl-channel-hash">#</span>
+                            <span>${escapeHtml(c.name)}</span>
+                        </div>
+                        <span class="cl-channel-badge">Select</span>
+                    </div>`;
+            });
+        }
+
+        clBody.innerHTML = html;
+
+        const backBtn = document.getElementById('clBackToCatsBtn');
+        if (backBtn) {
+            backBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                channelPickerActiveCategory = null;
+                renderChannelPickerContent();
+            });
+        }
+        attachChannelClickEvents();
+        return;
+    }
+
+    // 3. Otherwise show Category List
+    const categoriesMap = {};
+    currentGuildChannels.forEach(c => {
+        const cat = c.category || 'General / Uncategorized';
+        if (!categoriesMap[cat]) categoriesMap[cat] = [];
+        categoriesMap[cat].push(c);
+    });
+
+    let catHtml = '';
+    for (const [catName, chList] of Object.entries(categoriesMap)) {
+        catHtml += `
+            <div class="cl-category-item" data-cat-name="${escapeHtml(catName)}">
+                <div class="cl-category-left">
+                    <span>📁</span>
+                    <span>${escapeHtml(catName)}</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span class="cl-category-count">${chList.length} channel${chList.length === 1 ? '' : 's'}</span>
+                    <span class="cl-category-arrow">›</span>
+                </div>
+            </div>`;
+    }
+
+    clBody.innerHTML = catHtml;
+
+    // Attach category clicks
+    clBody.querySelectorAll('.cl-category-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            channelPickerActiveCategory = item.getAttribute('data-cat-name');
+            renderChannelPickerContent();
+        });
+    });
+}
+
+function attachChannelClickEvents() {
+    const clBody = document.getElementById('channelLinkBody');
+    if (!clBody) return;
+
+    clBody.querySelectorAll('.cl-channel-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const cid = item.getAttribute('data-chan-id');
+            const chObj = currentGuildChannels.find(c => String(c.id) === String(cid));
+            if (chObj && channelPickerCallback) {
+                channelPickerCallback(chObj);
+            }
+            closeChannelLinkPicker();
+        });
+    });
+}
+
+// Global popover close & search listeners
+document.addEventListener('DOMContentLoaded', () => {
+    const clCloseBtn = document.getElementById('channelLinkCloseBtn');
+    if (clCloseBtn) clCloseBtn.addEventListener('click', closeChannelLinkPicker);
+
+    const clSearchInput = document.getElementById('channelLinkSearchInput');
+    if (clSearchInput) {
+        clSearchInput.addEventListener('input', () => {
+            renderChannelPickerContent();
+        });
+    }
+
+    document.addEventListener('click', (e) => {
+        const popover = document.getElementById('channelLinkPopover');
+        if (popover && popover.classList.contains('open')) {
+            if (!popover.contains(e.target) && !e.target.closest('.resp-channel-picker-btn, [id$="ChannelPickerBtn"]')) {
+                closeChannelLinkPicker();
+            }
+        }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeChannelLinkPicker();
+        }
+    });
+});
+
 
 // ───────────────────── Rich Visual Emoji Editor Engine (Ticket King Style) ─────────────────────
 
@@ -5516,6 +5740,26 @@ function updateFirstWelcomePreview() {
              .replace(/{channel}/g, `[#general](https://discord.com/channels/${dummyGid}/general)`)
              .replace(/{channel_link}/g, `[#general](https://discord.com/channels/${dummyGid}/general)`)
              .replace(/{channel_box}/g, `<span class="discord-mention">#general</span>`);
+        // Resolve {link:...} in simulator to clickable bright blue Discord markdown link
+        m = m.replace(/\{link:([^\}]+)\}/gi, (match, chTarget) => {
+            const raw = chTarget.trim();
+            const clean = raw.replace(/^#/, '').trim();
+            let foundName = clean;
+            let foundId = clean;
+            if (typeof currentGuildChannels !== 'undefined' && currentGuildChannels.length) {
+                const found = currentGuildChannels.find(c => 
+                    String(c.id) === clean || 
+                    c.name.toLowerCase() === clean.toLowerCase() ||
+                    c.name === clean
+                );
+                if (found) {
+                    foundName = found.name;
+                    foundId = found.id;
+                }
+            }
+            return `[#${foundName}](https://discord.com/channels/${dummyGid}/${foundId})`;
+        });
+
         simMsg.innerHTML = renderDiscordMarkdown(m);
     }
 
@@ -5730,6 +5974,45 @@ function setupFirstWelcomeAndAfkEvents() {
                 msgInput.selectionStart = msgInput.selectionEnd = newPos;
                 msgInput._savedCaret = { start: newPos, end: newPos };
                 updateFirstWelcomePreview();
+            });
+        });
+    }
+
+    const chanPickerBtn = document.getElementById('firstWelcomeChannelPickerBtn');
+    if (chanPickerBtn && msgInput) {
+        chanPickerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById('firstWelcomeMsgInput_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openChannelLinkPicker(chanPickerBtn, (chObj) => {
+                    if (!chObj) return;
+                    const token = `{link:#${chObj.name}}`;
+                    insertEmojiOrTextIntoRichEditor(richEl, token + ' ');
+                    updateFirstWelcomePreview();
+                    showToast(`🔗 Inserted link for #${chObj.name}`);
+                });
+                return;
+            }
+            if (typeof msgInput.selectionStart === 'number') {
+                msgInput._savedCaret = { start: msgInput.selectionStart, end: msgInput.selectionEnd };
+            }
+            openChannelLinkPicker(chanPickerBtn, (chObj) => {
+                if (!chObj) return;
+                const token = `{link:#${chObj.name}}`;
+                const start = (msgInput._savedCaret && typeof msgInput._savedCaret.start === 'number') ? msgInput._savedCaret.start : (msgInput.selectionStart ?? msgInput.value.length);
+                const end = (msgInput._savedCaret && typeof msgInput._savedCaret.end === 'number') ? msgInput._savedCaret.end : (msgInput.selectionEnd ?? msgInput.value.length);
+                msgInput.value = msgInput.value.substring(0, start) + token + ' ' + msgInput.value.substring(end);
+                msgInput.focus();
+                const newPos = start + token.length + 1;
+                msgInput.selectionStart = msgInput.selectionEnd = newPos;
+                msgInput._savedCaret = { start: newPos, end: newPos };
+                updateFirstWelcomePreview();
+                showToast(`🔗 Inserted link for #${chObj.name}`);
             });
         });
     }
