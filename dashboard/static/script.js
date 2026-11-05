@@ -2425,6 +2425,11 @@ function renderDiscordMarkdown(rawText) {
         // 1. Dynamic Variables
         processed = processed.replace(/\{user\}/g, '<span class="discord-mention">@User</span>');
         processed = processed.replace(/\{level\}/g, '<span class="discord-level-badge">5</span>');
+        processed = processed.replace(/\{winners\}/g, '<span class="discord-mention">@Tony Daddy</span>');
+        processed = processed.replace(/\{prize\}/g, '<strong style="color: #facc15;">1M OWO</strong>');
+        processed = processed.replace(/\{host\}/g, '<span class="discord-mention">@Tony Daddy</span>');
+        processed = processed.replace(/\{link\}/g, '<span style="color:#5865F2; text-decoration:underline;"># giveaways › 💬</span>');
+        processed = processed.replace(/\{entries\}/g, '<strong>42</strong>');
 
         // 2. Custom & Server Discord Emojis (Unified single pass to prevent nested attribute corruption)
         const emojiUnifiedRegex = /(?:&lt;|<)a:([a-zA-Z0-9_]+):([0-9]+)(?:&gt;|>)|(?:&lt;|<):([a-zA-Z0-9_]+):([0-9]+)(?:&gt;|>)|:([a-zA-Z0-9_]+):/g;
@@ -7297,6 +7302,35 @@ function insertGwVar(val) {
     }
 }
 
+let currentGwAnnouncementMode = 'winner';
+
+function updateGwWinnerPreview() {
+    const simAvatar = document.getElementById('gwWinnerSimAvatar');
+    if (simAvatar && currentBotAvatar) {
+        simAvatar.src = currentBotAvatar;
+    }
+
+    const simTitle = document.getElementById('gwWinnerSimTitle');
+    const simBody = document.getElementById('gwWinnerSimBody');
+    const simPing = document.getElementById('gwWinnerSimPing');
+
+    if (currentGwAnnouncementMode === 'winner') {
+        const titleVal = document.getElementById('gwWinnerTitle')?.value || '🎉 GIVEAWAY CONCLUDED! 🎉';
+        const msgVal = document.getElementById('gwWinnerMessage')?.value || '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}';
+        
+        if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
+        if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
+        if (simPing) simPing.innerHTML = `🎉 <strong style="color: #ffffff;">Congratulations</strong> <span class="discord-mention">@Tony Daddy</span>! You won <strong style="color: #facc15;">1M OWO</strong>! 🎁`;
+    } else {
+        const titleVal = document.getElementById('gwRerollTitle')?.value || '🎲 GIVEAWAY REROLLED! 🎲';
+        const msgVal = document.getElementById('gwRerollMessage')?.value || '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}';
+        
+        if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
+        if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
+        if (simPing) simPing.innerHTML = `🎲 <strong style="color: #ffffff;">Giveaway Rerolled!</strong> Congratulations <span class="discord-mention">@Tony Daddy</span>!`;
+    }
+}
+
 function updateGwPreview() {
     const prizeInput = document.getElementById('gwPrizeInput');
     const durInput = document.getElementById('gwDurationInput');
@@ -7379,7 +7413,12 @@ async function loadGiveawaysData() {
         if (document.getElementById('gwEmojiWinners') && cfg.emoji_winners) document.getElementById('gwEmojiWinners').value = cfg.emoji_winners;
         if (document.getElementById('gwEmojiEntries') && cfg.emoji_entries) document.getElementById('gwEmojiEntries').value = cfg.emoji_entries;
         if (document.getElementById('gwEmojiEnds') && cfg.emoji_ends) document.getElementById('gwEmojiEnds').value = cfg.emoji_ends;
+        if (document.getElementById('gwWinnerTitle') && cfg.winner_title) document.getElementById('gwWinnerTitle').value = cfg.winner_title;
+        if (document.getElementById('gwWinnerMessage') && cfg.winner_message) document.getElementById('gwWinnerMessage').value = cfg.winner_message;
+        if (document.getElementById('gwRerollTitle') && cfg.reroll_title) document.getElementById('gwRerollTitle').value = cfg.reroll_title;
+        if (document.getElementById('gwRerollMessage') && cfg.reroll_message) document.getElementById('gwRerollMessage').value = cfg.reroll_message;
         updateGwPreview();
+        updateGwWinnerPreview();
 
         // Populate Active Giveaways Table
         const activeTbody = document.getElementById('gwActiveTableBody');
@@ -7556,7 +7595,11 @@ async function saveGwConfig() {
         emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
         emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
         emoji_entries: document.getElementById('gwEmojiEntries')?.value.trim() || '🎟️',
-        emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳'
+        emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳',
+        winner_title: document.getElementById('gwWinnerTitle')?.value.trim() || '🎉 GIVEAWAY CONCLUDED! 🎉',
+        winner_message: document.getElementById('gwWinnerMessage')?.value.trim() || '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}',
+        reroll_title: document.getElementById('gwRerollTitle')?.value.trim() || '🎲 GIVEAWAY REROLLED! 🎲',
+        reroll_message: document.getElementById('gwRerollMessage')?.value.trim() || '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}'
     };
 
     try {
@@ -7783,6 +7826,95 @@ function setupGiveawayEvents() {
         });
     }
 
+    // Announcement designer tab switching
+    const tabWinBtn = document.getElementById('gwTabWinnerBtn');
+    const tabReBtn = document.getElementById('gwTabRerollBtn');
+    const panelWin = document.getElementById('gwWinnerPanel');
+    const panelRe = document.getElementById('gwRerollPanel');
+
+    if (tabWinBtn && tabReBtn && panelWin && panelRe) {
+        tabWinBtn.addEventListener('click', () => {
+            currentGwAnnouncementMode = 'winner';
+            tabWinBtn.style.background = 'rgba(245, 158, 11, 0.2)';
+            tabWinBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+            tabWinBtn.style.color = '#fbbf24';
+            tabReBtn.style.background = '';
+            tabReBtn.style.borderColor = '';
+            tabReBtn.style.color = 'var(--text-secondary)';
+            panelWin.style.display = 'block';
+            panelRe.style.display = 'none';
+            updateGwWinnerPreview();
+        });
+
+        tabReBtn.addEventListener('click', () => {
+            currentGwAnnouncementMode = 'reroll';
+            tabReBtn.style.background = 'rgba(245, 158, 11, 0.2)';
+            tabReBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
+            tabReBtn.style.color = '#fbbf24';
+            tabWinBtn.style.background = '';
+            tabWinBtn.style.borderColor = '';
+            tabWinBtn.style.color = 'var(--text-secondary)';
+            panelRe.style.display = 'block';
+            panelWin.style.display = 'none';
+            updateGwWinnerPreview();
+        });
+    }
+
+    // Input listeners for announcement live preview
+    ['gwWinnerTitle', 'gwWinnerMessage', 'gwRerollTitle', 'gwRerollMessage'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateGwWinnerPreview);
+    });
+
+    // Universal Emoji Pickers for Announcement Designer text & headers
+    const bindGwTextEmojiBtn = (btnId, inputId) => {
+        const btn = document.getElementById(btnId);
+        const input = document.getElementById(inputId);
+        if (btn && input) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openEmojiPicker(btn, (chosenEmoji) => {
+                    if (!chosenEmoji) return;
+                    const start = (input._savedCaret && typeof input._savedCaret.start === 'number') ? input._savedCaret.start : (input.selectionStart ?? input.value.length);
+                    const end = (input._savedCaret && typeof input._savedCaret.end === 'number') ? input._savedCaret.end : (input.selectionEnd ?? input.value.length);
+                    input.value = input.value.substring(0, start) + chosenEmoji + ' ' + input.value.substring(end);
+                    input.focus();
+                    const newPos = start + chosenEmoji.length + 1;
+                    input.selectionStart = input.selectionEnd = newPos;
+                    input._savedCaret = { start: newPos, end: newPos };
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                    updateGwWinnerPreview();
+                });
+            });
+        }
+    };
+
+    bindGwTextEmojiBtn('gwWinnerTitleEmojiBtn', 'gwWinnerTitle');
+    bindGwTextEmojiBtn('gwWinnerMsgEmojiBtn', 'gwWinnerMessage');
+    bindGwTextEmojiBtn('gwRerollTitleEmojiBtn', 'gwRerollTitle');
+    bindGwTextEmojiBtn('gwRerollMsgEmojiBtn', 'gwRerollMessage');
+
+    const saveAnnounceBtn = document.getElementById('gwSaveAnnouncementBtn');
+    if (saveAnnounceBtn) {
+        saveAnnounceBtn.addEventListener('click', async () => {
+            await saveGiveawaysConfig();
+            showToast("✨ Winner & Reroll announcement formatting saved!");
+        });
+    }
+
+    const resetAnnounceBtn = document.getElementById('gwResetWinnerTemplatesBtn');
+    if (resetAnnounceBtn) {
+        resetAnnounceBtn.addEventListener('click', () => {
+            if (document.getElementById('gwWinnerTitle')) document.getElementById('gwWinnerTitle').value = '🎉 GIVEAWAY CONCLUDED! 🎉';
+            if (document.getElementById('gwWinnerMessage')) document.getElementById('gwWinnerMessage').value = '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}';
+            if (document.getElementById('gwRerollTitle')) document.getElementById('gwRerollTitle').value = '🎲 GIVEAWAY REROLLED! 🎲';
+            if (document.getElementById('gwRerollMessage')) document.getElementById('gwRerollMessage').value = '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}';
+            updateGwWinnerPreview();
+            showToast("Reset to default announcement templates");
+        });
+    }
+
     // Initial preview setup
     updateGwPreview();
+    updateGwWinnerPreview();
 }

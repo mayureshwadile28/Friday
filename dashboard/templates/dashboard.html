@@ -3324,6 +3324,154 @@ Click an inquiry button below to open a confidential support ticket with our tea
         </div>
     </div>
 
+    <!-- ──────────────── WINNER & REROLL ANNOUNCEMENT DESIGNER ──────────────── -->
+    <div class="card" style="border: 1px solid rgba(245, 158, 11, 0.3); background: linear-gradient(135deg, rgba(28, 25, 23, 0.95) 0%, rgba(20, 20, 24, 0.8) 100%); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; font-size: 16px;">
+                    🏆
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Winner &amp; Reroll Announcement Designer</h3>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Customize the celebratory rich announcement card, custom text, and server emojis sent when winners are drawn or rerolled.</p>
+                </div>
+            </div>
+            <button class="btn btn-secondary" id="gwResetWinnerTemplatesBtn" type="button" style="font-size: 11px; padding: 4px 10px;">
+                ↺ Reset Default Announcement Templates
+            </button>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 24px;">
+            <!-- Left: Form Controls -->
+            <div>
+                <!-- Mode Selector Tabs -->
+                <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+                    <button class="btn btn-secondary" id="gwTabWinnerBtn" type="button" style="padding: 6px 14px; font-size: 12px; font-weight: 700; background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
+                        🎉 Winner Announcement
+                    </button>
+                    <button class="btn btn-secondary" id="gwTabRerollBtn" type="button" style="padding: 6px 14px; font-size: 12px; font-weight: 700; color: var(--text-secondary);">
+                        🎲 Reroll Announcement
+                    </button>
+                </div>
+
+                <!-- Winner Announcement Panel -->
+                <div id="gwWinnerPanel">
+                    <div style="margin-bottom: 14px;">
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Embed Card Title</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input class="text-input" id="gwWinnerTitle" type="text" value="🎉 GIVEAWAY CONCLUDED! 🎉" style="font-size: 13px; font-weight: 600;" />
+                            <button class="btn btn-secondary emoji-picker-btn" id="gwWinnerTitleEmojiBtn" data-target="gwWinnerTitle" type="button" style="padding: 0 12px;">😊 Server Emojis</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Announcement Message &amp; Body</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Dynamic Tags &amp; Markdown Supported</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerMessage" data-var="{winners}" type="button">+ {winners}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerMessage" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerMessage" data-var="{host}" type="button">+ {host}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerMessage" data-var="{link}" type="button">+ {link}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwWinnerMessage" data-var="{entries}" type="button">+ {entries}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwWinnerMsgEmojiBtn" data-target="gwWinnerMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <textarea class="text-input" id="gwWinnerMessage" rows="5" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">&gt; 🎊 Congratulations {winners}! You won **{prize}**! 🎁
+
+👑 **Hosted by:** {host}
+🎟️ **Entries:** {entries}
+🔗 **Jump to Giveaway:** {link}</textarea>
+                    </div>
+                </div>
+
+                <!-- Reroll Announcement Panel -->
+                <div id="gwRerollPanel" style="display: none;">
+                    <div style="margin-bottom: 14px;">
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Reroll Embed Card Title</label>
+                        <div style="display: flex; gap: 6px;">
+                            <input class="text-input" id="gwRerollTitle" type="text" value="🎲 GIVEAWAY REROLLED! 🎲" style="font-size: 13px; font-weight: 600;" />
+                            <button class="btn btn-secondary emoji-picker-btn" id="gwRerollTitleEmojiBtn" data-target="gwRerollTitle" type="button" style="padding: 0 12px;">😊 Server Emojis</button>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Reroll Announcement Message &amp; Body</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Dynamic Tags &amp; Markdown Supported</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwRerollMessage" data-var="{winners}" type="button">+ {winners}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwRerollMessage" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwRerollMessage" data-var="{host}" type="button">+ {host}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwRerollMessage" data-var="{link}" type="button">+ {link}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwRerollMsgEmojiBtn" data-target="gwRerollMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <textarea class="text-input" id="gwRerollMessage" rows="5" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">&gt; 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁
+
+🔗 **Jump to Giveaway:** {link}</textarea>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
+                    <button class="btn-action-primary" id="gwSaveAnnouncementBtn" type="button">
+                        Save Announcement Formatting
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Authentic Live Discord Announcement Simulator -->
+            <div style="position: sticky; top: 20px;">
+                <div class="discord-preview-card" style="margin-top: 0; background: #313338; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 16px;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <img id="gwWinnerSimAvatar" src="/static/avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 40px; height: 40px; border-radius: 50%;" />
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <span style="font-size: 14px; font-weight: 600; color: #ffffff;">Friday</span>
+                                    <span style="background: #5865f2; color: #ffffff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 3px;">BOT</span>
+                                    <span style="font-size: 11px; color: #949ba4;">Today at 4:01 PM</span>
+                                </div>
+                                <div id="gwWinnerSimPing" style="font-size: 13px; color: #dbdee1; margin-top: 2px;">
+                                    🎉 <strong style="color: #ffffff;">Congratulations</strong> <span class="discord-mention">@Tony Daddy</span>! You won <strong>1M OWO</strong>! 🎁
+                                </div>
+                            </div>
+                        </div>
+                        <span class="status-pill active" style="font-size: 10px; padding: 2px 8px; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3);">
+                            LIVE PREVIEW
+                        </span>
+                    </div>
+
+                    <!-- Embed Card Simulator -->
+                    <div style="border-left: 4px solid #f59e0b; background: #2b2d31; border-radius: 0 4px 4px 0; padding: 12px 16px; margin-bottom: 12px;">
+                        <div id="gwWinnerSimTitle" style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">
+                            🎉 GIVEAWAY CONCLUDED! 🎉
+                        </div>
+                        <div id="gwWinnerSimBody" style="font-size: 13px; color: #dbdee1; line-height: 1.5; margin-bottom: 12px; white-space: pre-line;">
+                            &gt; 🎊 Congratulations <span class="discord-mention">@Tony Daddy</span>! You won <strong>1M OWO</strong>! 🎁
+                        </div>
+                        <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; font-size: 12px; color: #dbdee1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <div>🏆 <strong>Prize:</strong> <span style="color: #facc15;">1M OWO</span></div>
+                            <div>👑 <strong>Hosted by:</strong> <span class="discord-mention">@Tony Daddy</span></div>
+                            <div>🎟️ <strong>Entries:</strong> <strong>42</strong></div>
+                        </div>
+                    </div>
+
+                    <!-- Action Link Button -->
+                    <div style="display: flex; gap: 8px;">
+                        <button type="button" class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px; background: #4e5058; color: #ffffff; border: none; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                            <span>🔗</span> View Giveaway Message
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Two-Column Studio Grid -->
     <div class="ticket-studio-grid" style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 24px; margin-bottom: 24px;">
         <!-- Left: Studio Controls Column -->

@@ -667,17 +667,53 @@ class Giveaways(commands.Cog):
 
         # Send public winner announcement in the giveaway channel
         try:
+            cfg = get_giveaway_config(guild_id)
+            jump_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
+            
             if chosen:
                 mentions_str = " ".join(f"<@{w}>" for w in chosen)
-                announcement = (
-                    f"🎉 **GIVEAWAY CONCLUDED!** 🎉\n\n"
-                    f"Congratulations {mentions_str}! You won **{prize}**! 🎁\n"
-                    f"Hosted by: <@{sponsor_id}>\n"
-                    f"Message link: https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
+                winner_title = cfg.get("winner_title") or "🎉 GIVEAWAY CONCLUDED! 🎉"
+                default_msg = (
+                    "> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n"
+                    "👑 **Hosted by:** {host}\n"
+                    "🎟️ **Entries:** {entries}\n"
+                    "🔗 **Jump to Giveaway:** {link}"
                 )
-                await channel.send(announcement)
+                raw_template = cfg.get("winner_message") or default_msg
+                
+                formatted_desc = raw_template.replace("{winners}", mentions_str)\
+                                             .replace("{prize}", prize)\
+                                             .replace("{host}", f"<@{sponsor_id}>")\
+                                             .replace("{link}", jump_url)\
+                                             .replace("{entries}", str(len(entries)))
+                
+                embed = discord.Embed(
+                    title=winner_title,
+                    description=formatted_desc,
+                    color=discord.Color.from_rgb(245, 158, 11),  # Celebratory Amber / Gold
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.add_field(name="🏆 Prize", value=f"**{prize}**", inline=True)
+                embed.add_field(name="👑 Hosted By", value=f"<@{sponsor_id}>", inline=True)
+                embed.add_field(name="🎟️ Total Entries", value=f"**{len(entries)}**", inline=True)
+                embed.set_footer(text="Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
+                
+                view = discord.ui.View()
+                view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
+                
+                ping_content = f"🎉 **Congratulations** {mentions_str}! You won **{prize}**! 🎁"
+                await channel.send(content=ping_content, embed=embed, view=view)
             else:
-                await channel.send(f"⚠️ The giveaway for **{prize}** has ended with no entries. No winners were selected.")
+                embed = discord.Embed(
+                    title="⚠️ Giveaway Concluded • No Entries",
+                    description=f"The giveaway for **{prize}** has ended with **0 entries**.\nNo winners could be selected.",
+                    color=discord.Color.from_rgb(107, 114, 128),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.set_footer(text="Friday Giveaway Engine", icon_url=guild.icon.url if guild.icon else None)
+                view = discord.ui.View()
+                view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
+                await channel.send(embed=embed, view=view)
         except Exception as e:
             print(f"[Giveaways] Failed to send winner announcement: {e}")
 
@@ -1014,12 +1050,38 @@ class Giveaways(commands.Cog):
 
         if channel:
             mentions_str = " ".join(f"<@{w}>" for w in new_winners)
-            msg = (
-                f"🎲 **GIVEAWAY REROLLED!** 🎲\n\n"
-                f"New Winner: {mentions_str}! Congratulations, you won **{prize}**! 🎁\n"
-                f"Message link: https://discord.com/channels/{interaction.guild_id}/{channel.id}/{clean_id}"
+            jump_url = f"https://discord.com/channels/{interaction.guild_id}/{channel.id}/{clean_id}"
+            
+            cfg = get_giveaway_config(interaction.guild_id)
+            reroll_title = cfg.get("reroll_title") or "🎲 GIVEAWAY REROLLED! 🎲"
+            default_reroll_msg = (
+                "> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n"
+                "🔗 **Jump to Giveaway:** {link}"
             )
-            await channel.send(msg)
+            raw_reroll_msg = cfg.get("reroll_message") or default_reroll_msg
+            
+            formatted_reroll = raw_reroll_msg.replace("{winners}", mentions_str)\
+                                             .replace("{prize}", prize)\
+                                             .replace("{host}", interaction.user.mention)\
+                                             .replace("{link}", jump_url)\
+                                             .replace("{entries}", str(len(entries)))
+            
+            embed = discord.Embed(
+                title=reroll_title,
+                description=formatted_reroll,
+                color=discord.Color.from_rgb(245, 158, 11),
+                timestamp=datetime.now(timezone.utc)
+            )
+            embed.add_field(name="🏆 Prize", value=f"**{prize}**", inline=True)
+            embed.add_field(name="🎲 Rerolled By", value=interaction.user.mention, inline=True)
+            embed.add_field(name="👑 New Winner(s)", value=mentions_str, inline=True)
+            embed.set_footer(text="Friday Giveaway Engine • Reroll", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+            
+            view = discord.ui.View()
+            view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
+            
+            ping_content = f"🎲 **Giveaway Rerolled!** Congratulations {mentions_str}!"
+            await channel.send(content=ping_content, embed=embed, view=view)
 
         # Log reroll
         cfg = get_giveaway_config(interaction.guild_id)

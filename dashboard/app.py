@@ -2347,6 +2347,13 @@ def save_guild_giveaway_config(gid):
             if val:
                 cfg[emoji_key] = val
 
+    # Announcement formatting templates
+    for text_key in ["winner_title", "winner_message", "reroll_title", "reroll_message"]:
+        if text_key in body:
+            val = str(body.get(text_key, "")).strip()
+            if val:
+                cfg[text_key] = val
+
     db.giveaways_config[gid_str] = cfg
     db.save_data()
     return jsonify({"success": True, "config": cfg})
@@ -2629,8 +2636,28 @@ def reroll_guild_giveaway(gid):
             ch = guild.get_channel(gw.get("channel_id"))
             if ch:
                 mentions = " ".join(f"<@{w}>" for w in new_winners)
-                msg = f"🎲 **GIVEAWAY REROLLED (via Dashboard)!** 🎲\n\nNew Winner: {mentions}! Congratulations, you won **{gw.get('prize')}**! 🎁\nhttps://discord.com/channels/{gid}/{ch.id}/{msg_id}"
-                await ch.send(msg)
+                jump_url = f"https://discord.com/channels/{gid}/{ch.id}/{msg_id}"
+                cfg = db.giveaways_config.get(str(gid), {})
+                reroll_title = cfg.get("reroll_title") or "🎲 GIVEAWAY REROLLED (via Dashboard)! 🎲"
+                default_reroll = "> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}"
+                raw_reroll = cfg.get("reroll_message") or default_reroll
+                desc = raw_reroll.replace("{winners}", mentions)\
+                                 .replace("{prize}", gw.get("prize", "the prize"))\
+                                 .replace("{host}", "Dashboard Administrator")\
+                                 .replace("{link}", jump_url)\
+                                 .replace("{entries}", str(len(entries)))
+                embed = discord.Embed(
+                    title=reroll_title,
+                    description=desc,
+                    color=discord.Color.from_rgb(245, 158, 11),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                embed.add_field(name="🏆 Prize", value=f"**{gw.get('prize')}**", inline=True)
+                embed.add_field(name="👑 New Winner(s)", value=mentions, inline=True)
+                embed.set_footer(text="Friday Giveaway Engine • Dashboard Reroll", icon_url=guild.icon.url if guild.icon else None)
+                view = discord.ui.View()
+                view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
+                await ch.send(content=f"🎲 **Giveaway Rerolled!** Congratulations {mentions}!", embed=embed, view=view)
 
     try:
         fut = asyncio.run_coroutine_threadsafe(do_announce(), bot_instance.loop)
