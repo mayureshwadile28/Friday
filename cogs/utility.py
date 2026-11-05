@@ -529,6 +529,19 @@ class Utility(commands.Cog):
             value=mfa_text,
             inline=False
         )
+        has_mod = self.bot.get_cog("Moderation") is not None
+        has_gw = self.bot.get_cog("Giveaways") is not None
+        cmd_names = [c.name for c in self.bot.tree.get_commands()]
+        has_move = "move" in cmd_names
+        embed.add_field(
+            name="📦 Engine & Cogs Status",
+            value=(
+                f"• **Moderation Cog (/move, /moveall):** {'✅ Online' if has_mod and has_move else '❌ Offline'}\n"
+                f"• **Giveaways Engine (/gsetup, /gcreate):** {'✅ Online (v2 2-Button Wizard)' if has_gw else '❌ Offline'}\n"
+                f"• **Total Registered Slash Commands:** `{len(cmd_names)}`"
+            ),
+            inline=False
+        )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def _handle_avatar(self, interaction: discord.Interaction, user: Optional[Union[discord.Member, discord.User]] = None):
