@@ -7303,6 +7303,12 @@ function updateGwPreview() {
     const winInput = document.getElementById('gwWinnersInput');
     const descInput = document.getElementById('gwDescInput');
 
+    const emojiPrize = (document.getElementById('gwEmojiPrize')?.value.trim()) || "🎁";
+    const emojiHost = (document.getElementById('gwEmojiHost')?.value.trim()) || "👑";
+    const emojiWinners = (document.getElementById('gwEmojiWinners')?.value.trim()) || "🏆";
+    const emojiEntries = (document.getElementById('gwEmojiEntries')?.value.trim()) || "🎟️";
+    const emojiEnds = (document.getElementById('gwEmojiEnds')?.value.trim()) || "⏳";
+
     const prize = (prizeInput && prizeInput.value.trim()) ? prizeInput.value.trim() : "1 Month Discord Nitro Classic";
     const duration = (durInput && durInput.value.trim()) ? durInput.value.trim() : "1h";
     const winners = (winInput && winInput.value) ? winInput.value : "1";
@@ -7314,12 +7320,18 @@ function updateGwPreview() {
     const simEnds = document.getElementById('gwSimEnds');
     const simAvatar = document.getElementById('gwSimAvatar');
 
+    const simHostIcon = document.getElementById('gwSimHostIcon');
+    const simWinnersIcon = document.getElementById('gwSimWinnersIcon');
+    const simEntriesIcon = document.getElementById('gwSimEntriesIcon');
+    const simEndsIcon = document.getElementById('gwSimEndsIcon');
+    const simButtonIcon = document.getElementById('gwSimButtonIcon');
+
     if (simAvatar && currentBotAvatar) {
         simAvatar.src = currentBotAvatar;
     }
 
     if (simTitle) {
-        simTitle.innerHTML = renderDiscordMarkdown(`🎁 **GIVEAWAY: ${prize}** 🎁`);
+        simTitle.innerHTML = renderDiscordMarkdown(`${emojiPrize} **GIVEAWAY: ${prize}** ${emojiPrize}`);
     }
 
     if (simDesc) {
@@ -7333,6 +7345,12 @@ function updateGwPreview() {
     if (simEnds) {
         simEnds.textContent = `in ${duration}`;
     }
+
+    if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
+    if (simWinnersIcon) simWinnersIcon.innerHTML = renderDiscordMarkdown(emojiWinners);
+    if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiEntries);
+    if (simEndsIcon) simEndsIcon.innerHTML = renderDiscordMarkdown(emojiEnds);
+    if (simButtonIcon) simButtonIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
 }
 
 async function loadGiveawaysData() {
@@ -7352,9 +7370,16 @@ async function loadGiveawaysData() {
         const appSelect = document.getElementById('gwApprovalChannelSelect');
         const logSelect = document.getElementById('gwLogChannelSelect');
 
-        if (chSelect && cfg.channel_id) chSelect.value = String(cfg.channel_id);
-        if (appSelect && cfg.approval_channel_id) appSelect.value = String(cfg.approval_channel_id);
-        if (logSelect && cfg.log_channel_id) logSelect.value = String(cfg.log_channel_id);
+        if (chSelect && (cfg.giveaway_channel || cfg.channel_id)) chSelect.value = String(cfg.giveaway_channel || cfg.channel_id);
+        if (appSelect && (cfg.approval_channel || cfg.approval_channel_id)) appSelect.value = String(cfg.approval_channel || cfg.approval_channel_id);
+        if (logSelect && (cfg.log_channel || cfg.log_channel_id)) logSelect.value = String(cfg.log_channel || cfg.log_channel_id);
+
+        if (document.getElementById('gwEmojiPrize') && cfg.emoji_prize) document.getElementById('gwEmojiPrize').value = cfg.emoji_prize;
+        if (document.getElementById('gwEmojiHost') && cfg.emoji_host) document.getElementById('gwEmojiHost').value = cfg.emoji_host;
+        if (document.getElementById('gwEmojiWinners') && cfg.emoji_winners) document.getElementById('gwEmojiWinners').value = cfg.emoji_winners;
+        if (document.getElementById('gwEmojiEntries') && cfg.emoji_entries) document.getElementById('gwEmojiEntries').value = cfg.emoji_entries;
+        if (document.getElementById('gwEmojiEnds') && cfg.emoji_ends) document.getElementById('gwEmojiEnds').value = cfg.emoji_ends;
+        updateGwPreview();
 
         // Populate Active Giveaways Table
         const activeTbody = document.getElementById('gwActiveTableBody');
@@ -7524,9 +7549,14 @@ async function saveGwConfig() {
     const logSelect = document.getElementById('gwLogChannelSelect');
 
     const payload = {
-        channel_id: chSelect ? chSelect.value : null,
-        approval_channel_id: appSelect ? appSelect.value : null,
-        log_channel_id: logSelect ? logSelect.value : null
+        giveaway_channel: chSelect ? chSelect.value : null,
+        approval_channel: appSelect ? appSelect.value : null,
+        log_channel: logSelect ? logSelect.value : null,
+        emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
+        emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
+        emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
+        emoji_entries: document.getElementById('gwEmojiEntries')?.value.trim() || '🎟️',
+        emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳'
     };
 
     try {
@@ -7601,7 +7631,12 @@ async function launchGiveaway() {
                 duration,
                 winners,
                 description: desc,
-                channel_id: channelId
+                channel_id: channelId,
+                emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
+                emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
+                emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
+                emoji_entries: document.getElementById('gwEmojiEntries')?.value.trim() || '🎟️',
+                emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳'
             })
         });
         const data = await resp.json();
@@ -7707,6 +7742,46 @@ function setupGiveawayEvents() {
 
     const launchBtn = document.getElementById('gwLaunchBtn');
     if (launchBtn) launchBtn.addEventListener('click', launchGiveaway);
+
+    // Emoji input live preview listeners
+    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateGwPreview);
+    });
+
+    // Universal Emoji Pickers for custom giveaway icons
+    const bindGwEmojiBtn = (btnId, inputId) => {
+        const btn = document.getElementById(btnId);
+        const input = document.getElementById(inputId);
+        if (btn && input) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                openEmojiPicker(btn, (chosenEmoji) => {
+                    input.value = chosenEmoji;
+                    updateGwPreview();
+                });
+            });
+        }
+    };
+
+    bindGwEmojiBtn('gwEmojiPrizeBtn', 'gwEmojiPrize');
+    bindGwEmojiBtn('gwEmojiHostBtn', 'gwEmojiHost');
+    bindGwEmojiBtn('gwEmojiWinnersBtn', 'gwEmojiWinners');
+    bindGwEmojiBtn('gwEmojiEntriesBtn', 'gwEmojiEntries');
+    bindGwEmojiBtn('gwEmojiEndsBtn', 'gwEmojiEnds');
+
+    const resetEmojisBtn = document.getElementById('gwResetEmojisBtn');
+    if (resetEmojisBtn) {
+        resetEmojisBtn.addEventListener('click', () => {
+            if (document.getElementById('gwEmojiPrize')) document.getElementById('gwEmojiPrize').value = '🎁';
+            if (document.getElementById('gwEmojiHost')) document.getElementById('gwEmojiHost').value = '👑';
+            if (document.getElementById('gwEmojiWinners')) document.getElementById('gwEmojiWinners').value = '🏆';
+            if (document.getElementById('gwEmojiEntries')) document.getElementById('gwEmojiEntries').value = '🎟️';
+            if (document.getElementById('gwEmojiEnds')) document.getElementById('gwEmojiEnds').value = '⏳';
+            updateGwPreview();
+            showToast("Reset to default giveaway emojis");
+        });
+    }
 
     // Initial preview setup
     updateGwPreview();

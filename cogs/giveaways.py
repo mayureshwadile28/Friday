@@ -90,10 +90,11 @@ class GiveawayEnterView(discord.ui.View):
     Persistent button view for giveaway messages.
     Allows members to enter or leave the giveaway with real-time counter updates.
     """
-    def __init__(self, giveaway_key: str, entry_count: int = 0, disabled: bool = False):
+    def __init__(self, giveaway_key: str, entry_count: int = 0, disabled: bool = False, emoji: str = "🎁"):
         super().__init__(timeout=None)
         self.giveaway_key = giveaway_key
-        button_label = f"🎁 Enter Giveaway ({entry_count})" if not disabled else f"🔒 Giveaway Ended ({entry_count})"
+        self.emoji = emoji or "🎁"
+        button_label = f"{self.emoji} Enter Giveaway ({entry_count})" if not disabled else f"🔒 Giveaway Ended ({entry_count})"
         self.enter_btn = discord.ui.Button(
             style=discord.ButtonStyle.primary if not disabled else discord.ButtonStyle.secondary,
             label=button_label,
@@ -130,7 +131,7 @@ class GiveawayEnterView(discord.ui.View):
 
         # Update button label and embed entry count
         count = len(entries)
-        self.enter_btn.label = f"🎁 Enter Giveaway ({count})"
+        self.enter_btn.label = f"{self.emoji} Enter Giveaway ({count})"
 
         try:
             embed = interaction.message.embeds[0]
@@ -203,9 +204,16 @@ class GiveawayApprovalView(discord.ui.View):
         winners_count = req["winners_count"]
         description = req.get("description", "")
 
+        cfg = get_giveaway_config(guild.id)
+        emoji_prize = cfg.get("emoji_prize", "🎁")
+        emoji_host = cfg.get("emoji_host", "👑")
+        emoji_winners = cfg.get("emoji_winners", "🏆")
+        emoji_entries = cfg.get("emoji_entries", "🎟️")
+        emoji_ends = cfg.get("emoji_ends", "⏳")
+
         end_timestamp = int(end_time)
         embed = discord.Embed(
-            title=f"🎁 GIVEAWAY: {prize} 🎁",
+            title=f"{emoji_prize} GIVEAWAY: {prize} {emoji_prize}",
             description=(
                 f"{description}\n\n" if description else ""
             ) + (
@@ -216,14 +224,14 @@ class GiveawayApprovalView(discord.ui.View):
             color=discord.Color.from_rgb(88, 101, 242), # Modern Discord Blurple
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
-        embed.add_field(name="👑 Sponsored by", value=f"<@{sponsor_id}>", inline=True)
-        embed.add_field(name="🏆 Winners", value=f"**{winners_count}**", inline=True)
-        embed.add_field(name="🎟️ Entries", value="**0**", inline=True)
-        embed.add_field(name="⏳ Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
+        embed.add_field(name=f"{emoji_host} Sponsored by", value=f"<@{sponsor_id}>", inline=True)
+        embed.add_field(name=f"{emoji_winners} Winners", value=f"**{winners_count}**", inline=True)
+        embed.add_field(name=f"{emoji_entries} Entries", value="**0**", inline=True)
+        embed.add_field(name=f"{emoji_ends} Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
         embed.set_footer(text=f"Giveaway ID: {self.request_id} • Ends at", icon_url=guild.icon.url if guild.icon else None)
 
         gw_key = f"{guild.id}_{self.request_id}"
-        view = GiveawayEnterView(giveaway_key=gw_key, entry_count=0)
+        view = GiveawayEnterView(giveaway_key=gw_key, entry_count=0, emoji=emoji_prize)
 
         gw_msg = await gw_channel.send(content="🎉 **NEW GIVEAWAY!** 🎉", embed=embed, view=view)
 
@@ -844,12 +852,19 @@ class Giveaways(commands.Cog):
             return
 
         # ── 4. Branch: Administrator Direct Launch ──
+        cfg = get_giveaway_config(guild.id)
+        emoji_prize = cfg.get("emoji_prize", "🎁")
+        emoji_host = cfg.get("emoji_host", "👑")
+        emoji_winners = cfg.get("emoji_winners", "🏆")
+        emoji_entries = cfg.get("emoji_entries", "🎟️")
+        emoji_ends = cfg.get("emoji_ends", "⏳")
+
         now = time.time()
         end_time = now + duration_sec
         end_timestamp = int(end_time)
 
         embed = discord.Embed(
-            title=f"🎁 GIVEAWAY: {prize} 🎁",
+            title=f"{emoji_prize} GIVEAWAY: {prize} {emoji_prize}",
             description=(
                 f"{description}\n\n" if description else ""
             ) + (
@@ -860,21 +875,21 @@ class Giveaways(commands.Cog):
             color=discord.Color.from_rgb(88, 101, 242), # Blurple
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
-        embed.add_field(name="👑 Hosted by", value=interaction.user.mention, inline=True)
-        embed.add_field(name="🏆 Winners", value=f"**{winners_count}**", inline=True)
-        embed.add_field(name="🎟️ Entries", value="**0**", inline=True)
-        embed.add_field(name="⏳ Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
+        embed.add_field(name=f"{emoji_host} Hosted by", value=interaction.user.mention, inline=True)
+        embed.add_field(name=f"{emoji_winners} Winners", value=f"**{winners_count}**", inline=True)
+        embed.add_field(name=f"{emoji_entries} Entries", value="**0**", inline=True)
+        embed.add_field(name=f"{emoji_ends} Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
         embed.set_footer(text="Friday Giveaway Engine • Ends at", icon_url=guild.icon.url if guild.icon else None)
 
         # Temporary key before message is sent
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{guild.id}_{temp_id}"
-        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0)
+        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize)
 
         gw_msg = await target_channel.send(content="🎉 **NEW GIVEAWAY!** 🎉", embed=embed, view=view)
 
         real_key = f"{guild.id}_{gw_msg.id}"
-        real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0)
+        real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
         await gw_msg.edit(view=real_view)
 
         # Save giveaway

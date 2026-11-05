@@ -3255,9 +3255,71 @@ Click an inquiry button below to open a confidential support ticket with our tea
             </div>
         </div>
 
+        <!-- Custom Giveaway Emojis Section -->
+        <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 16px; margin-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                    <h4 style="font-size: 14px; font-weight: 700; color: #ffffff; margin: 0; display: flex; align-items: center; gap: 6px;">
+                        <span>🎨</span> Custom Giveaway Emojis &amp; Field Icons
+                    </h4>
+                    <p style="font-size: 12px; color: var(--text-secondary); margin: 0;">Customize every icon on the giveaway card and button using standard or server custom emojis.</p>
+                </div>
+                <button class="btn btn-secondary" id="gwResetEmojisBtn" type="button" style="font-size: 11px; padding: 4px 10px;">
+                    ↺ Reset Default Emojis
+                </button>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                <!-- Prize / Header Icon -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🎁 Prize &amp; Button Icon</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input class="text-input gw-emoji-input" id="gwEmojiPrize" type="text" value="🎁" style="font-size: 13px;" />
+                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiPrizeBtn" type="button" style="padding: 0 10px;">😊</button>
+                    </div>
+                </div>
+
+                <!-- Host / Sponsor Icon -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">👑 Host / Sponsor Icon</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input class="text-input gw-emoji-input" id="gwEmojiHost" type="text" value="👑" style="font-size: 13px;" />
+                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiHostBtn" type="button" style="padding: 0 10px;">😊</button>
+                    </div>
+                </div>
+
+                <!-- Winners Icon -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🏆 Winners Icon</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input class="text-input gw-emoji-input" id="gwEmojiWinners" type="text" value="🏆" style="font-size: 13px;" />
+                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiWinnersBtn" type="button" style="padding: 0 10px;">😊</button>
+                    </div>
+                </div>
+
+                <!-- Entries Icon -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🎟️ Entries Icon</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input class="text-input gw-emoji-input" id="gwEmojiEntries" type="text" value="🎟️" style="font-size: 13px;" />
+                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiEntriesBtn" type="button" style="padding: 0 10px;">😊</button>
+                    </div>
+                </div>
+
+                <!-- Ends Icon -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 8px; padding: 10px;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">⏳ Countdown / Ends Icon</label>
+                    <div style="display: flex; gap: 6px;">
+                        <input class="text-input gw-emoji-input" id="gwEmojiEnds" type="text" value="⏳" style="font-size: 13px;" />
+                        <button class="btn btn-secondary emoji-picker-btn" id="gwEmojiEndsBtn" type="button" style="padding: 0 10px;">😊</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div style="display: flex; justify-content: flex-end; gap: 10px;">
             <button class="btn-action-primary" id="gwSaveConfigBtn" type="button">
-                Save Channel Routing
+                Save Routing &amp; Styling
             </button>
         </div>
     </div>
@@ -3375,10 +3437,10 @@ Click an inquiry button below to open a confidential support ticket with our tea
                         React with the button below to participate! Must be a verified server member to claim.
                     </div>
                     <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; margin-bottom: 10px; font-size: 12px; color: #dbdee1; line-height: 1.6;">
-                        <div>👑 <strong>Host:</strong> <span id="gwSimHost" style="color: #c9cdfb;">@ServerStaff</span></div>
-                        <div>🏆 <strong>Winners:</strong> <span id="gwSimWinners">1</span></div>
-                        <div>🎟️ <strong>Entries:</strong> <span id="gwSimEntries">0</span></div>
-                        <div>⏳ <strong>Ends:</strong> <span id="gwSimEnds" style="color: #f59e0b;">in 1 hour</span></div>
+                        <div><span id="gwSimHostIcon">👑</span> <strong>Host:</strong> <span id="gwSimHost" style="color: #c9cdfb;">@ServerStaff</span></div>
+                        <div><span id="gwSimWinnersIcon">🏆</span> <strong>Winners:</strong> <span id="gwSimWinners">1</span></div>
+                        <div><span id="gwSimEntriesIcon">🎟️</span> <strong>Entries:</strong> <span id="gwSimEntries">0</span></div>
+                        <div><span id="gwSimEndsIcon">⏳</span> <strong>Ends:</strong> <span id="gwSimEnds" style="color: #f59e0b;">in 1 hour</span></div>
                     </div>
                     <div style="font-size: 11px; color: #949ba4; display: flex; align-items: center; gap: 6px;">
                         <span>Friday Giveaway Engine • Ends at Today at 2:00 PM</span>
@@ -3388,7 +3450,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                 <!-- Interactive Button Simulator -->
                 <div style="display: flex; gap: 8px;">
                     <button type="button" style="background: #5865f2; color: #ffffff; border: none; border-radius: 4px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                        🎁 Enter Giveaway (0)
+                        <span id="gwSimButtonIcon">🎁</span> Enter Giveaway (0)
                     </button>
                 </div>
             </div>

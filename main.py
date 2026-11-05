@@ -155,22 +155,6 @@ async def on_ready():
     except Exception as e:
         print(f"Global sync warning: {e}")
 
-@bot.command(name='sync')
-@commands.has_permissions(administrator=True)
-async def prefix_sync(ctx):
-    """Admin command: Type !sync in any channel to remove duplicates and sync commands."""
-    msg = await ctx.send("🧹 Cleaning duplicates and syncing slash commands...")
-    try:
-        # Clear guild-level duplicate commands
-        bot.tree.clear_commands(guild=ctx.guild)
-        await bot.tree.sync(guild=ctx.guild)
-        # Sync clean global commands with DM restrictions
-        configure_command_dm_restrictions(bot.tree)
-        synced = await bot.tree.sync()
-        await msg.edit(content=f"✅ **Duplicates Removed!** {len(synced)} unique slash commands active. Press `Ctrl+R` on Discord to refresh!")
-    except Exception as e:
-        await msg.edit(content=f"❌ Sync failed: {e}")
-
 import threading
 
 def run_dashboard(bot_instance_ref):
