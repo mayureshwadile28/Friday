@@ -17,11 +17,13 @@ DEFAULT_WELCOME_COLOR = "success"
 
 def get_welcome_config(gid: str) -> dict:
     """Returns the welcome configuration for a guild with defaults populated."""
-    cfg = db.first_welcome.get(gid, {})
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    cfg = db.first_welcome.get(gid_str) or db.first_welcome.get(gid_int) or {}
     if not isinstance(cfg, dict):
         cfg = {}
     return {
-        "enabled": cfg.get("enabled", False),
+        "enabled": bool(cfg.get("enabled", False)),
         "channel_id": cfg.get("channel_id", None),
         "title": cfg.get("title", DEFAULT_WELCOME_TITLE),
         "message": cfg.get("message", DEFAULT_WELCOME_MSG),

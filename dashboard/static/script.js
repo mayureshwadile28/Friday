@@ -5658,7 +5658,10 @@ async function loadFirstWelcomeSettings() {
         if (data.success && data.config) {
             const cfg = data.config;
             const tgl = document.getElementById('firstWelcomeToggle');
-            if (tgl) tgl.checked = !!cfg.enabled;
+            if (tgl) {
+                tgl.checked = !!cfg.enabled;
+                updateFirstWelcomeStatusBadge(!!cfg.enabled);
+            }
 
             const chanSelect = document.getElementById('firstWelcomeChannelSelect');
             if (chanSelect && cfg.channel_id) chanSelect.value = cfg.channel_id;
@@ -5680,6 +5683,18 @@ async function loadFirstWelcomeSettings() {
         }
     } catch (e) {
         console.error("Error loading first welcome settings:", e);
+    }
+}
+
+function updateFirstWelcomeStatusBadge(isActive) {
+    const badge = document.getElementById('firstWelcomeStatusBadge');
+    if (!badge) return;
+    if (isActive) {
+        badge.className = 'status-pill active';
+        badge.innerHTML = '<span class="status-pulse"></span> Active';
+    } else {
+        badge.className = 'status-pill paused';
+        badge.innerHTML = 'Paused';
     }
 }
 
@@ -5796,6 +5811,7 @@ async function saveFirstWelcomeSettings() {
         const data = await resp.json();
         if (data.success) {
             showToast("✅ First Welcome settings saved successfully!");
+            if (tgl) updateFirstWelcomeStatusBadge(tgl.checked);
         } else {
             showToast(`❌ Error: ${data.error || 'Failed to save'}`);
         }
@@ -5899,6 +5915,31 @@ async function clearAfkStatus(userId) {
 }
 
 function setupFirstWelcomeAndAfkEvents() {
+    // Master Toggle Listener (Instant Sync to Server)
+    const welcomeTgl = document.getElementById('firstWelcomeToggle');
+    if (welcomeTgl) {
+        welcomeTgl.addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+            updateFirstWelcomeStatusBadge(isChecked);
+            if (!currentGuildId) return showToast("⚠️ Select a server first!");
+            try {
+                const resp = await fetch(`/api/guild/${currentGuildId}/first_welcome/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: isChecked })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast(isChecked ? "👋 Welcome Greeting Enabled" : "⏸️ Welcome Greeting Paused");
+                } else {
+                    showToast(`❌ Error: ${data.error || 'Failed to toggle'}`);
+                }
+            } catch (err) {
+                showToast("❌ Network error toggling Welcome Greeting");
+            }
+        });
+    }
+
     // Inputs live simulator listeners
     const titleInput = document.getElementById('firstWelcomeTitleInput');
     if (titleInput) titleInput.addEventListener('input', updateFirstWelcomePreview);
@@ -6168,10 +6209,25 @@ function setupTempVoiceEvents() {
     const enabledToggle = document.getElementById('tempVoiceEnabledToggle');
     const statusLabel = document.getElementById('tempVoiceStatusLabel');
     if (enabledToggle && statusLabel) {
-        enabledToggle.addEventListener('change', () => {
+        enabledToggle.addEventListener('change', async () => {
             const isChecked = enabledToggle.checked;
             statusLabel.textContent = isChecked ? 'Voice Hub Enabled' : 'Voice Hub Disabled';
             statusLabel.style.color = isChecked ? '#34d399' : 'var(--text-secondary)';
+            if (!currentGuildId) return;
+            try {
+                await fetch(`/api/guild/${currentGuildId}/temp-voice`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        enabled: isChecked,
+                        hub_channel_id: document.getElementById('tempVoiceHubSelect')?.value || null,
+                        category_id: document.getElementById('tempVoiceCategorySelect')?.value || null,
+                        default_name: document.getElementById('tempVoiceNameInput')?.value || "🔊 {user}'s Room",
+                        user_limit: parseInt(document.getElementById('tempVoiceLimitInput')?.value || 0)
+                    })
+                });
+                showToast(isChecked ? "🔊 Voice Hub Enabled" : "⏸️ Voice Hub Paused");
+            } catch (e) {}
         });
     }
 

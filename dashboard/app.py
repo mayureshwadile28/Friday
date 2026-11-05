@@ -1623,13 +1623,18 @@ def unignore_channel_autoresponder(gid):
 @app.route('/api/guild/<gid>/first_welcome', methods=['GET'])
 def get_first_welcome(gid):
     gid_str = str(gid)
-    cfg = db.first_welcome.get(gid_str, {})
+    gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
+    cfg = db.first_welcome.get(gid_str) or db.first_welcome.get(gid_int) or {}
     if not isinstance(cfg, dict):
         cfg = {}
     return jsonify({
         "success": True,
         "config": {
-            "enabled": cfg.get("enabled", False),
+            "enabled": bool(cfg.get("enabled", False)),
             "channel_id": cfg.get("channel_id"),
             "title": cfg.get("title", "WELCOME TO {server}!"),
             "message": cfg.get("message", "Hey {user}, welcome to **{server}**! 🎉\n\n> We're thrilled to have you here with us.\n> Feel free to introduce yourself and say hello!\n\n📌 Review {rules} to get started and enjoy your stay."),
@@ -1638,6 +1643,19 @@ def get_first_welcome(gid):
             "custom_hex": cfg.get("custom_hex", "#10b981")
         }
     })
+
+@app.route('/api/guild/<gid>/first_welcome/toggle', methods=['POST'])
+def toggle_first_welcome(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    active = bool(data.get("active", False))
+    
+    if gid_str not in db.first_welcome or not isinstance(db.first_welcome[gid_str], dict):
+        db.first_welcome[gid_str] = {}
+        
+    db.first_welcome[gid_str]["enabled"] = active
+    db.save_data()
+    return jsonify({"success": True, "enabled": active})
 
 @app.route('/api/guild/<gid>/first_welcome/update', methods=['POST'])
 def update_first_welcome(gid):

@@ -3033,12 +3033,17 @@ Click an inquiry button below to open a confidential support ticket with our tea
         <div class="automation-card" style="display: flex; flex-direction: column; gap: 20px;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px;">
                 <div>
-                    <h2 class="automation-card-title" style="margin: 0; font-size: 16px;">Welcome Greeting Status</h2>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <h2 class="automation-card-title" style="margin: 0; font-size: 16px;">Welcome Greeting Status</h2>
+                        <span class="status-pill paused" id="firstWelcomeStatusBadge">
+                            Paused
+                        </span>
+                    </div>
                     <p class="automation-card-desc" style="margin: 4px 0 0 0;">Toggle whether Friday should greet new members on their first message.</p>
                 </div>
-                <label class="toggle-switch">
+                <label class="switch">
                     <input type="checkbox" id="firstWelcomeToggle">
-                    <span class="toggle-slider"></span>
+                    <span class="slider"></span>
                 </label>
             </div>
 
@@ -3091,9 +3096,9 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">Show Member Avatar</div>
                     <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Display the new member's avatar on the right of the card.</div>
                 </div>
-                <label class="toggle-switch">
+                <label class="switch">
                     <input type="checkbox" id="firstWelcomeAvatarToggle" checked>
-                    <span class="toggle-slider"></span>
+                    <span class="slider"></span>
                 </label>
             </div>
 
