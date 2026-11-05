@@ -5,19 +5,39 @@ let cachedGiveawayConfig = null;
 
 function populateChannelDropdown(selectEl, channels, selectedVal, defaultLabel) {
     if (!selectEl) return;
-    const curVal = String(selectedVal !== undefined && selectedVal !== null && selectedVal !== "" ? selectedVal : (selectEl.value || ""));
+    const curVal = String(selectedVal !== undefined && selectedVal !== null && selectedVal !== "" ? selectedVal : (selectEl.value || "")).trim();
     let html = `<option value="">${defaultLabel}</option>`;
-    let found = false;
+    let matchedId = null;
+
+    if (curVal) {
+        // 1. Exact ID match
+        const exact = (channels || []).find(c => String(c.id) === curVal);
+        if (exact) {
+            matchedId = String(exact.id);
+        } else if (curVal.length >= 14) {
+            // 2. Fuzzy prefix match (first 14 digits) to auto-heal precision-loss rounded IDs
+            const prefix = curVal.slice(0, 14);
+            const fuzzy = (channels || []).find(c => String(c.id).startsWith(prefix));
+            if (fuzzy) {
+                matchedId = String(fuzzy.id);
+            }
+        }
+    }
+
     (channels || []).forEach(c => {
-        const isSel = curVal && String(c.id) === curVal;
-        if (isSel) found = true;
+        const isSel = matchedId ? (String(c.id) === matchedId) : (curVal && String(c.id) === curVal);
         html += `<option value="${c.id}" ${isSel ? 'selected' : ''}># ${escapeHtml(c.name)}</option>`;
     });
-    if (curVal && !found) {
+
+    if (curVal && !matchedId && !(channels || []).some(c => String(c.id) === curVal)) {
         html += `<option value="${curVal}" selected># channel (${curVal})</option>`;
     }
     selectEl.innerHTML = html;
-    if (curVal) selectEl.value = curVal;
+    if (matchedId) {
+        selectEl.value = matchedId;
+    } else if (curVal) {
+        selectEl.value = curVal;
+    }
 }
 let currentGuildMembers = [];
 let currentGuildChannels = [];
@@ -7497,6 +7517,27 @@ function updateGwPreview() {
     }
 
     if (simButtonIcon) simButtonIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
+
+    // Embed Left Border Accent Color
+    const embedColor = (document.getElementById('gwEmbedColor')?.value.trim()) || (document.getElementById('gwDefaultEmbedColor')?.value.trim()) || "#5865F2";
+    const simEmbed = document.getElementById('gwSimEmbed');
+    if (simEmbed) simEmbed.style.borderLeftColor = embedColor;
+
+    // Clear banner button visibility
+    const clearBtn = document.getElementById('gwBannerClearBtn');
+    if (clearBtn) clearBtn.style.display = (bannerInput && bannerInput.value.trim()) ? 'inline-flex' : 'none';
+}
+
+function setGwEmbedColor(hex) {
+    if (!hex) hex = '#5865F2';
+    const colorInput = document.getElementById('gwEmbedColor');
+    const colorPicker = document.getElementById('gwEmbedColorPicker');
+    if (colorInput) {
+        colorInput.value = hex;
+        colorInput.dataset.userModified = 'true';
+    }
+    if (colorPicker) colorPicker.value = hex;
+    updateGwPreview();
 }
 
 async function loadGiveawaysData() {
@@ -7539,6 +7580,19 @@ async function loadGiveawaysData() {
         setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
         if (document.getElementById('gwDefaultBanner')) {
             document.getElementById('gwDefaultBanner').value = cfg.default_banner || '';
+        }
+        const serverEmbedColor = cfg.embed_color || '#5865F2';
+        if (document.getElementById('gwDefaultEmbedColor')) {
+            document.getElementById('gwDefaultEmbedColor').value = serverEmbedColor;
+        }
+        if (document.getElementById('gwDefaultEmbedColorPicker')) {
+            document.getElementById('gwDefaultEmbedColorPicker').value = serverEmbedColor;
+        }
+        if (document.getElementById('gwEmbedColor') && !document.getElementById('gwEmbedColor').dataset.userModified) {
+            document.getElementById('gwEmbedColor').value = serverEmbedColor;
+        }
+        if (document.getElementById('gwEmbedColorPicker') && !document.getElementById('gwEmbedColor')?.dataset.userModified) {
+            document.getElementById('gwEmbedColorPicker').value = serverEmbedColor;
         }
         if (document.getElementById('gwWinnerTitle') && cfg.winner_title) {
             document.getElementById('gwWinnerTitle').value = cfg.winner_title;
@@ -7738,6 +7792,7 @@ async function saveGwConfig() {
         giveaway_channel: chSelect ? chSelect.value : null,
         approval_channel: appSelect ? appSelect.value : null,
         log_channel: logSelect ? logSelect.value : null,
+        embed_color: document.getElementById('gwDefaultEmbedColor')?.value.trim() || '#5865F2',
         emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
         emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
         emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
@@ -7842,6 +7897,7 @@ async function launchGiveaway() {
                 winners,
                 description: desc,
                 channel_id: channelId,
+                embed_color: document.getElementById('gwEmbedColor')?.value.trim() || '#5865F2',
                 image_url: document.getElementById('gwBannerInput')?.value.trim() || null,
                 emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
                 emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
@@ -7950,6 +8006,83 @@ function setupGiveawayEvents() {
     const defaultBanner = document.getElementById('gwDefaultBanner');
     if (bannerInput) bannerInput.addEventListener('input', updateGwPreview);
     if (defaultBanner) defaultBanner.addEventListener('input', updateGwPreview);
+
+    // Color pickers & inputs
+    const embedColor = document.getElementById('gwEmbedColor');
+    const embedPicker = document.getElementById('gwEmbedColorPicker');
+    if (embedColor && embedPicker) {
+        embedColor.addEventListener('input', () => {
+            embedColor.dataset.userModified = 'true';
+            embedPicker.value = embedColor.value;
+            updateGwPreview();
+        });
+        embedPicker.addEventListener('input', () => {
+            if (embedColor) {
+                embedColor.dataset.userModified = 'true';
+                embedColor.value = embedPicker.value.toUpperCase();
+            }
+            updateGwPreview();
+        });
+    }
+
+    const defaultColor = document.getElementById('gwDefaultEmbedColor');
+    const defaultPicker = document.getElementById('gwDefaultEmbedColorPicker');
+    if (defaultColor && defaultPicker) {
+        defaultColor.addEventListener('input', () => {
+            defaultPicker.value = defaultColor.value;
+        });
+        defaultPicker.addEventListener('input', () => {
+            defaultColor.value = defaultPicker.value.toUpperCase();
+        });
+    }
+
+    // Banner file upload & clear button
+    const bannerUploadBtn = document.getElementById('gwBannerUploadBtn');
+    const bannerFileInput = document.getElementById('gwBannerFileInput');
+    const bannerClearBtn = document.getElementById('gwBannerClearBtn');
+
+    if (bannerUploadBtn && bannerFileInput) {
+        bannerUploadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (!currentGuildId) return showToast("⚠️ Select a server first!");
+            bannerFileInput.click();
+        });
+
+        bannerFileInput.addEventListener('change', async () => {
+            if (!bannerFileInput.files || !bannerFileInput.files[0]) return;
+            const file = bannerFileInput.files[0];
+            const formData = new FormData();
+            formData.append('banner_file', file);
+
+            try {
+                showToast("📤 Uploading giveaway banner/GIF...");
+                const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/upload-banner`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    if (bannerInput) bannerInput.value = data.url;
+                    showToast("✅ Banner uploaded successfully!");
+                    updateGwPreview();
+                } else {
+                    showToast(`❌ Error: ${data.error || 'Upload failed'}`);
+                }
+            } catch (err) {
+                showToast("❌ Network error uploading banner");
+            } finally {
+                bannerFileInput.value = '';
+            }
+        });
+    }
+
+    if (bannerClearBtn && bannerInput) {
+        bannerClearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            bannerInput.value = '';
+            updateGwPreview();
+        });
+    }
 
     const saveCfgBtn = document.getElementById('gwSaveConfigBtn');
     if (saveCfgBtn) saveCfgBtn.addEventListener('click', saveGwConfig);
@@ -8066,7 +8199,7 @@ function setupGiveawayEvents() {
     const saveAnnounceBtn = document.getElementById('gwSaveAnnouncementBtn');
     if (saveAnnounceBtn) {
         saveAnnounceBtn.addEventListener('click', async () => {
-            await saveGiveawaysConfig();
+            await saveGwConfig();
             showToast("✨ Winner & Reroll announcement formatting saved!");
         });
     }

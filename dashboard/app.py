@@ -6,6 +6,7 @@ import uuid
 import requests
 import asyncio
 import discord
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 # Ensure parent directory is in sys.path to import database and models
@@ -2286,6 +2287,74 @@ def reset_special_invite_persona(gid):
 
 # ───────────────────── Giveaways Studio & Hub ─────────────────────
 
+BANNER_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "giveaway_banners")
+os.makedirs(BANNER_UPLOAD_DIR, exist_ok=True)
+
+def validate_image_url(url):
+    if not url:
+        return None
+    url = str(url).strip()
+    if not url:
+        return None
+    if url.startswith("attachment://"):
+        return url
+    if url.startswith("//"):
+        url = "https:" + url
+    elif not url.startswith(("http://", "https://")):
+        if "." in url and not url.startswith(("/", "\\")):
+            url = "https://" + url
+        else:
+            return None
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme in ("http", "https") and parsed.netloc and "." in parsed.netloc:
+            return url
+    except Exception:
+        pass
+    return None
+
+def parse_hex_color(hex_str, default=0x5865F2):
+    if not hex_str:
+        return discord.Color(default)
+    clean = str(hex_str).strip().lstrip("#")
+    try:
+        if len(clean) == 6:
+            return discord.Color(int(clean, 16))
+        elif len(clean) == 3:
+            expanded = "".join(c * 2 for c in clean)
+            return discord.Color(int(expanded, 16))
+    except Exception:
+        pass
+    return discord.Color(default)
+
+@app.route('/api/guild/<gid>/giveaways/upload-banner', methods=['POST'])
+def upload_giveaway_banner(gid):
+    try:
+        if 'banner_file' not in flask_request.files:
+            return jsonify({"success": False, "error": "No file uploaded."}), 400
+        file = flask_request.files['banner_file']
+        if not file or not file.filename:
+            return jsonify({"success": False, "error": "Empty filename."}), 400
+        
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+            return jsonify({"success": False, "error": "Unsupported file format. Please upload PNG, JPG, GIF, or WebP."}), 400
+        
+        token = uuid.uuid4().hex[:12]
+        safe_filename = f"gw_{gid}_{token}{ext}"
+        save_path = os.path.join(BANNER_UPLOAD_DIR, safe_filename)
+        file.save(save_path)
+        
+        rel_url = f"/static/uploads/giveaway_banners/{safe_filename}"
+        return jsonify({
+            "success": True,
+            "url": rel_url,
+            "filename": safe_filename
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 @app.route('/api/guild/<gid>/giveaways', methods=['GET'])
 def get_guild_giveaways(gid):
     try:
@@ -2321,9 +2390,14 @@ def get_guild_giveaways(gid):
     active.sort(key=lambda x: x.get("end_time", 0))
     ended.sort(key=lambda x: x.get("ended_at", x.get("created_at", 0)), reverse=True)
     
+    cfg_out = dict(cfg)
+    for ch_key in ["giveaway_channel", "approval_channel", "log_channel"]:
+        if cfg_out.get(ch_key):
+            cfg_out[ch_key] = str(cfg_out[ch_key])
+            
     return jsonify({
         "success": True,
-        "config": cfg,
+        "config": cfg_out,
         "active": active,
         "ended": ended[:30]
     })
@@ -2340,13 +2414,15 @@ def save_guild_giveaway_config(gid):
         cfg = {}
     if "giveaway_channel" in body:
         val = body.get("giveaway_channel")
-        cfg["giveaway_channel"] = int(val) if str(val).isdigit() else None
+        cfg["giveaway_channel"] = str(val).strip() if val and str(val).strip() else None
     if "approval_channel" in body:
         val = body.get("approval_channel")
-        cfg["approval_channel"] = int(val) if str(val).isdigit() else None
+        cfg["approval_channel"] = str(val).strip() if val and str(val).strip() else None
     if "log_channel" in body:
         val = body.get("log_channel")
-        cfg["log_channel"] = int(val) if str(val).isdigit() else None
+        cfg["log_channel"] = str(val).strip() if val and str(val).strip() else None
+    if "embed_color" in body:
+        cfg["embed_color"] = str(body.get("embed_color", "#5865F2")).strip() or "#5865F2" 
 
     # Custom styling emojis
     for emoji_key in ["emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends"]:
@@ -2509,7 +2585,10 @@ def create_guild_giveaway(gid):
         end_timestamp = int(end_time)
 
         cfg = db.giveaways_config.get(str(gid), {})
-        image_url = str(body.get("image_url", "")).strip() or cfg.get("default_banner")
+        raw_image = str(body.get("image_url", "")).strip() or cfg.get("default_banner")
+        embed_color_hex = body.get("embed_color") or cfg.get("embed_color") or "#5865F2"
+        embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
+
         emoji_prize = body.get("emoji_prize") or cfg.get("emoji_prize", "🎁")
         emoji_host = body.get("emoji_host") or cfg.get("emoji_host", "👑")
         emoji_winners = body.get("emoji_winners") or cfg.get("emoji_winners", "🏆")
@@ -2526,13 +2605,29 @@ def create_guild_giveaway(gid):
         embed = discord.Embed(
             title=f"{emoji_prize} {prize} {emoji_prize}",
             description=desc_body,
-            color=discord.Color.from_rgb(43, 45, 49),
+            color=embed_color,
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
         if guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
-        if image_url:
-            embed.set_image(url=image_url)
+
+        discord_file = None
+        final_image_url = None
+
+        if raw_image:
+            # Check if this is an uploaded local banner file
+            if "/static/uploads/giveaway_banners/" in raw_image:
+                banner_name = os.path.basename(raw_image)
+                local_path = os.path.join(BANNER_UPLOAD_DIR, banner_name)
+                if os.path.exists(local_path):
+                    discord_file = discord.File(local_path, filename=banner_name)
+                    embed.set_image(url=f"attachment://{banner_name}")
+                    final_image_url = raw_image
+            else:
+                validated = validate_image_url(raw_image)
+                if validated:
+                    embed.set_image(url=validated)
+                    final_image_url = validated
 
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
         embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
@@ -2541,7 +2636,15 @@ def create_guild_giveaway(gid):
         temp_key = f"{gid}_{temp_id}"
         view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize)
 
-        msg = await channel.send(content="🎉 **New Giveaway** 🎉", embed=embed, view=view)
+        send_kwargs = {"content": "🎉 **New Giveaway** 🎉", "embed": embed, "view": view}
+        if discord_file:
+            send_kwargs["file"] = discord_file
+
+        msg = await channel.send(**send_kwargs)
+
+        # If uploaded as attachment, store permanent Discord CDN attachment URL
+        if discord_file and msg.attachments:
+            final_image_url = msg.attachments[0].url
 
         real_key = f"{gid}_{msg.id}"
         real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
@@ -2561,7 +2664,8 @@ def create_guild_giveaway(gid):
             "entries": [],
             "winners": [],
             "description": description,
-            "image_url": image_url or ""
+            "image_url": final_image_url or "",
+            "embed_color": embed_color_hex
         }
         db.giveaways[real_key] = gw_data
         db.save_data()

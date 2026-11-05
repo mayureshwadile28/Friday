@@ -3353,6 +3353,18 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                     <input class="text-input" id="gwDefaultBanner" placeholder="https://media.discordapp.net/.../banner.gif or https://... (.gif / .png / .jpg)" type="text" style="font-size: 12px;" />
                 </div>
+
+                <!-- Server Default Giveaway Embed Accent Color -->
+                <div style="grid-column: 1 / -1; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px; margin-top: 4px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Default Server Giveaway Embed Border Color</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Default left border line color for embeds</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input type="color" id="gwDefaultEmbedColorPicker" value="#5865F2" style="width: 42px; height: 36px; padding: 2px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: transparent; cursor: pointer;" />
+                        <input type="text" id="gwDefaultEmbedColor" class="text-input" value="#5865F2" style="width: 110px; font-family: monospace; font-weight: 600; text-transform: uppercase;" placeholder="#5865F2" />
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -3568,13 +3580,44 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </select>
                 </div>
 
-                <!-- Banner Image or GIF URL -->
+                <!-- Banner Image or GIF URL + Local File Upload -->
                 <div style="margin-bottom: 16px;">
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Banner Image or GIF URL (Optional)</label>
-                        <span style="font-size: 11px; color: var(--text-muted);">Embed banner (.gif / .png / .jpg)</span>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Banner Image or GIF (Optional)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Web URL or local file upload (.gif / .png / .jpg / .webp)</span>
                     </div>
-                    <input class="text-input" id="gwBannerInput" placeholder="https://media.discordapp.net/attachments/.../giveaway_banner.gif" type="text" />
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input class="text-input" id="gwBannerInput" placeholder="Paste image/GIF URL or upload from device..." type="text" style="flex: 1;" />
+                        <button class="btn btn-secondary" id="gwBannerUploadBtn" type="button" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; height: 38px; font-size: 12px; font-weight: 600;">
+                            📁 Upload File / GIF
+                        </button>
+                        <button class="btn btn-secondary" id="gwBannerClearBtn" type="button" style="display: none; padding: 0 10px; height: 38px; color: #ef4444;" title="Remove banner">
+                            ✕
+                        </button>
+                        <input type="file" id="gwBannerFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;" />
+                    </div>
+                </div>
+
+                <!-- Embed Left Border Accent Color -->
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Embed Accent Color (Left Border)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Customizes the embed line on Discord</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <input type="color" id="gwEmbedColorPicker" value="#5865F2" style="width: 42px; height: 38px; padding: 2px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.15); background: transparent; cursor: pointer;" />
+                        <input type="text" id="gwEmbedColor" class="text-input" value="#5865F2" style="width: 100px; font-family: monospace; font-weight: 600; text-transform: uppercase;" placeholder="#5865F2" />
+                        <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: 4px;">
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#5865F2')" type="button" style="border-left: 3px solid #5865F2;">Blurple</button>
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#2B2D31')" type="button" style="border-left: 3px solid #2B2D31;">Charcoal</button>
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#F59E0B')" type="button" style="border-left: 3px solid #F59E0B;">Gold</button>
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#10B981')" type="button" style="border-left: 3px solid #10B981;">Emerald</button>
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#EF4444')" type="button" style="border-left: 3px solid #EF4444;">Ruby</button>
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#EC4899')" type="button" style="border-left: 3px solid #EC4899;">Pink</button>
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#06B6D4')" type="button" style="border-left: 3px solid #06B6D4;">Cyan</button>
+                            <button class="ticket-preset-pill" onclick="setGwEmbedColor('#6366F1')" type="button" style="border-left: 3px solid #6366F1;">Indigo</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Description Textarea with Markdown Chips & Emojis -->
@@ -3625,7 +3668,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                 </div>
 
                 <!-- Clean Embed Simulator (Matching sleek reference layout) -->
-                <div style="border-left: 4px solid #5865F2; background: #2b2d31; border-radius: 0 4px 4px 0; padding: 14px 16px; margin-bottom: 12px;">
+                <div id="gwSimEmbed" style="border-left: 4px solid #5865F2; background: #2b2d31; border-radius: 0 4px 4px 0; padding: 14px 16px; margin-bottom: 12px;">
                     <!-- Top Row: Title + Server Thumbnail -->
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px;">
                         <div id="gwSimTitle" style="font-size: 16px; font-weight: 700; color: #ffffff; line-height: 1.3;">

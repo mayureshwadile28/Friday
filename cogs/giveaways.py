@@ -83,6 +83,56 @@ def is_giveaway_configured(guild_id: int) -> bool:
     return bool(cfg.get("giveaway_channel") and cfg.get("approval_channel") and cfg.get("log_channel"))
 
 
+from urllib.parse import urlparse
+
+def validate_image_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    url = str(url).strip()
+    if not url:
+        return None
+    if url.startswith("attachment://"):
+        return url
+    if url.startswith("//"):
+        url = "https:" + url
+    elif not url.startswith(("http://", "https://")):
+        if "." in url and not url.startswith(("/", "\\")):
+            url = "https://" + url
+        else:
+            return None
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme in ("http", "https") and parsed.netloc and "." in parsed.netloc:
+            return url
+    except Exception:
+        pass
+    return None
+
+def parse_hex_color(hex_str: Optional[str], default: int = 0x5865F2) -> discord.Color:
+    if not hex_str:
+        return discord.Color(default)
+    clean = str(hex_str).strip().lstrip("#")
+    try:
+        if len(clean) == 6:
+            return discord.Color(int(clean, 16))
+        elif len(clean) == 3:
+            expanded = "".join(c * 2 for c in clean)
+            return discord.Color(int(expanded, 16))
+    except Exception:
+        pass
+    return discord.Color(default)
+
+def parse_discord_button_emoji(emoji_str: Optional[str]):
+    if not emoji_str:
+        return "🎁"
+    emoji_str = str(emoji_str).strip()
+    try:
+        if emoji_str.startswith("<") and emoji_str.endswith(">"):
+            return discord.PartialEmoji.from_str(emoji_str)
+        return emoji_str
+    except Exception:
+        return "🎁"
+
 # ─────────────────────────────────────────────────────────────
 # Persistent Giveaway Views
 # ─────────────────────────────────────────────────────────────
@@ -96,10 +146,12 @@ class GiveawayEnterView(discord.ui.View):
         super().__init__(timeout=None)
         self.giveaway_key = giveaway_key
         self.emoji = emoji or "🎁"
-        button_label = f"{self.emoji} Enter Giveaway ({entry_count})" if not disabled else f"🔒 Giveaway Ended ({entry_count})"
+        parsed_emoji = parse_discord_button_emoji(self.emoji) if not disabled else "🔒"
+        button_label = f"Enter Giveaway ({entry_count})" if not disabled else f"Giveaway Ended ({entry_count})"
         self.enter_btn = discord.ui.Button(
             style=discord.ButtonStyle.secondary,
             label=button_label,
+            emoji=parsed_emoji,
             custom_id=f"gw_enter:{giveaway_key}",
             disabled=disabled
         )
@@ -111,7 +163,8 @@ class GiveawayEnterView(discord.ui.View):
         if not gw or gw.get("status") != "active":
             await interaction.response.send_message("⚠️ This giveaway has already ended or is no longer active.", ephemeral=True)
             self.enter_btn.disabled = True
-            self.enter_btn.label = f"🔒 Giveaway Ended ({len(gw.get('entries', [])) if gw else 0})"
+            self.enter_btn.label = f"Giveaway Ended ({len(gw.get('entries', [])) if gw else 0})"
+            self.enter_btn.emoji = "🔒"
             try:
                 await interaction.message.edit(view=self)
             except Exception:
@@ -133,7 +186,8 @@ class GiveawayEnterView(discord.ui.View):
 
         # Update button label and embed entry count
         count = len(entries)
-        self.enter_btn.label = f"{self.emoji} Enter Giveaway ({count})"
+        self.enter_btn.label = f"Enter Giveaway ({count})"
+        self.enter_btn.emoji = parse_discord_button_emoji(self.emoji)
 
         try:
             embed = interaction.message.embeds[0]
@@ -223,16 +277,20 @@ class GiveawayApprovalView(discord.ui.View):
             f"• {description or 'Click the button below to participate!'}"
         )
 
+        embed_color_hex = cfg.get("embed_color", "#5865F2")
+        embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
+        valid_img = validate_image_url(image_url)
+
         embed = discord.Embed(
             title=f"{emoji_prize} {prize} {emoji_prize}",
             description=desc_body,
-            color=discord.Color.from_rgb(43, 45, 49),
+            color=embed_color,
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
         if guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
-        if image_url:
-            embed.set_image(url=image_url)
+        if valid_img:
+            embed.set_image(url=valid_img)
 
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
         embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
@@ -831,7 +889,9 @@ class Giveaways(commands.Cog):
                 if guild.icon:
                     ended_embed.set_thumbnail(url=guild.icon.url)
                 if gw.get("image_url"):
-                    ended_embed.set_image(url=gw.get("image_url"))
+                    valid_ended_img = validate_image_url(gw.get("image_url"))
+                    if valid_ended_img:
+                        ended_embed.set_image(url=valid_ended_img)
                 ended_embed.set_footer(text="Ended • Friday Engine", icon_url=guild.icon.url if guild.icon else None)
 
                 disabled_view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), disabled=True)
@@ -1091,16 +1151,20 @@ class Giveaways(commands.Cog):
             f"• {description or 'Click the button below to participate!'}"
         )
 
+        embed_color_hex = cfg.get("embed_color", "#5865F2")
+        embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
+        valid_img = validate_image_url(image_url)
+
         embed = discord.Embed(
             title=f"{emoji_prize} {prize} {emoji_prize}",
             description=desc_body,
-            color=discord.Color.from_rgb(43, 45, 49),
+            color=embed_color,
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
         if guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
-        if image_url:
-            embed.set_image(url=image_url)
+        if valid_img:
+            embed.set_image(url=valid_img)
 
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
         embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
@@ -1131,7 +1195,8 @@ class Giveaways(commands.Cog):
             "entries": [],
             "winners": [],
             "description": description or "",
-            "image_url": image_url or ""
+            "image_url": valid_img or "",
+            "embed_color": embed_color_hex
         }
         db.giveaways[real_key] = gw_data
         db.save_data()
