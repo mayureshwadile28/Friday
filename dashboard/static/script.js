@@ -7532,6 +7532,8 @@ function updateGwPreview() {
     }
 
     if (simButtonIcon) simButtonIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
+    const simReactionIcon = document.getElementById('gwSimReactionIcon');
+    if (simReactionIcon) simReactionIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
 
     // Embed Left Border Accent Color
     const embedColor = (document.getElementById('gwEmbedColor')?.value.trim()) || (document.getElementById('gwDefaultEmbedColor')?.value.trim()) || "#5865F2";
@@ -7592,19 +7594,32 @@ async function loadGiveawaysData() {
         setGwEmojiVisual('gwEmojiHost', cfg.emoji_host || '👑');
         setGwEmojiVisual('gwEmojiWinners', cfg.emoji_winners || '🏆');
         setGwEmojiVisual('gwEmojiEntries', cfg.emoji_entries || '🎟️');
-        setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
-        setGwEmojiVisual('gwEmojiEnded', cfg.emoji_ended || '🔒');
-        if (document.getElementById('gwWinnerPing')) {
-            document.getElementById('gwWinnerPing').value = cfg.winner_ping || '🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}';
-            if (typeof document.getElementById('gwWinnerPing')._syncToRich === 'function') {
-                document.getElementById('gwWinnerPing')._syncToRich();
-            }
-        }
-        if (document.getElementById('gwRerollPing')) {
-            document.getElementById('gwRerollPing').value = cfg.reroll_ping || '🎲 **Giveaway Rerolled!** Congratulations {winners}!';
-            if (typeof document.getElementById('gwRerollPing')._syncToRich === 'function') {
-                document.getElementById('gwRerollPing')._syncToRich();
-            }
+        setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
+
+        setGwEmojiVisual('gwEmojiEnded', cfg.emoji_ended || '🔒');
+
+        if (document.getElementById('gwWinnerPing')) {
+
+            document.getElementById('gwWinnerPing').value = cfg.winner_ping || '🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}';
+
+            if (typeof document.getElementById('gwWinnerPing')._syncToRich === 'function') {
+
+                document.getElementById('gwWinnerPing')._syncToRich();
+
+            }
+
+        }
+
+        if (document.getElementById('gwRerollPing')) {
+
+            document.getElementById('gwRerollPing').value = cfg.reroll_ping || '🎲 **Giveaway Rerolled!** Congratulations {winners}!';
+
+            if (typeof document.getElementById('gwRerollPing')._syncToRich === 'function') {
+
+                document.getElementById('gwRerollPing')._syncToRich();
+
+            }
+
         }
         setGwEmojiVisual('gwEmojiEnded', cfg.emoji_ended || '🔒');
         if (document.getElementById('gwWinnerPing')) {
@@ -7703,13 +7718,13 @@ async function loadGiveawaysData() {
                                 <span class="gw-countdown" data-ts="${endTs}">${formatCountdown(endTs)}</span>
                             </td>
                             <td style="padding: 12px; text-align: right; white-space: nowrap;">
-                                <button class="btn btn-secondary" onclick="openGwEntriesModal('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); margin-right: 6px;" title="View all entered participants">
+                                <button class="btn btn-secondary" onclick="openGwEntriesModal('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 4px 12px; border-radius: 20px; color: #38bdf8; border-color: rgba(56, 189, 248, 0.4); margin-right: 6px;" title="View all entered participants">
                                     👥 Entries
                                 </button>
-                                <button class="btn btn-secondary" onclick="endGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); margin-right: 6px;" title="Draw winners and end immediately">
+                                <button class="btn btn-secondary" onclick="endGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 4px 12px; border-radius: 20px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); margin-right: 6px;" title="Draw winners and end immediately">
                                     ⏹️ End Early
                                 </button>
-                                <button class="btn btn-secondary" onclick="cancelGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" title="Cancel without drawing winners">
+                                <button class="btn btn-secondary" onclick="cancelGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 4px 12px; border-radius: 20px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" title="Cancel without drawing winners">
                                     ❌ Cancel
                                 </button>
                             </td>
@@ -7773,7 +7788,7 @@ async function loadGiveawaysData() {
                             </td>
                             <td style="padding: 12px; text-align: right; white-space: nowrap;">
                                 ${!gw.cancelled ? `
-                                    <button class="btn btn-secondary" onclick="rerollGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 3px 8px; color: #818cf8; border-color: rgba(88, 101, 242, 0.4);" title="Reroll new winner(s)">
+                                    <button class="btn btn-secondary" onclick="rerollGiveaway('${gw.id || gw.message_id || gw.key}')" style="font-size: 11px; padding: 4px 12px; border-radius: 20px; color: #818cf8; border-color: rgba(88, 101, 242, 0.4);" title="Reroll new winner(s)">
                                         🎲 Reroll
                                     </button>
                                 ` : ''}
@@ -8242,10 +8257,14 @@ function setupGiveawayEvents() {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', updateGwWinnerPreview);
     });
-        ['gwWinnerPing', 'gwRerollPing'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', updateGwWinnerPreview);
-    });
+        ['gwWinnerPing', 'gwRerollPing'].forEach(id => {
+
+        const el = document.getElementById(id);
+
+        if (el) el.addEventListener('input', updateGwWinnerPreview);
+
+    });
+
     const resetEmojisBtn = document.getElementById('gwResetEmojisBtn');
     if (resetEmojisBtn) {
         resetEmojisBtn.addEventListener('click', () => {
@@ -8253,7 +8272,8 @@ function setupGiveawayEvents() {
             setGwEmojiVisual('gwEmojiHost', '👑');
             setGwEmojiVisual('gwEmojiWinners', '🏆');
             setGwEmojiVisual('gwEmojiEntries', '🎟️');
-            setGwEmojiVisual('gwEmojiEnds', '⏳');
+            setGwEmojiVisual('gwEmojiEnds', '⏳');
+
             setGwEmojiVisual('gwEmojiEnded', '🔒');
             setGwEmojiVisual('gwEmojiEnded', '🔒');
             updateGwPreview();
