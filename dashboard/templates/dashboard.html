@@ -3274,6 +3274,15 @@ Click an inquiry button below to open a confidential support ticket with our tea
                 </select>
                 <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Audit trail of draws, rerolls, and endings.</span>
             </div>
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🎯 Entry Participation Method</label>
+                <select class="text-input" id="gwEntryMethodSelect">
+                    <option value="button" selected>Modern Button Only (Clean, single clickable button)</option>
+                    <option value="reaction">Reaction Only (Classic emoji reaction pill, no button)</option>
+                    <option value="both">Both (Button &amp; Reaction Emoji together)</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Choose how members join on Discord. No unwanted double button + reaction!</span>
+            </div>
         </div>
 
         <!-- Custom Giveaway Emojis Section -->
@@ -3428,7 +3437,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
             </button>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 24px;">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 480px); gap: 24px; align-items: start;">
             <!-- Left: Form Controls -->
             <div>
                 <!-- Mode Selector Tabs -->
@@ -3593,7 +3602,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
     </div>
 
     <!-- Two-Column Studio Grid -->
-    <div class="ticket-studio-grid" style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 24px; margin-bottom: 24px;">
+    <div class="ticket-studio-grid" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 480px); gap: 24px; margin-bottom: 24px; align-items: start;">
         <!-- Left: Studio Controls Column -->
         <div class="ticket-studio-left">
             <div class="card">
@@ -3626,6 +3635,17 @@ Click an inquiry button below to open a confidential support ticket with our tea
                         <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Winners Count</label>
                         <input class="text-input" id="gwWinnersInput" max="25" min="1" type="number" value="1" />
                     </div>
+                </div>
+
+                <!-- Host / Sponsor Selector Row -->
+                <div style="margin-bottom: 14px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">👑 Host / Sponsor</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Who is hosting this giveaway</span>
+                    </div>
+                    <select class="text-input" id="gwHostSelect">
+                        <option value="">Server Staff (Default)</option>
+                    </select>
                 </div>
 
                 <!-- Duration Presets Chips -->

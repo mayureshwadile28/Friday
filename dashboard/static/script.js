@@ -680,7 +680,9 @@ function setupEventListeners() {
                 !e.target.closest('.emoji-picker-btn') && 
                 !e.target.closest('.rr-emoji-preview-btn') && 
                 !e.target.closest('.resp-emoji-btn') && 
-                !e.target.closest('.btn-emoji-trigger')) {
+                !e.target.closest('.gw-emoji-tile-btn') && 
+                !e.target.closest('.btn-emoji-trigger') &&
+                !e.target.closest('[id^="gwEmoji"]')) {
                 closeEmojiPicker();
             }
         });
@@ -7376,12 +7378,15 @@ function updateGwWinnerPreview() {
         
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
-        const renderedPing = pingVal.replace(/{winners}/g, '<span class="discord-mention">@Tony Daddy</span>')
-                                    .replace(/{prize}/g, '<strong style="color: #facc15;">1M OWO</strong>')
-                                    .replace(/{emoji_prize}/g, emojiPrize)
-                                    .replace(/{host}/g, '<span class="discord-mention">@Tony Daddy</span>')
-                                    .replace(/{entries}/g, '42');
-        if (simPing) simPing.innerHTML = renderDiscordMarkdown(renderedPing);
+        let pingText = pingVal.replace(/{winners}/g, '@Tony Daddy')
+                              .replace(/{prize}/g, '**1M OWO**')
+                              .replace(/{emoji_prize}/g, emojiPrize)
+                              .replace(/{host}/g, '@Tony Daddy')
+                              .replace(/{entries}/g, '42');
+        let htmlPing = renderDiscordMarkdown(pingText);
+        htmlPing = htmlPing.replace(/@Tony Daddy/g, '<span class="discord-mention">@Tony Daddy</span>')
+                           .replace(/1M OWO/g, '<strong style="color: #facc15;">1M OWO</strong>');
+        if (simPing) simPing.innerHTML = htmlPing;
         if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
         if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
         if (simHostLabel) simHostLabel.textContent = 'Hosted by:';
@@ -7394,10 +7399,13 @@ function updateGwWinnerPreview() {
         
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
-        const renderedRerollPing = pingVal.replace(/{winners}/g, '<span class="discord-mention">@Tony Daddy</span>')
-                                          .replace(/{prize}/g, '<strong style="color: #facc15;">1M OWO</strong>')
-                                          .replace(/{emoji_prize}/g, emojiPrize);
-        if (simPing) simPing.innerHTML = renderDiscordMarkdown(renderedRerollPing);
+        let pingText = pingVal.replace(/{winners}/g, '@Tony Daddy')
+                              .replace(/{prize}/g, '**1M OWO**')
+                              .replace(/{emoji_prize}/g, emojiPrize);
+        let htmlPing = renderDiscordMarkdown(pingText);
+        htmlPing = htmlPing.replace(/@Tony Daddy/g, '<span class="discord-mention">@Tony Daddy</span>')
+                           .replace(/1M OWO/g, '<strong style="color: #facc15;">1M OWO</strong>');
+        if (simPing) simPing.innerHTML = htmlPing;
         if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
         if (simHostIcon) simHostIcon.innerHTML = '🎲';
         if (simHostLabel) simHostLabel.textContent = 'Rerolled by:';
@@ -7540,6 +7548,22 @@ function updateGwPreview() {
     const simEmbed = document.getElementById('gwSimEmbed');
     if (simEmbed) simEmbed.style.borderLeftColor = embedColor;
 
+    // Update Host / Sponsor label in simulator
+    const hostSelect = document.getElementById('gwHostSelect');
+    let hostLabel = '@ServerStaff';
+    if (hostSelect && hostSelect.selectedOptions && hostSelect.selectedOptions[0] && hostSelect.value) {
+        hostLabel = hostSelect.selectedOptions[0].textContent;
+    }
+    const simHost = document.getElementById('gwSimHost');
+    if (simHost) simHost.textContent = hostLabel;
+
+    // Respect Entry Method: Button Only vs Reaction Only vs Both
+    const entryMethod = (document.getElementById('gwEntryMethodSelect')?.value) || 'button';
+    const simBtn = document.getElementById('gwSimButton');
+    const simRx = document.getElementById('gwSimReactionPill');
+    if (simBtn) simBtn.style.display = (entryMethod === 'reaction') ? 'none' : 'inline-flex';
+    if (simRx) simRx.style.display = (entryMethod === 'button') ? 'none' : 'inline-flex';
+
     // Clear banner button visibility
     const clearBtn = document.getElementById('gwBannerClearBtn');
     if (clearBtn) clearBtn.style.display = (bannerInput && bannerInput.value.trim()) ? 'inline-flex' : 'none';
@@ -7590,6 +7614,40 @@ async function loadGiveawaysData() {
             'Select a private log channel...'
         );
 
+        if (document.getElementById('gwEntryMethodSelect')) {
+            document.getElementById('gwEntryMethodSelect').value = cfg.entry_method || 'button';
+        }
+
+        // Populate Host / Sponsor dropdown from server members
+        const hostSelect = document.getElementById('gwHostSelect');
+        if (hostSelect && typeof currentGuildMembers !== 'undefined' && Array.isArray(currentGuildMembers) && currentGuildMembers.length) {
+            const curVal = hostSelect.value;
+            let hostHtml = '<option value="">Server Staff (Default)</option>';
+            currentGuildMembers.forEach(m => {
+                const name = m.global_name ? `${m.global_name} (@${m.username})` : `@${m.username}`;
+                hostHtml += `<option value="${m.id}">@${escapeHtml(name)}</option>`;
+            });
+            hostSelect.innerHTML = hostHtml;
+            if (curVal) hostSelect.value = curVal;
+        }
+
+        if (document.getElementById('gwEntryMethodSelect')) {
+            document.getElementById('gwEntryMethodSelect').value = cfg.entry_method || 'button';
+        }
+
+        // Populate Host / Sponsor dropdown from server members
+        const hostSelect = document.getElementById('gwHostSelect');
+        if (hostSelect && typeof currentGuildMembers !== 'undefined' && Array.isArray(currentGuildMembers) && currentGuildMembers.length) {
+            const curVal = hostSelect.value;
+            let hostHtml = '<option value="">Server Staff (Default)</option>';
+            currentGuildMembers.forEach(m => {
+                const name = m.global_name ? `${m.global_name} (@${m.username})` : `@${m.username}`;
+                hostHtml += `<option value="${m.id}">@${escapeHtml(name)}</option>`;
+            });
+            hostSelect.innerHTML = hostHtml;
+            if (curVal) hostSelect.value = curVal;
+        }
+
         setGwEmojiVisual('gwEmojiPrize', cfg.emoji_prize || '🎁');
         setGwEmojiVisual('gwEmojiHost', cfg.emoji_host || '👑');
         setGwEmojiVisual('gwEmojiWinners', cfg.emoji_winners || '🏆');
@@ -7759,7 +7817,19 @@ async function loadGiveawaysData() {
                     const hostName = gw.host_name ? `@${escapeHtml(gw.host_name)}` : `@Staff`;
                     let winnersDisplay = "None";
                     if (gw.winners && gw.winners.length > 0) {
-                        winnersDisplay = gw.winners.map(w => `<span class="discord-mention" style="font-size: 11px;">@${escapeHtml(w.username || w.id || 'Winner')}</span>`).join(' ');
+                        winnersDisplay = gw.winners.map(w => {
+                            let name = 'Winner';
+                            if (typeof w === 'object' && w !== null) {
+                                name = w.display_name || w.username || w.id || 'Winner';
+                            } else {
+                                const uid = String(w);
+                                const mem = (typeof currentGuildMembers !== 'undefined' && Array.isArray(currentGuildMembers))
+                                    ? currentGuildMembers.find(m => String(m.id) === uid)
+                                    : null;
+                                name = mem ? (mem.global_name || mem.username) : `User ${uid.slice(-4)}`;
+                            }
+                            return `<span class="discord-mention" style="font-size: 11px;">@${escapeHtml(name)}</span>`;
+                        }).join(' ');
                     } else if (gw.cancelled) {
                         winnersDisplay = `<span style="color: #ef4444; font-size: 12px;">Cancelled</span>`;
                     }
@@ -7922,7 +7992,9 @@ async function saveGwConfig() {
     const payload = {
         giveaway_channel: chSelect ? chSelect.value : null,
         approval_channel: appSelect ? appSelect.value : null,
-        log_channel: logSelect ? logSelect.value : null,
+        log_channel: logSelect ? logSelect.value : null,
+        entry_method: document.getElementById('gwEntryMethodSelect')?.value || 'button',
+        entry_method: document.getElementById('gwEntryMethodSelect')?.value || 'button',
         embed_color: document.getElementById('gwDefaultEmbedColor')?.value.trim() || '#5865F2',
         emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
         emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
@@ -8131,8 +8203,12 @@ function setupGiveawayEvents() {
     const durInput = document.getElementById('gwDurationInput');
     const winInput = document.getElementById('gwWinnersInput');
     const descInput = document.getElementById('gwDescInput');
+    const hostSelect = document.getElementById('gwHostSelect');
+    const entryMethodSelect = document.getElementById('gwEntryMethodSelect');
 
     if (prizeInput) prizeInput.addEventListener('input', updateGwPreview);
+    if (hostSelect) hostSelect.addEventListener('change', updateGwPreview);
+    if (entryMethodSelect) entryMethodSelect.addEventListener('change', updateGwPreview);
     if (durInput) durInput.addEventListener('input', updateGwPreview);
     if (winInput) winInput.addEventListener('input', updateGwPreview);
     if (descInput) descInput.addEventListener('input', updateGwPreview);
@@ -8240,6 +8316,7 @@ function setupGiveawayEvents() {
         const visual = document.getElementById(id + 'Visual');
         const trigger = (e) => {
             e.preventDefault();
+            e.stopPropagation();
             const targetBtn = btn || visual;
             openEmojiPicker(targetBtn, (chosenEmoji) => {
                 if (!chosenEmoji) return;

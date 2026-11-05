@@ -1251,33 +1251,39 @@ class Giveaways(commands.Cog):
         # Temporary key before message is sent
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{guild.id}_{temp_id}"
-        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize)
+        entry_method = str(cfg.get("entry_method", "button")).lower()
+        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize) if entry_method in ("button", "both") else None
 
-        gw_msg = await target_channel.send(content="🎉 **New Giveaway** 🎉", embed=embed, view=view)
+        send_kwargs = {"content": "🎉 **New Giveaway** 🎉", "embed": embed}
+        if view:
+            send_kwargs["view"] = view
+        gw_msg = await target_channel.send(**send_kwargs)
 
-        # Add reaction so members can react directly on Discord
-        try:
-            if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
-                m = re.search(r":(\d+)>$", emoji_prize)
-                if m:
-                    rx = self.bot.get_emoji(int(m.group(1)))
-                    if rx:
-                        await gw_msg.add_reaction(rx)
+        # Only add reaction if entry_method is 'reaction' or 'both'
+        if entry_method in ("reaction", "both"):
+            try:
+                if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
+                    m = re.search(r":(\d+)>$", emoji_prize)
+                    if m:
+                        rx = self.bot.get_emoji(int(m.group(1)))
+                        if rx:
+                            await gw_msg.add_reaction(rx)
+                        else:
+                            await gw_msg.add_reaction("🎁")
                     else:
                         await gw_msg.add_reaction("🎁")
                 else:
-                    await gw_msg.add_reaction("🎁")
-            else:
-                await gw_msg.add_reaction(emoji_prize)
-        except Exception:
-            try:
-                await gw_msg.add_reaction("🎁")
+                    await gw_msg.add_reaction(emoji_prize)
             except Exception:
-                pass
+                try:
+                    await gw_msg.add_reaction("🎁")
+                except Exception:
+                    pass
 
         real_key = f"{guild.id}_{gw_msg.id}"
-        real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
-        await gw_msg.edit(view=real_view)
+        if entry_method in ("button", "both"):
+            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
+            await gw_msg.edit(view=real_view)
 
         # Save giveaway
         gw_data = {

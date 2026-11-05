@@ -3824,16 +3824,21 @@ select option:checked {
 }
 
 .rich-emoji-editor.single-line {
-    min-height: 42px;
-    height: 42px;
+    min-height: 40px;
+    height: 40px;
     white-space: nowrap;
     overflow-x: auto;
     overflow-y: hidden;
     padding: 8px 14px;
-    line-height: 24px;
-    display: inline-flex;
-    align-items: center;
+    line-height: 22px;
+    display: block !important;
+    box-sizing: border-box;
     flex: 1;
+}
+
+.rich-emoji-editor.single-line:empty:before {
+    display: inline !important;
+    line-height: 22px;
 }
 
 .rr-emoji-picker-container .rich-emoji-editor.single-line {

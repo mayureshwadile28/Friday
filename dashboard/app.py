@@ -6,6 +6,7 @@ import uuid
 import requests
 import asyncio
 import discord
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
@@ -2419,7 +2420,28 @@ def get_guild_giveaways(gid):
             gw_copy["host_id"] = str(item.get("host_id") or "")
             gw_copy["sponsor_id"] = str(item.get("sponsor_id") or "")
             gw_copy["entries"] = [str(e) for e in item.get("entries", [])]
-            gw_copy["winners"] = [str(w) for w in item.get("winners", [])]
+            resolved_winners = []
+            guild_obj = bot_instance.get_guild(int(gid)) if bot_instance and str(gid).isdigit() else None
+            for w in item.get("winners", []):
+                w_str = str(w)
+                w_obj = {"id": w_str, "username": f"User {w_str[-4:]}", "display_name": f"User {w_str[-4:]}"}
+                if guild_obj:
+                    m = guild_obj.get_member(int(w)) if w_str.isdigit() else None
+                    if m:
+                        w_obj["username"] = m.name
+                        w_obj["display_name"] = m.display_name
+                    elif bot_instance:
+                        u = bot_instance.get_user(int(w)) if w_str.isdigit() else None
+                        if u:
+                            w_obj["username"] = u.name
+                            w_obj["display_name"] = getattr(u, "global_name", None) or u.name
+                resolved_winners.append(w_obj)
+            gw_copy["winners"] = resolved_winners
+            if guild_obj and gw_copy.get("sponsor_id"):
+                s_id = gw_copy.get("sponsor_id")
+                sm = guild_obj.get_member(int(s_id)) if str(s_id).isdigit() else None
+                if sm:
+                    gw_copy["host_name"] = sm.display_name or sm.name
             gw_copy["entries_count"] = len(item.get("entries", []))
             gw_copy["time_left_seconds"] = max(0, int(item.get("end_time", now) - now))
             if item.get("status") == "active":
@@ -2463,6 +2485,8 @@ def save_guild_giveaway_config(gid):
         cfg["log_channel"] = str(val).strip() if val and str(val).strip() else None
     if "embed_color" in body:
         cfg["embed_color"] = str(body.get("embed_color", "#5865F2")).strip() or "#5865F2" 
+    if "entry_method" in body:
+        cfg["entry_method"] = str(body.get("entry_method", "button")).strip().lower()
 
     # Custom styling emojis
     for emoji_key in ["emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended"]:
@@ -2671,11 +2695,22 @@ def create_guild_giveaway(gid):
         emoji_ends = resolve_safe_emoji(bot_instance, body.get("emoji_ends") or cfg.get("emoji_ends"), fallback="⏳")
         emoji_ended = resolve_safe_emoji(bot_instance, body.get("emoji_ended") or cfg.get("emoji_ended"), fallback="🔒")
 
+        host_id = body.get("host_id")
+        host_member = None
+        if host_id and str(host_id).isdigit():
+            host_member = guild.get_member(int(host_id))
+        if not host_member and guild.owner:
+            host_member = guild.owner
+        host_mention = host_member.mention if host_member else "Server Staff"
+        sponsor_id = str(host_member.id) if host_member else str(guild.owner_id if guild.owner else "0")
+        entry_method = str(body.get("entry_method") or cfg.get("entry_method") or "button").lower()
+
+        default_instr = "Click the button below to participate!" if entry_method != "reaction" else f"React with {emoji_prize} to participate!"
         desc_body = (
             f"• **Winners:** {winners_count}\n"
             f"• **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
-            f"• **Hosted By:** {guild.owner.mention if guild.owner else 'Server Staff'}\n\n"
-            f"• {description or 'Click the button below to participate!'}"
+            f"• **Hosted By:** {host_mention}\n\n"
+            f"• {description or default_instr}"
         )
 
         embed = discord.Embed(
@@ -2710,48 +2745,55 @@ def create_guild_giveaway(gid):
 
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{gid}_{temp_id}"
-        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize)
+        real_view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize) if entry_method in ("button", "both") else None
 
-        send_kwargs = {"content": "🎉 **New Giveaway** 🎉", "embed": embed, "view": view}
+        send_kwargs = {"content": "🎉 **New Giveaway** 🎉", "embed": embed}
+        if real_view:
+            send_kwargs["view"] = real_view
         if discord_file:
             send_kwargs["file"] = discord_file
 
         msg = await channel.send(**send_kwargs)
 
-        # Add reaction to message so users can react on Discord directly!
-        try:
-            if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
-                m = re.search(r":(\d+)>$", emoji_prize)
-                if m:
-                    rx = bot_instance.get_emoji(int(m.group(1)))
-                    if rx:
-                        await msg.add_reaction(rx)
+        # Only add reaction if entry_method is 'reaction' or 'both'
+        if entry_method in ("reaction", "both"):
+            try:
+                if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
+                    m = re.search(r":(\d+)>$", emoji_prize)
+                    if m:
+                        rx = bot_instance.get_emoji(int(m.group(1)))
+                        if rx:
+                            await msg.add_reaction(rx)
+                        else:
+                            await msg.add_reaction("🎁")
                     else:
                         await msg.add_reaction("🎁")
                 else:
-                    await msg.add_reaction("🎁")
-            else:
-                await msg.add_reaction(emoji_prize)
-        except Exception:
-            try:
-                await msg.add_reaction("🎁")
+                    await msg.add_reaction(emoji_prize)
             except Exception:
-                pass
+                try:
+                    await msg.add_reaction("🎁")
+                except Exception:
+                    pass
 
         # If uploaded as attachment, store permanent Discord CDN attachment URL
         if discord_file and msg.attachments:
             final_image_url = msg.attachments[0].url
 
         real_key = f"{gid}_{msg.id}"
-        real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
-        await msg.edit(view=real_view)
+        if entry_method in ("button", "both"):
+            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
+            await msg.edit(view=real_view)
 
         gw_data = {
             "message_id": msg.id,
             "channel_id": channel.id,
             "guild_id": gid_int,
             "prize": prize,
-            "host_id": guild.owner_id if guild.owner_id else bot_instance.user.id,
+            "host_id": sponsor_id,
+            "sponsor_id": sponsor_id,
+            "host_name": host_member.display_name if host_member else "Server Staff",
+            "entry_method": entry_method,
             "sponsor_id": guild.owner_id if guild.owner_id else bot_instance.user.id,
             "winners_count": winners_count,
             "created_at": now,
