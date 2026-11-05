@@ -669,14 +669,17 @@ class Giveaways(commands.Cog):
         try:
             cfg = get_giveaway_config(guild_id)
             jump_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{message_id}"
+            emoji_prize = cfg.get("emoji_prize", "🎁")
+            emoji_host = cfg.get("emoji_host", "👑")
+            emoji_entries = cfg.get("emoji_entries", "🎟️")
             
             if chosen:
                 mentions_str = " ".join(f"<@{w}>" for w in chosen)
                 winner_title = cfg.get("winner_title") or "🎉 GIVEAWAY CONCLUDED! 🎉"
                 default_msg = (
-                    "> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n"
-                    "👑 **Hosted by:** {host}\n"
-                    "🎟️ **Entries:** {entries}\n"
+                    f"> 🎊 Congratulations {{winners}}! You won **{{prize}}**! {emoji_prize}\n\n"
+                    f"{emoji_host} **Hosted by:** {{host}}\n"
+                    f"{emoji_entries} **Entries:** {{entries}}\n"
                     "🔗 **Jump to Giveaway:** {link}"
                 )
                 raw_template = cfg.get("winner_message") or default_msg
@@ -693,15 +696,15 @@ class Giveaways(commands.Cog):
                     color=discord.Color.from_rgb(245, 158, 11),  # Celebratory Amber / Gold
                     timestamp=datetime.now(timezone.utc)
                 )
-                embed.add_field(name="🏆 Prize", value=f"**{prize}**", inline=True)
-                embed.add_field(name="👑 Hosted By", value=f"<@{sponsor_id}>", inline=True)
-                embed.add_field(name="🎟️ Total Entries", value=f"**{len(entries)}**", inline=True)
+                embed.add_field(name=f"{emoji_prize} Prize", value=f"**{prize}**", inline=True)
+                embed.add_field(name=f"{emoji_host} Hosted By", value=f"<@{sponsor_id}>", inline=True)
+                embed.add_field(name=f"{emoji_entries} Total Entries", value=f"**{len(entries)}**", inline=True)
                 embed.set_footer(text="Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
                 
                 view = discord.ui.View()
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
                 
-                ping_content = f"🎉 **Congratulations** {mentions_str}! You won **{prize}**! 🎁"
+                ping_content = f"🎉 **Congratulations** {mentions_str}! You won **{prize}**! {emoji_prize}"
                 await channel.send(content=ping_content, embed=embed, view=view)
             else:
                 embed = discord.Embed(
@@ -1054,8 +1057,10 @@ class Giveaways(commands.Cog):
             
             cfg = get_giveaway_config(interaction.guild_id)
             reroll_title = cfg.get("reroll_title") or "🎲 GIVEAWAY REROLLED! 🎲"
+            emoji_prize = cfg.get("emoji_prize", "🎁")
+            emoji_winners = cfg.get("emoji_winners", "🏆")
             default_reroll_msg = (
-                "> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n"
+                f"> 🥳 New winner selected! Congratulations {{winners}}! You won **{{prize}}**! {emoji_prize}\n\n"
                 "🔗 **Jump to Giveaway:** {link}"
             )
             raw_reroll_msg = cfg.get("reroll_message") or default_reroll_msg
@@ -1072,9 +1077,9 @@ class Giveaways(commands.Cog):
                 color=discord.Color.from_rgb(245, 158, 11),
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="🏆 Prize", value=f"**{prize}**", inline=True)
+            embed.add_field(name=f"{emoji_prize} Prize", value=f"**{prize}**", inline=True)
             embed.add_field(name="🎲 Rerolled By", value=interaction.user.mention, inline=True)
-            embed.add_field(name="👑 New Winner(s)", value=mentions_str, inline=True)
+            embed.add_field(name=f"{emoji_winners} New Winner(s)", value=mentions_str, inline=True)
             embed.set_footer(text="Friday Giveaway Engine • Reroll", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
             
             view = discord.ui.View()

@@ -3485,9 +3485,9 @@ Click an inquiry button below to open a confidential support ticket with our tea
                             &gt; 🎊 Congratulations <span class="discord-mention">@Tony Daddy</span>! You won <strong>1M OWO</strong>! 🎁
                         </div>
                         <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; font-size: 12px; color: #dbdee1; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                            <div>🏆 <strong>Prize:</strong> <span style="color: #facc15;">1M OWO</span></div>
-                            <div>👑 <strong>Hosted by:</strong> <span class="discord-mention">@Tony Daddy</span></div>
-                            <div>🎟️ <strong>Entries:</strong> <strong>42</strong></div>
+                            <div><span id="gwWinnerSimPrizeIcon">🎁</span> <strong>Prize:</strong> <span style="color: #facc15;">1M OWO</span></div>
+                            <div><span id="gwWinnerSimHostIcon">👑</span> <strong id="gwWinnerSimHostLabel">Hosted by:</strong> <span class="discord-mention">@Tony Daddy</span></div>
+                            <div><span id="gwWinnerSimEntriesIcon">🎟️</span> <strong id="gwWinnerSimEntriesLabel">Entries:</strong> <strong>42</strong></div>
                         </div>
                     </div>
 
@@ -3520,7 +3520,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                 <!-- Prize Title Input with Emoji Button -->
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Prize Title</label>
-                    <button class="btn btn-secondary emoji-picker-btn" id="gwPrizeEmojiBtn" style="padding: 2px 8px; font-size: 11px;" type="button">
+                    <button class="btn btn-secondary emoji-picker-btn" id="gwPrizeEmojiBtn" data-target="gwPrizeInput" style="padding: 2px 8px; font-size: 11px;" type="button">
                         😊 Emojis
                     </button>
                 </div>
@@ -3570,7 +3570,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     <button class="var-chip" onclick="insertGwVar('**bold**')" type="button">Bold</button>
                     <button class="var-chip" onclick="insertGwVar('*italic*')" type="button">Italic</button>
                     <button class="var-chip" onclick="insertGwVar('> ')" type="button">Quote</button>
-                    <button class="var-chip emoji-picker-btn" id="gwDescEmojiBtn" title="Insert server emojis" type="button">
+                    <button class="var-chip emoji-picker-btn" id="gwDescEmojiBtn" data-target="gwDescInput" title="Insert server emojis" type="button">
                         <svg fill="none" height="13" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="13"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" x2="9.01" y1="9" y2="9"></line><line x1="15" x2="15.01" y1="9" y2="9"></line></svg>
                         Server Emojis
                     </button>

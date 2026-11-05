@@ -2639,7 +2639,9 @@ def reroll_guild_giveaway(gid):
                 jump_url = f"https://discord.com/channels/{gid}/{ch.id}/{msg_id}"
                 cfg = db.giveaways_config.get(str(gid), {})
                 reroll_title = cfg.get("reroll_title") or "🎲 GIVEAWAY REROLLED (via Dashboard)! 🎲"
-                default_reroll = "> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}"
+                emoji_prize = cfg.get("emoji_prize", "🎁")
+                emoji_winners = cfg.get("emoji_winners", "🏆")
+                default_reroll = f"> 🥳 New winner selected! Congratulations {{winners}}! You won **{{prize}}**! {emoji_prize}\n\n🔗 **Jump to Giveaway:** {{link}}"
                 raw_reroll = cfg.get("reroll_message") or default_reroll
                 desc = raw_reroll.replace("{winners}", mentions)\
                                  .replace("{prize}", gw.get("prize", "the prize"))\
@@ -2652,8 +2654,8 @@ def reroll_guild_giveaway(gid):
                     color=discord.Color.from_rgb(245, 158, 11),
                     timestamp=datetime.now(timezone.utc)
                 )
-                embed.add_field(name="🏆 Prize", value=f"**{gw.get('prize')}**", inline=True)
-                embed.add_field(name="👑 New Winner(s)", value=mentions, inline=True)
+                embed.add_field(name=f"{emoji_prize} Prize", value=f"**{gw.get('prize')}**", inline=True)
+                embed.add_field(name=f"{emoji_winners} New Winner(s)", value=mentions, inline=True)
                 embed.set_footer(text="Friday Giveaway Engine • Dashboard Reroll", icon_url=guild.icon.url if guild.icon else None)
                 view = discord.ui.View()
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))

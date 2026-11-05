@@ -7318,13 +7318,30 @@ function updateGwWinnerPreview() {
     const simBody = document.getElementById('gwWinnerSimBody');
     const simPing = document.getElementById('gwWinnerSimPing');
 
+    const emojiPrize = (document.getElementById('gwEmojiPrize')?.value.trim()) || "🎁";
+    const emojiHost = (document.getElementById('gwEmojiHost')?.value.trim()) || "👑";
+    const emojiWinners = (document.getElementById('gwEmojiWinners')?.value.trim()) || "🏆";
+    const emojiEntries = (document.getElementById('gwEmojiEntries')?.value.trim()) || "🎟️";
+
+    const simPrizeIcon = document.getElementById('gwWinnerSimPrizeIcon');
+    const simHostIcon = document.getElementById('gwWinnerSimHostIcon');
+    const simEntriesIcon = document.getElementById('gwWinnerSimEntriesIcon');
+    const simHostLabel = document.getElementById('gwWinnerSimHostLabel');
+    const simEntriesLabel = document.getElementById('gwWinnerSimEntriesLabel');
+
+    if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
+
     if (currentGwAnnouncementMode === 'winner') {
         const titleVal = document.getElementById('gwWinnerTitle')?.value || '🎉 GIVEAWAY CONCLUDED! 🎉';
         const msgVal = document.getElementById('gwWinnerMessage')?.value || '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}';
         
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
-        if (simPing) simPing.innerHTML = `🎉 <strong style="color: #ffffff;">Congratulations</strong> <span class="discord-mention">@Tony Daddy</span>! You won <strong style="color: #facc15;">1M OWO</strong>! 🎁`;
+        if (simPing) simPing.innerHTML = `🎉 <strong style="color: #ffffff;">Congratulations</strong> <span class="discord-mention">@Tony Daddy</span>! You won <strong style="color: #facc15;">1M OWO</strong>! ${renderDiscordMarkdown(emojiPrize)}`;
+        if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
+        if (simHostLabel) simHostLabel.textContent = 'Hosted by:';
+        if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiEntries);
+        if (simEntriesLabel) simEntriesLabel.textContent = 'Entries:';
     } else {
         const titleVal = document.getElementById('gwRerollTitle')?.value || '🎲 GIVEAWAY REROLLED! 🎲';
         const msgVal = document.getElementById('gwRerollMessage')?.value || '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}';
@@ -7332,6 +7349,10 @@ function updateGwWinnerPreview() {
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
         if (simPing) simPing.innerHTML = `🎲 <strong style="color: #ffffff;">Giveaway Rerolled!</strong> Congratulations <span class="discord-mention">@Tony Daddy</span>!`;
+        if (simHostIcon) simHostIcon.innerHTML = '🎲';
+        if (simHostLabel) simHostLabel.textContent = 'Rerolled by:';
+        if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiWinners);
+        if (simEntriesLabel) simEntriesLabel.textContent = 'New Winner(s):';
     }
 }
 
@@ -7371,6 +7392,8 @@ function setGwEmojiVisual(id, val) {
             textEl.textContent = val;
         }
     }
+    updateGwPreview();
+    updateGwWinnerPreview();
 }
 
 function updateGwPreview() {
@@ -7932,6 +7955,24 @@ function setupGiveawayEvents() {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', updateGwWinnerPreview);
     });
+
+    // Direct hooks for Create & Launch description and prize emoji pickers
+    const bindRichEditorEmojiBtn = (btnId, inputId) => {
+        const btn = document.getElementById(btnId);
+        if (!btn) return;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById(inputId + '_rich') || attachRichEmojiEditor(inputId);
+            openEmojiPicker(btn, (chosenEmoji) => {
+                if (!chosenEmoji) return;
+                insertEmojiOrTextIntoRichEditor(richEl, chosenEmoji);
+                updateGwPreview();
+            });
+        });
+    };
+    bindRichEditorEmojiBtn('gwDescEmojiBtn', 'gwDescInput');
+    bindRichEditorEmojiBtn('gwPrizeEmojiBtn', 'gwPrizeInput');
 
     const saveAnnounceBtn = document.getElementById('gwSaveAnnouncementBtn');
     if (saveAnnounceBtn) {
