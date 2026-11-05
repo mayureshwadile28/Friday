@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import datetime
+from typing import Optional, List, Dict
 from database import db
 from response_utils import make_box_embed, reply_box
 
