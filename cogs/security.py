@@ -441,11 +441,19 @@ class Security(commands.Cog):
         guild = interaction.guild
         if not guild:
             return False
+        # 1. Server Owner always permitted
         if interaction.user.id == guild.owner_id:
             return True
+        # 2. Bot Owner always permitted
+        if hasattr(self.bot, "owner_id") and self.bot.owner_id and interaction.user.id == self.bot.owner_id:
+            return True
+        if hasattr(self.bot, "owner_ids") and self.bot.owner_ids and interaction.user.id in self.bot.owner_ids:
+            return True
+        # 3. Whitelisted Co-Owner / Second Owner (direct user ID or whitelisted role)
         user = interaction.user
-        gid = str(guild.id)
-        wl_raw = db.whitelist.get(gid, []) or []
+        gid_str = str(guild.id)
+        gid_int = int(guild.id) if str(guild.id).isdigit() else None
+        wl_raw = (db.whitelist.get(gid_str, []) or []) + (db.whitelist.get(gid_int, []) or [] if gid_int else [])
         wl_set = {str(x) for x in wl_raw}
         if str(user.id) in wl_set:
             return True
@@ -488,7 +496,7 @@ class Security(commands.Cog):
     async def antiraid_command(self, interaction: discord.Interaction, status: app_commands.Choice[int]):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
@@ -512,7 +520,7 @@ class Security(commands.Cog):
     async def antispam_command(self, interaction: discord.Interaction, status: app_commands.Choice[int]):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
@@ -551,7 +559,7 @@ class Security(commands.Cog):
     async def antinuke_sync(self, interaction: discord.Interaction):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
@@ -564,7 +572,7 @@ class Security(commands.Cog):
     async def antinuke_refresh(self, interaction: discord.Interaction):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
@@ -606,7 +614,7 @@ class Security(commands.Cog):
     async def antinuke_limit(self, interaction: discord.Interaction, action_type: app_commands.Choice[str], limit: int):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
@@ -626,7 +634,7 @@ class Security(commands.Cog):
     async def whitelist_add(self, interaction: discord.Interaction, user: discord.Member):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
@@ -661,7 +669,7 @@ class Security(commands.Cog):
     async def whitelist_remove(self, interaction: discord.Interaction, user: discord.Member):
         if not self.can_manage_antinuke(interaction):
             await interaction.response.send_message(
-                "⛔ **Hierarchy Access Denied:** Only the Server Owner or members with a role strictly higher than Friday can edit or configure Anti-Nuke settings.",
+                "⛔ **Access Denied:** Only the Server Owner or whitelisted security administrators can edit or configure Anti-Nuke settings.",
                 ephemeral=True
             )
             return
