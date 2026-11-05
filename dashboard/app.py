@@ -2293,7 +2293,11 @@ def get_guild_giveaways(gid):
     except Exception:
         pass
     gid_str = str(gid)
+    if not isinstance(getattr(db, "giveaways_config", None), dict):
+        db.giveaways_config = {}
     cfg = db.giveaways_config.get(gid_str, {})
+    if not isinstance(cfg, dict):
+        cfg = {}
     all_gw = getattr(db, "giveaways", {}) or {}
     
     active = []
@@ -2329,7 +2333,11 @@ def save_guild_giveaway_config(gid):
     body = flask_request.json or {}
     gid_str = str(gid)
     
+    if not isinstance(getattr(db, "giveaways_config", None), dict):
+        db.giveaways_config = {}
     cfg = db.giveaways_config.get(gid_str, {})
+    if not isinstance(cfg, dict):
+        cfg = {}
     if "giveaway_channel" in body:
         val = body.get("giveaway_channel")
         cfg["giveaway_channel"] = int(val) if str(val).isdigit() else None

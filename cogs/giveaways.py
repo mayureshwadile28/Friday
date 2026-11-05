@@ -68,6 +68,8 @@ def format_duration(seconds: int) -> str:
 def get_giveaway_config(guild_id: int) -> dict:
     """Fetches giveaway configuration for a guild."""
     gid_str = str(guild_id)
+    if not isinstance(getattr(db, "giveaways_config", None), dict):
+        db.giveaways_config = {}
     cfg = db.giveaways_config.get(gid_str, {})
     if not isinstance(cfg, dict):
         cfg = {}
@@ -429,87 +431,246 @@ class SetupWizardView(discord.ui.View):
     @discord.ui.button(label="🔗  Link Existing Channels", style=discord.ButtonStyle.secondary, row=0)
     async def link_existing(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        embed = discord.Embed(
-            title="◈ Friday Giveaway Engine • Step 1 of 3",
-            description=(
-                "**Select your Public Giveaway Broadcast Channel:**\n"
-                "> This is where all giveaway cards will be posted for members to enter.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=discord.Color.blurple()
-        )
-        self.clear_items()
-        self.add_item(ManualChannelSelect(role_type="giveaway_channel"))
-        await interaction.edit_original_response(embed=embed, view=self)
+        view = CategorySelectStepView(role_type="giveaway_channel")
+        embed = view.get_embed()
+        await interaction.edit_original_response(embed=embed, view=view)
 
 
-class ManualChannelSelect(discord.ui.ChannelSelect):
-    """ChannelSelect used for manual 3-step channel assignment."""
+GW_ROLE_METADATA = {
+    "giveaway_channel": {
+        "step_num": "1 of 3",
+        "title": "📢 Public Giveaway Broadcast Channel",
+        "desc": "Where all giveaway cards will be posted for server members to enter.",
+        "next": "approval_channel"
+    },
+    "approval_channel": {
+        "step_num": "2 of 3",
+        "title": "🛡️ Staff Approvals Channel (Private)",
+        "desc": "Private staff queue where member-submitted giveaway requests are reviewed.",
+        "next": "log_channel"
+    },
+    "log_channel": {
+        "step_num": "3 of 3",
+        "title": "📜 Giveaway Audit Logs Channel (Private)",
+        "desc": "Private audit trail recording all winner selections, rerolls, and early endings.",
+        "next": None
+    }
+}
+
+
+class CategorySelectStepView(discord.ui.View):
+    """Step A: Category selector to prevent channel overflow in servers with 50+ channels."""
     def __init__(self, role_type: str):
+        super().__init__(timeout=300)
         self.role_type = role_type
-        labels = {
-            "giveaway_channel": "Pick Broadcast Channel (public, members enter here)…",
-            "approval_channel": "Pick Staff Approvals Channel (private, staff only)…",
-            "log_channel": "Pick Giveaway Logs Channel (private, audit trail)…"
-        }
-        super().__init__(
-            placeholder=labels.get(role_type, "Select a text channel…"),
+        self.meta = GW_ROLE_METADATA.get(role_type, GW_ROLE_METADATA["giveaway_channel"])
+
+        self.cat_select = discord.ui.ChannelSelect(
+            placeholder=f"📁 Step {self.meta['step_num']}: Pick Category…"[:100],
             min_values=1,
             max_values=1,
-            channel_types=[discord.ChannelType.text]
+            channel_types=[discord.ChannelType.category],
+            row=0
+        )
+        self.cat_select.callback = self.cat_callback
+        self.add_item(self.cat_select)
+
+    def get_embed(self) -> discord.Embed:
+        desc = (
+            f"**Target:** {self.meta['title']}\n"
+            f"> {self.meta['desc']}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📁 **First, choose the Category where this channel is located:**\n"
+            "*(Friday will show only the text channels inside your selected category)*"
+        )
+        return discord.Embed(
+            title=f"◈ Friday Giveaway Engine • Step {self.meta['step_num']}",
+            description=desc,
+            color=discord.Color.blurple()
         )
 
-    async def callback(self, interaction: discord.Interaction):
+    async def cat_callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        ch = self.values[0]
+        cat = self.cat_select.values[0]
+        cat_id = int(cat.id if hasattr(cat, "id") else cat)
+        category = interaction.guild.get_channel(cat_id)
+        if not category:
+            await interaction.followup.send("❌ Category not found. Please try again.", ephemeral=True)
+            return
+
+        text_channels = [c for c in category.text_channels if isinstance(c, discord.TextChannel)]
+        if not text_channels:
+            embed = self.get_embed()
+            embed.description += f"\n\n⚠️ **Notice:** No text channels found in **{category.name}**. Please choose another category."
+            await interaction.edit_original_response(embed=embed, view=self)
+            return
+
+        view = ChannelInCatStepView(role_type=self.role_type, category=category, channels=text_channels)
+        embed = view.get_embed()
+        await interaction.edit_original_response(embed=embed, view=view)
+
+    @discord.ui.button(label="🌐  Uncategorized Channels", style=discord.ButtonStyle.secondary, row=1)
+    async def uncat_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        uncat_channels = [c for c in interaction.guild.text_channels if c.category is None]
+        if not uncat_channels:
+            embed = self.get_embed()
+            embed.description += "\n\n⚠️ **Notice:** No uncategorized text channels found on this server."
+            await interaction.edit_original_response(embed=embed, view=self)
+            return
+
+        view = ChannelInCatStepView(role_type=self.role_type, category=None, channels=uncat_channels)
+        embed = view.get_embed()
+        await interaction.edit_original_response(embed=embed, view=view)
+
+    @discord.ui.button(label="⚡  Direct Channel Pick (All)", style=discord.ButtonStyle.secondary, row=1)
+    async def direct_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        view = DirectChannelPickView(role_type=self.role_type)
+        desc = (
+            f"**Target:** {self.meta['title']}\n"
+            f"> {self.meta['desc']}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "⚡ **Select the channel directly from the dropdown below:**"
+        )
+        embed = discord.Embed(
+            title=f"◈ Friday Giveaway Engine • Step {self.meta['step_num']}",
+            description=desc,
+            color=discord.Color.blurple()
+        )
+        await interaction.edit_original_response(embed=embed, view=view)
+
+
+class ChannelInCatStepView(discord.ui.View):
+    """Step B: Prompts user to pick a text channel from within the chosen Category."""
+    def __init__(self, role_type: str, category: Optional[discord.CategoryChannel], channels: list):
+        super().__init__(timeout=300)
+        self.role_type = role_type
+        self.category = category
+        self.channels = channels
+        self.meta = GW_ROLE_METADATA.get(role_type, GW_ROLE_METADATA["giveaway_channel"])
+
+        cat_name = category.name if category else "Uncategorized"
+        options = [
+            discord.SelectOption(
+                label=f"#{c.name}"[:100],
+                value=str(c.id),
+                description=f"ID: {c.id}"
+            )
+            for c in channels[:25]
+        ]
+
+        self.ch_select = discord.ui.Select(
+            placeholder=f"Select channel inside {cat_name}…"[:100],
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=0
+        )
+        self.ch_select.callback = self.channel_callback
+        self.add_item(self.ch_select)
+
+    def get_embed(self) -> discord.Embed:
+        cat_name = self.category.name if self.category else "Uncategorized"
+        desc = (
+            f"**Target:** {self.meta['title']}\n"
+            f"📁 **Selected Category:** `{cat_name}`\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"**Now pick the channel from `{cat_name}`:**"
+        )
+        return discord.Embed(
+            title=f"◈ Friday Giveaway Engine • Step {self.meta['step_num']}",
+            description=desc,
+            color=discord.Color.blurple()
+        )
+
+    async def channel_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        ch_id = int(self.ch_select.values[0])
+        cfg = get_giveaway_config(interaction.guild.id)
+        cfg[self.role_type] = ch_id
+        db.giveaways_config[str(interaction.guild.id)] = cfg
+        db.save_data()
+
+        next_role = self.meta.get("next")
+        if next_role:
+            view = CategorySelectStepView(role_type=next_role)
+            embed = view.get_embed()
+            await interaction.edit_original_response(embed=embed, view=view)
+        else:
+            # Final Step Completed!
+            desc = (
+                f"All giveaway channels have been linked successfully:\n\n"
+                f"📢 **Broadcast:** <#{cfg.get('giveaway_channel')}>\n"
+                f"🛡️ **Staff Approvals:** <#{cfg.get('approval_channel')}>\n"
+                f"📜 **Audit Logs:** <#{cfg.get('log_channel')}>\n\n"
+                "> You're all set! Use `/gcreate` or the Web Dashboard to launch your first giveaway."
+            )
+            embed = discord.Embed(
+                title="✅ Giveaway Channels Linked!",
+                description=desc,
+                color=discord.Color.green()
+            )
+            await interaction.edit_original_response(embed=embed, view=None)
+
+    @discord.ui.button(label="🔙  Change Category", style=discord.ButtonStyle.secondary, row=1)
+    async def back_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        view = CategorySelectStepView(role_type=self.role_type)
+        embed = view.get_embed()
+        await interaction.edit_original_response(embed=embed, view=view)
+
+
+class DirectChannelPickView(discord.ui.View):
+    """Direct ChannelSelect fallback."""
+    def __init__(self, role_type: str):
+        super().__init__(timeout=300)
+        self.role_type = role_type
+        self.meta = GW_ROLE_METADATA.get(role_type, GW_ROLE_METADATA["giveaway_channel"])
+        self.ch_select = discord.ui.ChannelSelect(
+            placeholder="Select a text channel…",
+            min_values=1,
+            max_values=1,
+            channel_types=[discord.ChannelType.text],
+            row=0
+        )
+        self.ch_select.callback = self.ch_callback
+        self.add_item(self.ch_select)
+
+    async def ch_callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        ch = self.ch_select.values[0]
         ch_id = int(ch.id if hasattr(ch, "id") else ch)
         cfg = get_giveaway_config(interaction.guild.id)
         cfg[self.role_type] = ch_id
         db.giveaways_config[str(interaction.guild.id)] = cfg
         db.save_data()
 
-        if self.role_type == "giveaway_channel":
-            embed = discord.Embed(
-                title="◈ Friday Giveaway Engine • Step 2 of 3",
-                description=(
-                    f"✅ **Broadcast Channel:** <#{ch_id}>\n\n"
-                    "**Now select your Staff Approvals Channel:**\n"
-                    "> Private channel where staff review member-submitted giveaways.\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                ),
-                color=discord.Color.blurple()
+        next_role = self.meta.get("next")
+        if next_role:
+            view = CategorySelectStepView(role_type=next_role)
+            embed = view.get_embed()
+            await interaction.edit_original_response(embed=embed, view=view)
+        else:
+            desc = (
+                f"📢 **Broadcast:** <#{cfg.get('giveaway_channel')}>\n"
+                f"🛡️ **Staff Approvals:** <#{cfg.get('approval_channel')}>\n"
+                f"📜 **Audit Logs:** <#{cfg.get('log_channel')}>\n\n"
+                "> You're all set! Use `/gcreate` or the Web Dashboard to launch your first giveaway."
             )
-            self.view.clear_items()
-            self.view.add_item(ManualChannelSelect(role_type="approval_channel"))
-            await interaction.edit_original_response(embed=embed, view=self.view)
-
-        elif self.role_type == "approval_channel":
-            embed = discord.Embed(
-                title="◈ Friday Giveaway Engine • Step 3 of 3",
-                description=(
-                    f"✅ **Staff Approvals Channel:** <#{ch_id}>\n\n"
-                    "**Now select your Giveaway Logs Channel:**\n"
-                    "> Private channel that records all winner draws & rerolls.\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                ),
-                color=discord.Color.blurple()
-            )
-            self.view.clear_items()
-            self.view.add_item(ManualChannelSelect(role_type="log_channel"))
-            await interaction.edit_original_response(embed=embed, view=self.view)
-
-        else:  # log_channel — all done
             embed = discord.Embed(
                 title="✅ Giveaway Channels Linked!",
-                description=(
-                    f"📢 **Broadcast:** <#{cfg.get('giveaway_channel')}>\n"
-                    f"🛡️ **Staff Approvals:** <#{cfg.get('approval_channel')}>\n"
-                    f"📜 **Audit Logs:** <#{cfg.get('log_channel')}>\n\n"
-                    "> You're all set! Use `/gcreate` to launch your first giveaway."
-                ),
+                description=desc,
                 color=discord.Color.green()
             )
             await interaction.edit_original_response(embed=embed, view=None)
+
+    @discord.ui.button(label="🔙  Filter by Category Instead", style=discord.ButtonStyle.secondary, row=1)
+    async def back_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        view = CategorySelectStepView(role_type=self.role_type)
+        embed = view.get_embed()
+        await interaction.edit_original_response(embed=embed, view=view)
 
 
 class LaunchSetupButtonView(discord.ui.View):

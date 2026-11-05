@@ -1,6 +1,24 @@
 // Friday Dashboard Client Script
 let currentGuildId = null;
 let currentGuildIcon = null;
+let cachedGiveawayConfig = null;
+
+function populateChannelDropdown(selectEl, channels, selectedVal, defaultLabel) {
+    if (!selectEl) return;
+    const curVal = String(selectedVal !== undefined && selectedVal !== null && selectedVal !== "" ? selectedVal : (selectEl.value || ""));
+    let html = `<option value="">${defaultLabel}</option>`;
+    let found = false;
+    (channels || []).forEach(c => {
+        const isSel = curVal && String(c.id) === curVal;
+        if (isSel) found = true;
+        html += `<option value="${c.id}" ${isSel ? 'selected' : ''}># ${escapeHtml(c.name)}</option>`;
+    });
+    if (curVal && !found) {
+        html += `<option value="${curVal}" selected># channel (${curVal})</option>`;
+    }
+    selectEl.innerHTML = html;
+    if (curVal) selectEl.value = curVal;
+}
 let currentGuildMembers = [];
 let currentGuildChannels = [];
 let currentGuildRoles = [];
@@ -1402,35 +1420,31 @@ async function loadCoreData() {
                 currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
         }
 
-        const gwChanSelect = document.getElementById('gwChannelSelect');
-        const gwAppSelect = document.getElementById('gwApprovalChannelSelect');
-        const gwLogSelect = document.getElementById('gwLogChannelSelect');
-        const gwTargetSelect = document.getElementById('gwTargetChannelSelect');
-        const chanOpts = '<option value="">Select a channel...</option>' +
-            currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-        if (gwChanSelect) {
-            const curVal = gwChanSelect.value;
-            gwChanSelect.innerHTML = chanOpts;
-            if (curVal) gwChanSelect.value = curVal;
-        }
-        if (gwAppSelect) {
-            const curVal = gwAppSelect.value;
-            gwAppSelect.innerHTML = '<option value="">Select a private staff channel...</option>' +
-                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-            if (curVal) gwAppSelect.value = curVal;
-        }
-        if (gwLogSelect) {
-            const curVal = gwLogSelect.value;
-            gwLogSelect.innerHTML = '<option value="">Select a private log channel...</option>' +
-                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-            if (curVal) gwLogSelect.value = curVal;
-        }
-        if (gwTargetSelect) {
-            const curVal = gwTargetSelect.value;
-            gwTargetSelect.innerHTML = '<option value="">Default to configured giveaway channel</option>' +
-                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
-            if (curVal) gwTargetSelect.value = curVal;
-        }
+        const gwCfg = cachedGiveawayConfig || {};
+        populateChannelDropdown(
+            document.getElementById('gwChannelSelect'),
+            currentGuildChannels,
+            gwCfg.giveaway_channel || document.getElementById('gwChannelSelect')?.value,
+            'Select a channel...'
+        );
+        populateChannelDropdown(
+            document.getElementById('gwApprovalChannelSelect'),
+            currentGuildChannels,
+            gwCfg.approval_channel || document.getElementById('gwApprovalChannelSelect')?.value,
+            'Select a private staff channel...'
+        );
+        populateChannelDropdown(
+            document.getElementById('gwLogChannelSelect'),
+            currentGuildChannels,
+            gwCfg.log_channel || document.getElementById('gwLogChannelSelect')?.value,
+            'Select a private log channel...'
+        );
+        populateChannelDropdown(
+            document.getElementById('gwTargetChannelSelect'),
+            currentGuildChannels,
+            document.getElementById('gwTargetChannelSelect')?.value,
+            'Default to configured giveaway channel'
+        );
 
         const fwChanSelect = document.getElementById('firstWelcomeChannelSelect');
         if (fwChanSelect) {
@@ -7497,14 +7511,26 @@ async function loadGiveawaysData() {
         }
 
         // Set channel select values
-        const cfg = data.config || {};
-        const chSelect = document.getElementById('gwChannelSelect');
-        const appSelect = document.getElementById('gwApprovalChannelSelect');
-        const logSelect = document.getElementById('gwLogChannelSelect');
-
-        if (chSelect && (cfg.giveaway_channel || cfg.channel_id)) chSelect.value = String(cfg.giveaway_channel || cfg.channel_id);
-        if (appSelect && (cfg.approval_channel || cfg.approval_channel_id)) appSelect.value = String(cfg.approval_channel || cfg.approval_channel_id);
-        if (logSelect && (cfg.log_channel || cfg.log_channel_id)) logSelect.value = String(cfg.log_channel || cfg.log_channel_id);
+        cachedGiveawayConfig = data.config || {};
+        const cfg = cachedGiveawayConfig;
+        populateChannelDropdown(
+            document.getElementById('gwChannelSelect'),
+            currentGuildChannels,
+            cfg.giveaway_channel || cfg.channel_id,
+            'Select a channel...'
+        );
+        populateChannelDropdown(
+            document.getElementById('gwApprovalChannelSelect'),
+            currentGuildChannels,
+            cfg.approval_channel || cfg.approval_channel_id,
+            'Select a private staff channel...'
+        );
+        populateChannelDropdown(
+            document.getElementById('gwLogChannelSelect'),
+            currentGuildChannels,
+            cfg.log_channel || cfg.log_channel_id,
+            'Select a private log channel...'
+        );
 
         setGwEmojiVisual('gwEmojiPrize', cfg.emoji_prize || '🎁');
         setGwEmojiVisual('gwEmojiHost', cfg.emoji_host || '👑');
@@ -7732,6 +7758,25 @@ async function saveGwConfig() {
         });
         const data = await resp.json();
         if (data.success) {
+            cachedGiveawayConfig = data.config || payload;
+            populateChannelDropdown(
+                document.getElementById('gwChannelSelect'),
+                currentGuildChannels,
+                cachedGiveawayConfig.giveaway_channel,
+                'Select a channel...'
+            );
+            populateChannelDropdown(
+                document.getElementById('gwApprovalChannelSelect'),
+                currentGuildChannels,
+                cachedGiveawayConfig.approval_channel,
+                'Select a private staff channel...'
+            );
+            populateChannelDropdown(
+                document.getElementById('gwLogChannelSelect'),
+                currentGuildChannels,
+                cachedGiveawayConfig.log_channel,
+                'Select a private log channel...'
+            );
             showToast("✅ Giveaway channel routing saved successfully!");
         } else {
             showToast(`❌ Error: ${data.error || 'Failed to save routing'}`);

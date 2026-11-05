@@ -41,8 +41,10 @@ class Database:
         self.temp_voice = self.data.get("temp_voice", {})
         self.server_backups = self.data.get("server_backups", {})
         self.special_invites = self.data.get("special_invites", {})
-        self.giveaways = self.data.get("giveaways", {})
-        self.giveaways_config = self.data.get("giveaways_config", {})
+        gw = self.data.get("giveaways")
+        self.giveaways = gw if isinstance(gw, dict) else {}
+        gw_cfg = self.data.get("giveaways_config")
+        self.giveaways_config = gw_cfg if isinstance(gw_cfg, dict) else {}
 
     def load_data(self):
         try:
