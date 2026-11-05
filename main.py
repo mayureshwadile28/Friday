@@ -56,7 +56,7 @@ def configure_command_dm_restrictions(tree):
     which instructs Discord clients to completely hide them in Direct Messages.
     """
     for cmd in tree.get_commands():
-        if cmd.name in ("avatar", "avtar"):
+        if cmd.name in ("avatar", "avtar", "vip"):
             cmd.guild_only = False
         else:
             try:
@@ -66,10 +66,10 @@ def configure_command_dm_restrictions(tree):
 
 @bot.tree.interaction_check
 async def dm_interaction_guard(interaction: discord.Interaction) -> bool:
-    """Blocks any server commands from executing in Direct Messages (only avatar/avtar allowed)."""
+    """Blocks any server commands from executing in Direct Messages (only avatar/avtar/vip allowed)."""
     if interaction.guild is None:
         cmd_name = interaction.command.name if interaction.command else ""
-        if cmd_name not in ("avatar", "avtar"):
+        if cmd_name not in ("avatar", "avtar", "vip"):
             if not interaction.response.is_done():
                 await interaction.response.send_message(
                     "🔒 This command is only available inside servers, not in Direct Messages.",
@@ -112,7 +112,8 @@ async def on_ready():
         "cogs.welcomer",
         "cogs.ai_chat",
         "cogs.temp_voice",
-        "cogs.backup"
+        "cogs.backup",
+        "cogs.giveaways"
     ]
     for cog in cogs_list:
         try:
