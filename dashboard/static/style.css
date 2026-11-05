@@ -4359,3 +4359,42 @@ textarea,
     font-size: 12px;
     line-height: 1.5;
 }
+
+/* Clean bordered scrollable container for data tables & lists */
+.table-scroll-container {
+    max-height: 380px;
+    overflow-y: auto;
+    overflow-x: auto;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    background: rgba(15, 17, 26, 0.4);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) rgba(0, 0, 0, 0.2);
+}
+
+.table-scroll-container::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.table-scroll-container::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+.table-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 4px;
+}
+
+.table-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.32);
+}
+
+.table-scroll-container thead th {
+    position: sticky;
+    top: 0;
+    background: #181b24;
+    z-index: 3;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08);
+}

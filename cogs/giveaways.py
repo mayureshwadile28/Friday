@@ -96,7 +96,7 @@ class GiveawayEnterView(discord.ui.View):
         self.emoji = emoji or "🎁"
         button_label = f"{self.emoji} Enter Giveaway ({entry_count})" if not disabled else f"🔒 Giveaway Ended ({entry_count})"
         self.enter_btn = discord.ui.Button(
-            style=discord.ButtonStyle.primary if not disabled else discord.ButtonStyle.secondary,
+            style=discord.ButtonStyle.secondary,
             label=button_label,
             custom_id=f"gw_enter:{giveaway_key}",
             disabled=disabled
