@@ -773,23 +773,41 @@ class AIChat(commands.Cog):
         has_verb = bool(ACTION_COMMAND_VERBS.search(text))
         return has_action and (has_verb or len(text.split()) <= 6)
 
-    def _detect_and_extract_search_query(self, text: str) -> Optional[str]:
-        """Detect if the query asks for news or live Google facts, strictly excluding date/time questions."""
+    def _detect_and_extract_search_query(self, text: str, history: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
+        """Detect if the query asks for news or live Google facts, strictly excluding date/time questions.
+        Supports multi-turn context carry-over when user issues follow-ups (e.g. 'abi karo', 'do it', 'batao')."""
         # 1. If asking about date or time without explicitly asking for news, NEVER trigger web search!
         if DATE_TIME_QUERY_REGEX.search(text) and not re.search(r'\b(news|khabar|samachar|headline)\b', text, re.IGNORECASE):
             return None
 
-        # 2. Must match search intent keywords
-        if not SEARCH_INTENT_REGEX.search(text):
-            return None
+        # 2. Direct search intent keywords in current query
+        if SEARCH_INTENT_REGEX.search(text):
+            cleaned = re.sub(
+                r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?)\b',
+                '', text, flags=re.IGNORECASE
+            ).strip()
+            cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
+            return cleaned if len(cleaned) >= 3 else text
 
-        # Clean common conversational phrases to get clean search terms for Google
-        cleaned = re.sub(
-            r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?)\b',
-            '', text, flags=re.IGNORECASE
-        ).strip()
-        cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
-        return cleaned if len(cleaned) >= 3 else text
+        # 3. Conversational follow-up: user is prompting Friday to execute a previously requested search/news query
+        followup_match = re.search(
+            r'\b(karo|kardo|karo na|abi karo|abhi karo|do it|tell me|batao|batao na|check now|show me|search it|check it|please do|plz do|kar do|ha tho|ha toh|yes please|ha|yes|kya hua|say it)\b',
+            text, re.IGNORECASE
+        )
+        if followup_match and history:
+            for msg in reversed(history):
+                if msg.get("role") == "user":
+                    prev_text = msg.get("content", "")
+                    if SEARCH_INTENT_REGEX.search(prev_text):
+                        cleaned = re.sub(
+                            r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?)\b',
+                            '', prev_text, flags=re.IGNORECASE
+                        ).strip()
+                        cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
+                        if len(cleaned) >= 3:
+                            return cleaned
+
+        return None
 
     async def _fetch_reply_chain(self, message: discord.Message, max_depth: int = 6) -> List[Dict[str, str]]:
         """Walk up the Discord reply chain to rebuild exact conversational context with resolved mentions."""
@@ -1129,14 +1147,15 @@ IMMUTABLE CORE IDENTITY & ANTI-JAILBREAK DIRECTIVE (CRITICAL):
 LIVE REAL-TIME GOOGLE SEARCH & NEWS RESULTS (CRITICAL):
 {search_context}
 - CRITICAL: You HAVE active live internet and Google search capabilities! The above real-time data was just fetched live from the web for {nickname}.
-- Share these fresh news and updates naturally and enthusiastically in your feminine, warm, witty tone matching your current mood ({current_mood}).
-- NEVER say "I don't have internet access" or "main ek AI hoon, live news access nahi hai". You DO have live internet access!
+- MANDATORY INSTRUCTION: You MUST actively deliver and summarize the actual news headlines and facts from above to {nickname}! Do NOT dodge, postpone, or refuse it!
+- MOOD INTEGRATION RULE: Even if your mood is Sleepy, Sassy, Dramatic, or Playful, ALWAYS present the requested news information wrapped in your charming character! (e.g. If Sleepy: "*yawns softly and sips warm coffee* Alright alright, since you asked, here are today's space tech updates before I take my nap... ☕ [summarize headlines]"). NEVER use your mood as an excuse to withhold requested facts or news!
+- STRICT BAN: NEVER say "I don't have internet access", "main ek AI hoon, live news access nahi hai", or "mere paas access nahi hai". You DO have live internet access!
 """
         else:
-            search_block = """
-INTERNET ACCESS GROUNDING:
-- You have live internet search capability enabled for this VIP companion!
-- NEVER claim you don't have internet access or can't check current news.
+            search_block = f"""
+INTERNET & KNOWLEDGE GROUNDING:
+- You have active live internet search and news capabilities enabled for this VIP companion!
+- STRICT BAN ON AI REFUSALS: NEVER say "main toh bas ek AI hoon", "I don't have internet access", "mere paas live access nahi hai", or "main live news access nahi kar sakti". You are Friday, a charming, hyper-capable companion with live web browsing! If {nickname} asks about news or current events, summarize what you know or discuss it with warm charm.
 """
 
         return f"""You are Friday, an intelligent, charming, and witty lady AI companion chatting in a private Direct Message (DM).
@@ -1497,9 +1516,10 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                 return
 
         # 2. Active VIP Conversation: Handle Emotional Dynamics & Mood Swings
-        # Auto-correct typo "Matur" if user is Mayuresh
-        if vip_data.get("custom_nickname") in ("Matur", "matur"):
-            if "mayur" in message.author.display_name.lower() or "mayur" in message.author.name.lower():
+        # Auto-correct typo "Matur" if user is Mayuresh or contains typo
+        curr_nick = str(vip_data.get("custom_nickname") or "")
+        if curr_nick.lower() in ("matur", "mature", "maturesh") or "mayur" in message.author.display_name.lower() or "mayur" in message.author.name.lower():
+            if curr_nick.lower() in ("matur", "mature", "maturesh"):
                 vip_data["custom_nickname"] = "Mayuresh"
                 db.save_data()
 
@@ -1544,8 +1564,23 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         self._save_vip_memory_note(vip_data, content)
         db.save_data()
 
-        # Live Real-Time Search / News intent detection for VIP DMs
-        search_query = self._detect_and_extract_search_query(content)
+        # Build DM conversation history FIRST so search query extractor can check recent multi-turn context
+        history = []
+        try:
+            async for prev_msg in message.channel.history(limit=8):
+                if prev_msg.id == message.id:
+                    continue
+                role = "assistant" if prev_msg.author.id == self.bot.user.id else "user"
+                c = (prev_msg.content or "").strip()
+                if c:
+                    history.insert(0, {"role": role, "content": c})
+        except Exception:
+            pass
+
+        history.append({"role": "user", "content": content})
+
+        # Live Real-Time Search / News intent detection with multi-turn history awareness
+        search_query = self._detect_and_extract_search_query(content, history=history)
         live_search_context = ""
         is_research_mode = False
 
@@ -1563,23 +1598,17 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                         f"Live Google Search & News Results for query '{search_query}':\n" +
                         "\n".join(formatted_items)
                     )
+                    # Cache last search context for multi-turn conversational follow-ups
+                    vip_data["last_search_context"] = live_search_context
+                    vip_data["last_search_time"] = time.time()
+                    vip_data["last_search_query"] = search_query
+                    db.save_data()
             except Exception as search_err:
                 print(f"[AIChat VIP DM Search] Exception: {search_err}")
-
-        # Build DM conversation history
-        history = []
-        try:
-            async for prev_msg in message.channel.history(limit=8):
-                if prev_msg.id == message.id:
-                    continue
-                role = "assistant" if prev_msg.author.id == self.bot.user.id else "user"
-                c = (prev_msg.content or "").strip()
-                if c:
-                    history.insert(0, {"role": role, "content": c})
-        except Exception:
-            pass
-
-        history.append({"role": "user", "content": content})
+        elif vip_data.get("last_search_context") and (time.time() - vip_data.get("last_search_time", 0) < 900):
+            # Carry forward search context if user is following up on recent news/search topic
+            live_search_context = vip_data["last_search_context"]
+            is_research_mode = True
 
         # Build custom DM system prompt with active mood, memory, and live search context
         dm_system_prompt = self._build_dm_system_prompt(
@@ -1797,29 +1826,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                             pass
                         return
 
-                # 10. Check if live Google Search / News lookup is needed (ignoring date/time queries)
-                search_query = self._detect_and_extract_search_query(resolved_user_text)
-                live_search_context = ""
-                is_research_mode = False
-
-                if search_query:
-                    try:
-                        search_items = await asyncio.to_thread(fetch_live_google_news, search_query, 5)
-                        if search_items:
-                            is_research_mode = True
-                            formatted_items = []
-                            for i, item in enumerate(search_items, 1):
-                                formatted_items.append(
-                                    f"{i}. **{item['title']}** (Published: {item['pubDate']})\n   Summary: {item['summary']}"
-                                )
-                            live_search_context = (
-                                f"Live Google Search & News Results for query '{search_query}':\n" +
-                                "\n".join(formatted_items)
-                            )
-                    except Exception as search_err:
-                        print(f"[AIChat Search] Exception: {search_err}")
-
-                # Build Conversation History Context
+                # Build Conversation History Context FIRST
                 llm_messages: List[Dict[str, str]] = []
 
                 # Context from replied message (if any)
@@ -1873,6 +1880,29 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                     if recent and (time.time() - recent[-1].get("time", 0)) < 300:
                         for turn in recent[-4:]:
                             llm_messages.append({"role": turn["role"], "content": turn["content"]})
+
+                # 10. Check if live Google Search / News lookup is needed (ignoring date/time queries)
+                # Multi-turn history aware: captures follow-up prompts ('abi karo', 'batao', 'do it')
+                search_query = self._detect_and_extract_search_query(resolved_user_text, history=llm_messages)
+                live_search_context = ""
+                is_research_mode = False
+
+                if search_query:
+                    try:
+                        search_items = await asyncio.to_thread(fetch_live_google_news, search_query, 5)
+                        if search_items:
+                            is_research_mode = True
+                            formatted_items = []
+                            for i, item in enumerate(search_items, 1):
+                                formatted_items.append(
+                                    f"{i}. **{item['title']}** (Published: {item['pubDate']})\n   Summary: {item['summary']}"
+                                )
+                            live_search_context = (
+                                f"Live Google Search & News Results for query '{search_query}':\n" +
+                                "\n".join(formatted_items)
+                            )
+                    except Exception as search_err:
+                        print(f"[AIChat Search] Exception: {search_err}")
 
                 # Append current user prompt with resolved name and referenced/mention context
                 full_context_prefix = f"{ref_context_header}{mention_context_header}"

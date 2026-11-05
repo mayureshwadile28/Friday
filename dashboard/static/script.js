@@ -183,7 +183,8 @@ const tabTitles = {
     'afkSection': 'AFK System & Pings',
     'tempVoiceSection': 'Temporary Voice Channels (Join-to-Create)',
     'backupSection': 'Server Backups & Disaster Recovery',
-    'specialInvitesSection': 'Special VIP Invites & DM Persona'
+    'specialInvitesSection': 'Special VIP Invites & DM Persona',
+    'giveawaysSection': 'Giveaways Studio & Hub'
 };
 
 // ───────────────────── Bot Profile & Avatar Sync ─────────────────────
@@ -225,6 +226,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAllRichEmojiEditors();
     setupBackupEvents();
     setupSpecialInvitesEvents();
+    setupGiveawayEvents();
 });
 
 function setupEventListeners() {
@@ -313,6 +315,8 @@ function setupEventListeners() {
             else if (btn.id === 'autoReactEmojiBtn') targetId = 'autoReactEmojiInput';
             else if (btn.id === 'vipDirectDmEmojiBtn') targetId = 'vipDirectDmContent';
             else if (btn.id === 'vipInviteEmojiBtn') targetId = 'vipInviteMsgContent';
+            else if (btn.id === 'gwPrizeEmojiBtn') targetId = 'gwPrizeInput';
+            else if (btn.id === 'gwDescEmojiBtn') targetId = 'gwDescInput';
             else if (btn.id.startsWith('ticketBtn') && btn.id.endsWith('EmojiBtn')) {
                 const num = btn.id.replace('ticketBtn', '').replace('EmojiBtn', '');
                 targetId = 'ticketBtn' + num;
@@ -1396,6 +1400,36 @@ async function loadCoreData() {
                 currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
         }
 
+        const gwChanSelect = document.getElementById('gwChannelSelect');
+        const gwAppSelect = document.getElementById('gwApprovalChannelSelect');
+        const gwLogSelect = document.getElementById('gwLogChannelSelect');
+        const gwTargetSelect = document.getElementById('gwTargetChannelSelect');
+        const chanOpts = '<option value="">Select a channel...</option>' +
+            currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+        if (gwChanSelect) {
+            const curVal = gwChanSelect.value;
+            gwChanSelect.innerHTML = chanOpts;
+            if (curVal) gwChanSelect.value = curVal;
+        }
+        if (gwAppSelect) {
+            const curVal = gwAppSelect.value;
+            gwAppSelect.innerHTML = '<option value="">Select a private staff channel...</option>' +
+                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            if (curVal) gwAppSelect.value = curVal;
+        }
+        if (gwLogSelect) {
+            const curVal = gwLogSelect.value;
+            gwLogSelect.innerHTML = '<option value="">Select a private log channel...</option>' +
+                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            if (curVal) gwLogSelect.value = curVal;
+        }
+        if (gwTargetSelect) {
+            const curVal = gwTargetSelect.value;
+            gwTargetSelect.innerHTML = '<option value="">Default to configured giveaway channel</option>' +
+                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            if (curVal) gwTargetSelect.value = curVal;
+        }
+
         const fwChanSelect = document.getElementById('firstWelcomeChannelSelect');
         if (fwChanSelect) {
             const prevFwVal = fwChanSelect.value;
@@ -1426,6 +1460,7 @@ async function loadDataForActiveTab() {
     else if (activeTab === 'tempVoiceSection') await loadTempVoiceSettings();
     else if (activeTab === 'backupSection') await loadBackups();
     else if (activeTab === 'specialInvitesSection') await loadSpecialInvitesData();
+    else if (activeTab === 'giveawaysSection') await loadGiveawaysData();
 }
 
 // ───────────────────── Emoji Picker Logic ─────────────────────
@@ -2243,6 +2278,8 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('firstWelcomeMsgInput');
     attachRichEmojiEditor('vipDirectDmContent');
     attachRichEmojiEditor('vipInviteMsgContent');
+    attachRichEmojiEditor('gwPrizeInput', true);
+    attachRichEmojiEditor('gwDescInput');
 
     document.querySelectorAll('input[id^="resp_"]').forEach(inp => {
         attachRichEmojiEditor(inp.id, true);
@@ -7201,3 +7238,451 @@ async function resetVipPersona(userId) {
 }
 
 
+
+
+
+// ───────────────────── MODULE: GIVEAWAYS STUDIO & HUB ─────────────────────
+
+let gwCountdownInterval = null;
+
+function setGwDuration(val) {
+    const input = document.getElementById('gwDurationInput');
+    if (input) {
+        input.value = val;
+        updateGwPreview();
+    }
+}
+
+function insertGwVar(val) {
+    const input = document.getElementById('gwDescInput');
+    const richEl = document.getElementById('gwDescInput_rich');
+    if (richEl) {
+        insertEmojiOrTextIntoRichEditor(richEl, val);
+        updateGwPreview();
+        return;
+    }
+    if (input) {
+        const start = input.selectionStart || input.value.length;
+        const end = input.selectionEnd || input.value.length;
+        const text = input.value;
+        input.value = text.substring(0, start) + val + text.substring(end);
+        input.selectionStart = input.selectionEnd = start + val.length;
+        input.focus();
+        updateGwPreview();
+    }
+}
+
+function updateGwPreview() {
+    const prizeInput = document.getElementById('gwPrizeInput');
+    const durInput = document.getElementById('gwDurationInput');
+    const winInput = document.getElementById('gwWinnersInput');
+    const descInput = document.getElementById('gwDescInput');
+
+    const prize = (prizeInput && prizeInput.value.trim()) ? prizeInput.value.trim() : "1 Month Discord Nitro Classic";
+    const duration = (durInput && durInput.value.trim()) ? durInput.value.trim() : "1h";
+    const winners = (winInput && winInput.value) ? winInput.value : "1";
+    const desc = (descInput && descInput.value.trim()) ? descInput.value.trim() : "React with the button below to participate! Must be a verified server member to claim.";
+
+    const simTitle = document.getElementById('gwSimTitle');
+    const simDesc = document.getElementById('gwSimDesc');
+    const simWinners = document.getElementById('gwSimWinners');
+    const simEnds = document.getElementById('gwSimEnds');
+    const simAvatar = document.getElementById('gwSimAvatar');
+
+    if (simAvatar && currentBotAvatar) {
+        simAvatar.src = currentBotAvatar;
+    }
+
+    if (simTitle) {
+        simTitle.innerHTML = renderDiscordMarkdown(`🎁 **GIVEAWAY: ${prize}** 🎁`);
+    }
+
+    if (simDesc) {
+        simDesc.innerHTML = renderDiscordMarkdown(desc);
+    }
+
+    if (simWinners) {
+        simWinners.textContent = winners;
+    }
+
+    if (simEnds) {
+        simEnds.textContent = `in ${duration}`;
+    }
+}
+
+async function loadGiveawaysData() {
+    if (!currentGuildId) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways`);
+        const data = await resp.json();
+        if (!data.success) {
+            console.error("Failed to load giveaways data:", data.error);
+            return;
+        }
+
+        // Set channel select values
+        const cfg = data.config || {};
+        const chSelect = document.getElementById('gwChannelSelect');
+        const appSelect = document.getElementById('gwApprovalChannelSelect');
+        const logSelect = document.getElementById('gwLogChannelSelect');
+
+        if (chSelect && cfg.channel_id) chSelect.value = String(cfg.channel_id);
+        if (appSelect && cfg.approval_channel_id) appSelect.value = String(cfg.approval_channel_id);
+        if (logSelect && cfg.log_channel_id) logSelect.value = String(cfg.log_channel_id);
+
+        // Populate Active Giveaways Table
+        const activeTbody = document.getElementById('gwActiveTableBody');
+        const activeCountBadge = document.getElementById('gwActiveCountBadge');
+        const activeList = data.active || [];
+
+        if (activeCountBadge) activeCountBadge.textContent = activeList.length;
+
+        if (activeTbody) {
+            if (activeList.length === 0) {
+                activeTbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="padding: 24px; text-align: center; color: var(--text-muted);">
+                            No active giveaways currently running in this server.
+                        </td>
+                    </tr>
+                `;
+            } else {
+                activeTbody.innerHTML = activeList.map(gw => {
+                    const entriesCount = (gw.entries || []).length;
+                    const chName = getChannelNameById(gw.channel_id) || "channel";
+                    const endTs = gw.end_time || (Date.now() / 1000 + 3600);
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                            <td style="padding: 12px; font-weight: 600; color: #fff;">
+                                ${renderDiscordMarkdown(gw.prize || "Prize")}
+                            </td>
+                            <td style="padding: 12px; color: var(--primary-light);">
+                                #${escapeHtml(chName)}
+                            </td>
+                            <td style="padding: 12px; color: #fff;">
+                                ${gw.winners_count || 1}
+                            </td>
+                            <td style="padding: 12px; color: #fff;">
+                                <span class="badge" style="background: rgba(88, 101, 242, 0.2); color: #818cf8; padding: 2px 8px; border-radius: 4px; font-weight: 700;">
+                                    ${entriesCount} entries
+                                </span>
+                            </td>
+                            <td style="padding: 12px; font-size: 13px; font-family: monospace;" data-end-ts="${endTs}">
+                                <span class="gw-countdown" data-ts="${endTs}">${formatCountdown(endTs)}</span>
+                            </td>
+                            <td style="padding: 12px; text-align: right; white-space: nowrap;">
+                                <button class="btn btn-secondary" onclick="endGiveaway('${gw.id}')" style="font-size: 11px; padding: 3px 8px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); margin-right: 6px;" title="Draw winners and end immediately">
+                                    ⏹️ End Early
+                                </button>
+                                <button class="btn btn-secondary" onclick="cancelGiveaway('${gw.id}')" style="font-size: 11px; padding: 3px 8px; color: #ef4444; border-color: rgba(239, 68, 68, 0.4);" title="Cancel without drawing winners">
+                                    ❌ Cancel
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+
+        // Start / maintain live countdown timer ticker
+        startGwCountdownTicker();
+
+        // Populate Ended Giveaways History Table
+        const endedTbody = document.getElementById('gwEndedTableBody');
+        const endedCountBadge = document.getElementById('gwEndedCountBadge');
+        const endedList = data.ended || [];
+
+        if (endedCountBadge) endedCountBadge.textContent = endedList.length;
+
+        if (endedTbody) {
+            if (endedList.length === 0) {
+                endedTbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="padding: 24px; text-align: center; color: var(--text-muted);">
+                            No past giveaways on record.
+                        </td>
+                    </tr>
+                `;
+            } else {
+                endedTbody.innerHTML = endedList.map(gw => {
+                    const entriesCount = (gw.entries || []).length;
+                    const hostName = gw.host_name ? `@${escapeHtml(gw.host_name)}` : `@Staff`;
+                    let winnersDisplay = "None";
+                    if (gw.winners && gw.winners.length > 0) {
+                        winnersDisplay = gw.winners.map(w => `<span class="discord-mention" style="font-size: 11px;">@${escapeHtml(w.username || w.id || 'Winner')}</span>`).join(' ');
+                    } else if (gw.cancelled) {
+                        winnersDisplay = `<span style="color: #ef4444; font-size: 12px;">Cancelled</span>`;
+                    }
+                    const statusBadge = gw.cancelled
+                        ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; padding: 2px 8px; border-radius: 4px;">Cancelled</span>`
+                        : `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; padding: 2px 8px; border-radius: 4px;">Ended</span>`;
+
+                    return `
+                        <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.05);">
+                            <td style="padding: 12px; font-weight: 600; color: #fff;">
+                                ${renderDiscordMarkdown(gw.prize || "Prize")}
+                            </td>
+                            <td style="padding: 12px; color: var(--text-muted); font-size: 12px;">
+                                ${hostName}
+                            </td>
+                            <td style="padding: 12px;">
+                                ${winnersDisplay}
+                            </td>
+                            <td style="padding: 12px; color: #fff;">
+                                ${entriesCount}
+                            </td>
+                            <td style="padding: 12px;">
+                                ${statusBadge}
+                            </td>
+                            <td style="padding: 12px; text-align: right; white-space: nowrap;">
+                                ${!gw.cancelled ? `
+                                    <button class="btn btn-secondary" onclick="rerollGiveaway('${gw.id}')" style="font-size: 11px; padding: 3px 8px; color: #818cf8; border-color: rgba(88, 101, 242, 0.4);" title="Reroll new winner(s)">
+                                        🎲 Reroll
+                                    </button>
+                                ` : ''}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+        }
+    } catch (err) {
+        console.error("Error loading giveaways:", err);
+    }
+}
+
+function getChannelNameById(chId) {
+    if (!chId) return null;
+    if (typeof currentGuildChannels !== 'undefined' && currentGuildChannels.length) {
+        const found = currentGuildChannels.find(c => String(c.id) === String(chId));
+        if (found) return found.name;
+    }
+    return String(chId);
+}
+
+function formatCountdown(endTs) {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = endTs - now;
+    if (diff <= 0) return "Ending now...";
+    const days = Math.floor(diff / 86400);
+    const hours = Math.floor((diff % 86400) / 3600);
+    const mins = Math.floor((diff % 3600) / 60);
+    const secs = diff % 60;
+    if (days > 0) return `${days}d ${hours}h left`;
+    if (hours > 0) return `${hours}h ${mins}m left`;
+    if (mins > 0) return `${mins}m ${secs}s left`;
+    return `${secs}s left`;
+}
+
+function startGwCountdownTicker() {
+    if (gwCountdownInterval) clearInterval(gwCountdownInterval);
+    gwCountdownInterval = setInterval(() => {
+        const nodes = document.querySelectorAll('.gw-countdown');
+        if (!nodes.length) {
+            clearInterval(gwCountdownInterval);
+            gwCountdownInterval = null;
+            return;
+        }
+        nodes.forEach(node => {
+            const ts = parseInt(node.dataset.ts);
+            if (ts) node.textContent = formatCountdown(ts);
+        });
+    }, 1000);
+}
+
+async function saveGwConfig() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+
+    const chSelect = document.getElementById('gwChannelSelect');
+    const appSelect = document.getElementById('gwApprovalChannelSelect');
+    const logSelect = document.getElementById('gwLogChannelSelect');
+
+    const payload = {
+        channel_id: chSelect ? chSelect.value : null,
+        approval_channel_id: appSelect ? appSelect.value : null,
+        log_channel_id: logSelect ? logSelect.value : null
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("✅ Giveaway channel routing saved successfully!");
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to save routing'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error saving giveaway routing");
+    }
+}
+
+async function autoProvisionGwHub() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+    const btn = document.getElementById('gwAutoProvisionBtn');
+    if (btn) btn.disabled = true;
+
+    try {
+        showToast("🪄 Provisioning Giveaway channels & category in Discord...");
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/autohub`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("✨ Successfully provisioned #giveaways, #giveaway-approvals, and #giveaway-logs!");
+            await loadGuildChannels(currentGuildId);
+            await loadGiveawaysData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to auto-provision'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error auto-provisioning channels");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function launchGiveaway() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+
+    const prizeInput = document.getElementById('gwPrizeInput');
+    const durInput = document.getElementById('gwDurationInput');
+    const winInput = document.getElementById('gwWinnersInput');
+    const descInput = document.getElementById('gwDescInput');
+    const targetChSelect = document.getElementById('gwTargetChannelSelect');
+
+    const prize = prizeInput ? prizeInput.value.trim() : "";
+    const duration = durInput ? durInput.value.trim() : "1h";
+    const winners = winInput ? parseInt(winInput.value || "1") : 1;
+    const desc = descInput ? descInput.value.trim() : "";
+    const channelId = targetChSelect ? targetChSelect.value : null;
+
+    if (!prize) return showToast("⚠️ Please enter a prize title!");
+
+    const btn = document.getElementById('gwLaunchBtn');
+    if (btn) btn.disabled = true;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prize,
+                duration,
+                winners,
+                description: desc,
+                channel_id: channelId
+            })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("🎉 Giveaway launched successfully in Discord!");
+            if (prizeInput) prizeInput.value = "";
+            if (descInput) descInput.value = "React with the button below to participate! Must be a verified server member to claim.";
+            syncAllRichEmojiEditors();
+            updateGwPreview();
+            await loadGiveawaysData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to launch giveaway'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error launching giveaway");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function endGiveaway(gwId) {
+    if (!currentGuildId || !gwId) return;
+    if (!confirm("Are you sure you want to end this giveaway early and draw winners right now?")) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/end`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: gwId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("⏹️ Giveaway ended and winners drawn!");
+            await loadGiveawaysData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to end giveaway'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error ending giveaway");
+    }
+}
+
+async function rerollGiveaway(gwId) {
+    if (!currentGuildId || !gwId) return;
+    if (!confirm("Reroll new winner(s) for this ended giveaway?")) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/reroll`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: gwId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("🎲 Winners successfully rerolled!");
+            await loadGiveawaysData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to reroll'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error rerolling giveaway");
+    }
+}
+
+async function cancelGiveaway(gwId) {
+    if (!currentGuildId || !gwId) return;
+    if (!confirm("Are you sure you want to cancel this giveaway? No winners will be drawn.")) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: gwId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("❌ Giveaway cancelled.");
+            await loadGiveawaysData();
+        } else {
+            showToast(`❌ Error: ${data.error || 'Failed to cancel'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error cancelling giveaway");
+    }
+}
+
+function setupGiveawayEvents() {
+    const prizeInput = document.getElementById('gwPrizeInput');
+    const durInput = document.getElementById('gwDurationInput');
+    const winInput = document.getElementById('gwWinnersInput');
+    const descInput = document.getElementById('gwDescInput');
+
+    if (prizeInput) prizeInput.addEventListener('input', updateGwPreview);
+    if (durInput) durInput.addEventListener('input', updateGwPreview);
+    if (winInput) winInput.addEventListener('input', updateGwPreview);
+    if (descInput) descInput.addEventListener('input', updateGwPreview);
+
+    const saveCfgBtn = document.getElementById('gwSaveConfigBtn');
+    if (saveCfgBtn) saveCfgBtn.addEventListener('click', saveGwConfig);
+
+    const autoProvBtn = document.getElementById('gwAutoProvisionBtn');
+    if (autoProvBtn) autoProvBtn.addEventListener('click', autoProvisionGwHub);
+
+    const launchBtn = document.getElementById('gwLaunchBtn');
+    if (launchBtn) launchBtn.addEventListener('click', launchGiveaway);
+
+    // Initial preview setup
+    updateGwPreview();
+}

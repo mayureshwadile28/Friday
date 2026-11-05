@@ -135,8 +135,8 @@ class GiveawayEnterView(discord.ui.View):
         try:
             embed = interaction.message.embeds[0]
             for i, field in enumerate(embed.fields):
-                if field.name == "Entries":
-                    embed.set_field_at(i, name="Entries", value=f"**{count}**", inline=True)
+                if "entries" in field.name.lower():
+                    embed.set_field_at(i, name=field.name, value=f"**{count}**", inline=True)
                     break
             await interaction.message.edit(embed=embed, view=self)
         except Exception:
@@ -205,15 +205,21 @@ class GiveawayApprovalView(discord.ui.View):
 
         end_timestamp = int(end_time)
         embed = discord.Embed(
-            title=f"🎉 GIVEAWAY: {prize} 🎉",
-            description=f"{description}\n\n" if description else "",
+            title=f"🎁 GIVEAWAY: {prize} 🎁",
+            description=(
+                f"{description}\n\n" if description else ""
+            ) + (
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "> React or click below to enter! Winners will be randomly selected.\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            ),
             color=discord.Color.from_rgb(88, 101, 242), # Modern Discord Blurple
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
-        embed.add_field(name="Sponsored by", value=f"<@{sponsor_id}>", inline=True)
-        embed.add_field(name="Winners", value=f"**{winners_count}**", inline=True)
-        embed.add_field(name="Entries", value="**0**", inline=True)
-        embed.add_field(name="Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
+        embed.add_field(name="👑 Sponsored by", value=f"<@{sponsor_id}>", inline=True)
+        embed.add_field(name="🏆 Winners", value=f"**{winners_count}**", inline=True)
+        embed.add_field(name="🎟️ Entries", value="**0**", inline=True)
+        embed.add_field(name="⏳ Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
         embed.set_footer(text=f"Giveaway ID: {self.request_id} • Ends at", icon_url=guild.icon.url if guild.icon else None)
 
         gw_key = f"{guild.id}_{self.request_id}"
@@ -342,14 +348,14 @@ class SetupCategorySelect(discord.ui.Select):
             ))
         # Special option: Auto-create a brand new category
         options.append(discord.SelectOption(
-            label="✨ Create New '🎉 GIVEAWAYS' Category",
+            label="Create New 'GIVEAWAYS' Category",
             value="create_new",
             description="Friday will automatically create a dedicated category",
             emoji="🪄"
         ))
         # Special option: Top-level (no category)
         options.append(discord.SelectOption(
-            label="🌐 No Category (Top Level)",
+            label="No Category (Top Level)",
             value="no_category",
             description="Create channels without any parent category",
             emoji="🌐"
@@ -362,6 +368,9 @@ class SetupCategorySelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
+        # Acknowledge immediately to prevent any Discord interaction timeout
+        await interaction.response.defer()
+
         selected_val = self.values[0]
         self.view.selected_category_id = selected_val
         category_name = "None"
@@ -375,31 +384,36 @@ class SetupCategorySelect(discord.ui.Select):
                 category_name = cat.name
 
         embed = discord.Embed(
-            title="⚙️ Giveaway Channel Setup • Step 2",
+            title="◈ Friday Giveaway Engine • Channel Setup ◈",
             description=(
-                f"**Selected Category:** `{category_name}`\n\n"
-                "How would you like to set up the giveaway channels?\n\n"
-                "• **🪄 Auto-Create All 3 Channels (Recommended):**\n"
-                "  Friday will automatically create:\n"
-                "  1. `📢 #giveaways` (Public: members can view & react, only Friday/Admins can send)\n"
-                "  2. `🛡️ #giveaway-approvals` (Strictly Private: Staff & Friday only)\n"
-                "  3. `📜 #giveaway-logs` (Strictly Private: Staff & Friday only)\n\n"
-                "• **⚙️ Select Existing Channels:**\n"
-                "  Manually assign your existing server channels."
+                "```ansi\n"
+                "\u001b[1;36m[ STEP 2: CHANNEL PROVISIONING ]\u001b[0m\n"
+                "```\n"
+                f"**Target Category:** `{category_name}`\n\n"
+                "> Choose an automated or manual provisioning path below:\n\n"
+                "**Option A — Automated Provisioning (Recommended):**\n"
+                "```\n"
+                "📢 #giveaways          -> Public (view & enter only)\n"
+                "🛡️ #giveaway-approvals -> Private Staff Queue (members submit)\n"
+                "📜 #giveaway-logs      -> Private Audit Log (draws & rerolls)\n"
+                "```\n"
+                "**Option B — Manual Routing:**\n"
+                "> Assign your server's pre-existing channels one by one.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             ),
             color=discord.Color.from_rgb(99, 102, 241)
         )
         self.view.clear_items()
         self.view.add_item(AutoCreateChannelsButton())
         self.view.add_item(ManualChannelsButton())
-        await interaction.response.edit_message(embed=embed, view=self.view)
+        await interaction.edit_original_response(embed=embed, view=self.view)
 
 
 class AutoCreateChannelsButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
             style=discord.ButtonStyle.success,
-            label="🪄 Auto-Create All 3 Channels",
+            label="Auto-Create All 3 Channels",
             emoji="🪄"
         )
 
@@ -507,47 +521,58 @@ class AutoCreateChannelsButton(discord.ui.Button):
         db.giveaways_config[str(guild.id)] = cfg
         db.save_data()
 
-        # Send success embed
+        # Send structured success embed
         embed = discord.Embed(
-            title="🎉 Giveaway System Successfully Configured!",
+            title="🎉 Giveaway Architecture Deployed Successfully!",
             description=(
-                "All required channels have been created and secured:\n\n"
-                f"📢 **Public Broadcast:** <#{created_channels['giveaway_channel']}>\n"
-                f"🛡️ **Staff Approvals:** <#{created_channels['approval_channel']}> *(Strictly Private)*\n"
-                f"📜 **Audit Logs:** <#{created_channels['log_channel']}> *(Strictly Private)*\n\n"
-                "**How It Works:**\n"
-                "• **Administrators:** Use `/gcreate` or `/gstart` to launch giveaways immediately.\n"
-                "• **Members:** Can submit giveaways with `/gcreate`; requests appear in approvals for staff review.\n"
-                "• **Entries:** Handled via interactive button clicks with real-time counters!"
+                "```ansi\n"
+                "\u001b[1;32m[ SETUP COMPLETE • READY FOR BROADCAST ]\u001b[0m\n"
+                "```\n"
+                "> All necessary channels have been provisioned and configured with strict permissions:\n\n"
+                f"• 📢 **Broadcast Channel:** <#{created_channels['giveaway_channel']}>\n"
+                f"• 🛡️ **Staff Approvals:** <#{created_channels['approval_channel']}> *(Strictly Private)*\n"
+                f"• 📜 **Audit Logs:** <#{created_channels['log_channel']}> *(Strictly Private)*\n\n"
+                "```\n"
+                "• Staff Command:      /gcreate or /gstart\n"
+                "• Member Submissions: Sent to #giveaway-approvals\n"
+                "• Entries:            Real-time interactive button\n"
+                "```\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             ),
-            color=discord.Color.green(),
+            color=discord.Color.from_rgb(16, 185, 129),
             timestamp=datetime.now(timezone.utc)
         )
         embed.set_footer(text="Friday Giveaway Engine • Setup Complete")
-        await interaction.followup.send(embed=embed)
+        await interaction.edit_original_response(embed=embed, view=None)
 
 
 class ManualChannelsButton(discord.ui.Button):
     def __init__(self):
         super().__init__(
             style=discord.ButtonStyle.secondary,
-            label="⚙️ Select Existing Channels",
+            label="Select Existing Channels",
             emoji="⚙️"
         )
 
     async def callback(self, interaction: discord.Interaction):
-        # Switch view to manual selection selects
+        await interaction.response.defer()
         embed = discord.Embed(
-            title="⚙️ Manual Channel Assignment",
-            description="Select which channel will serve as your **Public Giveaway Broadcast Channel**:",
+            title="◈ Friday Giveaway Engine • Manual Routing ◈",
+            description=(
+                "```ansi\n"
+                "\u001b[1;34m[ STEP 1 OF 3: BROADCAST CHANNEL ]\u001b[0m\n"
+                "```\n"
+                "> Select which channel will serve as your **Public Giveaway Broadcast Channel**:\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            ),
             color=discord.Color.blue()
         )
         self.view.clear_items()
         self.view.add_item(ManualChannelSelect(role_type="giveaway_channel"))
-        await interaction.response.edit_message(embed=embed, view=self.view)
+        await interaction.edit_original_response(embed=embed, view=self.view)
 
 
-class ManualChannelSelect(discord.ui.Select):
+class ManualChannelSelect(discord.ui.ChannelSelect):
     def __init__(self, role_type: str):
         self.role_type = role_type
         placeholders = {
@@ -563,7 +588,8 @@ class ManualChannelSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        ch_id = int(self.values[0].id if hasattr(self.values[0], "id") else self.values[0])
+        await interaction.response.defer()
+        ch_id = int(self.values[0].id)
         cfg = get_giveaway_config(interaction.guild.id)
         cfg[self.role_type] = ch_id
         db.giveaways_config[str(interaction.guild.id)] = cfg
@@ -571,35 +597,52 @@ class ManualChannelSelect(discord.ui.Select):
 
         if self.role_type == "giveaway_channel":
             embed = discord.Embed(
-                title="⚙️ Manual Channel Assignment • Step 2",
-                description=f"✅ Broadcast channel set to <#{ch_id}>.\n\nNow select your **Staff Approvals Channel** (private staff channel for member requests):",
+                title="◈ Friday Giveaway Engine • Manual Routing ◈",
+                description=(
+                    "```ansi\n"
+                    "\u001b[1;34m[ STEP 2 OF 3: STAFF APPROVALS CHANNEL ]\u001b[0m\n"
+                    "```\n"
+                    f"✅ **Broadcast Channel:** <#{ch_id}>\n\n"
+                    "> Select your **Staff Approvals Channel** (private channel for review queue):\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                ),
                 color=discord.Color.blue()
             )
             self.view.clear_items()
             self.view.add_item(ManualChannelSelect(role_type="approval_channel"))
-            await interaction.response.edit_message(embed=embed, view=self.view)
+            await interaction.edit_original_response(embed=embed, view=self.view)
         elif self.role_type == "approval_channel":
             embed = discord.Embed(
-                title="⚙️ Manual Channel Assignment • Step 3",
-                description=f"✅ Approvals channel set to <#{ch_id}>.\n\nNow select your **Giveaway Logs Channel** (records winners & rerolls):",
+                title="◈ Friday Giveaway Engine • Manual Routing ◈",
+                description=(
+                    "```ansi\n"
+                    "\u001b[1;34m[ STEP 3 OF 3: AUDIT LOGS CHANNEL ]\u001b[0m\n"
+                    "```\n"
+                    f"✅ **Staff Approvals Channel:** <#{ch_id}>\n\n"
+                    "> Select your **Giveaway Logs Channel** (records winner draws & rerolls):\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                ),
                 color=discord.Color.blue()
             )
             self.view.clear_items()
             self.view.add_item(ManualChannelSelect(role_type="log_channel"))
-            await interaction.response.edit_message(embed=embed, view=self.view)
+            await interaction.edit_original_response(embed=embed, view=self.view)
         else:
-            # Complete
             embed = discord.Embed(
                 title="🎉 Giveaway Channels Successfully Assigned!",
                 description=(
-                    f"📢 **Public Broadcast:** <#{cfg.get('giveaway_channel')}>\n"
-                    f"🛡️ **Staff Approvals:** <#{cfg.get('approval_channel')}>\n"
-                    f"📜 **Audit Logs:** <#{cfg.get('log_channel')}>\n\n"
-                    "You are now ready to launch giveaways with `/gcreate` or `/gstart`!"
+                    "```ansi\n"
+                    "\u001b[1;32m[ CHANNELS ROUTED SUCCESSFULLY ]\u001b[0m\n"
+                    "```\n"
+                    f"• 📢 **Public Broadcast:** <#{cfg.get('giveaway_channel')}>\n"
+                    f"• 🛡️ **Staff Approvals:** <#{cfg.get('approval_channel')}>\n"
+                    f"• 📜 **Audit Logs:** <#{cfg.get('log_channel')}>\n\n"
+                    "> You are now ready to launch giveaways with `/gcreate` or `/gstart`!\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 ),
                 color=discord.Color.green()
             )
-            await interaction.response.edit_message(embed=embed, view=None)
+            await interaction.edit_original_response(embed=embed, view=None)
 
 
 class SetupWizardView(discord.ui.View):
@@ -616,7 +659,8 @@ class LaunchSetupButtonView(discord.ui.View):
         super().__init__(timeout=None)
         btn = discord.ui.Button(
             style=discord.ButtonStyle.primary,
-            label="⚙️ Launch Setup Wizard",
+            label="Launch Setup Wizard",
+            emoji="⚙️",
             custom_id="gsetup_launch_btn"
         )
         btn.callback = self.launch_callback
@@ -628,10 +672,18 @@ class LaunchSetupButtonView(discord.ui.View):
             return
 
         embed = discord.Embed(
-            title="⚙️ Friday Giveaway Setup Wizard • Step 1",
+            title="◈ Friday Giveaway Engine • Setup Wizard ◈",
             description=(
-                "Welcome to the **Friday Giveaway Setup Wizard**! 🎉\n\n"
-                "To get started, please **select a category** below where you would like the giveaway channels to be created or placed."
+                "```ansi\n"
+                "\u001b[1;35m[ GIVEAWAY ARCHITECTURE SETUP ]\u001b[0m\n"
+                "```\n"
+                "> Welcome to the **Friday Giveaway Setup Wizard**! 🎉\n\n"
+                "**Step 1: Select Channel Category**\n"
+                "```\n"
+                "📁 Choose an existing server category from the dropdown below,\n"
+                "   or select 'Create New GIVEAWAYS Category'.\n"
+                "```\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             ),
             color=discord.Color.from_rgb(99, 102, 241)
         )
@@ -796,14 +848,18 @@ class Giveaways(commands.Cog):
             return
 
         embed = discord.Embed(
-            title="⚙️ Friday Giveaway Setup Wizard • Step 1",
+            title="◈ Friday Giveaway Engine • Setup Wizard ◈",
             description=(
-                "Welcome to the **Friday Giveaway Setup Wizard**! 🎉\n\n"
-                "To get started, please **select a category** below where you would like the giveaway channels to be created or organized.\n\n"
-                "Friday will help you configure:\n"
-                "• 📢 **Giveaway Broadcast Channel**\n"
-                "• 🛡️ **Private Staff Approvals Channel**\n"
-                "• 📜 **Private Audit Logs Channel**"
+                "```ansi\n"
+                "\u001b[1;35m[ GIVEAWAY ARCHITECTURE SETUP ]\u001b[0m\n"
+                "```\n"
+                "> Welcome to the **Friday Giveaway Setup Wizard**! 🎉\n\n"
+                "**Step 1: Select Channel Category**\n"
+                "```\n"
+                "📁 Choose an existing server category from the dropdown below,\n"
+                "   or select 'Create New GIVEAWAYS Category'.\n"
+                "```\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             ),
             color=discord.Color.from_rgb(99, 102, 241)
         )
@@ -937,16 +993,22 @@ class Giveaways(commands.Cog):
         end_timestamp = int(end_time)
 
         embed = discord.Embed(
-            title=f"🎉 GIVEAWAY: {prize} 🎉",
-            description=f"{description}\n\n" if description else "",
+            title=f"🎁 GIVEAWAY: {prize} 🎁",
+            description=(
+                f"{description}\n\n" if description else ""
+            ) + (
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "> React or click below to enter! Winners will be randomly selected.\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            ),
             color=discord.Color.from_rgb(88, 101, 242), # Blurple
             timestamp=datetime.fromtimestamp(end_time, timezone.utc)
         )
-        embed.add_field(name="Hosted by", value=interaction.user.mention, inline=True)
-        embed.add_field(name="Winners", value=f"**{winners_count}**", inline=True)
-        embed.add_field(name="Entries", value="**0**", inline=True)
-        embed.add_field(name="Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
-        embed.set_footer(text="Ends at", icon_url=guild.icon.url if guild.icon else None)
+        embed.add_field(name="👑 Hosted by", value=interaction.user.mention, inline=True)
+        embed.add_field(name="🏆 Winners", value=f"**{winners_count}**", inline=True)
+        embed.add_field(name="🎟️ Entries", value="**0**", inline=True)
+        embed.add_field(name="⏳ Ends", value=f"<t:{end_timestamp}:R> (<t:{end_timestamp}:f>)", inline=False)
+        embed.set_footer(text="Friday Giveaway Engine • Ends at", icon_url=guild.icon.url if guild.icon else None)
 
         # Temporary key before message is sent
         temp_id = str(uuid.uuid4())[:8]
@@ -1192,3 +1254,4 @@ class Giveaways(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Giveaways(bot))
+

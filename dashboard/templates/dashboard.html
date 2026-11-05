@@ -138,6 +138,18 @@
 </div>
                     Ticket System
                 </a>
+<a class="nav-item" data-tab="giveawaysSection" href="#">
+<div class="nav-icon-wrap">
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16">
+<polyline points="20 12 20 22 4 22 4 12"></polyline>
+<rect x="2" y="7" width="20" height="5"></rect>
+<line x1="12" y1="22" x2="12" y2="7"></line>
+<path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"></path>
+<path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"></path>
+</svg>
+</div>
+                    Giveaways Studio
+                </a>
 <a class="nav-item" data-tab="afkSection" href="#">
 <div class="nav-icon-wrap">
 <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16">
@@ -3186,6 +3198,282 @@ Click an inquiry button below to open a confidential support ticket with our tea
 </div> <!-- End #firstWelcomeSection -->
 
 <!-- ──────────────── MODULE 10: AFK SYSTEM & PING TRACKER ──────────────── -->
+<!-- ──────────────── MODULE: GIVEAWAYS STUDIO & ENGINE ──────────────── -->
+<div class="tab-content" id="giveawaysSection" style="display:none;">
+    <div class="section-header">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 class="section-title" style="display: flex; align-items: center; gap: 10px;">
+                    <span>🎁</span> Interactive Giveaway Studio &amp; Management Hub
+                </h1>
+                <p class="section-desc">Design and dispatch celebratory server giveaways with real-time Discord simulator cards, server custom emojis, automated winner draws, and live audit logging.</p>
+            </div>
+            <div class="status-pill active" style="font-size: 11px; padding: 5px 12px; background: rgba(88, 101, 242, 0.15); color: #818cf8; border-color: rgba(88, 101, 242, 0.35); font-weight: 700;">
+                ⚡ REAL-TIME ENGINE ACTIVE
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Card: Channel Routing & Auto-Provisioning -->
+    <div class="card" style="border: 1px solid rgba(88, 101, 242, 0.25); background: linear-gradient(135deg, rgba(21, 24, 36, 0.95) 0%, rgba(20, 26, 42, 0.8) 100%); margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.3); display: flex; align-items: center; justify-content: center; color: var(--primary-light);">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Giveaway Channel Architecture</h3>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Configure where public giveaways are broadcast, where member requests are approved, and where winner draws are logged.</p>
+                </div>
+            </div>
+            <button class="btn btn-secondary" id="gwAutoProvisionBtn" type="button" style="border-color: rgba(16, 185, 129, 0.4); color: #34d399;">
+                🪄 Auto-Provision Channels
+            </button>
+        </div>
+
+        <div class="grid-3" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 16px;">
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">📢 Public Broadcast Channel</label>
+                <select class="text-input" id="gwChannelSelect">
+                    <option value="">Select a text channel...</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Members view and enter giveaways here.</span>
+            </div>
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">🛡️ Staff Approvals Channel (Private)</label>
+                <select class="text-input" id="gwApprovalChannelSelect">
+                    <option value="">Select a private staff channel...</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Review queue for member-submitted giveaways.</span>
+            </div>
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">📜 Audit Logs Channel (Private)</label>
+                <select class="text-input" id="gwLogChannelSelect">
+                    <option value="">Select a private log channel...</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block;">Audit trail of draws, rerolls, and endings.</span>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button class="btn-action-primary" id="gwSaveConfigBtn" type="button">
+                Save Channel Routing
+            </button>
+        </div>
+    </div>
+
+    <!-- Two-Column Studio Grid -->
+    <div class="ticket-studio-grid" style="display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 24px; margin-bottom: 24px;">
+        <!-- Left: Studio Controls Column -->
+        <div class="ticket-studio-left">
+            <div class="card">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.3); display: flex; align-items: center; justify-content: center; color: var(--primary-light);">
+                        🎁
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Create &amp; Launch Giveaway</h3>
+                    </div>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Fill out the giveaway details with live preview, emojis, and custom timers.</p>
+
+                <!-- Prize Title Input with Emoji Button -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Prize Title</label>
+                    <button class="btn btn-secondary emoji-picker-btn" id="gwPrizeEmojiBtn" style="padding: 2px 8px; font-size: 11px;" type="button">
+                        😊 Emojis
+                    </button>
+                </div>
+                <input class="text-input" id="gwPrizeInput" placeholder="e.g. 1 Month Discord Nitro Classic" style="margin-bottom: 16px;" type="text" value="1 Month Discord Nitro Classic" />
+
+                <!-- Duration & Winners Row -->
+                <div class="grid-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px;">
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Duration</label>
+                        <input class="text-input" id="gwDurationInput" placeholder="e.g. 1h, 2d, 1w" type="text" value="1h" />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Winners Count</label>
+                        <input class="text-input" id="gwWinnersInput" max="25" min="1" type="number" value="1" />
+                    </div>
+                </div>
+
+                <!-- Duration Presets Chips -->
+                <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;">
+                    <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Duration Presets:</span>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('10m')" type="button">10m</button>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('30m')" type="button">30m</button>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('1h')" type="button">1h</button>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('6h')" type="button">6h</button>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('12h')" type="button">12h</button>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('1d')" type="button">1d</button>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('3d')" type="button">3d</button>
+                    <button class="ticket-preset-pill" onclick="setGwDuration('1w')" type="button">1w</button>
+                </div>
+
+                <!-- Target Channel Select Override -->
+                <div style="margin-bottom: 16px;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Target Channel (Optional Override)</label>
+                    <select class="text-input" id="gwTargetChannelSelect">
+                        <option value="">Default to configured giveaway channel</option>
+                    </select>
+                </div>
+
+                <!-- Description Textarea with Markdown Chips & Emojis -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Giveaway Description / Rules</label>
+                    <span style="font-size: 11px; color: var(--text-muted);">Discord Markdown Supported</span>
+                </div>
+                <div class="var-chips-row" style="margin-bottom: 8px;">
+                    <button class="var-chip" onclick="insertGwVar('# ')" type="button"><code>#</code> H1</button>
+                    <button class="var-chip" onclick="insertGwVar('## ')" type="button"><code>##</code> H2</button>
+                    <button class="var-chip" onclick="insertGwVar('**bold**')" type="button">Bold</button>
+                    <button class="var-chip" onclick="insertGwVar('*italic*')" type="button">Italic</button>
+                    <button class="var-chip" onclick="insertGwVar('> ')" type="button">Quote</button>
+                    <button class="var-chip emoji-picker-btn" id="gwDescEmojiBtn" title="Insert server emojis" type="button">
+                        <svg fill="none" height="13" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="13"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" x2="9.01" y1="9" y2="9"></line><line x1="15" x2="15.01" y1="9" y2="9"></line></svg>
+                        Server Emojis
+                    </button>
+                </div>
+                <textarea class="text-input" id="gwDescInput" placeholder="React with the button below to participate! Must be a verified server member to claim." rows="3" style="resize: vertical; font-family: inherit;">React with the button below to participate! Must be a verified server member to claim.</textarea>
+
+                <!-- Launch Action Bar -->
+                <div style="display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); margin-top: 18px; flex-wrap: wrap; gap: 12px;">
+                    <div>
+                        <div style="font-size: 14px; font-weight: 700; color: #ffffff;">Ready to Dispatch</div>
+                        <div style="font-size: 12px; color: var(--text-secondary);">Friday will post the card and activate the persistent entry button.</div>
+                    </div>
+                    <button class="btn-deploy-glow" id="gwLaunchBtn" type="button">
+                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Launch Giveaway
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Authentic Discord Giveaway Live Simulator -->
+        <div class="ticket-studio-right" style="position: sticky; top: 20px;">
+            <div class="discord-preview-card" style="margin-top: 0; background: #313338; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 16px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+                    <img id="gwSimAvatar" src="/static/avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 40px; height: 40px; border-radius: 50%;" />
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 14px; font-weight: 600; color: #ffffff;">Friday</span>
+                            <span style="background: #5865f2; color: #ffffff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 3px;">BOT</span>
+                            <span style="font-size: 11px; color: #949ba4;">Today at 1:00 PM</span>
+                        </div>
+                        <div style="font-size: 12px; color: #b5bac1;">🎉 NEW GIVEAWAY! 🎉</div>
+                    </div>
+                </div>
+
+                <!-- Embed Simulator -->
+                <div style="border-left: 4px solid #5865F2; background: #2b2d31; border-radius: 0 4px 4px 0; padding: 12px 16px; margin-bottom: 12px;">
+                    <div id="gwSimTitle" style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">
+                        🎁 GIVEAWAY: 1 Month Discord Nitro Classic 🎁
+                    </div>
+                    <div id="gwSimDesc" style="font-size: 13px; color: #dbdee1; line-height: 1.4; margin-bottom: 12px;">
+                        React with the button below to participate! Must be a verified server member to claim.
+                    </div>
+                    <div style="border-top: 1px solid rgba(255, 255, 255, 0.08); padding-top: 10px; margin-bottom: 10px; font-size: 12px; color: #dbdee1; line-height: 1.6;">
+                        <div>👑 <strong>Host:</strong> <span id="gwSimHost" style="color: #c9cdfb;">@ServerStaff</span></div>
+                        <div>🏆 <strong>Winners:</strong> <span id="gwSimWinners">1</span></div>
+                        <div>🎟️ <strong>Entries:</strong> <span id="gwSimEntries">0</span></div>
+                        <div>⏳ <strong>Ends:</strong> <span id="gwSimEnds" style="color: #f59e0b;">in 1 hour</span></div>
+                    </div>
+                    <div style="font-size: 11px; color: #949ba4; display: flex; align-items: center; gap: 6px;">
+                        <span>Friday Giveaway Engine • Ends at Today at 2:00 PM</span>
+                    </div>
+                </div>
+
+                <!-- Interactive Button Simulator -->
+                <div style="display: flex; gap: 8px;">
+                    <button type="button" style="background: #5865f2; color: #ffffff; border: none; border-radius: 4px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                        🎁 Enter Giveaway (0)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Active Giveaways Table -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; justify-content: center; color: #34d399;">
+                    ⚡
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Active Giveaways</h3>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Currently running giveaways in this server.</p>
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="loadGiveawaysData()" type="button" style="font-size: 12px; padding: 4px 10px;">
+                🔄 Refresh
+            </button>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left; font-size: 12px; color: var(--text-muted); text-transform: uppercase;">
+                        <th style="padding: 10px 12px;">Prize</th>
+                        <th style="padding: 10px 12px;">Channel</th>
+                        <th style="padding: 10px 12px;">Winners</th>
+                        <th style="padding: 10px 12px;">Entries</th>
+                        <th style="padding: 10px 12px;">Time Remaining</th>
+                        <th style="padding: 10px 12px; text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="gwActiveTableBody">
+                    <tr>
+                        <td colspan="6" style="padding: 24px; text-align: center; color: var(--text-muted);">
+                            No active giveaways currently running.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Card 4: Ended Giveaways History Table -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; color: #fbbf24;">
+                    📜
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Giveaway History &amp; Winners</h3>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">Past giveaways concluded in this server with winner records.</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="overflow-x: auto;">
+            <table class="data-table" style="width: 100%; border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.08); text-align: left; font-size: 12px; color: var(--text-muted); text-transform: uppercase;">
+                        <th style="padding: 10px 12px;">Prize</th>
+                        <th style="padding: 10px 12px;">Sponsor / Host</th>
+                        <th style="padding: 10px 12px;">Winners</th>
+                        <th style="padding: 10px 12px;">Entries</th>
+                        <th style="padding: 10px 12px;">Status</th>
+                        <th style="padding: 10px 12px; text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="gwEndedTableBody">
+                    <tr>
+                        <td colspan="6" style="padding: 24px; text-align: center; color: var(--text-muted);">
+                            No ended giveaways on record.
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+
 <div class="section tab-content" id="afkSection" style="display:none;">
     <div class="section-header">
         <div>
