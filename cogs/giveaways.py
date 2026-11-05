@@ -331,411 +331,225 @@ class GiveawayApprovalView(discord.ui.View):
 
 
 # ─────────────────────────────────────────────────────────────
-# Setup Wizard Components
+# Setup Wizard Components  (Slash-command-only, no prefix commands)
 # ─────────────────────────────────────────────────────────────
 
-class SetupCategorySelect(discord.ui.Select):
-    """Select menu for choosing the Discord category where giveaway channels should live."""
-    def __init__(self, guild: discord.Guild):
-        options = []
-        # List up to 22 existing categories
-        for cat in guild.categories[:22]:
-            options.append(discord.SelectOption(
-                label=cat.name[:100],
-                value=str(cat.id),
-                description=f"Channels: {len(cat.channels)}",
-                emoji="📁"
-            ))
-        # Special option: Auto-create a brand new category
-        options.append(discord.SelectOption(
-            label="Create New 'GIVEAWAYS' Category",
-            value="create_new",
-            description="Friday will automatically create a dedicated category",
-            emoji="🪄"
-        ))
-        # Special option: Top-level (no category)
-        options.append(discord.SelectOption(
-            label="No Category (Top Level)",
-            value="no_category",
-            description="Create channels without any parent category",
-            emoji="🌐"
-        ))
-        super().__init__(
-            placeholder="Select a category for giveaway channels...",
-            min_values=1,
-            max_values=1,
-            options=options
-        )
-
-    async def callback(self, interaction: discord.Interaction):
-        try:
-            # Acknowledge immediately to prevent any Discord interaction timeout
-            await interaction.response.defer()
-
-            selected_val = self.values[0]
-            self.view.selected_category_id = selected_val
-            category_name = "None"
-            if selected_val == "create_new":
-                category_name = "New '🎉 GIVEAWAYS' Category"
-            elif selected_val == "no_category":
-                category_name = "Top-level (No Category)"
-            else:
-                cat = interaction.guild.get_channel(int(selected_val))
-                if cat:
-                    category_name = cat.name
-
-            embed = discord.Embed(
-                title="◈ Friday Giveaway Engine • Channel Setup ◈",
-                description=(
-                    "```ansi\n"
-                    "\u001b[1;36m[ STEP 2: CHANNEL PROVISIONING ]\u001b[0m\n"
-                    "```\n"
-                    f"**Target Category:** `{category_name}`\n\n"
-                    "> Choose an automated or manual provisioning path below:\n\n"
-                    "**Option A — Automated Provisioning (Recommended):**\n"
-                    "```\n"
-                    "📢 #giveaways          -> Public (view & enter only)\n"
-                    "🛡️ #giveaway-approvals -> Private Staff Queue (members submit)\n"
-                    "📜 #giveaway-logs      -> Private Audit Log (draws & rerolls)\n"
-                    "```\n"
-                    "**Option B — Manual Routing:**\n"
-                    "> Assign your server's pre-existing channels one by one.\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                ),
-                color=discord.Color.from_rgb(99, 102, 241)
-            )
-            self.view.clear_items()
-            self.view.add_item(AutoCreateChannelsButton())
-            self.view.add_item(ManualChannelsButton())
-            await interaction.edit_original_response(embed=embed, view=self.view)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            try:
-                await interaction.followup.send(f"⚠️ Setup error: {e}", ephemeral=True)
-            except Exception:
-                pass
-
-
-class AutoCreateChannelsButton(discord.ui.Button):
+class SetupWizardView(discord.ui.View):
+    """
+    Root setup view shown by /gsetup.
+    Two buttons — no dynamic dropdown that can silently fail.
+    """
     def __init__(self):
-        super().__init__(
-            style=discord.ButtonStyle.success,
-            label="Auto-Create All 3 Channels",
-            emoji="🪄"
-        )
+        super().__init__(timeout=300)
 
-    async def callback(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != guild.owner_id:
-            await interaction.response.send_message("🛡️ Only server administrators can configure channels.", ephemeral=True)
-            return
-
-        await interaction.response.defer()
-
-        # 1. Resolve or create Category
-        cat_id_val = getattr(self.view, "selected_category_id", "no_category")
-        category = None
-        if cat_id_val == "create_new":
-            try:
-                category = await guild.create_category(name="🎉 GIVEAWAYS", reason="Friday Giveaway Setup")
-            except Exception as e:
-                await interaction.followup.send(f"⚠️ Failed to create category: {e}", ephemeral=True)
-        elif cat_id_val != "no_category":
-            try:
-                category = guild.get_channel(int(cat_id_val))
-            except Exception:
-                pass
-
-        # 2. Permissions Setup
-        everyone_role = guild.default_role
-        bot_member = guild.me
-
-        # Public Giveaway Channel Overwrites:
-        # Everyone can view and read history, but CANNOT send messages. Bot & Admins have full access.
-        public_overwrites = {
-            everyone_role: discord.PermissionOverwrite(
-                view_channel=True,
-                read_messages=True,
-                read_message_history=True,
-                send_messages=False,
-                add_reactions=False
-            ),
-            bot_member: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                embed_links=True,
-                attach_files=True,
-                manage_messages=True
-            )
-        }
-
-        # Private Staff Overwrites (#giveaway-approvals and #giveaway-logs):
-        # Strictly deny @everyone view_channel!
-        private_overwrites = {
-            everyone_role: discord.PermissionOverwrite(view_channel=False),
-            bot_member: discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                embed_links=True,
-                manage_messages=True
-            )
-        }
-
-        created_channels = {}
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item):
+        import traceback
+        traceback.print_exc()
         try:
-            # Channel 1: #giveaways
+            if not interaction.response.is_done():
+                await interaction.response.send_message(f"⚠️ Setup error: `{error}`", ephemeral=True)
+            else:
+                await interaction.followup.send(f"⚠️ Setup error: `{error}`", ephemeral=True)
+        except Exception:
+            pass
+
+    @discord.ui.button(label="🪄  Auto-Create All Channels", style=discord.ButtonStyle.success, row=0)
+    async def auto_create(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        guild = interaction.guild
+        bot_member = guild.me
+        everyone = guild.default_role
+
+        public_ow = {
+            everyone: discord.PermissionOverwrite(view_channel=True, send_messages=False, add_reactions=False),
+            bot_member: discord.PermissionOverwrite(view_channel=True, send_messages=True, embed_links=True, manage_messages=True)
+        }
+        private_ow = {
+            everyone: discord.PermissionOverwrite(view_channel=False),
+            bot_member: discord.PermissionOverwrite(view_channel=True, send_messages=True, embed_links=True, manage_messages=True)
+        }
+
+        try:
             gw_ch = await guild.create_text_channel(
-                name="giveaways",
-                category=category,
-                overwrites=public_overwrites,
-                topic="Official server giveaways hosted by Friday! 🎁",
-                reason="Friday Giveaway Setup"
+                name="giveaways", overwrites=public_ow,
+                topic="Official Friday giveaways 🎁", reason="Friday /gsetup auto-create"
             )
-            created_channels["giveaway_channel"] = gw_ch.id
-
-            # Channel 2: #giveaway-approvals (Private)
             app_ch = await guild.create_text_channel(
-                name="giveaway-approvals",
-                category=category,
-                overwrites=private_overwrites,
-                topic="Private staff approval queue for member-submitted giveaways 🛡️",
-                reason="Friday Giveaway Setup"
+                name="giveaway-approvals", overwrites=private_ow,
+                topic="Private staff approval queue 🛡️", reason="Friday /gsetup auto-create"
             )
-            created_channels["approval_channel"] = app_ch.id
-
-            # Channel 3: #giveaway-logs (Private)
             log_ch = await guild.create_text_channel(
-                name="giveaway-logs",
-                category=category,
-                overwrites=private_overwrites,
-                topic="Audit log of giveaway winners, rerolls, and endings 📜",
-                reason="Friday Giveaway Setup"
+                name="giveaway-logs", overwrites=private_ow,
+                topic="Audit log of winners & rerolls 📜", reason="Friday /gsetup auto-create"
             )
-            created_channels["log_channel"] = log_ch.id
-
         except discord.Forbidden:
-            await interaction.followup.send("❌ Friday lacks the `Manage Channels` permission to create channels automatically! Please grant `Manage Channels` or assign channels manually.", ephemeral=True)
+            await interaction.followup.send(
+                "❌ I need **Manage Channels** permission to create channels. Please grant it, then run `/gsetup` again.",
+                ephemeral=True
+            )
             return
         except Exception as e:
-            await interaction.followup.send(f"❌ Error creating channels: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ Channel creation failed: `{e}`", ephemeral=True)
             return
 
-        # Save config
         cfg = get_giveaway_config(guild.id)
-        cfg["giveaway_channel"] = created_channels["giveaway_channel"]
-        cfg["approval_channel"] = created_channels["approval_channel"]
-        cfg["log_channel"] = created_channels["log_channel"]
+        cfg["giveaway_channel"] = gw_ch.id
+        cfg["approval_channel"] = app_ch.id
+        cfg["log_channel"] = log_ch.id
         db.giveaways_config[str(guild.id)] = cfg
         db.save_data()
 
-        # Send structured success embed
         embed = discord.Embed(
-            title="🎉 Giveaway Architecture Deployed Successfully!",
+            title="✅ Giveaway Channels Created!",
             description=(
-                "```ansi\n"
-                "\u001b[1;32m[ SETUP COMPLETE • READY FOR BROADCAST ]\u001b[0m\n"
-                "```\n"
-                "> All necessary channels have been provisioned and configured with strict permissions:\n\n"
-                f"• 📢 **Broadcast Channel:** <#{created_channels['giveaway_channel']}>\n"
-                f"• 🛡️ **Staff Approvals:** <#{created_channels['approval_channel']}> *(Strictly Private)*\n"
-                f"• 📜 **Audit Logs:** <#{created_channels['log_channel']}> *(Strictly Private)*\n\n"
-                "```\n"
-                "• Staff Command:      /gcreate or /gstart\n"
-                "• Member Submissions: Sent to #giveaway-approvals\n"
-                "• Entries:            Real-time interactive button\n"
-                "```\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                "All 3 channels have been provisioned:\n\n"
+                f"📢 **Broadcast:** {gw_ch.mention}\n"
+                f"🛡️ **Staff Approvals:** {app_ch.mention} *(private)*\n"
+                f"📜 **Audit Logs:** {log_ch.mention} *(private)*\n\n"
+                "> You're all set! Use `/gcreate` to launch your first giveaway."
             ),
-            color=discord.Color.from_rgb(16, 185, 129),
-            timestamp=datetime.now(timezone.utc)
+            color=discord.Color.green()
         )
-        embed.set_footer(text="Friday Giveaway Engine • Setup Complete")
         await interaction.edit_original_response(embed=embed, view=None)
 
-
-class ManualChannelsButton(discord.ui.Button):
-    def __init__(self):
-        super().__init__(
-            style=discord.ButtonStyle.secondary,
-            label="Select Existing Channels",
-            emoji="⚙️"
+    @discord.ui.button(label="🔗  Link Existing Channels", style=discord.ButtonStyle.secondary, row=0)
+    async def link_existing(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        embed = discord.Embed(
+            title="◈ Friday Giveaway Engine • Step 1 of 3",
+            description=(
+                "**Select your Public Giveaway Broadcast Channel:**\n"
+                "> This is where all giveaway cards will be posted for members to enter.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            ),
+            color=discord.Color.blurple()
         )
-
-    async def callback(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.defer()
-            embed = discord.Embed(
-                title="◈ Friday Giveaway Engine • Manual Routing ◈",
-                description=(
-                    "```ansi\n"
-                    "\u001b[1;34m[ STEP 1 OF 3: BROADCAST CHANNEL ]\u001b[0m\n"
-                    "```\n"
-                    "> Select which channel will serve as your **Public Giveaway Broadcast Channel**:\n\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                ),
-                color=discord.Color.blue()
-            )
-            self.view.clear_items()
-            self.view.add_item(ManualChannelSelect(role_type="giveaway_channel"))
-            await interaction.edit_original_response(embed=embed, view=self.view)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            try:
-                await interaction.followup.send(f"⚠️ Setup error: {e}", ephemeral=True)
-            except Exception:
-                pass
+        self.clear_items()
+        self.add_item(ManualChannelSelect(role_type="giveaway_channel"))
+        await interaction.edit_original_response(embed=embed, view=self)
 
 
 class ManualChannelSelect(discord.ui.ChannelSelect):
+    """ChannelSelect used for manual 3-step channel assignment."""
     def __init__(self, role_type: str):
         self.role_type = role_type
-        placeholders = {
-            "giveaway_channel": "Select Public Giveaway Broadcast Channel...",
-            "approval_channel": "Select Private Staff Approvals Channel...",
-            "log_channel": "Select Private Giveaway Logs Channel..."
+        labels = {
+            "giveaway_channel": "Pick Broadcast Channel (public, members enter here)…",
+            "approval_channel": "Pick Staff Approvals Channel (private, staff only)…",
+            "log_channel": "Pick Giveaway Logs Channel (private, audit trail)…"
         }
         super().__init__(
-            placeholder=placeholders.get(role_type, "Select channel..."),
+            placeholder=labels.get(role_type, "Select a text channel…"),
             min_values=1,
             max_values=1,
             channel_types=[discord.ChannelType.text]
         )
 
     async def callback(self, interaction: discord.Interaction):
-        try:
-            await interaction.response.defer()
-            ch_val = self.values[0]
-            ch_id = int(ch_val.id if hasattr(ch_val, "id") else ch_val)
-            cfg = get_giveaway_config(interaction.guild.id)
-            cfg[self.role_type] = ch_id
-            db.giveaways_config[str(interaction.guild.id)] = cfg
-            db.save_data()
+        await interaction.response.defer()
+        ch = self.values[0]
+        ch_id = int(ch.id if hasattr(ch, "id") else ch)
+        cfg = get_giveaway_config(interaction.guild.id)
+        cfg[self.role_type] = ch_id
+        db.giveaways_config[str(interaction.guild.id)] = cfg
+        db.save_data()
 
-            if self.role_type == "giveaway_channel":
-                embed = discord.Embed(
-                    title="◈ Friday Giveaway Engine • Manual Routing ◈",
-                    description=(
-                        "```ansi\n"
-                        "\u001b[1;34m[ STEP 2 OF 3: STAFF APPROVALS CHANNEL ]\u001b[0m\n"
-                        "```\n"
-                        f"✅ **Broadcast Channel:** <#{ch_id}>\n\n"
-                        "> Select your **Staff Approvals Channel** (private channel for review queue):\n\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    ),
-                    color=discord.Color.blue()
-                )
-                self.view.clear_items()
-                self.view.add_item(ManualChannelSelect(role_type="approval_channel"))
-                await interaction.edit_original_response(embed=embed, view=self.view)
-            elif self.role_type == "approval_channel":
-                embed = discord.Embed(
-                    title="◈ Friday Giveaway Engine • Manual Routing ◈",
-                    description=(
-                        "```ansi\n"
-                        "\u001b[1;34m[ STEP 3 OF 3: AUDIT LOGS CHANNEL ]\u001b[0m\n"
-                        "```\n"
-                        f"✅ **Staff Approvals Channel:** <#{ch_id}>\n\n"
-                        "> Select your **Giveaway Logs Channel** (records winner draws & rerolls):\n\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    ),
-                    color=discord.Color.blue()
-                )
-                self.view.clear_items()
-                self.view.add_item(ManualChannelSelect(role_type="log_channel"))
-                await interaction.edit_original_response(embed=embed, view=self.view)
-            else:
-                embed = discord.Embed(
-                    title="🎉 Giveaway Channels Successfully Assigned!",
-                    description=(
-                        "```ansi\n"
-                        "\u001b[1;32m[ CHANNELS ROUTED SUCCESSFULLY ]\u001b[0m\n"
-                        "```\n"
-                        f"• 📢 **Public Broadcast:** <#{cfg.get('giveaway_channel')}>\n"
-                        f"• 🛡️ **Staff Approvals:** <#{cfg.get('approval_channel')}>\n"
-                        f"• 📜 **Audit Logs:** <#{cfg.get('log_channel')}>\n\n"
-                        "> You are now ready to launch giveaways with `/gcreate` or `/gstart`!\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    ),
-                    color=discord.Color.green()
-                )
-                await interaction.edit_original_response(embed=embed, view=None)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            try:
-                await interaction.followup.send(f"⚠️ Channel selection error: {e}", ephemeral=True)
-            except Exception:
-                pass
+        if self.role_type == "giveaway_channel":
+            embed = discord.Embed(
+                title="◈ Friday Giveaway Engine • Step 2 of 3",
+                description=(
+                    f"✅ **Broadcast Channel:** <#{ch_id}>\n\n"
+                    "**Now select your Staff Approvals Channel:**\n"
+                    "> Private channel where staff review member-submitted giveaways.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                ),
+                color=discord.Color.blurple()
+            )
+            self.view.clear_items()
+            self.view.add_item(ManualChannelSelect(role_type="approval_channel"))
+            await interaction.edit_original_response(embed=embed, view=self.view)
 
+        elif self.role_type == "approval_channel":
+            embed = discord.Embed(
+                title="◈ Friday Giveaway Engine • Step 3 of 3",
+                description=(
+                    f"✅ **Staff Approvals Channel:** <#{ch_id}>\n\n"
+                    "**Now select your Giveaway Logs Channel:**\n"
+                    "> Private channel that records all winner draws & rerolls.\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                ),
+                color=discord.Color.blurple()
+            )
+            self.view.clear_items()
+            self.view.add_item(ManualChannelSelect(role_type="log_channel"))
+            await interaction.edit_original_response(embed=embed, view=self.view)
 
-class SetupWizardView(discord.ui.View):
-    """Overall container view for the `/gsetup` configuration wizard."""
-    def __init__(self, guild: discord.Guild):
-        super().__init__(timeout=300)
-        self.selected_category_id = None
-        self.add_item(SetupCategorySelect(guild))
-
-    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item):
-        import traceback
-        traceback.print_exc()
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message(f"⚠️ Wizard encountered an issue: {error}", ephemeral=True)
-            else:
-                await interaction.followup.send(f"⚠️ Wizard encountered an issue: {error}", ephemeral=True)
-        except Exception:
-            pass
+        else:  # log_channel — all done
+            embed = discord.Embed(
+                title="✅ Giveaway Channels Linked!",
+                description=(
+                    f"📢 **Broadcast:** <#{cfg.get('giveaway_channel')}>\n"
+                    f"🛡️ **Staff Approvals:** <#{cfg.get('approval_channel')}>\n"
+                    f"📜 **Audit Logs:** <#{cfg.get('log_channel')}>\n\n"
+                    "> You're all set! Use `/gcreate` to launch your first giveaway."
+                ),
+                color=discord.Color.green()
+            )
+            await interaction.edit_original_response(embed=embed, view=None)
 
 
 class LaunchSetupButtonView(discord.ui.View):
-    """Button attached to first-time setup warnings that launches the wizard."""
+    """Persistent button shown by /gcreate when setup has never been done."""
     def __init__(self):
         super().__init__(timeout=None)
-        btn = discord.ui.Button(
-            style=discord.ButtonStyle.primary,
-            label="Launch Setup Wizard",
-            emoji="⚙️",
-            custom_id="gsetup_launch_btn"
-        )
-        btn.callback = self.launch_callback
-        self.add_item(btn)
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item):
         import traceback
         traceback.print_exc()
         try:
             if not interaction.response.is_done():
-                await interaction.response.send_message(f"⚠️ Launch error: {error}", ephemeral=True)
+                await interaction.response.send_message(f"⚠️ Error: `{error}`", ephemeral=True)
             else:
-                await interaction.followup.send(f"⚠️ Launch error: {error}", ephemeral=True)
+                await interaction.followup.send(f"⚠️ Error: `{error}`", ephemeral=True)
         except Exception:
             pass
+
+    @discord.ui.button(label="⚙️  Launch Setup Wizard", style=discord.ButtonStyle.primary, custom_id="gsetup_launch_btn")
+    async def launch_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
+            await interaction.response.send_message("🛡️ Only administrators can configure the giveaway system.", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title="◈ Friday Giveaway Engine • Setup Wizard ◈",
+            description=(
+                "Friday needs **3 channels** to run giveaways:\n\n"
+                "📢 **Broadcast** — public, members enter giveaways here\n"
+                "🛡️ **Approvals** — private, staff review member requests\n"
+                "📜 **Logs** — private, records all winners & rerolls\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "Choose below — Friday can create them automatically, or link ones you already have."
+            ),
+            color=discord.Color.from_rgb(99, 102, 241)
+        )
+        await interaction.response.send_message(embed=embed, view=SetupWizardView(), ephemeral=True)
 
     async def launch_callback(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server administrators can configure the giveaway system.", ephemeral=True)
             return
-
         embed = discord.Embed(
             title="◈ Friday Giveaway Engine • Setup Wizard ◈",
             description=(
-                "```ansi\n"
-                "\u001b[1;35m[ GIVEAWAY ARCHITECTURE SETUP ]\u001b[0m\n"
-                "```\n"
-                "> Welcome to the **Friday Giveaway Setup Wizard**! 🎉\n\n"
-                "**Step 1: Select Channel Category**\n"
-                "```\n"
-                "📁 Choose an existing server category from the dropdown below,\n"
-                "   or select 'Create New GIVEAWAYS Category'.\n"
-                "```\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                "Friday needs **3 channels** to run giveaways:\n\n"
+                "📢 **Broadcast** — public, members enter giveaways here\n"
+                "🛡️ **Approvals** — private, staff review member requests\n"
+                "📜 **Logs** — private, records all winners & rerolls\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "Choose below — Friday can create them automatically, or link ones you already have."
             ),
             color=discord.Color.from_rgb(99, 102, 241)
         )
-        view = SetupWizardView(interaction.guild)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=SetupWizardView(), ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -886,10 +700,10 @@ class Giveaways(commands.Cog):
     # Slash Commands
     # ─────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="gsetup", description="Configure Friday Giveaway channels (Category, Broadcast, Approvals, Logs)")
+    @app_commands.command(name="gsetup", description="Configure Friday Giveaway channels (Broadcast, Approvals, Logs)")
     @app_commands.default_permissions(manage_guild=True)
     async def gsetup(self, interaction: discord.Interaction):
-        """Interactive setup wizard for giveaway channels with category selection and auto-creation."""
+        """Interactive setup wizard for giveaway channels — slash command only, no prefix."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server administrators can configure the giveaway system.", ephemeral=True)
             return
@@ -897,21 +711,16 @@ class Giveaways(commands.Cog):
         embed = discord.Embed(
             title="◈ Friday Giveaway Engine • Setup Wizard ◈",
             description=(
-                "```ansi\n"
-                "\u001b[1;35m[ GIVEAWAY ARCHITECTURE SETUP ]\u001b[0m\n"
-                "```\n"
-                "> Welcome to the **Friday Giveaway Setup Wizard**! 🎉\n\n"
-                "**Step 1: Select Channel Category**\n"
-                "```\n"
-                "📁 Choose an existing server category from the dropdown below,\n"
-                "   or select 'Create New GIVEAWAYS Category'.\n"
-                "```\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                "Friday needs **3 channels** to run giveaways:\n\n"
+                "📢 **Broadcast** — public, members enter giveaways here\n"
+                "🛡️ **Approvals** — private, staff review member requests\n"
+                "📜 **Logs** — private, records all winners & rerolls\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "Choose below — Friday can **auto-create** them, or you can **link** existing ones."
             ),
             color=discord.Color.from_rgb(99, 102, 241)
         )
-        view = SetupWizardView(interaction.guild)
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        await interaction.response.send_message(embed=embed, view=SetupWizardView(), ephemeral=True)
 
     @app_commands.command(name="gcreate", description="Create a new giveaway (Instant for Staff, Approval Queue for Members)")
     @app_commands.describe(
