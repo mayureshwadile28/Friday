@@ -47352,11 +47352,23 @@ function updateWelcomePreview() {
         const clearBtn = document.getElementById('welcomeBannerClearBtn');
 
         if (simBannerWrap && simBannerImg) {
-            if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://') || imgUrl.startsWith('/static/'))) {
-                simBannerImg.src = imgUrl;
+            if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://') || imgUrl.startsWith('/static/') || imgUrl.startsWith('data:'))) {
                 simBannerWrap.style.display = 'block';
+                if (simBannerImg.dataset.currentUrl !== imgUrl) {
+                    simBannerImg.dataset.currentUrl = imgUrl;
+                    simBannerImg.dataset.proxyTried = 'false';
+                    simBannerImg.src = imgUrl;
+                }
+                simBannerImg.onerror = () => {
+                    if (simBannerImg.dataset.proxyTried !== 'true' && imgUrl.startsWith('http')) {
+                        simBannerImg.dataset.proxyTried = 'true';
+                        simBannerImg.src = `/api/proxy-image?url=${encodeURIComponent(imgUrl)}`;
+                    }
+                };
                 if (clearBtn) clearBtn.style.display = 'inline-flex';
             } else {
+                simBannerImg.dataset.currentUrl = '';
+                simBannerImg.dataset.proxyTried = 'false';
                 simBannerImg.src = '';
                 simBannerWrap.style.display = 'none';
                 if (clearBtn) clearBtn.style.display = 'none';
@@ -47618,11 +47630,23 @@ function updateFarewellPreview() {
         const clearBtn = document.getElementById('farewellBannerClearBtn');
 
         if (simBannerWrap && simBannerImg) {
-            if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://') || imgUrl.startsWith('/static/'))) {
-                simBannerImg.src = imgUrl;
+            if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://') || imgUrl.startsWith('/static/') || imgUrl.startsWith('data:'))) {
                 simBannerWrap.style.display = 'block';
+                if (simBannerImg.dataset.currentUrl !== imgUrl) {
+                    simBannerImg.dataset.currentUrl = imgUrl;
+                    simBannerImg.dataset.proxyTried = 'false';
+                    simBannerImg.src = imgUrl;
+                }
+                simBannerImg.onerror = () => {
+                    if (simBannerImg.dataset.proxyTried !== 'true' && imgUrl.startsWith('http')) {
+                        simBannerImg.dataset.proxyTried = 'true';
+                        simBannerImg.src = `/api/proxy-image?url=${encodeURIComponent(imgUrl)}`;
+                    }
+                };
                 if (clearBtn) clearBtn.style.display = 'inline-flex';
             } else {
+                simBannerImg.dataset.currentUrl = '';
+                simBannerImg.dataset.proxyTried = 'false';
                 simBannerImg.src = '';
                 simBannerWrap.style.display = 'none';
                 if (clearBtn) clearBtn.style.display = 'none';
@@ -61308,20 +61332,42 @@ function updateGwPreview() {
 
 
     // Banner image / GIF handling
-    const bannerUrl = (bannerInput && bannerInput.value.trim()) || (defaultBannerInput && defaultBannerInput.value.trim()) || '';
+    let bannerUrl = '';
+    const activeEl = document.activeElement;
+    const bannerVal = (bannerInput?.value || '').trim();
+    const defaultVal = (defaultBannerInput?.value || '').trim();
+
+    // Priority: If user is actively typing/focused in default banner field, prioritize it!
+    if (activeEl === defaultBannerInput && defaultVal) {
+        bannerUrl = defaultVal;
+    } else if (bannerVal) {
+        bannerUrl = bannerVal;
+    } else if (defaultVal) {
+        bannerUrl = defaultVal;
+    }
+
+    // Clean any surrounding quotes
+    if ((bannerUrl.startsWith('"') && bannerUrl.endsWith('"')) || (bannerUrl.startsWith("'") && bannerUrl.endsWith("'"))) {
+        bannerUrl = bannerUrl.slice(1, -1).trim();
+    }
+
     if (simBannerWrap && simBanner) {
-        if (bannerUrl) {
-            simBanner.onload = () => {
-                simBannerWrap.style.display = 'block';
-            };
-            simBanner.onerror = () => {
-                simBannerWrap.style.display = 'none';
-            };
-            simBanner.src = bannerUrl;
+        if (bannerUrl && (bannerUrl.startsWith('http://') || bannerUrl.startsWith('https://') || bannerUrl.startsWith('/static/') || bannerUrl.startsWith('data:'))) {
             simBannerWrap.style.display = 'block';
+            if (simBanner.dataset.currentUrl !== bannerUrl) {
+                simBanner.dataset.currentUrl = bannerUrl;
+                simBanner.dataset.proxyTried = 'false';
+                simBanner.src = bannerUrl;
+            }
+            simBanner.onerror = () => {
+                if (simBanner.dataset.proxyTried !== 'true' && bannerUrl.startsWith('http')) {
+                    simBanner.dataset.proxyTried = 'true';
+                    simBanner.src = `/api/proxy-image?url=${encodeURIComponent(bannerUrl)}`;
+                }
+            };
         } else {
-            simBanner.onload = null;
-            simBanner.onerror = null;
+            simBanner.dataset.currentUrl = '';
+            simBanner.dataset.proxyTried = 'false';
             simBanner.src = '';
             simBannerWrap.style.display = 'none';
         }
@@ -61365,9 +61411,9 @@ function updateGwPreview() {
 
     // Clear banner button visibility
     const clearBtn = document.getElementById('gwBannerClearBtn');
-    if (clearBtn) clearBtn.style.display = (bannerInput && bannerInput.value.trim()) ? 'inline-flex' : 'none';
+    if (clearBtn) clearBtn.style.display = bannerVal ? 'inline-flex' : 'none';
     const defaultClearBtn = document.getElementById('gwDefaultBannerClearBtn');
-    if (defaultClearBtn) defaultClearBtn.style.display = (defaultBannerInput && defaultBannerInput.value.trim()) ? 'inline-flex' : 'none';
+    if (defaultClearBtn) defaultClearBtn.style.display = defaultVal ? 'inline-flex' : 'none';
 }
 
 function setGwEmbedColor(hex) {
@@ -66049,15 +66095,14 @@ function setupGiveawayEvents() {
 
 
 
-    if (bannerInput) bannerInput.addEventListener('input', updateGwPreview);
-
-
-
-
-
-
-
-    if (defaultBanner) defaultBanner.addEventListener('input', updateGwPreview);
+    ['input', 'change', 'paste', 'keyup', 'blur'].forEach(evt => {
+        if (bannerInput) {
+            bannerInput.addEventListener(evt, () => setTimeout(updateGwPreview, 30));
+        }
+        if (defaultBanner) {
+            defaultBanner.addEventListener(evt, () => setTimeout(updateGwPreview, 30));
+        }
+    });
 
 
 
@@ -66316,6 +66361,15 @@ function setupGiveawayEvents() {
                 if (!fileInputEl.files || !fileInputEl.files[0]) return;
                 await handleGiveawayBannerUpload(fileInputEl.files[0], inputEl);
                 fileInputEl.value = '';
+            });
+        }
+
+        if (dropzone && fileInputEl) {
+            dropzone.addEventListener('click', (e) => {
+                if (e.target !== fileInputEl && e.target !== clearBtn) {
+                    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+                    fileInputEl.click();
+                }
             });
         }
 

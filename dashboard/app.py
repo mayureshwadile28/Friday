@@ -2580,6 +2580,31 @@ def parse_hex_color(hex_str, default=0x5865F2):
         pass
     return discord.Color(default)
 
+@app.route('/api/proxy-image', methods=['GET'])
+def proxy_external_image():
+    raw_url = flask_request.args.get('url', '').strip()
+    if not raw_url or not raw_url.startswith(('http://', 'https://')):
+        return jsonify({"error": "Invalid image URL"}), 400
+    try:
+        import urllib.request
+        from flask import Response
+        # Clean outer quotes if any
+        if (raw_url.startswith('"') and raw_url.endswith('"')) or (raw_url.startswith("'") and raw_url.endswith("'")):
+            raw_url = raw_url[1:-1].strip()
+        req = urllib.request.Request(raw_url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+        })
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            content_type = resp.headers.get('content-type', 'image/png')
+            data = resp.read()
+            return Response(data, mimetype=content_type, headers={
+                "Cache-Control": "public, max-age=86400",
+                "Access-Control-Allow-Origin": "*"
+            })
+    except Exception as e:
+        return jsonify({"error": f"Failed to proxy image: {str(e)}"}), 502
+
 @app.route('/api/guild/<gid>/giveaways/upload-banner', methods=['POST'])
 def upload_giveaway_banner(gid):
     try:
