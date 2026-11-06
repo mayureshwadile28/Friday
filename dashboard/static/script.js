@@ -59239,7 +59239,8 @@ function setGwEmojiVisual(id, val) {
 
 
 
-            'gwEmojiEnded': '🔒'
+            'gwEmojiEnded': '🔒',
+            'gwEmojiBullet': '•'
 
 
 
@@ -59431,7 +59432,8 @@ function setGwEmojiVisual(id, val) {
 
 
 
-        'gwEmojiEnded': 'Concluded Lock Icon'
+        'gwEmojiEnded': 'Concluded Lock Icon',
+        'gwEmojiBullet': 'Bullet Point / List Logo'
 
 
 
@@ -60064,6 +60066,15 @@ function updateGwPreview() {
 
 
     const simDesc = document.getElementById('gwSimDesc');
+
+    // Bullet point / list logo rendering
+    const emojiBullet = (document.getElementById('gwEmojiBullet')?.value.trim()) || '•';
+    const renderedBullet = (emojiBullet === '•')
+        ? '<span style="color: #949ba4;">•</span>'
+        : renderDiscordMarkdown(emojiBullet);
+    document.querySelectorAll('.gw-sim-bullet').forEach(el => {
+        el.innerHTML = renderedBullet;
+    });
 
 
 
@@ -61266,6 +61277,7 @@ async function loadGiveawaysData() {
 
 
         setGwEmojiVisual('gwEmojiEnded', cfg.emoji_ended || '🔒');
+        setGwEmojiVisual('gwEmojiBullet', cfg.emoji_bullet || '•');
 
 
 
@@ -63866,6 +63878,7 @@ async function saveGwConfig() {
 
 
         emoji_ended: document.getElementById('gwEmojiEnded')?.value.trim() || '🔒',
+        emoji_bullet: document.getElementById('gwEmojiBullet')?.value.trim() || '•',
 
 
 
@@ -66307,7 +66320,7 @@ function setupGiveawayEvents() {
 
 
 
-    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded'].forEach(id => {
+    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(id => {
 
 
 
@@ -66491,7 +66504,7 @@ function setupGiveawayEvents() {
 
 
 
-    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded'].forEach(bindGwEmojiTile);
+    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(bindGwEmojiTile);
 
 
 
@@ -66612,6 +66625,7 @@ function setupGiveawayEvents() {
 
 
             setGwEmojiVisual('gwEmojiEnded', '🔒');
+            setGwEmojiVisual('gwEmojiBullet', '•');
 
 
 

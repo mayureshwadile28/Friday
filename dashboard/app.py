@@ -2489,7 +2489,7 @@ def save_guild_giveaway_config(gid):
         cfg["entry_method"] = str(body.get("entry_method", "button")).strip().lower()
 
     # Custom styling emojis
-    for emoji_key in ["emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended"]:
+    for emoji_key in ["emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended", "emoji_bullet"]:
         if emoji_key in body:
             val = str(body.get(emoji_key, "")).strip()
             if val:
@@ -2694,6 +2694,7 @@ def create_guild_giveaway(gid):
         emoji_entries = resolve_safe_emoji(bot_instance, body.get("emoji_entries") or cfg.get("emoji_entries"), fallback="🎟️")
         emoji_ends = resolve_safe_emoji(bot_instance, body.get("emoji_ends") or cfg.get("emoji_ends"), fallback="⏳")
         emoji_ended = resolve_safe_emoji(bot_instance, body.get("emoji_ended") or cfg.get("emoji_ended"), fallback="🔒")
+        emoji_bullet = resolve_safe_emoji(bot_instance, body.get("emoji_bullet") or cfg.get("emoji_bullet"), fallback="•")
 
         host_id = body.get("host_id")
         host_member = None
@@ -2707,10 +2708,10 @@ def create_guild_giveaway(gid):
 
         default_instr = "Click the button below to participate!" if entry_method != "reaction" else f"React with {emoji_prize} to participate!"
         desc_body = (
-            f"• **Winners:** {winners_count}\n"
-            f"• **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
-            f"• **Hosted By:** {host_mention}\n\n"
-            f"• {description or default_instr}"
+            f"{emoji_bullet} **Winners:** {winners_count}\n"
+            f"{emoji_bullet} **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
+            f"{emoji_bullet} **Hosted By:** {host_mention}\n\n"
+            f"{emoji_bullet} {description or default_instr}"
         )
 
         embed = discord.Embed(

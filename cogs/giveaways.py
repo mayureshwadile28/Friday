@@ -285,11 +285,12 @@ class GiveawayApprovalView(discord.ui.View):
         end_timestamp = int(end_time)
         image_url = req.get("image_url") or cfg.get("default_banner")
 
+        dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
         desc_body = (
-            f"• **Winners:** {winners_count}\n"
-            f"• **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
-            f"• **Hosted By:** <@{sponsor_id}>\n\n"
-            f"• {description or 'Click the button below to participate!'}"
+            f"{dot} **Winners:** {winners_count}\n"
+            f"{dot} **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
+            f"{dot} **Hosted By:** <@{sponsor_id}>\n\n"
+            f"{dot} {description or 'Click the button below to participate!'}"
         )
 
         embed_color_hex = cfg.get("embed_color", "#5865F2")
@@ -945,13 +946,14 @@ class Giveaways(commands.Cog):
                 old_embed = msg.embeds[0]
                 winners_text = ", ".join(f"<@{w}>" for w in chosen) if chosen else "No valid entries received."
 
-                ended_desc = (
-                    f"• **Winners:** {winners_text}\n"
-                    f"• **Hosted By:** <@{sponsor_id}>\n"
-                    f"• **Total Entries:** **{len(entries)}**\n\n"
-                    f"• {gw.get('description') or 'Giveaway has ended.'}"
-                )
                 cfg = get_giveaway_config(guild_id)
+                dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
+                ended_desc = (
+                    f"{dot} **Winners:** {winners_text}\n"
+                    f"{dot} **Hosted By:** <@{sponsor_id}>\n"
+                    f"{dot} **Total Entries:** **{len(entries)}**\n\n"
+                    f"{dot} {gw.get('description') or 'Giveaway has ended.'}"
+                )
                 emoji_ended = cfg.get("emoji_ended", "🔒")
 
                 ended_embed = discord.Embed(
@@ -1225,11 +1227,12 @@ class Giveaways(commands.Cog):
         end_timestamp = int(end_time)
         image_url = (image.strip() if image else None) or cfg.get("default_banner")
 
+        dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
         desc_body = (
-            f"• **Winners:** {winners_count}\n"
-            f"• **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
-            f"• **Hosted By:** {interaction.user.mention}\n\n"
-            f"• {description or 'Click the button below to participate!'}"
+            f"{dot} **Winners:** {winners_count}\n"
+            f"{dot} **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
+            f"{dot} **Hosted By:** {interaction.user.mention}\n\n"
+            f"{dot} {description or 'Click the button below to participate!'}"
         )
 
         embed_color_hex = cfg.get("embed_color", "#5865F2")
@@ -1538,14 +1541,16 @@ class Giveaways(commands.Cog):
             ch_id = gw.get("channel_id")
             msg_id = gw.get("message_id")
             link = f"https://discord.com/channels/{gid}/{ch_id}/{msg_id}"
+            cfg = get_giveaway_config(interaction.guild_id)
+            dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
             embed.add_field(
                 name=f"🎉 {gw.get('prize')}",
                 value=(
-                    f"• **Channel:** <#{ch_id}>\n"
-                    f"• **Winners:** {gw.get('winners_count', 1)}\n"
-                    f"• **Entries:** {entries_count}\n"
-                    f"• **Ends:** <t:{end_ts}:R>\n"
-                    f"• [Jump to Giveaway]({link})"
+                    f"{dot} **Channel:** <#{ch_id}>\n"
+                    f"{dot} **Winners:** {gw.get('winners_count', 1)}\n"
+                    f"{dot} **Entries:** {entries_count}\n"
+                    f"{dot} **Ends:** <t:{end_ts}:R>\n"
+                    f"{dot} [Jump to Giveaway]({link})"
                 ),
                 inline=False
             )
