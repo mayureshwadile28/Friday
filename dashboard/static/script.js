@@ -15337,276 +15337,53 @@ function rawMarkdownToRichHtml(raw) {
 
 
 function richHtmlToRawMarkdown(el) {
-
-
-
-
-
-
-
     if (!el) return '';
-
-
-
-
-
-
-
-    let result = '';
-
-
-
-
-
-
-
-    function traverse(node) {
-
-
-
-
-
-
-
-        if (node.nodeType === Node.TEXT_NODE) {
-
-
-
-
-
-
-
-            result += node.nodeValue;
-
-
-
-
-
-
-
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-
-
-
-
-
-
-
-            if (node.tagName === 'IMG') {
-
-
-
-
-
-
-
-                const dataEmoji = node.getAttribute('data-emoji');
-
-
-
-
-
-
-
-                if (dataEmoji) {
-
-
-
-
-
-
-
-                    result += dataEmoji;
-
-
-
-
-
-
-
-                } else {
-
-
-
-
-
-
-
-                    const src = node.getAttribute('src') || '';
-
-
-
-
-
-
-
-                    const m = src.match(/cdn\.discordapp\.com\/emojis\/([0-9]+)\.(png|gif)/);
-
-
-
-
-
-
-
-                    if (m) {
-
-
-
-
-
-
-
-                        result += `<:emoji:${m[1]}>`;
-
-
-
-
-
-
-
-                    }
-
-
-
-
-
-
-
-                }
-
-
-
-
-
-
-
-            } else if (node.tagName === 'BR') {
-
-
-
-
-
-
-
-                result += '\n';
-
-
-
-
-
-
-
-            } else if (node.tagName === 'DIV' || node.tagName === 'P') {
-
-
-
-
-
-
-
-                if (result.length > 0 && !result.endsWith('\n')) {
-
-
-
-
-
-
-
-                    result += '\n';
-
-
-
-
-
-
-
-                }
-
-
-
-
-
-
-
-                for (const child of node.childNodes) traverse(child);
-
-
-
-
-
-
-
-            } else {
-
-
-
-
-
-
-
-                for (const child of node.childNodes) traverse(child);
-
-
-
-
-
-
-
-            }
-
-
-
-
-
-
-
-        }
-
-
-
-
-
-
-
+    let target = el;
+    if (typeof el === 'string') {
+        const div = document.createElement('div');
+        div.innerHTML = el;
+        target = div;
     }
-
-
-
-
-
-
-
-    for (const child of el.childNodes) traverse(child);
-
-
-
-
-
-
-
-    return sanitizeRawMarkdown(result);
-
-
-
-
-
-
-
+    let result = '';
+    function traverse(node) {
+        if (!node) return;
+        if (node.nodeType === 3) { // Node.TEXT_NODE
+            result += node.nodeValue;
+        } else if (node.nodeType === 1) { // Node.ELEMENT_NODE
+            if (node.tagName === 'IMG') {
+                const dataEmoji = node.getAttribute('data-emoji');
+                if (dataEmoji) {
+                    result += dataEmoji;
+                } else {
+                    const src = node.getAttribute('src') || '';
+                    const m = src.match(/cdn\.discordapp\.com\/emojis\/([0-9]+)\.(png|gif)/);
+                    if (m) {
+                        result += `<:emoji:${m[1]}>`;
+                    }
+                }
+            } else if (node.tagName === 'BR') {
+                result += '\n';
+            } else if (node.tagName === 'DIV' || node.tagName === 'P') {
+                if (result.length > 0 && !result.endsWith('\n')) {
+                    result += '\n';
+                }
+                if (node.childNodes) {
+                    for (const child of node.childNodes) traverse(child);
+                }
+                return;
+            } else {
+                if (node.childNodes) {
+                    for (const child of node.childNodes) traverse(child);
+                }
+                return;
+            }
+        }
+    }
+    if (target.childNodes) {
+        for (const child of target.childNodes) traverse(child);
+    }
+    return (typeof sanitizeRawMarkdown === 'function') ? sanitizeRawMarkdown(result) : result;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function getCaretCharacterOffset(root) {
 
@@ -47456,7 +47233,11 @@ async function loadWelcomeSettings() {
         }
 
         const imgInput = document.getElementById('welcomeImageUrlInput');
-        if (imgInput) imgInput.value = cfg.image_url || '';
+        const clearBtn = document.getElementById('welcomeBannerClearBtn');
+        if (imgInput) {
+            imgInput.value = cfg.image_url || '';
+            if (clearBtn) clearBtn.style.display = cfg.image_url ? 'inline-flex' : 'none';
+        }
 
         const avtTgl = document.getElementById('welcomeAvatarToggle');
         if (avtTgl) avtTgl.checked = (cfg.show_avatar !== false);
@@ -47499,78 +47280,95 @@ function setWelcomeColor(hex) {
 }
 
 function updateWelcomePreview() {
-    const titleInput = document.getElementById('welcomeTitleInput');
-    const msgInput = document.getElementById('welcomeMsgInput');
-    const imgInput = document.getElementById('welcomeImageUrlInput');
-    const avtTgl = document.getElementById('welcomeAvatarToggle');
-    const pingTgl = document.getElementById('welcomePingToggle');
-    const hexInput = document.getElementById('welcomeHexInput');
+    try {
+        const titleInput = document.getElementById('welcomeTitleInput');
+        const msgInput = document.getElementById('welcomeMsgInput');
+        const imgInput = document.getElementById('welcomeImageUrlInput');
+        const avtTgl = document.getElementById('welcomeAvatarToggle');
+        const pingTgl = document.getElementById('welcomePingToggle');
+        const hexInput = document.getElementById('welcomeHexInput');
 
-    const richTitle = document.getElementById('welcomeTitleInput_rich');
-    const richMsg = document.getElementById('welcomeMsgInput_rich');
+        const richTitle = document.getElementById('welcomeTitleInput_rich');
+        const richMsg = document.getElementById('welcomeMsgInput_rich');
 
-    let rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
-    let rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
-    const imgUrl = imgInput ? imgInput.value.trim() : '';
-    const showAvatar = avtTgl ? avtTgl.checked : true;
-    const showPing = pingTgl ? pingTgl.checked : true;
-    const colorHex = hexInput ? hexInput.value : '#10b981';
-
-    const serverName = (window.currentGuildName) || 'Our Community';
-
-    function parseTemplate(text) {
-        if (!text) return '';
-        let res = text
-            .replace(/\{user\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>')
-            .replace(/\{username\}/gi, 'Alex')
-            .replace(/\{name\}/gi, 'Alex')
-            .replace(/\{id\}/gi, '1179633364358156490')
-            .replace(/\{user_id\}/gi, '1179633364358156490')
-            .replace(/\{server\}/gi, serverName)
-            .replace(/\{member_count\}/gi, '1,420')
-            .replace(/\{rules\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#rules</span>')
-            .replace(/\{rules_link\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#rules</span>')
-            .replace(/\{rules_box\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px;">#rules</span>')
-            .replace(/\{channel\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#welcome</span>')
-            .replace(/\{channel_link\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#welcome</span>')
-            .replace(/\{channel_box\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px;">#welcome</span>')
-            .replace(/\{link:#?([^\}]+)\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#$1</span>');
-        return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
-    }
-
-    const simEmbed = document.getElementById('welcomeSimEmbed');
-    if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
-
-    const simPingLine = document.getElementById('welcomeSimPingLine');
-    if (simPingLine) simPingLine.style.display = showPing ? 'block' : 'none';
-
-    const simTitle = document.getElementById('welcomeSimTitle');
-    if (simTitle) {
-        simTitle.innerHTML = parseTemplate(rawTitle || 'WELCOME TO OUR SERVER!');
-    }
-
-    const simMsg = document.getElementById('welcomeSimMsg');
-    if (simMsg) {
-        simMsg.innerHTML = parseTemplate(rawMsg || 'Welcome to our server!');
-    }
-
-    const simThumbnail = document.getElementById('welcomeSimThumbnail');
-    if (simThumbnail) simThumbnail.style.display = showAvatar ? 'flex' : 'none';
-
-    const simBannerWrap = document.getElementById('welcomeSimBannerWrap');
-    const simBannerImg = document.getElementById('welcomeSimBannerImg');
-    if (simBannerWrap && simBannerImg) {
-        if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://'))) {
-            simBannerImg.src = imgUrl;
-            simBannerWrap.style.display = 'block';
-        } else {
-            simBannerWrap.style.display = 'none';
+        let rawTitle = '';
+        if (richTitle && typeof richHtmlToRawMarkdown === 'function') {
+            rawTitle = richHtmlToRawMarkdown(richTitle);
+        } else if (titleInput) {
+            rawTitle = titleInput.value;
         }
-    }
 
-    const simFooter = document.getElementById('welcomeSimFooterText');
-    if (simFooter) {
-        simFooter.textContent = `Member #1,420 • ${serverName} 🌸`;
+        let rawMsg = '';
+        if (richMsg && typeof richHtmlToRawMarkdown === 'function') {
+            rawMsg = richHtmlToRawMarkdown(richMsg);
+        } else if (msgInput) {
+            rawMsg = msgInput.value;
+        }
+
+        const imgUrl = imgInput ? imgInput.value.trim() : '';
+        const showAvatar = avtTgl ? avtTgl.checked : true;
+        const showPing = pingTgl ? pingTgl.checked : true;
+        const colorHex = hexInput ? hexInput.value : '#10b981';
+
+        const serverName = (window.currentGuildName) || 'Our Community';
+
+        function parseTemplate(text) {
+            if (!text) return '';
+            let res = text
+                .replace(/\{user\}/gi, '@Alex')
+                .replace(/\{username\}/gi, 'Alex')
+                .replace(/\{name\}/gi, 'Alex')
+                .replace(/\{id\}/gi, '1179633364358156490')
+                .replace(/\{user_id\}/gi, '1179633364358156490')
+                .replace(/\{server\}/gi, serverName)
+                .replace(/\{member_count\}/gi, '1,420')
+                .replace(/\{rules(?:_link|_box)?\}/gi, '#rules')
+                .replace(/\{channel(?:_link|_box)?\}/gi, '#welcome')
+                .replace(/\{link:#?([^\}]+)\}/gi, '#$1');
+            return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
+        }
+
+        const simEmbed = document.getElementById('welcomeSimEmbed');
+        if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
+
+        const simPingLine = document.getElementById('welcomeSimPingLine');
+        if (simPingLine) simPingLine.style.display = showPing ? 'block' : 'none';
+
+        const simTitle = document.getElementById('welcomeSimTitle');
+        if (simTitle) {
+            simTitle.innerHTML = parseTemplate(rawTitle || 'WELCOME TO THE SERVER!');
+        }
+
+        const simMsg = document.getElementById('welcomeSimMsg');
+        if (simMsg) {
+            simMsg.innerHTML = parseTemplate(rawMsg || 'Welcome to our server!');
+        }
+
+        const simThumbnail = document.getElementById('welcomeSimThumbnail');
+        if (simThumbnail) simThumbnail.style.display = showAvatar ? 'flex' : 'none';
+
+        const simBannerWrap = document.getElementById('welcomeSimBannerWrap');
+        const simBannerImg = document.getElementById('welcomeSimBannerImg');
+        const clearBtn = document.getElementById('welcomeBannerClearBtn');
+
+        if (simBannerWrap && simBannerImg) {
+            if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://') || imgUrl.startsWith('/static/'))) {
+                simBannerImg.src = imgUrl;
+                simBannerWrap.style.display = 'block';
+                if (clearBtn) clearBtn.style.display = 'inline-flex';
+            } else {
+                simBannerImg.src = '';
+                simBannerWrap.style.display = 'none';
+                if (clearBtn) clearBtn.style.display = 'none';
+            }
+        }
+
+        const simFooter = document.getElementById('welcomeSimFooterText');
+        if (simFooter) {
+            simFooter.textContent = `Member #1,420 • ${serverName} 🌸`;
+        }
+    } catch (e) {
+        console.error("Error in updateWelcomePreview:", e);
     }
 }
 
@@ -47590,8 +47388,19 @@ async function saveWelcomeSettings() {
     const richTitle = document.getElementById('welcomeTitleInput_rich');
     const richMsg = document.getElementById('welcomeMsgInput_rich');
 
-    const rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
-    const rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
+    let rawTitle = '';
+    if (richTitle && typeof richHtmlToRawMarkdown === 'function') {
+        rawTitle = richHtmlToRawMarkdown(richTitle);
+    } else if (titleInput) {
+        rawTitle = titleInput.value;
+    }
+
+    let rawMsg = '';
+    if (richMsg && typeof richHtmlToRawMarkdown === 'function') {
+        rawMsg = richHtmlToRawMarkdown(richMsg);
+    } else if (msgInput) {
+        rawMsg = msgInput.value;
+    }
 
     const payload = {
         enabled: tgl ? tgl.checked : false,
@@ -47664,17 +47473,17 @@ async function loadFarewellSettings() {
             chanSelect.value = cfg.channel_id;
         }
 
+        const embedToggle = document.getElementById('farewellEmbedToggle');
+        if (embedToggle) embedToggle.checked = (cfg.is_embed !== false);
+
         const idSelect = document.getElementById('farewellIdentifierSelect');
         if (idSelect && cfg.identifier_mode) {
             idSelect.value = cfg.identifier_mode;
         }
 
-        const embedToggle = document.getElementById('farewellEmbedToggle');
-        if (embedToggle) embedToggle.checked = (cfg.is_embed !== false);
-
         const titleInput = document.getElementById('farewellTitleInput');
         if (titleInput) {
-            titleInput.value = cfg.title || "GOODBYE FROM {server}";
+            titleInput.value = cfg.title || "GOODBYE {username}!";
             const richTitle = document.getElementById('farewellTitleInput_rich');
             if (richTitle && typeof rawMarkdownToRichHtml === 'function') {
                 richTitle.innerHTML = rawMarkdownToRichHtml(titleInput.value);
@@ -47691,7 +47500,11 @@ async function loadFarewellSettings() {
         }
 
         const imgInput = document.getElementById('farewellImageUrlInput');
-        if (imgInput) imgInput.value = cfg.image_url || '';
+        const clearBtn = document.getElementById('farewellBannerClearBtn');
+        if (imgInput) {
+            imgInput.value = cfg.image_url || '';
+            if (clearBtn) clearBtn.style.display = cfg.image_url ? 'inline-flex' : 'none';
+        }
 
         const avtTgl = document.getElementById('farewellAvatarToggle');
         if (avtTgl) avtTgl.checked = (cfg.show_avatar !== false);
@@ -47731,81 +47544,97 @@ function setFarewellColor(hex) {
 }
 
 function updateFarewellPreview() {
-    const titleInput = document.getElementById('farewellTitleInput');
-    const msgInput = document.getElementById('farewellMsgInput');
-    const imgInput = document.getElementById('farewellImageUrlInput');
-    const avtTgl = document.getElementById('farewellAvatarToggle');
-    const idSelect = document.getElementById('farewellIdentifierSelect');
-    const hexInput = document.getElementById('farewellHexInput');
+    try {
+        const titleInput = document.getElementById('farewellTitleInput');
+        const msgInput = document.getElementById('farewellMsgInput');
+        const imgInput = document.getElementById('farewellImageUrlInput');
+        const avtTgl = document.getElementById('farewellAvatarToggle');
+        const idSelect = document.getElementById('farewellIdentifierSelect');
+        const hexInput = document.getElementById('farewellHexInput');
 
-    const richTitle = document.getElementById('farewellTitleInput_rich');
-    const richMsg = document.getElementById('farewellMsgInput_rich');
+        const richTitle = document.getElementById('farewellTitleInput_rich');
+        const richMsg = document.getElementById('farewellMsgInput_rich');
 
-    let rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
-    let rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
-    const imgUrl = imgInput ? imgInput.value.trim() : '';
-    const showAvatar = avtTgl ? avtTgl.checked : true;
-    const idMode = idSelect ? idSelect.value : 'name';
-    const colorHex = hexInput ? hexInput.value : '#ef4444';
-
-    const serverName = (window.currentGuildName) || 'Our Community';
-
-    // Compute user_display based on identifier mode
-    let userDisplay = 'Alex';
-    if (idMode === 'id') userDisplay = '1179633364358156490';
-    else if (idMode === 'mention') userDisplay = '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>';
-    else if (idMode === 'both') userDisplay = 'Alex (1179633364358156490)';
-
-    function parseTemplate(text) {
-        if (!text) return '';
-        let res = text
-            .replace(/\{user_display\}/gi, userDisplay)
-            .replace(/\{user\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>')
-            .replace(/\{username\}/gi, 'Alex')
-            .replace(/\{name\}/gi, 'Alex')
-            .replace(/\{id\}/gi, '1179633364358156490')
-            .replace(/\{user_id\}/gi, '1179633364358156490')
-            .replace(/\{server\}/gi, serverName)
-            .replace(/\{member_count\}/gi, '1,419')
-            .replace(/\{channel\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#goodbye</span>')
-            .replace(/\{channel_link\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#goodbye</span>')
-            .replace(/\{link:#?([^\}]+)\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#$1</span>');
-        return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
-    }
-
-    const simEmbed = document.getElementById('farewellSimEmbed');
-    if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
-
-    const simAuthor = document.getElementById('farewellSimAuthorText');
-    if (simAuthor) simAuthor.textContent = `${(idMode === 'id' ? '1179633364358156490' : 'Alex')} left`;
-
-    const simTitle = document.getElementById('farewellSimTitle');
-    if (simTitle) {
-        simTitle.innerHTML = parseTemplate(rawTitle || 'GOODBYE FROM THE SERVER');
-    }
-
-    const simMsg = document.getElementById('farewellSimMsg');
-    if (simMsg) {
-        simMsg.innerHTML = parseTemplate(rawMsg || '**Alex** has left the server. 👋');
-    }
-
-    const simThumbnail = document.getElementById('farewellSimThumbnail');
-    if (simThumbnail) simThumbnail.style.display = showAvatar ? 'flex' : 'none';
-
-    const simBannerWrap = document.getElementById('farewellSimBannerWrap');
-    const simBannerImg = document.getElementById('farewellSimBannerImg');
-    if (simBannerWrap && simBannerImg) {
-        if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://'))) {
-            simBannerImg.src = imgUrl;
-            simBannerWrap.style.display = 'block';
-        } else {
-            simBannerWrap.style.display = 'none';
+        let rawTitle = '';
+        if (richTitle && typeof richHtmlToRawMarkdown === 'function') {
+            rawTitle = richHtmlToRawMarkdown(richTitle);
+        } else if (titleInput) {
+            rawTitle = titleInput.value;
         }
-    }
 
-    const simFooter = document.getElementById('farewellSimFooterText');
-    if (simFooter) {
-        simFooter.textContent = `User ID: 1179633364358156490 • ${serverName}`;
+        let rawMsg = '';
+        if (richMsg && typeof richHtmlToRawMarkdown === 'function') {
+            rawMsg = richHtmlToRawMarkdown(richMsg);
+        } else if (msgInput) {
+            rawMsg = msgInput.value;
+        }
+
+        const imgUrl = imgInput ? imgInput.value.trim() : '';
+        const showAvatar = avtTgl ? avtTgl.checked : true;
+        const idMode = idSelect ? idSelect.value : 'name';
+        const colorHex = hexInput ? hexInput.value : '#ef4444';
+
+        const serverName = (window.currentGuildName) || 'Our Community';
+
+        let userDisplay = 'Alex';
+        if (idMode === 'id') userDisplay = '1179633364358156490';
+        else if (idMode === 'mention') userDisplay = '@Alex';
+        else if (idMode === 'both') userDisplay = 'Alex (1179633364358156490)';
+
+        function parseTemplate(text) {
+            if (!text) return '';
+            let res = text
+                .replace(/\{user_display\}/gi, userDisplay)
+                .replace(/\{user\}/gi, '@Alex')
+                .replace(/\{username\}/gi, 'Alex')
+                .replace(/\{name\}/gi, 'Alex')
+                .replace(/\{id\}/gi, '1179633364358156490')
+                .replace(/\{user_id\}/gi, '1179633364358156490')
+                .replace(/\{server\}/gi, serverName)
+                .replace(/\{member_count\}/gi, '1,419')
+                .replace(/\{channel(?:_link|_box)?\}/gi, '#goodbye')
+                .replace(/\{link:#?([^\}]+)\}/gi, '#$1');
+            return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
+        }
+
+        const simEmbed = document.getElementById('farewellSimEmbed');
+        if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
+
+        const simTitle = document.getElementById('farewellSimTitle');
+        if (simTitle) {
+            simTitle.innerHTML = parseTemplate(rawTitle || 'GOODBYE ALEX!');
+        }
+
+        const simMsg = document.getElementById('farewellSimMsg');
+        if (simMsg) {
+            simMsg.innerHTML = parseTemplate(rawMsg || '**Alex** has left the server. 👋');
+        }
+
+        const simThumbnail = document.getElementById('farewellSimThumbnail');
+        if (simThumbnail) simThumbnail.style.display = showAvatar ? 'flex' : 'none';
+
+        const simBannerWrap = document.getElementById('farewellSimBannerWrap');
+        const simBannerImg = document.getElementById('farewellSimBannerImg');
+        const clearBtn = document.getElementById('farewellBannerClearBtn');
+
+        if (simBannerWrap && simBannerImg) {
+            if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://') || imgUrl.startsWith('/static/'))) {
+                simBannerImg.src = imgUrl;
+                simBannerWrap.style.display = 'block';
+                if (clearBtn) clearBtn.style.display = 'inline-flex';
+            } else {
+                simBannerImg.src = '';
+                simBannerWrap.style.display = 'none';
+                if (clearBtn) clearBtn.style.display = 'none';
+            }
+        }
+
+        const simFooter = document.getElementById('farewellSimFooterText');
+        if (simFooter) {
+            simFooter.textContent = `User ID: 1179633364358156490 • ${serverName}`;
+        }
+    } catch (e) {
+        console.error("Error in updateFarewellPreview:", e);
     }
 }
 
@@ -47814,8 +47643,8 @@ async function saveFarewellSettings() {
 
     const tgl = document.getElementById('farewellToggle');
     const chanSelect = document.getElementById('farewellChannelSelect');
-    const idSelect = document.getElementById('farewellIdentifierSelect');
     const embedToggle = document.getElementById('farewellEmbedToggle');
+    const idSelect = document.getElementById('farewellIdentifierSelect');
     const titleInput = document.getElementById('farewellTitleInput');
     const msgInput = document.getElementById('farewellMsgInput');
     const imgInput = document.getElementById('farewellImageUrlInput');
@@ -47825,14 +47654,25 @@ async function saveFarewellSettings() {
     const richTitle = document.getElementById('farewellTitleInput_rich');
     const richMsg = document.getElementById('farewellMsgInput_rich');
 
-    const rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
-    const rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
+    let rawTitle = '';
+    if (richTitle && typeof richHtmlToRawMarkdown === 'function') {
+        rawTitle = richHtmlToRawMarkdown(richTitle);
+    } else if (titleInput) {
+        rawTitle = titleInput.value;
+    }
+
+    let rawMsg = '';
+    if (richMsg && typeof richHtmlToRawMarkdown === 'function') {
+        rawMsg = richHtmlToRawMarkdown(richMsg);
+    } else if (msgInput) {
+        rawMsg = msgInput.value;
+    }
 
     const payload = {
         enabled: tgl ? tgl.checked : false,
         channel_id: chanSelect ? chanSelect.value : null,
-        identifier_mode: idSelect ? idSelect.value : 'name',
         is_embed: embedToggle ? embedToggle.checked : true,
+        identifier_mode: idSelect ? idSelect.value : 'name',
         title: rawTitle,
         message: rawMsg,
         image_url: imgInput ? imgInput.value.trim() : '',
@@ -47878,7 +47718,108 @@ async function sendTestFarewell() {
     }
 }
 
-// ───────────────────── ⚙️ Setup Event Listeners ─────────────────────
+// ───────────────────── ⚙️ Setup Event Listeners & Uploaders ─────────────────────
+
+function setupBannerUploader(prefix) {
+    const textInput = document.getElementById(`${prefix}ImageUrlInput`);
+    const uploadBtn = document.getElementById(`${prefix}BannerUploadBtn`);
+    const clearBtn = document.getElementById(`${prefix}BannerClearBtn`);
+    const fileInput = document.getElementById(`${prefix}BannerFileInput`);
+    const dropzone = document.getElementById(`${prefix}BannerDropzone`);
+
+    const updatePreviewFn = (prefix === 'welcome') ? updateWelcomePreview : updateFarewellPreview;
+
+    if (uploadBtn && fileInput) {
+        uploadBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            fileInput.click();
+        });
+    }
+
+    if (dropzone && fileInput) {
+        dropzone.addEventListener('click', (e) => {
+            if (e.target !== fileInput) fileInput.click();
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.add('dragover');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropzone.addEventListener(eventName, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropzone.classList.remove('dragover');
+            });
+        });
+
+        dropzone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+    }
+
+    if (clearBtn && textInput) {
+        clearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            textInput.value = '';
+            clearBtn.style.display = 'none';
+            if (fileInput) fileInput.value = '';
+            updatePreviewFn();
+            showToast("🗑️ Banner removed.");
+        });
+    }
+
+    if (fileInput) {
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files && fileInput.files.length > 0) {
+                handleFileUpload(fileInput.files[0]);
+            }
+        });
+    }
+
+    async function handleFileUpload(file) {
+        if (!currentGuildId) return showToast("⚠️ Select a server first!");
+        if (!file) return;
+
+        const validTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+        if (!validTypes.includes(file.type)) {
+            return showToast("❌ Unsupported file format. Please upload PNG, JPG, GIF, or WebP.");
+        }
+
+        if (file.size > 15 * 1024 * 1024) {
+            return showToast("❌ File size exceeds 15MB limit.");
+        }
+
+        showToast("⏳ Uploading banner...");
+        const formData = new FormData();
+        formData.append('banner_file', file);
+
+        try {
+            const resp = await fetch(`/api/guild/${currentGuildId}/welcome/upload-banner`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+            if (data.success && data.url) {
+                if (textInput) textInput.value = data.url;
+                if (clearBtn) clearBtn.style.display = 'inline-flex';
+                updatePreviewFn();
+                showToast("✅ Banner uploaded & rendered in preview!");
+            } else {
+                showToast(`❌ Upload failed: ${data.error || 'Server error'}`);
+            }
+        } catch (err) {
+            showToast("❌ Network error uploading banner.");
+        }
+    }
+}
 
 function setupWelcomeAndFarewellEvents() {
     // Sub-tab Navigation
@@ -47912,12 +47853,29 @@ function setupWelcomeAndFarewellEvents() {
         });
     }
 
-    const welcomeInputs = ['welcomeChannelSelect', 'welcomeEmbedToggle', 'welcomeTitleInput', 'welcomeMsgInput', 'welcomeImageUrlInput', 'welcomeAvatarToggle', 'welcomePingToggle'];
+    // Input listeners for Welcome
+    const welcomeInputs = [
+        'welcomeChannelSelect', 'welcomeEmbedToggle', 'welcomeTitleInput', 'welcomeMsgInput',
+        'welcomeTitleInput_rich', 'welcomeMsgInput_rich', 'welcomeImageUrlInput',
+        'welcomeAvatarToggle', 'welcomePingToggle', 'welcomeHexInput'
+    ];
     welcomeInputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('input', updateWelcomePreview);
+            el.addEventListener('keyup', updateWelcomePreview);
             el.addEventListener('change', updateWelcomePreview);
+            el.addEventListener('paste', () => setTimeout(updateWelcomePreview, 50));
+        }
+    });
+
+    // Direct dynamic rich editor attachment listeners for Welcome
+    ['welcomeTitleInput_rich', 'welcomeMsgInput_rich'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateWelcomePreview);
+            el.addEventListener('keyup', updateWelcomePreview);
+            el.addEventListener('paste', () => setTimeout(updateWelcomePreview, 50));
         }
     });
 
@@ -48030,6 +47988,9 @@ function setupWelcomeAndFarewellEvents() {
     const testWBtn = document.getElementById('testWelcomeBtn');
     if (testWBtn) testWBtn.addEventListener('click', sendTestWelcome);
 
+    // Setup Drag-and-Drop & Browse File upload for Welcome
+    setupBannerUploader('welcome');
+
     // ── Farewell Listeners ──
     const farewellTgl = document.getElementById('farewellToggle');
     if (farewellTgl) {
@@ -48053,12 +48014,29 @@ function setupWelcomeAndFarewellEvents() {
         });
     }
 
-    const farewellInputs = ['farewellChannelSelect', 'farewellIdentifierSelect', 'farewellEmbedToggle', 'farewellTitleInput', 'farewellMsgInput', 'farewellImageUrlInput', 'farewellAvatarToggle'];
+    // Input listeners for Farewell
+    const farewellInputs = [
+        'farewellChannelSelect', 'farewellEmbedToggle', 'farewellIdentifierSelect',
+        'farewellTitleInput', 'farewellMsgInput', 'farewellTitleInput_rich', 'farewellMsgInput_rich',
+        'farewellImageUrlInput', 'farewellAvatarToggle', 'farewellHexInput'
+    ];
     farewellInputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('input', updateFarewellPreview);
+            el.addEventListener('keyup', updateFarewellPreview);
             el.addEventListener('change', updateFarewellPreview);
+            el.addEventListener('paste', () => setTimeout(updateFarewellPreview, 50));
+        }
+    });
+
+    // Direct dynamic rich editor attachment listeners for Farewell
+    ['farewellTitleInput_rich', 'farewellMsgInput_rich'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateFarewellPreview);
+            el.addEventListener('keyup', updateFarewellPreview);
+            el.addEventListener('paste', () => setTimeout(updateFarewellPreview, 50));
         }
     });
 
@@ -48170,6 +48148,13 @@ function setupWelcomeAndFarewellEvents() {
 
     const testFBtn = document.getElementById('testFarewellBtn');
     if (testFBtn) testFBtn.addEventListener('click', sendTestFarewell);
+
+    // Setup Drag-and-Drop & Browse File upload for Farewell
+    setupBannerUploader('farewell');
+
+    // Initial Previews
+    updateWelcomePreview();
+    updateFarewellPreview();
 }
 
 

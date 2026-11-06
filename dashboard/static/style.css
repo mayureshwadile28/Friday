@@ -9065,3 +9065,20 @@ textarea,
     border-radius: 6px;
     display: block;
 }
+
+
+.welcome-dropzone {
+    border: 2px dashed rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    padding: 14px 16px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.02);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.welcome-dropzone:hover,
+.welcome-dropzone.dragover {
+    border-color: #5865F2 !important;
+    background: rgba(88, 101, 242, 0.08) !important;
+}

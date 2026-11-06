@@ -1662,6 +1662,33 @@ def toggle_welcome(gid):
     db.save_data()
     return jsonify({"success": True, "enabled": active})
 
+@app.route('/api/guild/<gid>/welcome/upload-banner', methods=['POST'])
+def upload_welcome_banner(gid):
+    try:
+        if 'banner_file' not in flask_request.files:
+            return jsonify({"success": False, "error": "No file uploaded."}), 400
+        file = flask_request.files['banner_file']
+        if not file or not file.filename:
+            return jsonify({"success": False, "error": "Empty filename."}), 400
+        
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+            return jsonify({"success": False, "error": "Unsupported file format. Please upload PNG, JPG, GIF, or WebP."}), 400
+        
+        token = uuid.uuid4().hex[:12]
+        safe_filename = f"welcome_{gid}_{token}{ext}"
+        save_path = os.path.join(WELCOME_UPLOAD_DIR, safe_filename)
+        file.save(save_path)
+        
+        rel_url = f"/static/uploads/welcome_banners/{safe_filename}"
+        return jsonify({
+            "success": True,
+            "url": rel_url,
+            "filename": safe_filename
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/guild/<gid>/welcome/update', methods=['POST'])
 def update_welcome(gid):
     gid_str = str(gid)
@@ -1712,7 +1739,18 @@ def test_welcome(gid):
         if cfg.get("is_embed", True):
             embed = build_welcome_embed(sample_member, guild, cfg, channel)
             content = f"👋 **[Welcome Preview]** Welcome {sample_member.mention}!" if cfg.get("ping_user", True) else None
-            await channel.send(content=content, embed=embed)
+            discord_file = None
+            raw_img = str(cfg.get("image_url", "")).strip()
+            if "/static/uploads/welcome_banners/" in raw_img:
+                bname = os.path.basename(raw_img)
+                lpath = os.path.join(WELCOME_UPLOAD_DIR, bname)
+                if os.path.exists(lpath):
+                    discord_file = discord.File(lpath, filename=bname)
+                    embed.set_image(url=f"attachment://{bname}")
+            send_kw = {"content": content, "embed": embed}
+            if discord_file:
+                send_kw["file"] = discord_file
+            await channel.send(**send_kw)
         else:
             text = format_welcome_text(cfg.get("message"), sample_member, guild, channel)
             await channel.send(content=f"🧪 **[Test Welcome Message]**\n{text}")
@@ -1795,7 +1833,18 @@ def test_farewell(gid):
         sample_member = guild.owner or guild.me
         if cfg.get("is_embed", True):
             embed = build_farewell_embed(sample_member, guild, cfg, channel)
-            await channel.send(content="🚪 **[Farewell Preview]**", embed=embed)
+            discord_file = None
+            raw_img = str(cfg.get("image_url", "")).strip()
+            if "/static/uploads/welcome_banners/" in raw_img:
+                bname = os.path.basename(raw_img)
+                lpath = os.path.join(WELCOME_UPLOAD_DIR, bname)
+                if os.path.exists(lpath):
+                    discord_file = discord.File(lpath, filename=bname)
+                    embed.set_image(url=f"attachment://{bname}")
+            send_kw = {"content": "🚪 **[Farewell Preview]**", "embed": embed}
+            if discord_file:
+                send_kw["file"] = discord_file
+            await channel.send(**send_kw)
         else:
             text = format_farewell_text(cfg.get("message"), sample_member, guild, channel, cfg.get("identifier_mode", "name"))
             await channel.send(content=f"🧪 **[Test Farewell Message]**\n{text}")
@@ -2476,6 +2525,8 @@ def reset_special_invite_persona(gid):
 
 BANNER_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "giveaway_banners")
 os.makedirs(BANNER_UPLOAD_DIR, exist_ok=True)
+WELCOME_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "welcome_banners")
+os.makedirs(WELCOME_UPLOAD_DIR, exist_ok=True)
 
 def validate_image_url(url):
     if not url:

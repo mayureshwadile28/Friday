@@ -6203,12 +6203,29 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     <textarea id="welcomeMsgInput" class="text-input" rows="4" style="width: 100%; resize: vertical;" placeholder="Hey {user}, welcome to **{server}**! 🎉&#10;&#10;> We're thrilled to have you here with us.&#10;> Feel free to introduce yourself and say hello!&#10;&#10;📌 Review {rules} to get started and enjoy your stay."></textarea>
                 </div>
 
-                <!-- Banner Image or Animated GIF URL -->
+                <!-- Banner Image or Animated GIF URL + Drag & Drop Upload -->
                 <div>
-                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px;">Banner Image or Animated GIF URL (Optional)</label>
-                    <input type="url" id="welcomeImageUrlInput" class="text-input" style="width: 100%;" placeholder="https://media.giphy.com/media/... or https://i.imgur.com/...gif">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Banner Image or Animated GIF (Optional)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Web URL or local device upload (.gif, .png, .jpg, .webp)</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="welcomeImageUrlInput" class="text-input" style="flex: 1;" placeholder="Paste image/GIF URL or upload from local files...">
+                        <button class="btn btn-secondary" id="welcomeBannerUploadBtn" type="button" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; height: 38px; font-size: 12px; font-weight: 600;">
+                            📁 Browse File
+                        </button>
+                        <button class="btn btn-secondary" id="welcomeBannerClearBtn" type="button" style="display: none; padding: 0 10px; height: 38px; color: #ef4444;" title="Remove banner">
+                            ✕
+                        </button>
+                        <input type="file" id="welcomeBannerFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;">
+                    </div>
+                    <!-- Drag & Drop Zone -->
+                    <div id="welcomeBannerDropzone" class="welcome-dropzone" style="margin-top: 8px; border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 14px 16px; text-align: center; background: rgba(255, 255, 255, 0.02); cursor: pointer; transition: all 0.2s ease;">
+                        <div style="font-size: 18px; margin-bottom: 4px;">🖼️ Drag &amp; Drop Image or GIF here</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">or click to select from your local folders (PNG, JPG, animated GIF, WebP)</div>
+                    </div>
                     <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
-                        Paste an image or animated GIF URL. Friday renders it in full motion inside the Discord embed card!
+                        Drop a file, browse from your computer, or paste a link. Friday renders it in full motion inside the Discord embed card!
                     </div>
                 </div>
 
@@ -6416,12 +6433,29 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     <textarea id="farewellMsgInput" class="text-input" rows="4" style="width: 100%; resize: vertical;" placeholder="**{user_display}** has left the server. 👋&#10;&#10;> We're sad to see you go! Thank you for being a part of our community.&#10;&#10;📉 We now have **{member_count}** members remaining."></textarea>
                 </div>
 
-                <!-- Banner Image or Animated GIF URL -->
+                <!-- Banner Image or Animated GIF URL + Drag & Drop Upload -->
                 <div>
-                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px;">Farewell Banner Image or Animated GIF URL (Optional)</label>
-                    <input type="url" id="farewellImageUrlInput" class="text-input" style="width: 100%;" placeholder="https://media.giphy.com/media/... or https://i.imgur.com/...gif">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Farewell Banner Image or Animated GIF (Optional)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Web URL or local device upload (.gif, .png, .jpg, .webp)</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="text" id="farewellImageUrlInput" class="text-input" style="flex: 1;" placeholder="Paste image/GIF URL or upload from local files...">
+                        <button class="btn btn-secondary" id="farewellBannerUploadBtn" type="button" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; height: 38px; font-size: 12px; font-weight: 600;">
+                            📁 Browse File
+                        </button>
+                        <button class="btn btn-secondary" id="farewellBannerClearBtn" type="button" style="display: none; padding: 0 10px; height: 38px; color: #ef4444;" title="Remove banner">
+                            ✕
+                        </button>
+                        <input type="file" id="farewellBannerFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;">
+                    </div>
+                    <!-- Drag & Drop Zone -->
+                    <div id="farewellBannerDropzone" class="welcome-dropzone" style="margin-top: 8px; border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 14px 16px; text-align: center; background: rgba(255, 255, 255, 0.02); cursor: pointer; transition: all 0.2s ease;">
+                        <div style="font-size: 18px; margin-bottom: 4px;">🖼️ Drag &amp; Drop Image or GIF here</div>
+                        <div style="font-size: 11px; color: var(--text-muted);">or click to select from your local folders (PNG, JPG, animated GIF, WebP)</div>
+                    </div>
                     <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
-                        Paste an image or animated GIF URL (e.g. waving goodbye, sad reaction). Friday embeds it right inside the card!
+                        Drop a file, browse from your computer, or paste a link.
                     </div>
                 </div>
 
