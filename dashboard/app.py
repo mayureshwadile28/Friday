@@ -2586,16 +2586,40 @@ def proxy_external_image():
     if not raw_url or not raw_url.startswith(('http://', 'https://')):
         return jsonify({"error": "Invalid image URL"}), 400
     try:
-        import urllib.request
+        import urllib.request, re
         from flask import Response
         # Clean outer quotes if any
         if (raw_url.startswith('"') and raw_url.endswith('"')) or (raw_url.startswith("'") and raw_url.endswith("'")):
             raw_url = raw_url[1:-1].strip()
-        req = urllib.request.Request(raw_url, headers={
+
+        target_url = raw_url
+        # Resolve Tenor view page URL if user copied web link
+        if "tenor.com/view/" in target_url:
+            try:
+                t_req = urllib.request.Request(target_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                with urllib.request.urlopen(t_req, timeout=5) as t_resp:
+                    html_c = t_resp.read().decode('utf-8', errors='ignore')
+                    og_m = re.search(r'<meta property="og:image"\s+content="([^"]+)"', html_c)
+                    if og_m:
+                        target_url = og_m.group(1)
+            except Exception:
+                pass
+        elif "giphy.com/gifs/" in target_url and not target_url.endswith(('.gif', '.webp', '.png', '.jpg')):
+            try:
+                g_req = urllib.request.Request(target_url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                with urllib.request.urlopen(g_req, timeout=5) as g_resp:
+                    html_c = g_resp.read().decode('utf-8', errors='ignore')
+                    og_m = re.search(r'<meta property="og:image"\s+content="([^"]+)"', html_c)
+                    if og_m:
+                        target_url = og_m.group(1)
+            except Exception:
+                pass
+
+        req = urllib.request.Request(target_url, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
         })
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=12) as resp:
             content_type = resp.headers.get('content-type', 'image/png')
             data = resp.read()
             return Response(data, mimetype=content_type, headers={

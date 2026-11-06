@@ -4379,7 +4379,7 @@ function setupEventListeners() {
 
 
 
-            if (!currentGuildId) return showToast("⚠️ Select a server first!");
+            if (!currentGuildId) { if (!silent) showToast("⚠️ Select a server first!"); return; }
 
 
 
@@ -61353,16 +61353,23 @@ function updateGwPreview() {
 
     if (simBannerWrap && simBanner) {
         if (bannerUrl && (bannerUrl.startsWith('http://') || bannerUrl.startsWith('https://') || bannerUrl.startsWith('/static/') || bannerUrl.startsWith('data:'))) {
-            simBannerWrap.style.display = 'block';
             if (simBanner.dataset.currentUrl !== bannerUrl) {
                 simBanner.dataset.currentUrl = bannerUrl;
                 simBanner.dataset.proxyTried = 'false';
                 simBanner.src = bannerUrl;
             }
+            if (simBanner.complete && simBanner.naturalWidth > 0) {
+                simBannerWrap.style.display = 'block';
+            }
+            simBanner.onload = () => {
+                simBannerWrap.style.display = 'block';
+            };
             simBanner.onerror = () => {
                 if (simBanner.dataset.proxyTried !== 'true' && bannerUrl.startsWith('http')) {
                     simBanner.dataset.proxyTried = 'true';
                     simBanner.src = `/api/proxy-image?url=${encodeURIComponent(bannerUrl)}`;
+                } else {
+                    simBannerWrap.style.display = 'none';
                 }
             };
         } else {
@@ -61536,6 +61543,27 @@ async function loadGiveawaysData() {
 
 
 
+    // Instant zero-flicker pre-fill from local cache on page refresh
+    try {
+        const cachedStr = localStorage.getItem('friday_gw_cfg_' + currentGuildId);
+        if (cachedStr) {
+            const preCfg = JSON.parse(cachedStr);
+            if (preCfg.emoji_header) setGwEmojiVisual('gwEmojiHeader', preCfg.emoji_header);
+            if (preCfg.emoji_prize) setGwEmojiVisual('gwEmojiPrize', preCfg.emoji_prize);
+            if (preCfg.emoji_participants) setGwEmojiVisual('gwEmojiParticipants', preCfg.emoji_participants);
+            if (preCfg.emoji_host) setGwEmojiVisual('gwEmojiHost', preCfg.emoji_host);
+            if (preCfg.emoji_winners) setGwEmojiVisual('gwEmojiWinners', preCfg.emoji_winners);
+            if (preCfg.emoji_entries) setGwEmojiVisual('gwEmojiEntries', preCfg.emoji_entries);
+            if (preCfg.emoji_ends) setGwEmojiVisual('gwEmojiEnds', preCfg.emoji_ends);
+            if (preCfg.emoji_ended) setGwEmojiVisual('gwEmojiEnded', preCfg.emoji_ended);
+            if (preCfg.emoji_bullet) setGwEmojiVisual('gwEmojiBullet', preCfg.emoji_bullet);
+            if (preCfg.default_banner && document.getElementById('gwDefaultBanner')) {
+                document.getElementById('gwDefaultBanner').value = preCfg.default_banner;
+            }
+            updateGwPreview();
+        }
+    } catch (e) {}
+
     try {
 
 
@@ -61609,6 +61637,11 @@ async function loadGiveawaysData() {
 
 
         cachedGiveawayConfig = data.config || {};
+        try {
+            if (currentGuildId && data.config) {
+                localStorage.setItem('friday_gw_cfg_' + currentGuildId, JSON.stringify(data.config));
+            }
+        } catch (e) {}
 
 
 
@@ -64277,7 +64310,7 @@ function startGwCountdownTicker() {
 
 
 
-async function saveGwConfig() {
+async function saveGwConfig(silent = false) {
 
 
 
@@ -64551,6 +64584,11 @@ async function saveGwConfig() {
 
 
             cachedGiveawayConfig = data.config || payload;
+            try {
+                if (currentGuildId) {
+                    localStorage.setItem('friday_gw_cfg_' + currentGuildId, JSON.stringify(cachedGiveawayConfig));
+                }
+            } catch (e) {}
 
 
 
@@ -66100,9 +66138,24 @@ function setupGiveawayEvents() {
             bannerInput.addEventListener(evt, () => setTimeout(updateGwPreview, 30));
         }
         if (defaultBanner) {
-            defaultBanner.addEventListener(evt, () => setTimeout(updateGwPreview, 30));
+            defaultBanner.addEventListener(evt, () => {
+                setTimeout(updateGwPreview, 30);
+                try {
+                    if (currentGuildId) {
+                        const localCfg = JSON.parse(localStorage.getItem('friday_gw_cfg_' + currentGuildId) || '{}');
+                        localCfg.default_banner = defaultBanner.value.trim();
+                        localStorage.setItem('friday_gw_cfg_' + currentGuildId, JSON.stringify(localCfg));
+                    }
+                } catch (e) {}
+            });
         }
     });
+
+    if (defaultBanner) {
+        defaultBanner.addEventListener('change', () => {
+            saveGwConfig(true);
+        });
+    }
 
 
 
@@ -66374,10 +66427,20 @@ function setupGiveawayEvents() {
         }
 
         if (clearBtn && inputEl) {
-            clearBtn.addEventListener('click', (e) => {
+            clearBtn.addEventListener('click', async (e) => {
                 e.preventDefault();
                 inputEl.value = '';
                 updateGwPreview();
+                if (inputEl.id === 'gwDefaultBanner') {
+                    try {
+                        if (currentGuildId) {
+                            const localCfg = JSON.parse(localStorage.getItem('friday_gw_cfg_' + currentGuildId) || '{}');
+                            localCfg.default_banner = '';
+                            localStorage.setItem('friday_gw_cfg_' + currentGuildId, JSON.stringify(localCfg));
+                        }
+                    } catch (e) {}
+                    await saveGwConfig(true);
+                }
             });
         }
 
@@ -66425,6 +66488,16 @@ function setupGiveawayEvents() {
                 if (targetInput) targetInput.value = data.url;
                 showToast("✅ Banner uploaded successfully!");
                 updateGwPreview();
+                if (targetInput && targetInput.id === 'gwDefaultBanner') {
+                    try {
+                        if (currentGuildId) {
+                            const localCfg = JSON.parse(localStorage.getItem('friday_gw_cfg_' + currentGuildId) || '{}');
+                            localCfg.default_banner = data.url;
+                            localStorage.setItem('friday_gw_cfg_' + currentGuildId, JSON.stringify(localCfg));
+                        }
+                    } catch (e) {}
+                    await saveGwConfig(true);
+                }
             } else {
                 showToast(`❌ Error: ${data.error || 'Upload failed'}`);
             }
@@ -66633,84 +66706,24 @@ function setupGiveawayEvents() {
 
 
         const trigger = (e) => {
-
-
-
-
-
-
-
             e.preventDefault();
-
-
-
-
-
-
-
             e.stopPropagation();
-
-
-
-
-
-
-
             const targetBtn = btn || visual;
-
-
-
-
-
-
-
-            openEmojiPicker(targetBtn, (chosenEmoji) => {
-
-
-
-
-
-
-
+            openEmojiPicker(targetBtn, async (chosenEmoji) => {
                 if (!chosenEmoji) return;
-
-
-
-
-
-
-
                 setGwEmojiVisual(id, chosenEmoji);
-
-
-
-
-
-
-
                 updateGwPreview();
-
-
-
-
-
-
-
+                try {
+                    if (currentGuildId) {
+                        const localCfg = JSON.parse(localStorage.getItem('friday_gw_cfg_' + currentGuildId) || '{}');
+                        const key = id.replace('gwEmoji', 'emoji_').toLowerCase();
+                        localCfg[key] = chosenEmoji;
+                        localStorage.setItem('friday_gw_cfg_' + currentGuildId, JSON.stringify(localCfg));
+                    }
+                } catch (e) {}
+                await saveGwConfig(true);
             });
-
-
-
-
-
-
-
         };
-
-
-
-
-
-
 
         if (btn) btn.addEventListener('click', trigger);
 
@@ -66816,7 +66829,7 @@ function setupGiveawayEvents() {
 
 
 
-        resetEmojisBtn.addEventListener('click', () => {
+        resetEmojisBtn.addEventListener('click', async () => {
             setGwEmojiVisual('gwEmojiHeader', '🎉');
             setGwEmojiVisual('gwEmojiPrize', '🎁');
             setGwEmojiVisual('gwEmojiParticipants', '👥');
@@ -66826,6 +66839,22 @@ function setupGiveawayEvents() {
             setGwEmojiVisual('gwEmojiEnds', '⏳');
             setGwEmojiVisual('gwEmojiEnded', '🔒');
             setGwEmojiVisual('gwEmojiBullet', '•');
+            try {
+                if (currentGuildId) {
+                    const localCfg = JSON.parse(localStorage.getItem('friday_gw_cfg_' + currentGuildId) || '{}');
+                    localCfg.emoji_header = '🎉';
+                    localCfg.emoji_prize = '🎁';
+                    localCfg.emoji_participants = '👥';
+                    localCfg.emoji_host = '👑';
+                    localCfg.emoji_winners = '🏆';
+                    localCfg.emoji_entries = '🎟️';
+                    localCfg.emoji_ends = '⏳';
+                    localCfg.emoji_ended = '🔒';
+                    localCfg.emoji_bullet = '•';
+                    localStorage.setItem('friday_gw_cfg_' + currentGuildId, JSON.stringify(localCfg));
+                }
+            } catch (e) {}
+            await saveGwConfig(true);
 
 
 
