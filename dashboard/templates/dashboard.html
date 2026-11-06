@@ -3637,40 +3637,41 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                 </div>
 
-                <!-- Host / Sponsor Selector Row -->
-                <div style="margin-bottom: 14px; position: relative;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">👑 Host / Sponsor</label>
-                        <span style="font-size: 11px; color: var(--text-muted);">Search and select giveaway host</span>
-                    </div>
-
-                    <!-- Searchable Host Member Component -->
-                    <div class="gw-host-picker-wrap" id="gwHostPickerWrap">
-                        <input type="hidden" id="gwHostSelect" value="" />
-                        <div class="gw-host-trigger" id="gwHostTrigger" tabindex="0">
-                            <div class="gw-host-selected-display" id="gwHostSelectedDisplay">
-                                <span class="gw-host-badge-icon">👑</span>
-                                <span class="gw-host-selected-name" id="gwHostSelectedName">Server Staff (Default)</span>
-                            </div>
-                            <div class="gw-host-trigger-right">
-                                <span class="gw-host-clear-btn" id="gwHostClearBtn" style="display: none;" title="Reset to Server Staff">✕</span>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
-                            </div>
-                        </div>
-
-                        <!-- Dropdown Popover -->
-                        <div class="gw-host-dropdown" id="gwHostDropdown">
-                            <div class="gw-host-search-box">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="color: var(--text-muted); flex-shrink: 0;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                <input type="text" id="gwHostSearchInput" placeholder="Search members by name..." autocomplete="off" />
-                            </div>
-                            <div class="gw-host-list" id="gwHostList">
-                                <!-- Populated dynamically by renderGwHostOptions() -->
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+                <!-- Host / Sponsor Selector Row (Direct Search Box) -->
+                <div style="margin-bottom: 14px; position: relative;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">👑 Host / Sponsor</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Search member by username or display name</span>
+                    </div>
+
+                    <!-- Searchable Host Member Box -->
+                    <div class="gw-host-box-wrap" id="gwHostBoxWrap">
+                        <div class="gw-host-search-bar" id="gwHostSearchBar">
+                            <span class="gw-host-icon-slot" id="gwHostIconSlot">👑</span>
+                            <input type="text"
+                                   id="gwHostSearchInput"
+                                   class="gw-host-input"
+                                   placeholder="Search server members..."
+                                   value="Server Staff (Default)"
+                                   autocomplete="off" />
+                            <div class="gw-host-controls">
+                                <button type="button" class="gw-host-clear-icon" id="gwHostClearBtn" style="display: none;" title="Reset to Server Staff">✕</button>
+                                <button type="button" class="gw-host-toggle-arrow" id="gwHostToggleBtn" title="Show all members">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <input type="hidden" id="gwHostSelect" value="" />
+
+                        <!-- Floating Dropdown Options List -->
+                        <div class="gw-host-dropdown-menu" id="gwHostDropdown" style="display: none;">
+                            <div class="gw-host-dropdown-list" id="gwHostList">
+                                <!-- Populated dynamically by renderGwHostOptions() -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Duration Presets Chips -->
                 <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;">
                     <span style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Duration Presets:</span>
