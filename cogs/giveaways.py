@@ -993,6 +993,7 @@ class Giveaways(commands.Cog):
                 raw_template = cfg.get("winner_message") or default_msg
                 
                 formatted_desc = raw_template.replace("{winners}", mentions_str)\
+                                             .replace("{winner}", mentions_str)\
                                              .replace("{prize}", prize)\
                                              .replace("{host}", f"<@{sponsor_id}>")\
                                              .replace("{link}", jump_url)\
@@ -1015,6 +1016,7 @@ class Giveaways(commands.Cog):
                 default_ping = f"🎉 **Congratulations** {mentions_str}! You won **{prize}**! {emoji_prize}"
                 raw_ping = cfg.get("winner_ping") or default_ping
                 ping_content = raw_ping.replace("{winners}", mentions_str)\
+                                       .replace("{winner}", mentions_str)\
                                        .replace("{prize}", prize)\
                                        .replace("{emoji_prize}", emoji_prize)\
                                        .replace("{host}", f"<@{sponsor_id}>")
@@ -1422,6 +1424,7 @@ class Giveaways(commands.Cog):
             raw_reroll_msg = cfg.get("reroll_message") or default_reroll_msg
             
             formatted_reroll = raw_reroll_msg.replace("{winners}", mentions_str)\
+                                             .replace("{winner}", mentions_str)\
                                              .replace("{prize}", prize)\
                                              .replace("{host}", interaction.user.mention)\
                                              .replace("{link}", jump_url)\
@@ -1444,6 +1447,7 @@ class Giveaways(commands.Cog):
             default_reroll_ping = f"🎲 **Giveaway Rerolled!** Congratulations {mentions_str}!"
             raw_reroll_ping = cfg.get("reroll_ping") or default_reroll_ping
             ping_content = raw_reroll_ping.replace("{winners}", mentions_str)\
+                                          .replace("{winner}", mentions_str)\
                                           .replace("{prize}", prize)\
                                           .replace("{emoji_prize}", emoji_prize)
             await channel.send(content=ping_content, embed=embed, view=view)

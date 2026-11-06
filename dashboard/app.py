@@ -2908,6 +2908,7 @@ def reroll_guild_giveaway(gid):
                 default_reroll = f"> 🥳 New winner selected! Congratulations {{winners}}! You won **{{prize}}**! {emoji_prize}\n\n🔗 **Jump to Giveaway:** {{link}}"
                 raw_reroll = cfg.get("reroll_message") or default_reroll
                 desc = raw_reroll.replace("{winners}", mentions)\
+                                 .replace("{winner}", mentions)\
                                  .replace("{prize}", gw.get("prize", "the prize"))\
                                  .replace("{host}", "Dashboard Administrator")\
                                  .replace("{link}", jump_url)\
