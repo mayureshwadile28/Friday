@@ -677,5 +677,14 @@
     },
     "first_welcome": {},
     "first_chat_welcomes": {},
-    "afk_data": {}
+    "afk_data": {},
+    "giveaways_config": {},
+    "welcome": {},
+    "farewell": {},
+    "user_memories": {},
+    "server_instructions": {},
+    "temp_voice": {},
+    "server_backups": {},
+    "special_invites": {},
+    "giveaways": {}
 }

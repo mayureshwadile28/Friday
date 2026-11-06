@@ -35,6 +35,8 @@ class Database:
         self.warnings = self.data.get("warnings", {})
         self.first_welcome = self.data.get("first_welcome", {})
         self.first_chat_welcomes = self.data.get("first_chat_welcomes", {})
+        self.welcome = self.data.get("welcome", {})
+        self.farewell = self.data.get("farewell", {})
         self.afk_data = self.data.get("afk_data", {})
         self.user_memories = self.data.get("user_memories", {})
         self.server_instructions = self.data.get("server_instructions", {})
@@ -78,6 +80,8 @@ class Database:
                 "warnings": {},
                 "first_welcome": {},
                 "first_chat_welcomes": {},
+                "welcome": {},
+                "farewell": {},
                 "afk_data": {},
                 "user_memories": {},
                 "server_instructions": {},

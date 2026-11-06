@@ -11,7 +11,7 @@ def replace_plain_emojis(text: str, bot=None, guild_id=None, guild=None) -> str:
         return text
 
     emojis = []
-    if guild:
+    if guild and hasattr(guild, 'emojis'):
         emojis.extend(guild.emojis)
     elif guild_id and bot:
         try:

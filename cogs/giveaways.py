@@ -314,7 +314,9 @@ class GiveawayApprovalView(discord.ui.View):
         gw_key = f"{guild.id}_{self.request_id}"
         view = GiveawayEnterView(giveaway_key=gw_key, entry_count=0, emoji=emoji_prize)
 
-        gw_msg = await gw_channel.send(content="🎉 **New Giveaway** 🎉", embed=embed, view=view)
+        cfg = get_giveaway_config(guild.id)
+        emoji_header = resolve_safe_emoji(self.bot, req.get("header_emoji") or req.get("emoji_header") or cfg.get("emoji_header"), fallback="🎉")
+        gw_msg = await gw_channel.send(content=f"{emoji_header} **New Giveaway** {emoji_header}", embed=embed, view=view)
 
         # Re-key with the real message id
         real_key = f"{guild.id}_{gw_msg.id}"
@@ -332,7 +334,8 @@ class GiveawayApprovalView(discord.ui.View):
             "entries": [],
             "winners": [],
             "description": description,
-            "image_url": image_url or ""
+            "image_url": image_url or "",
+            "header_emoji": emoji_header
         }
         db.giveaways[real_key] = gw_data
         req["status"] = "approved"
@@ -1103,7 +1106,8 @@ class Giveaways(commands.Cog):
         winners: Optional[int] = 1,
         description: Optional[str] = None,
         image: Optional[str] = None,
-        channel: Optional[discord.TextChannel] = None
+        channel: Optional[discord.TextChannel] = None,
+        header_emoji: Optional[str] = None
     ):
         """Creates a giveaway. Admins launch instantly; regular members submit for staff approval."""
         guild = interaction.guild
@@ -1181,6 +1185,7 @@ class Giveaways(commands.Cog):
                 "winners_count": winners_count,
                 "description": description or "",
                 "image_url": banner_url,
+                "header_emoji": header_emoji or cfg.get("emoji_header") or "🎉",
                 "status": "pending",
                 "submitted_at": time.time()
             }
@@ -1259,7 +1264,8 @@ class Giveaways(commands.Cog):
         entry_method = str(cfg.get("entry_method", "button")).lower()
         view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize) if entry_method in ("button", "both") else None
 
-        send_kwargs = {"content": "🎉 **New Giveaway** 🎉", "embed": embed}
+        emoji_header = resolve_safe_emoji(self.bot, header_emoji or cfg.get("emoji_header"), fallback="🎉")
+        send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
         if view:
             send_kwargs["view"] = view
         gw_msg = await target_channel.send(**send_kwargs)

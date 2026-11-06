@@ -1638,6 +1638,176 @@ def unignore_channel_autoresponder(gid):
 
 # ───────────────────── First Chat Welcome Endpoints ─────────────────────
 
+# ───────────────────── Welcome & Farewell Endpoints ─────────────────────
+
+@app.route('/api/guild/<gid>/welcome', methods=['GET'])
+def get_welcome(gid):
+    gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
+    from cogs.welcomer import get_welcome_config
+    cfg = get_welcome_config(gid_str)
+    return jsonify({"success": True, "config": cfg})
+
+@app.route('/api/guild/<gid>/welcome/toggle', methods=['POST'])
+def toggle_welcome(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    active = bool(data.get("active", False))
+    if gid_str not in db.welcome or not isinstance(db.welcome[gid_str], dict):
+        db.welcome[gid_str] = {}
+    db.welcome[gid_str]["enabled"] = active
+    db.save_data()
+    return jsonify({"success": True, "enabled": active})
+
+@app.route('/api/guild/<gid>/welcome/update', methods=['POST'])
+def update_welcome(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    if gid_str not in db.welcome or not isinstance(db.welcome[gid_str], dict):
+        db.welcome[gid_str] = {}
+    
+    for key in ["enabled", "channel_id", "title", "message", "image_url", "show_avatar", "ping_user", "is_embed", "status_color", "custom_hex"]:
+        if key in data:
+            val = data[key]
+            if key in ("enabled", "show_avatar", "ping_user", "is_embed"):
+                db.welcome[gid_str][key] = bool(val)
+            elif key == "channel_id":
+                db.welcome[gid_str][key] = str(val).strip() if val else None
+            else:
+                db.welcome[gid_str][key] = str(val).strip() if val is not None else ""
+    db.save_data()
+    from cogs.welcomer import get_welcome_config
+    return jsonify({"success": True, "config": get_welcome_config(gid_str)})
+
+@app.route('/api/guild/<gid>/welcome/test', methods=['POST'])
+def test_welcome(gid):
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Bot is not connected"}), 503
+    gid_str = str(gid)
+    from cogs.welcomer import get_welcome_config, build_welcome_embed, format_welcome_text
+    cfg = get_welcome_config(gid_str)
+    target_channel_id = cfg.get("channel_id")
+    
+    async def do_test():
+        guild = bot_instance.get_guild(int(gid))
+        if not guild:
+            raise Exception("Guild not found")
+        channel = None
+        if target_channel_id:
+            try:
+                channel = guild.get_channel(int(target_channel_id))
+            except Exception:
+                pass
+        if not channel:
+            for ch in guild.text_channels:
+                if ch.permissions_for(guild.me).send_messages:
+                    channel = ch
+                    break
+        if not channel:
+            raise Exception("No writable text channel found")
+        sample_member = guild.owner or guild.me
+        if cfg.get("is_embed", True):
+            embed = build_welcome_embed(sample_member, guild, cfg, channel)
+            content = f"👋 **[Welcome Preview]** Welcome {sample_member.mention}!" if cfg.get("ping_user", True) else None
+            await channel.send(content=content, embed=embed)
+        else:
+            text = format_welcome_text(cfg.get("message"), sample_member, guild, channel)
+            await channel.send(content=f"🧪 **[Test Welcome Message]**\n{text}")
+        return channel.name
+    
+    try:
+        fut = asyncio.run_coroutine_threadsafe(do_test(), bot_instance.loop)
+        chan_name = fut.result(timeout=10)
+        return jsonify({"success": True, "channel_name": chan_name})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/farewell', methods=['GET'])
+def get_farewell(gid):
+    gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
+    from cogs.welcomer import get_farewell_config
+    cfg = get_farewell_config(gid_str)
+    return jsonify({"success": True, "config": cfg})
+
+@app.route('/api/guild/<gid>/farewell/toggle', methods=['POST'])
+def toggle_farewell(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    active = bool(data.get("active", False))
+    if gid_str not in db.farewell or not isinstance(db.farewell[gid_str], dict):
+        db.farewell[gid_str] = {}
+    db.farewell[gid_str]["enabled"] = active
+    db.save_data()
+    return jsonify({"success": True, "enabled": active})
+
+@app.route('/api/guild/<gid>/farewell/update', methods=['POST'])
+def update_farewell(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    if gid_str not in db.farewell or not isinstance(db.farewell[gid_str], dict):
+        db.farewell[gid_str] = {}
+    for key in ["enabled", "channel_id", "title", "message", "image_url", "show_avatar", "identifier_mode", "is_embed", "status_color", "custom_hex"]:
+        if key in data:
+            val = data[key]
+            if key in ("enabled", "show_avatar", "is_embed"):
+                db.farewell[gid_str][key] = bool(val)
+            elif key == "channel_id":
+                db.farewell[gid_str][key] = str(val).strip() if val else None
+            else:
+                db.farewell[gid_str][key] = str(val).strip() if val is not None else ""
+    db.save_data()
+    from cogs.welcomer import get_farewell_config
+    return jsonify({"success": True, "config": get_farewell_config(gid_str)})
+
+@app.route('/api/guild/<gid>/farewell/test', methods=['POST'])
+def test_farewell(gid):
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Bot is not connected"}), 503
+    gid_str = str(gid)
+    from cogs.welcomer import get_farewell_config, build_farewell_embed, format_farewell_text
+    cfg = get_farewell_config(gid_str)
+    target_channel_id = cfg.get("channel_id")
+    
+    async def do_test():
+        guild = bot_instance.get_guild(int(gid))
+        if not guild:
+            raise Exception("Guild not found")
+        channel = None
+        if target_channel_id:
+            try:
+                channel = guild.get_channel(int(target_channel_id))
+            except Exception:
+                pass
+        if not channel:
+            for ch in guild.text_channels:
+                if ch.permissions_for(guild.me).send_messages:
+                    channel = ch
+                    break
+        if not channel:
+            raise Exception("No writable text channel found")
+        sample_member = guild.owner or guild.me
+        if cfg.get("is_embed", True):
+            embed = build_farewell_embed(sample_member, guild, cfg, channel)
+            await channel.send(content="🚪 **[Farewell Preview]**", embed=embed)
+        else:
+            text = format_farewell_text(cfg.get("message"), sample_member, guild, channel, cfg.get("identifier_mode", "name"))
+            await channel.send(content=f"🧪 **[Test Farewell Message]**\n{text}")
+        return channel.name
+    
+    try:
+        fut = asyncio.run_coroutine_threadsafe(do_test(), bot_instance.loop)
+        chan_name = fut.result(timeout=10)
+        return jsonify({"success": True, "channel_name": chan_name})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/guild/<gid>/first_welcome', methods=['GET'])
 def get_first_welcome(gid):
     gid_str = str(gid)
@@ -2489,7 +2659,7 @@ def save_guild_giveaway_config(gid):
         cfg["entry_method"] = str(body.get("entry_method", "button")).strip().lower()
 
     # Custom styling emojis
-    for emoji_key in ["emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended", "emoji_bullet"]:
+    for emoji_key in ["emoji_header", "emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended", "emoji_bullet"]:
         if emoji_key in body:
             val = str(body.get(emoji_key, "")).strip()
             if val:
@@ -2688,6 +2858,7 @@ def create_guild_giveaway(gid):
         embed_color_hex = body.get("embed_color") or cfg.get("embed_color") or "#5865F2"
         embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
 
+        emoji_header = resolve_safe_emoji(bot_instance, body.get("emoji_header") or cfg.get("emoji_header"), fallback="🎉")
         emoji_prize = resolve_safe_emoji(bot_instance, body.get("emoji_prize") or cfg.get("emoji_prize"), fallback="🎁")
         emoji_host = resolve_safe_emoji(bot_instance, body.get("emoji_host") or cfg.get("emoji_host"), fallback="👑")
         emoji_winners = resolve_safe_emoji(bot_instance, body.get("emoji_winners") or cfg.get("emoji_winners"), fallback="🏆")
@@ -2748,7 +2919,7 @@ def create_guild_giveaway(gid):
         temp_key = f"{gid}_{temp_id}"
         real_view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize) if entry_method in ("button", "both") else None
 
-        send_kwargs = {"content": "🎉 **New Giveaway** 🎉", "embed": embed}
+        send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
         if real_view:
             send_kwargs["view"] = real_view
         if discord_file:
@@ -2804,7 +2975,8 @@ def create_guild_giveaway(gid):
             "winners": [],
             "description": description,
             "image_url": final_image_url or "",
-            "embed_color": embed_color_hex
+            "embed_color": embed_color_hex,
+            "header_emoji": emoji_header
         }
         db.giveaways[real_key] = gw_data
         db.save_data()

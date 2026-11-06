@@ -220,7 +220,7 @@
 
                 </a>
 
-<a class="nav-item" data-tab="firstWelcomeSection" href="#">
+<a class="nav-item" data-tab="welcomeSection" href="#">
 
 <div class="nav-icon-wrap">
 
@@ -236,7 +236,7 @@
 
 </div>
 
-                    First Chat Welcome
+                    Welcome & Farewell
 
                 </a>
 
@@ -6106,335 +6106,583 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 
 
-<!-- ──────────────── MODULE 9: FIRST CHAT WELCOME ──────────────── -->
+<!-- ──────────────── MODULE 9: WELCOME & FAREWELL STUDIO ──────────────── -->
 
-<div class="section tab-content" id="firstWelcomeSection" style="display:none;">
+<div class="section tab-content" id="welcomeSection" data-alias="firstWelcomeSection" style="display:none;">
 
-    <div class="section-header">
-
-        <div>
-
-            <h1 class="section-title">👋 First Chat Welcome System</h1>
-
-            <p class="section-desc">Greet new server members the very moment they send their first message in general chat or your chosen channel, featuring their avatar and customizable card formatting.</p>
-
+    <div class="section-header" style="margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; width: 100%;">
+            <div>
+                <h1 class="section-title">👋 Welcome & Farewell Studio</h1>
+                <p class="section-desc">Automate personalized member greetings on arrival, send farewells on departure, or greet newcomers on their first chat message.</p>
+            </div>
+            <!-- Sub-Navigation Pill Bar -->
+            <div class="welcome-subtab-bar">
+                <button type="button" class="welcome-subtab-btn active" id="subtabBtnJoin">
+                    <span>🌟 Server Join Welcome</span>
+                </button>
+                <button type="button" class="welcome-subtab-btn" id="subtabBtnLeave">
+                    <span>🚪 Server Leave Farewell</span>
+                </button>
+                <button type="button" class="welcome-subtab-btn" id="subtabBtnFirstChat">
+                    <span>💬 First Chat Greeting</span>
+                </button>
+            </div>
         </div>
-
     </div>
 
-
-
-    <div class="first-welcome-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
-
-        <!-- Left: Configuration Form -->
-
-        <div class="automation-card" style="display: flex; flex-direction: column; gap: 20px;">
-
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px;">
-
-                <div>
-
-                    <div style="display: flex; align-items: center; gap: 10px;">
-
-                        <h2 class="automation-card-title" style="margin: 0; font-size: 16px;">Welcome Greeting Status</h2>
-
-                        <span class="status-pill paused" id="firstWelcomeStatusBadge">
-
-                            Paused
-
-                        </span>
-
-                    </div>
-
-                    <p class="automation-card-desc" style="margin: 4px 0 0 0;">Toggle whether Friday should greet new members on their first message.</p>
-
-                </div>
-
-                <label class="switch">
-
-                    <input type="checkbox" id="firstWelcomeToggle">
-
-                    <span class="slider"></span>
-
-                </label>
-
-            </div>
-
-
-
-            <!-- Target Channel Selector -->
-
-            <div>
-
-                <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Target Chat Channel</label>
-
-                <select id="firstWelcomeChannelSelect" class="form-select" style="width: 100%;">
-
-                    <option value="">Any Chat Channel (Anywhere they type first)</option>
-
-                </select>
-
-                <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
-
-                    Select your #general or main chat channel, or leave as "Any Chat Channel".
-
-                </div>
-
-            </div>
-
-
-
-            <!-- Card Title -->
-
-            <div>
-
-                <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Card Title Template</label>
-
-                <div class="emoji-input-wrap">
-
-                    <input type="text" id="firstWelcomeTitleInput" class="text-input" style="flex: 1;" value="WELCOME TO {server}" placeholder="WELCOME TO {server}">
-
-                    <button type="button" class="btn-emoji-trigger" id="firstWelcomeTitleEmojiBtn" title="Insert server emoji">😊</button>
-
-                </div>
-
-            </div>
-
-
-
-            <!-- Message Template -->
-
-            <div>
-
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-
-                    <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Welcome Message Template</label>
-
-                </div>
-
-                <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center;">
-
-                    <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{user}">+ {user}</button>
-
-                    <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{username}">+ {username}</button>
-
-                    <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{server}">+ {server}</button>
-
-                    <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{member_count}">+ {member_count}</button>
-
-                    <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{channel}">+ {channel}</button>
-
-                    <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{rules}">+ {rules}</button>
-
-                    <button type="button" class="resp-emoji-btn" id="firstWelcomeMsgEmojiBtn" data-target="firstWelcomeMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; color: #c7d2fe; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;">
-
-                        😊 Emojis
-
-                    </button>
-
-                    <button type="button" class="resp-channel-picker-btn" id="firstWelcomeChannelPickerBtn" data-target="firstWelcomeMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; color: #6ee7b7; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;" title="Browse categories and insert clickable channel link">
-
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="9" y1="14" x2="15" y2="14"></line><line x1="12" y1="11" x2="12" y2="17"></line></svg>
-
-                        📁 # Channel Link
-
-                    </button>
-
-                </div>
-
-                <textarea id="firstWelcomeMsgInput" class="text-input" rows="4" style="width: 100%; resize: vertical;" placeholder="Hey {user}, welcome to **{server}**! 🎉&#10;&#10;&gt; We're thrilled to have you here with us.&#10;&gt; Feel free to introduce yourself and say hello!&#10;&#10;📌 Review {rules} to get started and enjoy your stay."></textarea>
-
-            </div>
-
-
-
-            <!-- Avatar Toggle -->
-
-            <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 16px;">
-
-                <div>
-
-                    <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">Show Member Avatar</div>
-
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Display the new member's avatar on the right of the card.</div>
-
-                </div>
-
-                <label class="switch">
-
-                    <input type="checkbox" id="firstWelcomeAvatarToggle" checked>
-
-                    <span class="slider"></span>
-
-                </label>
-
-            </div>
-
-
-
-            <!-- Border & Accent Color -->
-
-            <div>
-
-                <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Card Border Accent Color</label>
-
-                <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-
-                    <button type="button" class="fw-color-btn active" data-color="#10b981" style="background:#10b981; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; cursor: pointer;"></button>
-
-                    <button type="button" class="fw-color-btn" data-color="#5865F2" style="background:#5865F2; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
-
-                    <button type="button" class="fw-color-btn" data-color="#6366f1" style="background:#6366f1; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
-
-                    <button type="button" class="fw-color-btn" data-color="#2dd4bf" style="background:#2dd4bf; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
-
-                    <button type="button" class="fw-color-btn" data-color="#f59e0b" style="background:#f59e0b; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
-
-                    <button type="button" class="fw-color-btn" data-color="#ef4444" style="background:#ef4444; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
-
-                    <button type="button" class="fw-color-btn" data-color="#8b5cf6" style="background:#8b5cf6; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
-
-                    <input type="color" id="firstWelcomeColorPicker" value="#10b981" style="width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; background: transparent;">
-
-                    <input type="text" id="firstWelcomeHexInput" class="text-input" value="#10b981" style="width: 90px; height: 32px; font-family: monospace; font-size: 13px;">
-
-                </div>
-
-            </div>
-
-
-
-            <!-- Actions Row -->
-
-            <div style="display: flex; gap: 12px; margin-top: 10px;">
-
-                <button type="button" id="saveFirstWelcomeBtn" class="btn-action-primary" style="flex: 1; height: 42px;">
-
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-
-                    Save Welcome Settings
-
-                </button>
-
-                <button type="button" id="testFirstWelcomeBtn" class="btn-action-secondary" style="height: 42px; white-space: nowrap;">
-
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-
-                    Send Test Card
-
-                </button>
-
-            </div>
-
-        </div>
-
-
-
-        <!-- Right: Authentic Live Discord Simulation -->
-
-        <div class="discord-preview-column" style="position: sticky; top: 20px;">
-
-            <div class="discord-preview-card" style="margin-top: 0;">
-
-                <div class="discord-preview-header">
-
-                    <span>Discord Embed Simulator</span>
-
-                    <span style="display: flex; align-items: center; gap: 6px;">
-
-                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
-
-                        Live Preview
-
-                    </span>
-
-                </div>
-
-                <div class="discord-chat-box">
-
-                    <div class="discord-msg">
-
-                        <div class="discord-avatar" id="fwSimBotAvatar">F</div>
-
-                        <div class="discord-msg-content" style="flex: 1;">
-
-                            <div class="discord-msg-header">
-
-                                <span class="discord-bot-name">Friday</span>
-
-                                <span class="discord-bot-tag">BOT</span>
-
-                                <span class="discord-timestamp">Just now</span>
-
-                            </div>
-
-                            <div style="margin: 4px 0 6px 0; font-size: 13px; color: #dbdee1;">
-
-                                Replying to <span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>
-
-                            </div>
-
-                            <!-- Embed Box -->
-
-                            <div id="fwSimEmbed" style="border-left: 4px solid #10b981; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 480px; transition: all 0.2s ease;">
-
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;">
-
-                                    <div style="flex: 1;">
-
-                                        <div id="fwSimTitle" style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">✓ WELCOME TO OUR SERVER</div>
-
-                                        <div id="fwSimMsg" style="font-size: 13px; color: #dbdee1; line-height: 1.5; white-space: pre-wrap;">Welcome to **Our Community**, @Alex! We are thrilled to have you here. Feel free to introduce yourself and make yourself at home! 💫</div>
-
-                                    </div>
-
-                                    <div id="fwSimThumbnail" style="width: 54px; height: 54px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #1e1f22; display: flex; align-items: center; justify-content: center;">
-
-                                        <img id="fwSimThumbnailImg" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="User Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
-
-                                    </div>
-
-                                </div>
-
-                                <div style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
-
-                                    <span id="fwSimFooterText">Member #1,420 • Welcome to our community 🌸</span>
-
-                                </div>
-
-                            </div>
-
+    <!-- ──────────────── TAB 1: SERVER JOIN WELCOME ──────────────── -->
+    <div id="subtabJoinPanel" class="welcome-subpanel">
+        <div class="first-welcome-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+            <!-- Left: Configuration Form -->
+            <div class="automation-card" style="display: flex; flex-direction: column; gap: 20px;">
+                <!-- Status Row -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h2 class="automation-card-title" style="margin: 0; font-size: 16px;">Server Join Welcome Status</h2>
+                            <span class="status-pill paused" id="welcomeStatusBadge">Paused</span>
                         </div>
-
+                        <p class="automation-card-desc" style="margin: 4px 0 0 0;">Toggle whether Friday greets new members immediately upon entering the server.</p>
                     </div>
-
+                    <label class="switch">
+                        <input type="checkbox" id="welcomeToggle">
+                        <span class="slider"></span>
+                    </label>
                 </div>
 
-            </div>
-
-            
-
-            <!-- Quick Helper Card -->
-
-            <div style="margin-top: 16px; background: rgba(88, 101, 242, 0.08); border: 1px solid rgba(88, 101, 242, 0.2); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
-
-                <div style="font-weight: 600; color: #c9cdfb; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
-
-                    First Message Tracking
-
+                <!-- Destination Channel -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Destination Welcome Channel</label>
+                    <select id="welcomeChannelSelect" class="form-select" style="width: 100%;">
+                        <option value="">Select a channel...</option>
+                    </select>
+                    <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        Select your dedicated #welcome, #general, or lobby channel.
+                    </div>
                 </div>
 
-                Friday remembers every member who chats. When a newcomer types their first message in your configured channel, Friday greets them instantly with their avatar. Future messages from them will proceed normally without spam.
+                <!-- Card Mode & Title -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Embed Title Template</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 12px; color: var(--text-secondary);">Rich Embed</span>
+                            <label class="switch" style="transform: scale(0.85);">
+                                <input type="checkbox" id="welcomeEmbedToggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="emoji-input-wrap">
+                        <input type="text" id="welcomeTitleInput" class="text-input" style="flex: 1;" value="WELCOME TO {server}!" placeholder="WELCOME TO {server}!">
+                        <button type="button" class="btn-emoji-trigger" id="welcomeTitleEmojiBtn" title="Insert server emoji">😊</button>
+                    </div>
+                </div>
 
+                <!-- Welcome Message Template -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Welcome Message Template</label>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center;">
+                        <button type="button" class="resp-var-badge" data-target="welcomeMsgInput" data-var="{user}">+ {user}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeMsgInput" data-var="{username}">+ {username}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeMsgInput" data-var="{server}">+ {server}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeMsgInput" data-var="{member_count}">+ {member_count}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeMsgInput" data-var="{channel}">+ {channel}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeMsgInput" data-var="{rules}">+ {rules}</button>
+                        <button type="button" class="resp-emoji-btn" id="welcomeMsgEmojiBtn" data-target="welcomeMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; color: #c7d2fe; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;">
+                            😊 Server Emojis
+                        </button>
+                        <button type="button" class="resp-channel-picker-btn" id="welcomeChannelPickerBtn" data-target="welcomeMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; color: #6ee7b7; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;" title="Browse categories and insert clickable channel link">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="9" y1="14" x2="15" y2="14"></line><line x1="12" y1="11" x2="12" y2="17"></line></svg>
+                            📁 # Channel Link
+                        </button>
+                    </div>
+                    <textarea id="welcomeMsgInput" class="text-input" rows="4" style="width: 100%; resize: vertical;" placeholder="Hey {user}, welcome to **{server}**! 🎉&#10;&#10;> We're thrilled to have you here with us.&#10;> Feel free to introduce yourself and say hello!&#10;&#10;📌 Review {rules} to get started and enjoy your stay."></textarea>
+                </div>
+
+                <!-- Banner Image or Animated GIF URL -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px;">Banner Image or Animated GIF URL (Optional)</label>
+                    <input type="url" id="welcomeImageUrlInput" class="text-input" style="width: 100%;" placeholder="https://media.giphy.com/media/... or https://i.imgur.com/...gif">
+                    <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        Paste an image or animated GIF URL. Friday renders it in full motion inside the Discord embed card!
+                    </div>
+                </div>
+
+                <!-- Member Avatar & Ping Options -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+                        <div>
+                            <div style="font-weight: 600; font-size: 12.5px; color: var(--text-primary);">Show Avatar</div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">User avatar thumbnail</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="welcomeAvatarToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 14px;">
+                        <div>
+                            <div style="font-weight: 600; font-size: 12.5px; color: var(--text-primary);">Chat Ping</div>
+                            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Ping user in chat text</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="welcomePingToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Border Accent Color -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Card Border Accent Color</label>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="welcome-color-btn active" data-color="#10b981" style="background:#10b981; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; cursor: pointer;"></button>
+                        <button type="button" class="welcome-color-btn" data-color="#5865F2" style="background:#5865F2; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="welcome-color-btn" data-color="#6366f1" style="background:#6366f1; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="welcome-color-btn" data-color="#2dd4bf" style="background:#2dd4bf; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="welcome-color-btn" data-color="#f59e0b" style="background:#f59e0b; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="welcome-color-btn" data-color="#ef4444" style="background:#ef4444; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="welcome-color-btn" data-color="#8b5cf6" style="background:#8b5cf6; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <input type="color" id="welcomeColorPicker" value="#10b981" style="width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; background: transparent;">
+                        <input type="text" id="welcomeHexInput" class="text-input" value="#10b981" style="width: 90px; height: 32px; font-family: monospace; font-size: 13px;">
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 12px; margin-top: 10px;">
+                    <button type="button" id="saveWelcomeBtn" class="btn-action-primary" style="flex: 1; height: 42px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save Welcome Settings
+                    </button>
+                    <button type="button" id="testWelcomeBtn" class="btn-action-secondary" style="height: 42px; white-space: nowrap;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Send Test Card
+                    </button>
+                </div>
             </div>
 
+            <!-- Right: Authentic Live Discord Simulator -->
+            <div class="discord-preview-column" style="position: sticky; top: 20px;">
+                <div class="discord-preview-card" style="margin-top: 0;">
+                    <div class="discord-preview-header">
+                        <span>Discord Embed Simulator</span>
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+                            Live Preview
+                        </span>
+                    </div>
+                    <div class="discord-chat-box">
+                        <div class="discord-msg">
+                            <div class="discord-avatar" id="welcomeSimBotAvatar">F</div>
+                            <div class="discord-msg-content" style="flex: 1;">
+                                <div class="discord-msg-header">
+                                    <span class="discord-bot-name">Friday</span>
+                                    <span class="discord-bot-tag">BOT</span>
+                                    <span class="discord-timestamp">Just now</span>
+                                </div>
+                                <!-- Optional Ping Line -->
+                                <div id="welcomeSimPingLine" style="margin: 4px 0 6px 0; font-size: 13px; color: #dbdee1;">
+                                    👋 Welcome <span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>!
+                                </div>
+                                <!-- Embed Box -->
+                                <div id="welcomeSimEmbed" style="border-left: 4px solid #10b981; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 480px; transition: all 0.2s ease;">
+                                    <!-- Author Header -->
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                        <img id="welcomeSimAuthorImg" src="https://cdn.discordapp.com/embed/avatars/0.png" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
+                                        <span id="welcomeSimAuthorText" style="font-size: 12px; font-weight: 600; color: #ffffff;">Alex joined!</span>
+                                    </div>
+                                    <!-- Main Content + Thumbnail -->
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;">
+                                        <div style="flex: 1;">
+                                            <div id="welcomeSimTitle" style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">WELCOME TO THE SERVER!</div>
+                                            <div id="welcomeSimMsg" style="font-size: 13px; color: #dbdee1; line-height: 1.5; white-space: pre-wrap;">Hey @Alex, welcome to **Our Community**! 🎉</div>
+                                        </div>
+                                        <div id="welcomeSimThumbnail" style="width: 54px; height: 54px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #1e1f22; display: flex; align-items: center; justify-content: center;">
+                                            <img id="welcomeSimThumbnailImg" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="User Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        </div>
+                                    </div>
+                                    <!-- Banner Image or GIF -->
+                                    <div id="welcomeSimBannerWrap" class="welcome-sim-banner-wrap" style="display: none; margin-top: 10px;">
+                                        <img id="welcomeSimBannerImg" src="" alt="Banner Preview">
+                                    </div>
+                                    <!-- Footer -->
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+                                        <span id="welcomeSimFooterText">Member #1,420 • Welcome to our community 🌸</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Quick Info Pill -->
+                <div style="margin-top: 16px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    <div style="font-weight: 600; color: #6ee7b7; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 14"></polyline></svg>
+                        Instant Join Delivery
+                    </div>
+                    Every newly joined member is greeted automatically the second they land in your server. Embed images, animated GIFs, and member avatars render with zero delay.
+                </div>
+            </div>
         </div>
-
     </div>
 
-</div> <!-- End #firstWelcomeSection -->
+    <!-- ──────────────── TAB 2: SERVER LEAVE FAREWELL ──────────────── -->
+    <div id="subtabLeavePanel" class="welcome-subpanel" style="display: none;">
+        <div class="first-welcome-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+            <!-- Left: Configuration Form -->
+            <div class="automation-card" style="display: flex; flex-direction: column; gap: 20px;">
+                <!-- Status Row -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h2 class="automation-card-title" style="margin: 0; font-size: 16px;">Server Leave Farewell Status</h2>
+                            <span class="status-pill paused" id="farewellStatusBadge">Paused</span>
+                        </div>
+                        <p class="automation-card-desc" style="margin: 4px 0 0 0;">Toggle whether Friday posts a notice when a member departs or leaves the server.</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="farewellToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Destination Channel -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Destination Farewell Channel</label>
+                    <select id="farewellChannelSelect" class="form-select" style="width: 100%;">
+                        <option value="">Select a channel...</option>
+                    </select>
+                    <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        Select your dedicated #goodbye, #logs, or member departures channel.
+                    </div>
+                </div>
+
+                <!-- Departing Member Identifier Mode -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Departing Member Identifier Format</label>
+                    <select id="farewellIdentifierSelect" class="form-select" style="width: 100%;">
+                        <option value="name">Username (with User ID fallback if not cached)</option>
+                        <option value="id">User Snowflake ID Only (e.g. 1179633364358156490)</option>
+                        <option value="mention">User Mention (@Alex / &lt;@1179633364358156490&gt;)</option>
+                        <option value="both">Both Username + User ID (e.g. Alex (1179633364358156490))</option>
+                    </select>
+                    <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        Choose how departed users are identified. If Discord no longer caches their username, Friday automatically uses their permanent snowflake ID so messages never fail.
+                    </div>
+                </div>
+
+                <!-- Card Mode & Title -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Embed Title Template</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span style="font-size: 12px; color: var(--text-secondary);">Rich Embed</span>
+                            <label class="switch" style="transform: scale(0.85);">
+                                <input type="checkbox" id="farewellEmbedToggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="emoji-input-wrap">
+                        <input type="text" id="farewellTitleInput" class="text-input" style="flex: 1;" value="GOODBYE FROM {server}" placeholder="GOODBYE FROM {server}">
+                        <button type="button" class="btn-emoji-trigger" id="farewellTitleEmojiBtn" title="Insert server emoji">😊</button>
+                    </div>
+                </div>
+
+                <!-- Message Template -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Farewell Message Template</label>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center;">
+                        <button type="button" class="resp-var-badge" data-target="farewellMsgInput" data-var="{user_display}">+ {user_display}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellMsgInput" data-var="{username}">+ {username}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellMsgInput" data-var="{id}">+ {id}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellMsgInput" data-var="{server}">+ {server}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellMsgInput" data-var="{member_count}">+ {member_count}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellMsgInput" data-var="{channel}">+ {channel}</button>
+                        <button type="button" class="resp-emoji-btn" id="farewellMsgEmojiBtn" data-target="farewellMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; color: #c7d2fe; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;">
+                            😊 Server Emojis
+                        </button>
+                        <button type="button" class="resp-channel-picker-btn" id="farewellChannelPickerBtn" data-target="farewellMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; color: #6ee7b7; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;" title="Browse categories and insert clickable channel link">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="9" y1="14" x2="15" y2="14"></line><line x1="12" y1="11" x2="12" y2="17"></line></svg>
+                            📁 # Channel Link
+                        </button>
+                    </div>
+                    <textarea id="farewellMsgInput" class="text-input" rows="4" style="width: 100%; resize: vertical;" placeholder="**{user_display}** has left the server. 👋&#10;&#10;> We're sad to see you go! Thank you for being a part of our community.&#10;&#10;📉 We now have **{member_count}** members remaining."></textarea>
+                </div>
+
+                <!-- Banner Image or Animated GIF URL -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px;">Farewell Banner Image or Animated GIF URL (Optional)</label>
+                    <input type="url" id="farewellImageUrlInput" class="text-input" style="width: 100%;" placeholder="https://media.giphy.com/media/... or https://i.imgur.com/...gif">
+                    <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        Paste an image or animated GIF URL (e.g. waving goodbye, sad reaction). Friday embeds it right inside the card!
+                    </div>
+                </div>
+
+                <!-- Avatar Toggle -->
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 16px;">
+                    <div>
+                        <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">Show Departing Member Avatar</div>
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Display their avatar thumbnail (if available in Discord cache).</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="farewellAvatarToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Border Accent Color -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Card Border Accent Color</label>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="farewell-color-btn active" data-color="#ef4444" style="background:#ef4444; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; cursor: pointer;"></button>
+                        <button type="button" class="farewell-color-btn" data-color="#f59e0b" style="background:#f59e0b; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="farewell-color-btn" data-color="#8b5cf6" style="background:#8b5cf6; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="farewell-color-btn" data-color="#5865F2" style="background:#5865F2; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="farewell-color-btn" data-color="#ec4899" style="background:#ec4899; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="farewell-color-btn" data-color="#64748b" style="background:#64748b; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="farewell-color-btn" data-color="#10b981" style="background:#10b981; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <input type="color" id="farewellColorPicker" value="#ef4444" style="width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; background: transparent;">
+                        <input type="text" id="farewellHexInput" class="text-input" value="#ef4444" style="width: 90px; height: 32px; font-family: monospace; font-size: 13px;">
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 12px; margin-top: 10px;">
+                    <button type="button" id="saveFarewellBtn" class="btn-action-primary" style="flex: 1; height: 42px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save Farewell Settings
+                    </button>
+                    <button type="button" id="testFarewellBtn" class="btn-action-secondary" style="height: 42px; white-space: nowrap;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Send Test Card
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Authentic Live Discord Simulator -->
+            <div class="discord-preview-column" style="position: sticky; top: 20px;">
+                <div class="discord-preview-card" style="margin-top: 0;">
+                    <div class="discord-preview-header">
+                        <span>Discord Embed Simulator</span>
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ef4444;"></span>
+                            Live Preview
+                        </span>
+                    </div>
+                    <div class="discord-chat-box">
+                        <div class="discord-msg">
+                            <div class="discord-avatar" id="farewellSimBotAvatar">F</div>
+                            <div class="discord-msg-content" style="flex: 1;">
+                                <div class="discord-msg-header">
+                                    <span class="discord-bot-name">Friday</span>
+                                    <span class="discord-bot-tag">BOT</span>
+                                    <span class="discord-timestamp">Just now</span>
+                                </div>
+                                <!-- Embed Box -->
+                                <div id="farewellSimEmbed" style="border-left: 4px solid #ef4444; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 480px; transition: all 0.2s ease;">
+                                    <!-- Author Header -->
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                        <img id="farewellSimAuthorImg" src="https://cdn.discordapp.com/embed/avatars/1.png" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
+                                        <span id="farewellSimAuthorText" style="font-size: 12px; font-weight: 600; color: #ffffff;">Alex left</span>
+                                    </div>
+                                    <!-- Main Content + Thumbnail -->
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;">
+                                        <div style="flex: 1;">
+                                            <div id="farewellSimTitle" style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">GOODBYE FROM THE SERVER</div>
+                                            <div id="farewellSimMsg" style="font-size: 13px; color: #dbdee1; line-height: 1.5; white-space: pre-wrap;">**Alex** has left the server. 👋&#10;&#10;> We're sad to see you go! Thank you for being a part of our community.&#10;&#10;📉 We now have **1,419** members remaining.</div>
+                                        </div>
+                                        <div id="farewellSimThumbnail" style="width: 54px; height: 54px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #1e1f22; display: flex; align-items: center; justify-content: center;">
+                                            <img id="farewellSimThumbnailImg" src="https://cdn.discordapp.com/embed/avatars/1.png" alt="User Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        </div>
+                                    </div>
+                                    <!-- Banner Image or GIF -->
+                                    <div id="farewellSimBannerWrap" class="welcome-sim-banner-wrap" style="display: none; margin-top: 10px;">
+                                        <img id="farewellSimBannerImg" src="" alt="Farewell Banner Preview">
+                                    </div>
+                                    <!-- Footer -->
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+                                        <span id="farewellSimFooterText">User ID: 1179633364358156490 • Our Community</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Quick Info Pill -->
+                <div style="margin-top: 16px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    <div style="font-weight: 600; color: #fca5a5; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                        Resilient Departure Detection
+                    </div>
+                    When a member leaves, kicks, or gets banned, Friday accurately logs their departure. If Discord loses their username cache, she safely shows their User ID so your server records stay 100% reliable.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ──────────────── TAB 3: FIRST CHAT WELCOME (PRESERVED) ──────────────── -->
+    <div id="subtabFirstChatPanel" class="welcome-subpanel" style="display: none;">
+        <div class="first-welcome-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+            <!-- Left: Configuration Form -->
+            <div class="automation-card" style="display: flex; flex-direction: column; gap: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h2 class="automation-card-title" style="margin: 0; font-size: 16px;">First Chat Greeting Status</h2>
+                            <span class="status-pill paused" id="firstWelcomeStatusBadge">Paused</span>
+                        </div>
+                        <p class="automation-card-desc" style="margin: 4px 0 0 0;">Toggle whether Friday greets new members on their very first message in chat.</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="firstWelcomeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Target Channel Selector -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Target Chat Channel</label>
+                    <select id="firstWelcomeChannelSelect" class="form-select" style="width: 100%;">
+                        <option value="">Any Chat Channel (Anywhere they type first)</option>
+                    </select>
+                    <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        Select your #general or main chat channel, or leave as "Any Chat Channel".
+                    </div>
+                </div>
+
+                <!-- Card Title -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Card Title Template</label>
+                    <div class="emoji-input-wrap">
+                        <input type="text" id="firstWelcomeTitleInput" class="text-input" style="flex: 1;" value="WELCOME TO {server}" placeholder="WELCOME TO {server}">
+                        <button type="button" class="btn-emoji-trigger" id="firstWelcomeTitleEmojiBtn" title="Insert server emoji">😊</button>
+                    </div>
+                </div>
+
+                <!-- Message Template -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Welcome Message Template</label>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center;">
+                        <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{user}">+ {user}</button>
+                        <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{username}">+ {username}</button>
+                        <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{server}">+ {server}</button>
+                        <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{member_count}">+ {member_count}</button>
+                        <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{channel}">+ {channel}</button>
+                        <button type="button" class="resp-var-badge" data-target="firstWelcomeMsgInput" data-var="{rules}">+ {rules}</button>
+                        <button type="button" class="resp-emoji-btn" id="firstWelcomeMsgEmojiBtn" data-target="firstWelcomeMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; color: #c7d2fe; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;">
+                            😊 Emojis
+                        </button>
+                        <button type="button" class="resp-channel-picker-btn" id="firstWelcomeChannelPickerBtn" data-target="firstWelcomeMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px; color: #6ee7b7; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;" title="Browse categories and insert clickable channel link">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="9" y1="14" x2="15" y2="14"></line><line x1="12" y1="11" x2="12" y2="17"></line></svg>
+                            📁 # Channel Link
+                        </button>
+                    </div>
+                    <textarea id="firstWelcomeMsgInput" class="text-input" rows="4" style="width: 100%; resize: vertical;" placeholder="Hey {user}, welcome to **{server}**! 🎉&#10;&#10;> We're thrilled to have you here with us.&#10;> Feel free to introduce yourself and say hello!&#10;&#10;📌 Review {rules} to get started and enjoy your stay."></textarea>
+                </div>
+
+                <!-- Avatar Toggle -->
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 16px;">
+                    <div>
+                        <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">Show Member Avatar</div>
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Display the new member's avatar on the right of the card.</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="firstWelcomeAvatarToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Border & Accent Color -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Card Border Accent Color</label>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="fw-color-btn active" data-color="#10b981" style="background:#10b981; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; cursor: pointer;"></button>
+                        <button type="button" class="fw-color-btn" data-color="#5865F2" style="background:#5865F2; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="fw-color-btn" data-color="#6366f1" style="background:#6366f1; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="fw-color-btn" data-color="#2dd4bf" style="background:#2dd4bf; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="fw-color-btn" data-color="#f59e0b" style="background:#f59e0b; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="fw-color-btn" data-color="#ef4444" style="background:#ef4444; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="fw-color-btn" data-color="#8b5cf6" style="background:#8b5cf6; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <input type="color" id="firstWelcomeColorPicker" value="#10b981" style="width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; background: transparent;">
+                        <input type="text" id="firstWelcomeHexInput" class="text-input" value="#10b981" style="width: 90px; height: 32px; font-family: monospace; font-size: 13px;">
+                    </div>
+                </div>
+
+                <!-- Actions Row -->
+                <div style="display: flex; gap: 12px; margin-top: 10px;">
+                    <button type="button" id="saveFirstWelcomeBtn" class="btn-action-primary" style="flex: 1; height: 42px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save Welcome Settings
+                    </button>
+                    <button type="button" id="testFirstWelcomeBtn" class="btn-action-secondary" style="height: 42px; white-space: nowrap;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Send Test Card
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Authentic Live Discord Simulation -->
+            <div class="discord-preview-column" style="position: sticky; top: 20px;">
+                <div class="discord-preview-card" style="margin-top: 0;">
+                    <div class="discord-preview-header">
+                        <span>Discord Embed Simulator</span>
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #10b981;"></span>
+                            Live Preview
+                        </span>
+                    </div>
+                    <div class="discord-chat-box">
+                        <div class="discord-msg">
+                            <div class="discord-avatar" id="fwSimBotAvatar">F</div>
+                            <div class="discord-msg-content" style="flex: 1;">
+                                <div class="discord-msg-header">
+                                    <span class="discord-bot-name">Friday</span>
+                                    <span class="discord-bot-tag">BOT</span>
+                                    <span class="discord-timestamp">Just now</span>
+                                </div>
+                                <div style="margin: 4px 0 6px 0; font-size: 13px; color: #dbdee1;">
+                                    Replying to <span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>
+                                </div>
+                                <div id="fwSimEmbed" style="border-left: 4px solid #10b981; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 480px; transition: all 0.2s ease;">
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;">
+                                        <div style="flex: 1;">
+                                            <div id="fwSimTitle" style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">✓ WELCOME TO OUR SERVER</div>
+                                            <div id="fwSimMsg" style="font-size: 13px; color: #dbdee1; line-height: 1.5; white-space: pre-wrap;">Welcome to **Our Community**, @Alex! We are thrilled to have you here. Feel free to introduce yourself and make yourself at home! 💫</div>
+                                        </div>
+                                        <div id="fwSimThumbnail" style="width: 54px; height: 54px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #1e1f22; display: flex; align-items: center; justify-content: center;">
+                                            <img id="fwSimThumbnailImg" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="User Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+                                        <span id="fwSimFooterText">Member #1,420 • Welcome to our community 🌸</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 16px; background: rgba(88, 101, 242, 0.08); border: 1px solid rgba(88, 101, 242, 0.2); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    <div style="font-weight: 600; color: #c9cdfb; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                        First Message Tracking
+                    </div>
+                    Friday remembers every member who chats. When a newcomer types their first message in your configured channel, Friday greets them instantly with their avatar.
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div> <!-- End #welcomeSection -->
 
 
 
@@ -6601,6 +6849,21 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px;">
+
+                <!-- Header Announcement Emoji -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Header Announcement Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiHeaderBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiHeaderPreview" style="display: inline-flex; align-items: center; justify-content: center;">🎉</span>
+                        </button>
+                        <div id="gwEmojiHeaderVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiHeaderImg" style="display: inline-flex; align-items: center;">🎉</span>
+                            <span id="gwEmojiHeaderText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">🎉 Header Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiHeader" type="hidden" value="🎉" />
+                    </div>
+                </div>
 
                 <!-- Prize / Header Icon -->
 
@@ -7249,6 +7512,23 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 
 
+                <!-- Header Announcement Emoji Input with Emoji Picker & Tile -->
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Header Announcement Emoji (Above Embed)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Customizes emojis surrounding "New Giveaway"</span>
+                    </div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwCreateHeaderEmojiBtn" type="button" style="width: 48px; height: 38px; border-radius: 6px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwCreateHeaderEmojiPreview" style="display: inline-flex; align-items: center; justify-content: center; font-size: 16px;">🎉</span>
+                        </button>
+                        <input class="text-input" id="gwCreateHeaderEmojiInput" placeholder="e.g. 🎉 or custom server emoji" style="flex: 1;" value="🎉" />
+                        <button class="btn btn-secondary emoji-picker-btn" id="gwCreateHeaderEmojiPickerBtn" data-target="gwCreateHeaderEmojiInput" style="height: 38px; padding: 0 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" type="button">
+                            😊 Emojis
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Prize Title Input with Emoji Button -->
 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -7534,7 +7814,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                         </div>
 
-                        <div id="gwSimHeaderContent" style="font-size: 13px; color: #dbdee1; font-weight: 600; margin-top: 2px;">🎉 New Giveaway 🎉</div>
+                        <div id="gwSimHeaderContent" style="font-size: 13px; color: #dbdee1; font-weight: 600; margin-top: 2px; display: flex; align-items: center; gap: 6px;">🎉 New Giveaway 🎉</div>
 
                     </div>
 

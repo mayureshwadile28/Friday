@@ -9012,3 +9012,56 @@ textarea,
     font-size: 13px;
     line-height: 1;
 }
+
+/* ──────────────── Welcome & Farewell Studio Styles ──────────────── */
+.welcome-subtab-bar {
+    display: inline-flex;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 4px;
+    gap: 4px;
+}
+
+.welcome-subtab-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.welcome-subtab-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-primary);
+}
+
+.welcome-subtab-btn.active {
+    background: var(--accent-primary, #5865F2);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(88, 101, 242, 0.35);
+}
+
+.welcome-sim-banner-wrap {
+    margin-top: 10px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #1e1f22;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    max-width: 440px;
+}
+
+.welcome-sim-banner-wrap img {
+    width: 100%;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 6px;
+    display: block;
+}

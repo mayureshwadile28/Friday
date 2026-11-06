@@ -155,27 +155,49 @@ Managed by [`cogs/afk.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Disc
 
 ---
 
-### 5. 👋 First Message Welcome Engine
-Managed by [`cogs/welcomer.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/welcomer.py), Friday greets new members on their **very first message** in the server.
+### 5. 👋 Welcome & Farewell Studio
+Managed by [`cogs/welcomer.py`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/cogs/welcomer.py), Friday provides an enterprise-grade member arrival and departure automation engine featuring rich embed cards, animated GIFs, resilient member identification, and first-chat detection.
 
-#### Core Behavior & Security Hardening:
-- **Pure Chat History & Tenure Detection (Zero XP Reliance):** Analyzes direct Discord chat message history across channels, member join tenure, and server roles without relying on Friday's XP system (ensuring 100% compatibility across servers that don't use leveling). If a member has already sent >= 2 messages in chat, they are classified as an old player, silently indexed into history, and skipped. Only genuine newcomers (<= 1 prior message) receive the first welcome greeting.
-- **Squeezed Vertical Card Layout:** Squeezes the card into a proportioned, compact vertical embed with author header, member avatar thumbnail on the right, and structured blockquotes that prevent horizontal stretching.
-- **Clean Clickable Channel Links (No Pill Box):** Replaces `{rules}` and `{channel}` with Discord markdown links `[#rules](https://discord.com/channels/...)` that render as sleek, bright-blue clickable text without Discord's default hashtag pill/box. Also supports dynamic channel lookup `{link:#channel_name}`.
-- **Dynamic Template Variables:** Supports `{user}`, `{username}`, `{name}`, `{server}`, `{member_count}`, `{rules}`, `{rules_link}`, `{channel}`, `{channel_link}`, and `{link:channel}`.
-- **Administrator Permission Enforcement:** The `/first_welcome` command group, standalone shortcuts, and dashboard settings are strictly restricted to server Administrators via `@app_commands.default_permissions(administrator=True)` and runtime permission validation.
-- **Dashboard Studio Integration:** Fully configurable via the Web Control Center with real-time card previews, clickable channel links, and live test dispatch.
+#### Core Features & Architecture:
+- **Server Join Greetings (`/welcome`):** Immediately welcomes new members when they join the Discord server with dynamic variables (`{user}`, `{username}`, `{server}`, `{member_count}`, `{rules}`, `{channel}`). Supports embedded banner images and animated GIFs (`embed.set_image`), member avatar thumbnails, chat mention pings, and rich embed vs plain text toggles.
+- **Server Leave & Departure Notices (`/farewell`):** Automatically notifies staff or community channels when a member leaves, kicks, or gets banned. Features **Resilient Identifier Modes** to eliminate broken tags when Discord loses user cache:
+  - `name`: Username with fallback to User ID if not cached.
+  - `id`: Permanent numeric Snowflake ID (e.g. `1179633364358156490`).
+  - `mention`: User mention tag (`<@ID>`).
+  - `both`: Dual display format `Username (User ID)`.
+  - Supports farewell animated GIFs, customized title/description, member count updates, and custom colors.
+- **First Message Welcome Engine (`/first_welcome`):** Greets genuine newcomers on their very first chat message in general chat or configured channel, using multi-signal chat history analysis (>= 2 prior messages = old member) without relying on XP systems.
+- **Universal Visual Rich Emoji Editor:** Full integration with server custom emojis (static PNG and animated GIF) and standard emojis in the Web Dashboard. Emojis render as genuine image tags (`<img class="discord-custom-emoji">`), preventing confusing raw IDs.
+- **Authentic Live Discord Embed Simulator:** Real-time side-by-side simulator in the Web Control Center rendering custom embed borders, avatar thumbnails, bright-blue clickable channel links, and motion animated GIFs.
+- **Complete Persistence & Synchronization:** All settings persist across bot reboots in [`friday_memory.json`](file:///c:/Users/vinod/OneDrive/Desktop/Projects/Discord%20bot%20(Friday)/friday_memory.json) (`db.welcome` and `db.farewell`) and synchronize seamlessly with the Flask Web Dashboard.
 
 | Command | Syntax & Options | Description | Permission Required |
 |---|---|---|---|
-| `/first_welcome set` | `[channel]` | Sets the destination welcome channel (defaults to current channel if blank) | `Administrator` |
+| `/welcome setup` | `[channel] [message] [title] [image] [embed] [ping]` | Complete setup for server-join welcome greetings | `Administrator` |
+| `/welcome channel` | `[channel]` | Set or change the destination welcome greetings channel | `Administrator` |
+| `/welcome message` | `<template>` | Update the welcome message template | `Administrator` |
+| `/welcome title` | `<title>` | Update the welcome embed card title template | `Administrator` |
+| `/welcome image` | `<url>` | Set or remove welcome banner image or animated GIF | `Administrator` |
+| `/welcome toggle` | `<on/off>` | Enable or disable server-join welcome greetings | `Administrator` |
+| `/welcome status` | *None* | Review current welcome configuration, destination channel, and theme | `Administrator` |
+| `/welcome test` | *None* | Dispatches an authentic test welcome card to preview formatting | `Administrator` |
+| `/farewell setup` | `[channel] [message] [title] [image] [identifier] [embed]` | Complete setup for server-leave farewell announcements | `Administrator` |
+| `/farewell channel` | `[channel]` | Set or change the destination farewell notices channel | `Administrator` |
+| `/farewell message` | `<template>` | Update the farewell message template | `Administrator` |
+| `/farewell title` | `<title>` | Update the farewell embed card title template | `Administrator` |
+| `/farewell image` | `<url>` | Set or remove farewell banner image or animated GIF | `Administrator` |
+| `/farewell identifier` | `<mode>` | Choose how departing users are identified (name, id, mention, both) | `Administrator` |
+| `/farewell toggle` | `<on/off>` | Enable or disable server-leave farewell announcements | `Administrator` |
+| `/farewell status` | *None* | Review current farewell configuration and identifier settings | `Administrator` |
+| `/farewell test` | *None* | Dispatches an authentic test farewell card to preview formatting | `Administrator` |
+| `/first_welcome set` | `[channel]` | Sets destination channel for first-chat greetings | `Administrator` |
 | `/first_welcome disable` | *None* | Disables first-message welcome greetings for this server | `Administrator` |
 | `/first_welcome status` | *None* | Views current configuration, destination channel, and theme colors | `Administrator` |
-| `/first_welcome test` | *None* | Dispatches an authentic test welcome card to preview formatting | `Administrator` |
-| `/first_welcome message` | `<template>` | Updates the welcome message format using template variables | `Administrator` |
+| `/first_welcome test` | *None* | Dispatches a test first-chat welcome card to preview formatting | `Administrator` |
+| `/first_welcome message` | `<template>` | Updates first-welcome message format using template variables | `Administrator` |
 | `/first_welcome reset` | `[member]` | Clears welcome history for a member or all members to re-trigger greetings | `Administrator` |
-| `/set_welcomer` | `[mode] [channel]` | Shortcut command to set welcome channel (leave empty for current channel) | `Administrator` |
-| `/set_first_welcome` | `[channel]` | Standalone shortcut to set first-welcome destination to current channel | `Administrator` |
+| `/set_welcomer` | `[mode] [channel]` | Shortcut command to set welcome channel (join or first chat) | `Administrator` |
+| `/set_first_welcome` | `[channel]` | Standalone shortcut to set first-welcome destination | `Administrator` |
 
 ---
 
@@ -482,6 +504,12 @@ Accessible at `http://localhost:5000` when running [`main.py`](file:///c:/Users/
 13. **Music Customizer & Universal State Persistence:**
     - Full suite of editable bot replies for voice events.
     - Real-time two-way synchronization ensuring configurations persist across restarts and web reloads.
+14. **Giveaways Studio & Custom Emoji Engine:**
+    - Quick Launch Studio with authentic live Discord embed simulator and real-time custom emoji rendering.
+    - Customizable header announcement emojis (surrounding the "New Giveaway" announcement), prize title, duration presets, winner counts, host/sponsor selector, custom banner GIF/image, and embed left border color.
+    - 100% custom emoji support: Header, Prize, Host, Winners, Entries, Countdown/Ends, Ended/Closed, and Bullet Point icons support server custom emojis (animated GIF and static PNG) and standard Unicode emojis, strictly rendered as visual icons with zero raw syntax.
+    - Slash command suite: `/gcreate [header_emoji]`, `/gend`, `/greroll`, `/gsetup`, and `/glist`.
+    - Integrated winner & reroll celebratory announcement designer.
 
 ---
 

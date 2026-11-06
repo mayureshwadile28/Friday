@@ -1758,7 +1758,8 @@ const tabTitles = {
 
 
 
-    'firstWelcomeSection': 'First Chat Welcome',
+    'welcomeSection': 'Welcome & Farewell',
+    'firstWelcomeSection': 'Welcome & Farewell',
 
 
 
@@ -2798,6 +2799,10 @@ function setupEventListeners() {
 
 
 
+                        else if (btn.id === 'welcomeTitleEmojiBtn') targetId = 'welcomeTitleInput';
+            else if (btn.id === 'welcomeMsgEmojiBtn' || btn.id === 'welcomeChannelPickerBtn') targetId = 'welcomeMsgInput';
+            else if (btn.id === 'farewellTitleEmojiBtn') targetId = 'farewellTitleInput';
+            else if (btn.id === 'farewellMsgEmojiBtn' || btn.id === 'farewellChannelPickerBtn') targetId = 'farewellMsgInput';
             else if (btn.id === 'firstWelcomeTitleEmojiBtn') targetId = 'firstWelcomeTitleInput';
 
 
@@ -11695,6 +11700,22 @@ async function loadCoreData() {
 
 
 
+                const welcomeChanSelect = document.getElementById('welcomeChannelSelect');
+        if (welcomeChanSelect) {
+            const prevWcVal = welcomeChanSelect.value;
+            welcomeChanSelect.innerHTML = '<option value="">Select a channel...</option>' +
+                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            if (prevWcVal) welcomeChanSelect.value = prevWcVal;
+        }
+
+        const farewellChanSelect = document.getElementById('farewellChannelSelect');
+        if (farewellChanSelect) {
+            const prevFwVal2 = farewellChanSelect.value;
+            farewellChanSelect.innerHTML = '<option value="">Select a channel...</option>' +
+                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            if (prevFwVal2) farewellChanSelect.value = prevFwVal2;
+        }
+
         const fwChanSelect = document.getElementById('firstWelcomeChannelSelect');
 
 
@@ -11895,7 +11916,11 @@ async function loadDataForActiveTab() {
 
 
 
-    else if (activeTab === 'firstWelcomeSection') await loadFirstWelcomeSettings();
+        else if (activeTab === 'welcomeSection' || activeTab === 'firstWelcomeSection') {
+        await loadWelcomeSettings();
+        await loadFarewellSettings();
+        await loadFirstWelcomeSettings();
+    }
 
 
 
@@ -18447,6 +18472,10 @@ function initAllRichEmojiEditors() {
 
 
 
+        attachRichEmojiEditor('welcomeTitleInput', true);
+    attachRichEmojiEditor('welcomeMsgInput');
+    attachRichEmojiEditor('farewellTitleInput', true);
+    attachRichEmojiEditor('farewellMsgInput');
     attachRichEmojiEditor('firstWelcomeTitleInput', true);
 
 
@@ -35647,7 +35676,7 @@ const CUSTOM_RESPONSES_SCHEMA = [
 
 
 
-    {"id": "ai_manipulation_refusal", "label": "Anti-Manipulation & Anti-Parrot Refusal", "category": "AI Assistant & Conversation", "vars": ["{user}"]}
+    {"id": "ai_manipulation_refusal", "label": "Anti-Manipulation & Anti-Parrot Refusal", "category": "AI Assistant & Conversation", "vars": ["{user}"]},
 
 
 
@@ -35655,6 +35684,8 @@ const CUSTOM_RESPONSES_SCHEMA = [
 
 
 
+    {"id": "welcome_greeting_text", "label": "Server Join Welcome Message", "category": "Welcomer", "vars": ["{user}", "{username}", "{server}", "{member_count}", "{channel}", "{rules}"]},
+    {"id": "farewell_notice_text", "label": "Server Leave Farewell Notice", "category": "Welcomer", "vars": ["{user_display}", "{username}", "{id}", "{server}", "{member_count}", "{channel}"]},
 ];
 
 
@@ -45791,6 +45822,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
+    setupWelcomeAndFarewellEvents();
     setupFirstWelcomeAndAfkEvents();
 
 
@@ -47357,6 +47389,788 @@ async function sendTestFirstWelcome() {
 
 
 
+
+
+
+// ══════════════════════════════════════════════════════════════
+// 🌟 MODULE 9: WELCOME & FAREWELL STUDIO (JOIN & LEAVE)
+// ══════════════════════════════════════════════════════════════
+
+function switchWelcomeSubtab(tabName) {
+    const btnJoin = document.getElementById('subtabBtnJoin');
+    const btnLeave = document.getElementById('subtabBtnLeave');
+    const btnFirstChat = document.getElementById('subtabBtnFirstChat');
+    const panelJoin = document.getElementById('subtabJoinPanel');
+    const panelLeave = document.getElementById('subtabLeavePanel');
+    const panelFirstChat = document.getElementById('subtabFirstChatPanel');
+
+    if (btnJoin) btnJoin.classList.toggle('active', tabName === 'join');
+    if (btnLeave) btnLeave.classList.toggle('active', tabName === 'leave');
+    if (btnFirstChat) btnFirstChat.classList.toggle('active', tabName === 'first_chat');
+
+    if (panelJoin) panelJoin.style.display = (tabName === 'join') ? 'block' : 'none';
+    if (panelLeave) panelLeave.style.display = (tabName === 'leave') ? 'block' : 'none';
+    if (panelFirstChat) panelFirstChat.style.display = (tabName === 'first_chat') ? 'block' : 'none';
+}
+
+// ───────────────────── 🌟 Server Join Welcome ─────────────────────
+
+async function loadWelcomeSettings() {
+    if (!currentGuildId) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/welcome`);
+        const data = await resp.json();
+        if (!data.success) return;
+        const cfg = data.config || {};
+
+        const tgl = document.getElementById('welcomeToggle');
+        if (tgl) {
+            tgl.checked = !!cfg.enabled;
+            updateWelcomeStatusBadge(!!cfg.enabled);
+        }
+
+        const chanSelect = document.getElementById('welcomeChannelSelect');
+        if (chanSelect && cfg.channel_id) {
+            chanSelect.value = cfg.channel_id;
+        }
+
+        const embedToggle = document.getElementById('welcomeEmbedToggle');
+        if (embedToggle) embedToggle.checked = (cfg.is_embed !== false);
+
+        const titleInput = document.getElementById('welcomeTitleInput');
+        if (titleInput) {
+            titleInput.value = cfg.title || "WELCOME TO {server}!";
+            const richTitle = document.getElementById('welcomeTitleInput_rich');
+            if (richTitle && typeof rawMarkdownToRichHtml === 'function') {
+                richTitle.innerHTML = rawMarkdownToRichHtml(titleInput.value);
+            }
+        }
+
+        const msgInput = document.getElementById('welcomeMsgInput');
+        if (msgInput) {
+            msgInput.value = cfg.message || "Hey {user}, welcome to **{server}**! 🎉\n\n> We're thrilled to have you here with us.\n> Feel free to introduce yourself and say hello!\n\n📌 Review {rules} to get started and enjoy your stay.";
+            const richMsg = document.getElementById('welcomeMsgInput_rich');
+            if (richMsg && typeof rawMarkdownToRichHtml === 'function') {
+                richMsg.innerHTML = rawMarkdownToRichHtml(msgInput.value);
+            }
+        }
+
+        const imgInput = document.getElementById('welcomeImageUrlInput');
+        if (imgInput) imgInput.value = cfg.image_url || '';
+
+        const avtTgl = document.getElementById('welcomeAvatarToggle');
+        if (avtTgl) avtTgl.checked = (cfg.show_avatar !== false);
+
+        const pingTgl = document.getElementById('welcomePingToggle');
+        if (pingTgl) pingTgl.checked = (cfg.ping_user !== false);
+
+        setWelcomeColor(cfg.custom_hex || '#10b981');
+        updateWelcomePreview();
+    } catch (e) {
+        console.error("Error loading welcome settings:", e);
+    }
+}
+
+function updateWelcomeStatusBadge(isActive) {
+    const badge = document.getElementById('welcomeStatusBadge');
+    if (!badge) return;
+    if (isActive) {
+        badge.className = 'status-pill active';
+        badge.textContent = 'Active';
+    } else {
+        badge.className = 'status-pill paused';
+        badge.textContent = 'Paused';
+    }
+}
+
+function setWelcomeColor(hex) {
+    if (!hex) hex = '#10b981';
+    const picker = document.getElementById('welcomeColorPicker');
+    const hexInput = document.getElementById('welcomeHexInput');
+    if (picker) picker.value = hex;
+    if (hexInput) hexInput.value = hex;
+
+    document.querySelectorAll('.welcome-color-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.color && btn.dataset.color.toLowerCase() === hex.toLowerCase());
+        btn.style.borderColor = (btn.dataset.color && btn.dataset.color.toLowerCase() === hex.toLowerCase()) ? '#fff' : 'transparent';
+    });
+
+    updateWelcomePreview();
+}
+
+function updateWelcomePreview() {
+    const titleInput = document.getElementById('welcomeTitleInput');
+    const msgInput = document.getElementById('welcomeMsgInput');
+    const imgInput = document.getElementById('welcomeImageUrlInput');
+    const avtTgl = document.getElementById('welcomeAvatarToggle');
+    const pingTgl = document.getElementById('welcomePingToggle');
+    const hexInput = document.getElementById('welcomeHexInput');
+
+    const richTitle = document.getElementById('welcomeTitleInput_rich');
+    const richMsg = document.getElementById('welcomeMsgInput_rich');
+
+    let rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
+    let rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
+    const imgUrl = imgInput ? imgInput.value.trim() : '';
+    const showAvatar = avtTgl ? avtTgl.checked : true;
+    const showPing = pingTgl ? pingTgl.checked : true;
+    const colorHex = hexInput ? hexInput.value : '#10b981';
+
+    const serverName = (window.currentGuildName) || 'Our Community';
+
+    function parseTemplate(text) {
+        if (!text) return '';
+        let res = text
+            .replace(/\{user\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>')
+            .replace(/\{username\}/gi, 'Alex')
+            .replace(/\{name\}/gi, 'Alex')
+            .replace(/\{id\}/gi, '1179633364358156490')
+            .replace(/\{user_id\}/gi, '1179633364358156490')
+            .replace(/\{server\}/gi, serverName)
+            .replace(/\{member_count\}/gi, '1,420')
+            .replace(/\{rules\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#rules</span>')
+            .replace(/\{rules_link\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#rules</span>')
+            .replace(/\{rules_box\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px;">#rules</span>')
+            .replace(/\{channel\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#welcome</span>')
+            .replace(/\{channel_link\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#welcome</span>')
+            .replace(/\{channel_box\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px;">#welcome</span>')
+            .replace(/\{link:#?([^\}]+)\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#$1</span>');
+        return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
+    }
+
+    const simEmbed = document.getElementById('welcomeSimEmbed');
+    if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
+
+    const simPingLine = document.getElementById('welcomeSimPingLine');
+    if (simPingLine) simPingLine.style.display = showPing ? 'block' : 'none';
+
+    const simTitle = document.getElementById('welcomeSimTitle');
+    if (simTitle) {
+        simTitle.innerHTML = parseTemplate(rawTitle || 'WELCOME TO OUR SERVER!');
+    }
+
+    const simMsg = document.getElementById('welcomeSimMsg');
+    if (simMsg) {
+        simMsg.innerHTML = parseTemplate(rawMsg || 'Welcome to our server!');
+    }
+
+    const simThumbnail = document.getElementById('welcomeSimThumbnail');
+    if (simThumbnail) simThumbnail.style.display = showAvatar ? 'flex' : 'none';
+
+    const simBannerWrap = document.getElementById('welcomeSimBannerWrap');
+    const simBannerImg = document.getElementById('welcomeSimBannerImg');
+    if (simBannerWrap && simBannerImg) {
+        if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://'))) {
+            simBannerImg.src = imgUrl;
+            simBannerWrap.style.display = 'block';
+        } else {
+            simBannerWrap.style.display = 'none';
+        }
+    }
+
+    const simFooter = document.getElementById('welcomeSimFooterText');
+    if (simFooter) {
+        simFooter.textContent = `Member #1,420 • ${serverName} 🌸`;
+    }
+}
+
+async function saveWelcomeSettings() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+
+    const tgl = document.getElementById('welcomeToggle');
+    const chanSelect = document.getElementById('welcomeChannelSelect');
+    const embedToggle = document.getElementById('welcomeEmbedToggle');
+    const titleInput = document.getElementById('welcomeTitleInput');
+    const msgInput = document.getElementById('welcomeMsgInput');
+    const imgInput = document.getElementById('welcomeImageUrlInput');
+    const avtTgl = document.getElementById('welcomeAvatarToggle');
+    const pingTgl = document.getElementById('welcomePingToggle');
+    const hexInput = document.getElementById('welcomeHexInput');
+
+    const richTitle = document.getElementById('welcomeTitleInput_rich');
+    const richMsg = document.getElementById('welcomeMsgInput_rich');
+
+    const rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
+    const rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
+
+    const payload = {
+        enabled: tgl ? tgl.checked : false,
+        channel_id: chanSelect ? chanSelect.value : null,
+        is_embed: embedToggle ? embedToggle.checked : true,
+        title: rawTitle,
+        message: rawMsg,
+        image_url: imgInput ? imgInput.value.trim() : '',
+        show_avatar: avtTgl ? avtTgl.checked : true,
+        ping_user: pingTgl ? pingTgl.checked : true,
+        custom_hex: hexInput ? hexInput.value : '#10b981'
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/welcome/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("✅ Welcome settings saved successfully!");
+            if (tgl) updateWelcomeStatusBadge(tgl.checked);
+        } else {
+            showToast(`❌ Save failed: ${data.error || 'Unknown error'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error saving welcome settings");
+    }
+}
+
+async function sendTestWelcome() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+    try {
+        showToast("🚀 Sending test welcome card to Discord...");
+        const resp = await fetch(`/api/guild/${currentGuildId}/welcome/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(`✅ Test card sent to #${data.channel_name}!`);
+        } else {
+            showToast(`❌ Test failed: ${data.error || 'Check bot permissions'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error sending test card");
+    }
+}
+
+// ───────────────────── 🚪 Server Leave Farewell ─────────────────────
+
+async function loadFarewellSettings() {
+    if (!currentGuildId) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/farewell`);
+        const data = await resp.json();
+        if (!data.success) return;
+        const cfg = data.config || {};
+
+        const tgl = document.getElementById('farewellToggle');
+        if (tgl) {
+            tgl.checked = !!cfg.enabled;
+            updateFarewellStatusBadge(!!cfg.enabled);
+        }
+
+        const chanSelect = document.getElementById('farewellChannelSelect');
+        if (chanSelect && cfg.channel_id) {
+            chanSelect.value = cfg.channel_id;
+        }
+
+        const idSelect = document.getElementById('farewellIdentifierSelect');
+        if (idSelect && cfg.identifier_mode) {
+            idSelect.value = cfg.identifier_mode;
+        }
+
+        const embedToggle = document.getElementById('farewellEmbedToggle');
+        if (embedToggle) embedToggle.checked = (cfg.is_embed !== false);
+
+        const titleInput = document.getElementById('farewellTitleInput');
+        if (titleInput) {
+            titleInput.value = cfg.title || "GOODBYE FROM {server}";
+            const richTitle = document.getElementById('farewellTitleInput_rich');
+            if (richTitle && typeof rawMarkdownToRichHtml === 'function') {
+                richTitle.innerHTML = rawMarkdownToRichHtml(titleInput.value);
+            }
+        }
+
+        const msgInput = document.getElementById('farewellMsgInput');
+        if (msgInput) {
+            msgInput.value = cfg.message || "**{user_display}** has left the server. 👋\n\n> We're sad to see you go! Thank you for being a part of our community.\n\n📉 We now have **{member_count}** members remaining.";
+            const richMsg = document.getElementById('farewellMsgInput_rich');
+            if (richMsg && typeof rawMarkdownToRichHtml === 'function') {
+                richMsg.innerHTML = rawMarkdownToRichHtml(msgInput.value);
+            }
+        }
+
+        const imgInput = document.getElementById('farewellImageUrlInput');
+        if (imgInput) imgInput.value = cfg.image_url || '';
+
+        const avtTgl = document.getElementById('farewellAvatarToggle');
+        if (avtTgl) avtTgl.checked = (cfg.show_avatar !== false);
+
+        setFarewellColor(cfg.custom_hex || '#ef4444');
+        updateFarewellPreview();
+    } catch (e) {
+        console.error("Error loading farewell settings:", e);
+    }
+}
+
+function updateFarewellStatusBadge(isActive) {
+    const badge = document.getElementById('farewellStatusBadge');
+    if (!badge) return;
+    if (isActive) {
+        badge.className = 'status-pill active';
+        badge.textContent = 'Active';
+    } else {
+        badge.className = 'status-pill paused';
+        badge.textContent = 'Paused';
+    }
+}
+
+function setFarewellColor(hex) {
+    if (!hex) hex = '#ef4444';
+    const picker = document.getElementById('farewellColorPicker');
+    const hexInput = document.getElementById('farewellHexInput');
+    if (picker) picker.value = hex;
+    if (hexInput) hexInput.value = hex;
+
+    document.querySelectorAll('.farewell-color-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.color && btn.dataset.color.toLowerCase() === hex.toLowerCase());
+        btn.style.borderColor = (btn.dataset.color && btn.dataset.color.toLowerCase() === hex.toLowerCase()) ? '#fff' : 'transparent';
+    });
+
+    updateFarewellPreview();
+}
+
+function updateFarewellPreview() {
+    const titleInput = document.getElementById('farewellTitleInput');
+    const msgInput = document.getElementById('farewellMsgInput');
+    const imgInput = document.getElementById('farewellImageUrlInput');
+    const avtTgl = document.getElementById('farewellAvatarToggle');
+    const idSelect = document.getElementById('farewellIdentifierSelect');
+    const hexInput = document.getElementById('farewellHexInput');
+
+    const richTitle = document.getElementById('farewellTitleInput_rich');
+    const richMsg = document.getElementById('farewellMsgInput_rich');
+
+    let rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
+    let rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
+    const imgUrl = imgInput ? imgInput.value.trim() : '';
+    const showAvatar = avtTgl ? avtTgl.checked : true;
+    const idMode = idSelect ? idSelect.value : 'name';
+    const colorHex = hexInput ? hexInput.value : '#ef4444';
+
+    const serverName = (window.currentGuildName) || 'Our Community';
+
+    // Compute user_display based on identifier mode
+    let userDisplay = 'Alex';
+    if (idMode === 'id') userDisplay = '1179633364358156490';
+    else if (idMode === 'mention') userDisplay = '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>';
+    else if (idMode === 'both') userDisplay = 'Alex (1179633364358156490)';
+
+    function parseTemplate(text) {
+        if (!text) return '';
+        let res = text
+            .replace(/\{user_display\}/gi, userDisplay)
+            .replace(/\{user\}/gi, '<span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span>')
+            .replace(/\{username\}/gi, 'Alex')
+            .replace(/\{name\}/gi, 'Alex')
+            .replace(/\{id\}/gi, '1179633364358156490')
+            .replace(/\{user_id\}/gi, '1179633364358156490')
+            .replace(/\{server\}/gi, serverName)
+            .replace(/\{member_count\}/gi, '1,419')
+            .replace(/\{channel\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#goodbye</span>')
+            .replace(/\{channel_link\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#goodbye</span>')
+            .replace(/\{link:#?([^\}]+)\}/gi, '<span style="color: #00a8fc; font-weight: 500; cursor: pointer;">#$1</span>');
+        return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
+    }
+
+    const simEmbed = document.getElementById('farewellSimEmbed');
+    if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
+
+    const simAuthor = document.getElementById('farewellSimAuthorText');
+    if (simAuthor) simAuthor.textContent = `${(idMode === 'id' ? '1179633364358156490' : 'Alex')} left`;
+
+    const simTitle = document.getElementById('farewellSimTitle');
+    if (simTitle) {
+        simTitle.innerHTML = parseTemplate(rawTitle || 'GOODBYE FROM THE SERVER');
+    }
+
+    const simMsg = document.getElementById('farewellSimMsg');
+    if (simMsg) {
+        simMsg.innerHTML = parseTemplate(rawMsg || '**Alex** has left the server. 👋');
+    }
+
+    const simThumbnail = document.getElementById('farewellSimThumbnail');
+    if (simThumbnail) simThumbnail.style.display = showAvatar ? 'flex' : 'none';
+
+    const simBannerWrap = document.getElementById('farewellSimBannerWrap');
+    const simBannerImg = document.getElementById('farewellSimBannerImg');
+    if (simBannerWrap && simBannerImg) {
+        if (imgUrl && (imgUrl.startsWith('http://') || imgUrl.startsWith('https://'))) {
+            simBannerImg.src = imgUrl;
+            simBannerWrap.style.display = 'block';
+        } else {
+            simBannerWrap.style.display = 'none';
+        }
+    }
+
+    const simFooter = document.getElementById('farewellSimFooterText');
+    if (simFooter) {
+        simFooter.textContent = `User ID: 1179633364358156490 • ${serverName}`;
+    }
+}
+
+async function saveFarewellSettings() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+
+    const tgl = document.getElementById('farewellToggle');
+    const chanSelect = document.getElementById('farewellChannelSelect');
+    const idSelect = document.getElementById('farewellIdentifierSelect');
+    const embedToggle = document.getElementById('farewellEmbedToggle');
+    const titleInput = document.getElementById('farewellTitleInput');
+    const msgInput = document.getElementById('farewellMsgInput');
+    const imgInput = document.getElementById('farewellImageUrlInput');
+    const avtTgl = document.getElementById('farewellAvatarToggle');
+    const hexInput = document.getElementById('farewellHexInput');
+
+    const richTitle = document.getElementById('farewellTitleInput_rich');
+    const richMsg = document.getElementById('farewellMsgInput_rich');
+
+    const rawTitle = (richTitle && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richTitle.innerHTML) : (titleInput ? titleInput.value : '');
+    const rawMsg = (richMsg && typeof richHtmlToRawMarkdown === 'function') ? richHtmlToRawMarkdown(richMsg.innerHTML) : (msgInput ? msgInput.value : '');
+
+    const payload = {
+        enabled: tgl ? tgl.checked : false,
+        channel_id: chanSelect ? chanSelect.value : null,
+        identifier_mode: idSelect ? idSelect.value : 'name',
+        is_embed: embedToggle ? embedToggle.checked : true,
+        title: rawTitle,
+        message: rawMsg,
+        image_url: imgInput ? imgInput.value.trim() : '',
+        show_avatar: avtTgl ? avtTgl.checked : true,
+        custom_hex: hexInput ? hexInput.value : '#ef4444'
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/farewell/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("✅ Farewell settings saved successfully!");
+            if (tgl) updateFarewellStatusBadge(tgl.checked);
+        } else {
+            showToast(`❌ Save failed: ${data.error || 'Unknown error'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error saving farewell settings");
+    }
+}
+
+async function sendTestFarewell() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+    try {
+        showToast("🚀 Sending test farewell card to Discord...");
+        const resp = await fetch(`/api/guild/${currentGuildId}/farewell/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(`🚪 Test card sent to #${data.channel_name}!`);
+        } else {
+            showToast(`❌ Test failed: ${data.error || 'Check bot permissions'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error sending test card");
+    }
+}
+
+// ───────────────────── ⚙️ Setup Event Listeners ─────────────────────
+
+function setupWelcomeAndFarewellEvents() {
+    // Sub-tab Navigation
+    const subJoin = document.getElementById('subtabBtnJoin');
+    const subLeave = document.getElementById('subtabBtnLeave');
+    const subFirst = document.getElementById('subtabBtnFirstChat');
+    if (subJoin) subJoin.addEventListener('click', () => switchWelcomeSubtab('join'));
+    if (subLeave) subLeave.addEventListener('click', () => switchWelcomeSubtab('leave'));
+    if (subFirst) subFirst.addEventListener('click', () => switchWelcomeSubtab('first_chat'));
+
+    // ── Welcome Listeners ──
+    const welcomeTgl = document.getElementById('welcomeToggle');
+    if (welcomeTgl) {
+        welcomeTgl.addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+            updateWelcomeStatusBadge(isChecked);
+            if (!currentGuildId) return showToast("⚠️ Select a server first!");
+            try {
+                const resp = await fetch(`/api/guild/${currentGuildId}/welcome/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: isChecked })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast(isChecked ? "🟢 Welcome greetings activated!" : "⏸️ Welcome greetings paused.");
+                }
+            } catch (err) {
+                showToast("❌ Error updating welcome status");
+            }
+        });
+    }
+
+    const welcomeInputs = ['welcomeChannelSelect', 'welcomeEmbedToggle', 'welcomeTitleInput', 'welcomeMsgInput', 'welcomeImageUrlInput', 'welcomeAvatarToggle', 'welcomePingToggle'];
+    welcomeInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateWelcomePreview);
+            el.addEventListener('change', updateWelcomePreview);
+        }
+    });
+
+    // Welcome Emojis
+    const wTitleEmojiBtn = document.getElementById('welcomeTitleEmojiBtn');
+    const wTitleInput = document.getElementById('welcomeTitleInput');
+    if (wTitleEmojiBtn && wTitleInput) {
+        wTitleEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById('welcomeTitleInput_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openEmojiPicker(wTitleEmojiBtn, (emojiVal) => {
+                    if (!emojiVal) return;
+                    insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                    wTitleEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 20);
+                    updateWelcomePreview();
+                });
+                return;
+            }
+            openEmojiPicker(wTitleEmojiBtn, (emojiVal) => {
+                if (!emojiVal) return;
+                wTitleInput.value += emojiVal;
+                wTitleEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 20);
+                updateWelcomePreview();
+            });
+        });
+    }
+
+    const wMsgEmojiBtn = document.getElementById('welcomeMsgEmojiBtn');
+    const wMsgInput = document.getElementById('welcomeMsgInput');
+    if (wMsgEmojiBtn && wMsgInput) {
+        wMsgEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById('welcomeMsgInput_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openEmojiPicker(wMsgEmojiBtn, (emojiVal) => {
+                    if (!emojiVal) return;
+                    insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                    updateWelcomePreview();
+                });
+                return;
+            }
+            openEmojiPicker(wMsgEmojiBtn, (emojiVal) => {
+                if (!emojiVal) return;
+                wMsgInput.value += emojiVal;
+                updateWelcomePreview();
+            });
+        });
+    }
+
+    // Welcome Channel Link Picker
+    const wChanPickerBtn = document.getElementById('welcomeChannelPickerBtn');
+    if (wChanPickerBtn && wMsgInput) {
+        wChanPickerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById('welcomeMsgInput_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openChannelLinkPicker(wChanPickerBtn, (chObj) => {
+                    if (!chObj) return;
+                    const token = `{link:#${chObj.name}}`;
+                    insertEmojiOrTextIntoRichEditor(richEl, token + ' ');
+                    updateWelcomePreview();
+                    showToast(`🔗 Inserted link for #${chObj.name}`);
+                });
+                return;
+            }
+            openChannelLinkPicker(wChanPickerBtn, (chObj) => {
+                if (!chObj) return;
+                wMsgInput.value += ` {link:#${chObj.name}} `;
+                updateWelcomePreview();
+                showToast(`🔗 Inserted link for #${chObj.name}`);
+            });
+        });
+    }
+
+    // Welcome Colors
+    const wColorPicker = document.getElementById('welcomeColorPicker');
+    if (wColorPicker) wColorPicker.addEventListener('input', (e) => setWelcomeColor(e.target.value));
+
+    const wHexInput = document.getElementById('welcomeHexInput');
+    if (wHexInput) {
+        wHexInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (/^#[0-9A-Fa-f]{6}$/.test(val)) setWelcomeColor(val);
+        });
+    }
+
+    document.querySelectorAll('.welcome-color-btn').forEach(btn => {
+        btn.addEventListener('click', () => setWelcomeColor(btn.dataset.color));
+    });
+
+    const saveWBtn = document.getElementById('saveWelcomeBtn');
+    if (saveWBtn) saveWBtn.addEventListener('click', saveWelcomeSettings);
+
+    const testWBtn = document.getElementById('testWelcomeBtn');
+    if (testWBtn) testWBtn.addEventListener('click', sendTestWelcome);
+
+    // ── Farewell Listeners ──
+    const farewellTgl = document.getElementById('farewellToggle');
+    if (farewellTgl) {
+        farewellTgl.addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+            updateFarewellStatusBadge(isChecked);
+            if (!currentGuildId) return showToast("⚠️ Select a server first!");
+            try {
+                const resp = await fetch(`/api/guild/${currentGuildId}/farewell/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: isChecked })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast(isChecked ? "🟢 Farewell notices activated!" : "⏸️ Farewell notices paused.");
+                }
+            } catch (err) {
+                showToast("❌ Error updating farewell status");
+            }
+        });
+    }
+
+    const farewellInputs = ['farewellChannelSelect', 'farewellIdentifierSelect', 'farewellEmbedToggle', 'farewellTitleInput', 'farewellMsgInput', 'farewellImageUrlInput', 'farewellAvatarToggle'];
+    farewellInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateFarewellPreview);
+            el.addEventListener('change', updateFarewellPreview);
+        }
+    });
+
+    // Farewell Emojis
+    const fTitleEmojiBtn = document.getElementById('farewellTitleEmojiBtn');
+    const fTitleInput = document.getElementById('farewellTitleInput');
+    if (fTitleEmojiBtn && fTitleInput) {
+        fTitleEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById('farewellTitleInput_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openEmojiPicker(fTitleEmojiBtn, (emojiVal) => {
+                    if (!emojiVal) return;
+                    insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                    fTitleEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 20);
+                    updateFarewellPreview();
+                });
+                return;
+            }
+            openEmojiPicker(fTitleEmojiBtn, (emojiVal) => {
+                if (!emojiVal) return;
+                fTitleInput.value += emojiVal;
+                fTitleEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 20);
+                updateFarewellPreview();
+            });
+        });
+    }
+
+    const fMsgEmojiBtn = document.getElementById('farewellMsgEmojiBtn');
+    const fMsgInput = document.getElementById('farewellMsgInput');
+    if (fMsgEmojiBtn && fMsgInput) {
+        fMsgEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById('farewellMsgInput_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openEmojiPicker(fMsgEmojiBtn, (emojiVal) => {
+                    if (!emojiVal) return;
+                    insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                    updateFarewellPreview();
+                });
+                return;
+            }
+            openEmojiPicker(fMsgEmojiBtn, (emojiVal) => {
+                if (!emojiVal) return;
+                fMsgInput.value += emojiVal;
+                updateFarewellPreview();
+            });
+        });
+    }
+
+    // Farewell Channel Link Picker
+    const fChanPickerBtn = document.getElementById('farewellChannelPickerBtn');
+    if (fChanPickerBtn && fMsgInput) {
+        fChanPickerBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const richEl = document.getElementById('farewellMsgInput_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openChannelLinkPicker(fChanPickerBtn, (chObj) => {
+                    if (!chObj) return;
+                    const token = `{link:#${chObj.name}}`;
+                    insertEmojiOrTextIntoRichEditor(richEl, token + ' ');
+                    updateFarewellPreview();
+                    showToast(`🔗 Inserted link for #${chObj.name}`);
+                });
+                return;
+            }
+            openChannelLinkPicker(fChanPickerBtn, (chObj) => {
+                if (!chObj) return;
+                fMsgInput.value += ` {link:#${chObj.name}} `;
+                updateFarewellPreview();
+                showToast(`🔗 Inserted link for #${chObj.name}`);
+            });
+        });
+    }
+
+    // Farewell Colors
+    const fColorPicker = document.getElementById('farewellColorPicker');
+    if (fColorPicker) fColorPicker.addEventListener('input', (e) => setFarewellColor(e.target.value));
+
+    const fHexInput = document.getElementById('farewellHexInput');
+    if (fHexInput) {
+        fHexInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (/^#[0-9A-Fa-f]{6}$/.test(val)) setFarewellColor(val);
+        });
+    }
+
+    document.querySelectorAll('.farewell-color-btn').forEach(btn => {
+        btn.addEventListener('click', () => setFarewellColor(btn.dataset.color));
+    });
+
+    const saveFBtn = document.getElementById('saveFarewellBtn');
+    if (saveFBtn) saveFBtn.addEventListener('click', saveFarewellSettings);
+
+    const testFBtn = document.getElementById('testFarewellBtn');
+    if (testFBtn) testFBtn.addEventListener('click', sendTestFarewell);
+}
 
 
 // ───────────────────── MODULE 10: AFK SYSTEM & PING TRACKER ─────────────────────
@@ -59199,6 +60013,7 @@ function setGwEmojiVisual(id, val) {
 
 
 
+            'gwEmojiHeader': '🎉',
             'gwEmojiPrize': '🎁',
 
 
@@ -59392,6 +60207,7 @@ function setGwEmojiVisual(id, val) {
 
 
 
+        'gwEmojiHeader': 'Header Announcement Icon',
         'gwEmojiPrize': 'Prize & Button Icon',
 
 
@@ -59914,6 +60730,12 @@ function updateGwPreview() {
 
 
     const prizeInput = document.getElementById('gwPrizeInput');
+    const headerEmojiVal = (document.getElementById('gwCreateHeaderEmojiInput')?.value.trim()) || (document.getElementById('gwEmojiHeader')?.value.trim()) || '🎉';
+    const simHeaderEl = document.getElementById('gwSimHeaderContent');
+    if (simHeaderEl) {
+        const renderedHdrEmoji = renderEmojiHtmlOrChar(headerEmojiVal, 16);
+        simHeaderEl.innerHTML = `<span style="display:inline-flex; align-items:center;">${renderedHdrEmoji}</span> <span style="font-weight:700; color:#ffffff;">New Giveaway</span> <span style="display:inline-flex; align-items:center;">${renderedHdrEmoji}</span>`;
+    }
 
 
 
@@ -61236,6 +62058,12 @@ async function loadGiveawaysData() {
 
 
 
+        setGwEmojiVisual('gwEmojiHeader', cfg.emoji_header || '🎉');
+        if (document.getElementById('gwCreateHeaderEmojiInput') && !document.getElementById('gwCreateHeaderEmojiInput').dataset.userModified) {
+            document.getElementById('gwCreateHeaderEmojiInput').value = cfg.emoji_header || '🎉';
+            const prev = document.getElementById('gwCreateHeaderEmojiPreview');
+            if (prev) prev.innerHTML = renderEmojiHtmlOrChar(cfg.emoji_header || '🎉', 20);
+        }
         setGwEmojiVisual('gwEmojiPrize', cfg.emoji_prize || '🎁');
 
 
@@ -63837,7 +64665,9 @@ async function saveGwConfig() {
 
 
 
-        emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
+        emoji_header: document.getElementById('gwEmojiHeader')?.value.trim() || '🎉',
+        emoji_header: document.getElementById('gwCreateHeaderEmojiInput')?.value.trim() || document.getElementById('gwEmojiHeader')?.value.trim() || '🎉',
+                emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
 
 
 
@@ -66288,6 +67118,35 @@ function setupGiveawayEvents() {
 
 
 
+    const createHeaderBtn = document.getElementById('gwCreateHeaderEmojiBtn');
+    const createHeaderPickerBtn = document.getElementById('gwCreateHeaderEmojiPickerBtn');
+    const createHeaderInput = document.getElementById('gwCreateHeaderEmojiInput');
+
+    const handleCreateHeaderEmojiPick = (targetBtn) => {
+        openEmojiPicker(targetBtn, (chosenEmoji) => {
+            if (!chosenEmoji) return;
+            if (createHeaderInput) {
+                createHeaderInput.value = chosenEmoji;
+                createHeaderInput.dataset.userModified = 'true';
+            }
+            const prev = document.getElementById('gwCreateHeaderEmojiPreview');
+            if (prev) prev.innerHTML = renderEmojiHtmlOrChar(chosenEmoji, 20);
+            updateGwPreview();
+        });
+    };
+
+    if (createHeaderBtn) createHeaderBtn.addEventListener('click', (e) => { e.preventDefault(); handleCreateHeaderEmojiPick(createHeaderBtn); });
+    if (createHeaderPickerBtn) createHeaderPickerBtn.addEventListener('click', (e) => { e.preventDefault(); handleCreateHeaderEmojiPick(createHeaderPickerBtn); });
+    if (createHeaderInput) {
+        createHeaderInput.addEventListener('input', () => {
+            createHeaderInput.dataset.userModified = 'true';
+            const val = createHeaderInput.value.trim() || '🎉';
+            const prev = document.getElementById('gwCreateHeaderEmojiPreview');
+            if (prev) prev.innerHTML = renderEmojiHtmlOrChar(val, 20);
+            updateGwPreview();
+        });
+    }
+
     const launchBtn = document.getElementById('gwLaunchBtn');
 
 
@@ -66320,7 +67179,7 @@ function setupGiveawayEvents() {
 
 
 
-    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(id => {
+    ['gwEmojiHeader', 'gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(id => {
 
 
 
@@ -66504,7 +67363,7 @@ function setupGiveawayEvents() {
 
 
 
-    ['gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(bindGwEmojiTile);
+    ['gwEmojiHeader', 'gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(bindGwEmojiTile);
 
 
 
@@ -66584,6 +67443,7 @@ function setupGiveawayEvents() {
 
 
 
+            setGwEmojiVisual('gwEmojiHeader', '🎉');
             setGwEmojiVisual('gwEmojiPrize', '🎁');
 
 

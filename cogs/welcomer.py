@@ -5,7 +5,9 @@ from discord import app_commands
 from datetime import datetime, timezone
 from database import db
 from response_utils import make_box_embed, reply_box
+from emoji_utils import replace_plain_emojis
 
+# ──────────────── Welcome On-Join Defaults ────────────────
 DEFAULT_WELCOME_TITLE = "WELCOME TO {server}!"
 DEFAULT_WELCOME_MSG = (
     "Hey {user}, welcome to **{server}**! 🎉\n\n"
@@ -14,9 +16,71 @@ DEFAULT_WELCOME_MSG = (
     "📌 Review {rules} to get started and enjoy your stay."
 )
 DEFAULT_WELCOME_COLOR = "success"
+DEFAULT_WELCOME_HEX = "#10b981"
+
+# ──────────────── Farewell On-Leave Defaults ────────────────
+DEFAULT_FAREWELL_TITLE = "GOODBYE FROM {server}"
+DEFAULT_FAREWELL_MSG = (
+    "**{user_display}** has left the server. 👋\n\n"
+    "> We're sad to see you go! Thank you for being a part of our community.\n\n"
+    "📉 We now have **{member_count}** members remaining."
+)
+DEFAULT_FAREWELL_COLOR = "error"
+DEFAULT_FAREWELL_HEX = "#ef4444"
+
+# ──────────────── First Chat Welcome Defaults ────────────────
+DEFAULT_FIRST_WELCOME_TITLE = "WELCOME TO {server}!"
+DEFAULT_FIRST_WELCOME_MSG = (
+    "Hey {user}, welcome to **{server}**! 🎉\n\n"
+    "> We're thrilled to have you here with us.\n"
+    "> Feel free to introduce yourself and say hello!\n\n"
+    "📌 Review {rules} to get started and enjoy your stay."
+)
+
+# ──────────────── Helper Configurations ────────────────
 
 def get_welcome_config(gid: str) -> dict:
-    """Returns the welcome configuration for a guild with defaults populated."""
+    """Returns the server-join welcome configuration for a guild with defaults."""
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    cfg = db.welcome.get(gid_str) or db.welcome.get(gid_int) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "channel_id": cfg.get("channel_id", None),
+        "title": cfg.get("title", DEFAULT_WELCOME_TITLE),
+        "message": cfg.get("message", DEFAULT_WELCOME_MSG),
+        "image_url": cfg.get("image_url", "").strip(),
+        "show_avatar": bool(cfg.get("show_avatar", True)),
+        "ping_user": bool(cfg.get("ping_user", True)),
+        "is_embed": bool(cfg.get("is_embed", True)),
+        "status_color": cfg.get("status_color", DEFAULT_WELCOME_COLOR),
+        "custom_hex": cfg.get("custom_hex", DEFAULT_WELCOME_HEX)
+    }
+
+def get_farewell_config(gid: str) -> dict:
+    """Returns the server-leave farewell configuration for a guild with defaults."""
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    cfg = db.farewell.get(gid_str) or db.farewell.get(gid_int) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "channel_id": cfg.get("channel_id", None),
+        "title": cfg.get("title", DEFAULT_FAREWELL_TITLE),
+        "message": cfg.get("message", DEFAULT_FAREWELL_MSG),
+        "image_url": cfg.get("image_url", "").strip(),
+        "show_avatar": bool(cfg.get("show_avatar", True)),
+        "identifier_mode": cfg.get("identifier_mode", "name"),  # "name", "id", "mention", "both"
+        "is_embed": bool(cfg.get("is_embed", True)),
+        "status_color": cfg.get("status_color", DEFAULT_FAREWELL_COLOR),
+        "custom_hex": cfg.get("custom_hex", DEFAULT_FAREWELL_HEX)
+    }
+
+def get_first_welcome_config(gid: str) -> dict:
+    """Returns the first-chat welcome configuration for a guild with defaults populated."""
     gid_str = str(gid)
     gid_int = int(gid) if str(gid).isdigit() else None
     cfg = db.first_welcome.get(gid_str) or db.first_welcome.get(gid_int) or {}
@@ -25,10 +89,10 @@ def get_welcome_config(gid: str) -> dict:
     return {
         "enabled": bool(cfg.get("enabled", False)),
         "channel_id": cfg.get("channel_id", None),
-        "title": cfg.get("title", DEFAULT_WELCOME_TITLE),
-        "message": cfg.get("message", DEFAULT_WELCOME_MSG),
-        "show_avatar": cfg.get("show_avatar", True),
-        "status_color": cfg.get("status_color", DEFAULT_WELCOME_COLOR),
+        "title": cfg.get("title", DEFAULT_FIRST_WELCOME_TITLE),
+        "message": cfg.get("message", DEFAULT_FIRST_WELCOME_MSG),
+        "show_avatar": bool(cfg.get("show_avatar", True)),
+        "status_color": cfg.get("status_color", "success"),
         "custom_hex": cfg.get("custom_hex", "#10b981")
     }
 
@@ -67,24 +131,20 @@ def format_welcome_text(text: str, member: discord.Member, guild: discord.Guild,
         if not clean:
             return "#channel"
 
-        # 1. Match by channel ID if numeric
         if clean.isdigit():
             ch = guild.get_channel(int(clean))
             if ch:
                 return get_channel_markdown_link(ch)
 
-        # 2. Match exact name
         found_ch = discord.utils.get(guild.text_channels, name=clean)
         if found_ch:
             return get_channel_markdown_link(found_ch)
 
-        # 3. Match case-insensitive
         clean_lower = clean.lower()
         for ch in guild.text_channels:
             if ch.name.lower() == clean_lower:
                 return get_channel_markdown_link(ch)
 
-        # 4. Match stripped symbols (ignoring unicode dashes, emojis, dots, spaces)
         def strip_symbols(s):
             return re.sub(r'[^\w]+', '', s, flags=re.UNICODE).lower()
         target_stripped = strip_symbols(clean)
@@ -100,11 +160,13 @@ def format_welcome_text(text: str, member: discord.Member, guild: discord.Guild,
 
     res = re.sub(r'\{link:([^\}]+)\}', replace_channel_pattern, text, flags=re.IGNORECASE)
 
-    # Replace standard placeholders
+    # Standard placeholders
     res = (
         res.replace("{user}", member.mention)
            .replace("{username}", member.display_name)
            .replace("{name}", member.name)
+           .replace("{id}", str(member.id))
+           .replace("{user_id}", str(member.id))
            .replace("{server}", guild.name)
            .replace("{member_count}", f"{guild.member_count:,}")
            .replace("{rules}", rules_link)
@@ -114,24 +176,103 @@ def format_welcome_text(text: str, member: discord.Member, guild: discord.Guild,
            .replace("{channel_link}", channel_link)
            .replace("{channel_box}", channel.mention if channel else "#chat")
     )
+
+    # Resolve server custom emojis if formatted with :emoji_name:
+    res = replace_plain_emojis(res, guild=guild)
     return res
 
+def format_farewell_text(text: str, member: discord.Member, guild: discord.Guild, channel: discord.abc.GuildChannel = None, identifier_mode: str = "name") -> str:
+    """
+    Replaces placeholders for a departing member with intelligent fallbacks.
+    When a member leaves, they may not be cached in memory or may only have their snowflake ID.
+    """
+    if not text:
+        return ""
+
+    channel_link = get_channel_markdown_link(channel) if channel else "#chat"
+
+    # Member information extraction with resilient fallbacks
+    user_id = str(getattr(member, "id", "Unknown"))
+    user_name = getattr(member, "name", None) or "User"
+    display_name = getattr(member, "display_name", None) or getattr(member, "global_name", None) or user_name
+
+    # Determine user_display based on identifier_mode
+    mode = str(identifier_mode).lower().strip()
+    if mode == "id":
+        user_display = user_id
+    elif mode == "mention":
+        user_display = f"<@{user_id}>"
+    elif mode == "both":
+        if display_name and display_name.lower() not in ("user", "unknown"):
+            user_display = f"{display_name} ({user_id})"
+        else:
+            user_display = f"User ID: {user_id}"
+    else:  # "name" (default: name with ID fallback)
+        if display_name and display_name.lower() not in ("user", "unknown"):
+            user_display = display_name
+        else:
+            user_display = f"User ID: {user_id}"
+
+    # Dynamic channel pattern: {link:channel-name}
+    def replace_channel_pattern(m):
+        raw = m.group(1).strip()
+        clean = raw.lstrip("#").strip()
+        if not clean:
+            return "#channel"
+        if clean.isdigit():
+            ch = guild.get_channel(int(clean))
+            if ch:
+                return get_channel_markdown_link(ch)
+        found_ch = discord.utils.get(guild.text_channels, name=clean)
+        if found_ch:
+            return get_channel_markdown_link(found_ch)
+        clean_lower = clean.lower()
+        for ch in guild.text_channels:
+            if ch.name.lower() == clean_lower:
+                return get_channel_markdown_link(ch)
+        return f"#{clean}"
+
+    res = re.sub(r'\{link:([^\}]+)\}', replace_channel_pattern, text, flags=re.IGNORECASE)
+
+    # Standard placeholders
+    res = (
+        res.replace("{user_display}", user_display)
+           .replace("{user}", f"<@{user_id}>")
+           .replace("{username}", display_name)
+           .replace("{name}", user_name)
+           .replace("{id}", user_id)
+           .replace("{user_id}", user_id)
+           .replace("{server}", guild.name)
+           .replace("{member_count}", f"{guild.member_count:,}")
+           .replace("{channel}", channel_link)
+           .replace("{channel_link}", channel_link)
+           .replace("{channel_box}", channel.mention if channel else "#chat")
+    )
+
+    # Resolve server custom emojis if formatted with :emoji_name:
+    res = replace_plain_emojis(res, guild=guild)
+    return res
+
+def parse_color_hex(custom_hex: str, default: int = 0x10b981) -> int:
+    """Parses a hex string into an integer color code with fallback."""
+    if custom_hex and str(custom_hex).startswith("#") and len(custom_hex) == 7:
+        try:
+            return int(custom_hex[1:], 16)
+        except Exception:
+            pass
+    return default
+
 def build_welcome_embed(member: discord.Member, guild: discord.Guild, cfg: dict, channel: discord.abc.GuildChannel = None) -> discord.Embed:
-    """Builds a polished, vertically proportioned welcome box embed with member avatar thumbnail."""
+    """Builds a polished welcome embed with avatar thumbnail and optional banner image/GIF."""
     title_raw = cfg.get("title", DEFAULT_WELCOME_TITLE)
     msg_raw = cfg.get("message", DEFAULT_WELCOME_MSG)
     show_avatar = cfg.get("show_avatar", True)
-    custom_hex = cfg.get("custom_hex", "#10b981")
+    custom_hex = cfg.get("custom_hex", DEFAULT_WELCOME_HEX)
+    image_url = str(cfg.get("image_url", "")).strip()
 
     formatted_title = format_welcome_text(title_raw, member, guild, channel)
     formatted_msg = format_welcome_text(msg_raw, member, guild, channel)
-
-    color_val = 0x10b981
-    if custom_hex and str(custom_hex).startswith("#") and len(custom_hex) == 7:
-        try:
-            color_val = int(custom_hex[1:], 16)
-        except Exception:
-            color_val = 0x10b981
+    color_val = parse_color_hex(custom_hex, 0x10b981)
 
     embed = discord.Embed(
         title=formatted_title,
@@ -140,14 +281,16 @@ def build_welcome_embed(member: discord.Member, guild: discord.Guild, cfg: dict,
         timestamp=datetime.now(timezone.utc)
     )
 
-    if member.display_avatar:
+    if hasattr(member, "display_avatar") and member.display_avatar:
         embed.set_author(name=f"{member.display_name} joined!", icon_url=member.display_avatar.url)
+        if show_avatar:
+            embed.set_thumbnail(url=member.display_avatar.url)
     else:
-        embed.set_author(name=f"{member.display_name} joined!")
+        embed.set_author(name=f"{getattr(member, 'display_name', 'Member')} joined!")
 
-    # Member avatar thumbnail on the right squeezes description horizontally into a clean box
-    if show_avatar and member.display_avatar:
-        embed.set_thumbnail(url=member.display_avatar.url)
+    # Embedded Image, GIF, or file banner
+    if image_url and (image_url.startswith("http://") or image_url.startswith("https://")):
+        embed.set_image(url=image_url)
 
     footer_text = f"Member #{guild.member_count:,} • {guild.name}"
     if guild.icon:
@@ -157,14 +300,53 @@ def build_welcome_embed(member: discord.Member, guild: discord.Guild, cfg: dict,
 
     return embed
 
-async def count_member_past_messages(member: discord.Member, message: discord.Message, cfg: dict = None) -> int:
-    """
-    Counts the number of past messages sent by this member across the current channel
-    and main server chat channels, without relying on any XP or leveling system.
-    """
-    prior_msgs = 0
+def build_farewell_embed(member: discord.Member, guild: discord.Guild, cfg: dict, channel: discord.abc.GuildChannel = None) -> discord.Embed:
+    """Builds a polished farewell embed with avatar thumbnail and optional banner image/GIF."""
+    title_raw = cfg.get("title", DEFAULT_FAREWELL_TITLE)
+    msg_raw = cfg.get("message", DEFAULT_FAREWELL_MSG)
+    show_avatar = cfg.get("show_avatar", True)
+    identifier_mode = cfg.get("identifier_mode", "name")
+    custom_hex = cfg.get("custom_hex", DEFAULT_FAREWELL_HEX)
+    image_url = str(cfg.get("image_url", "")).strip()
 
-    # 1. Scan recent history of the current channel
+    formatted_title = format_farewell_text(title_raw, member, guild, channel, identifier_mode)
+    formatted_msg = format_farewell_text(msg_raw, member, guild, channel, identifier_mode)
+    color_val = parse_color_hex(custom_hex, 0xef4444)
+
+    embed = discord.Embed(
+        title=formatted_title,
+        description=formatted_msg,
+        color=color_val,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+    user_name = getattr(member, "name", "User")
+    display_name = getattr(member, "display_name", None) or getattr(member, "global_name", None) or user_name
+
+    if hasattr(member, "display_avatar") and member.display_avatar:
+        embed.set_author(name=f"{display_name} left", icon_url=member.display_avatar.url)
+        if show_avatar:
+            embed.set_thumbnail(url=member.display_avatar.url)
+    else:
+        embed.set_author(name=f"{display_name} left")
+
+    # Embedded Image, GIF, or file banner
+    if image_url and (image_url.startswith("http://") or image_url.startswith("https://")):
+        embed.set_image(url=image_url)
+
+    footer_text = f"User ID: {getattr(member, 'id', 'Unknown')} • {guild.name}"
+    if guild.icon:
+        embed.set_footer(text=footer_text, icon_url=guild.icon.url)
+    else:
+        embed.set_footer(text=footer_text)
+
+    return embed
+
+# ──────────────── First-Chat Member History Helpers ────────────────
+
+async def count_member_past_messages(member: discord.Member, message: discord.Message, cfg: dict = None) -> int:
+    """Counts member past messages across channels to detect established members."""
+    prior_msgs = 0
     try:
         async for past_msg in message.channel.history(limit=50, before=message):
             if past_msg.author.id == member.id:
@@ -174,7 +356,6 @@ async def count_member_past_messages(member: discord.Member, message: discord.Me
     except Exception:
         pass
 
-    # 2. If fewer than 2 found in current channel, check the target welcome channel or #general
     candidate_channels = []
     if cfg:
         target_cid = cfg.get("channel_id")
@@ -206,11 +387,7 @@ async def count_member_past_messages(member: discord.Member, message: discord.Me
     return prior_msgs
 
 async def is_established_member(member: discord.Member, message: discord.Message, cfg: dict = None) -> bool:
-    """
-    Determines whether a member is an established / old member who should NOT be greeted.
-    Directly checks the amount of chat that the member has done so far (message history >= 2).
-    Does NOT rely on Friday XP system to ensure compatibility across all servers.
-    """
+    """Determines whether a member is an established / old member who should NOT be greeted on first chat."""
     if member.bot or not message.guild:
         return True
 
@@ -218,19 +395,15 @@ async def is_established_member(member: discord.Member, message: discord.Message
     uid = str(member.id)
     guild_history = db.first_chat_welcomes.setdefault(gid, [])
 
-    # 1. Already processed in welcome history
     if uid in guild_history:
         return True
 
-    # 2. Direct chat count check: counts how many texts/messages this specific member has done so far
-    # If user has sent 2 or more messages, consider them an old member!
     prior_msgs = await count_member_past_messages(member, message, cfg)
     if prior_msgs >= 2:
         guild_history.append(uid)
         db.save_data()
         return True
 
-    # 3. Server tenure check: joined over 7 days ago
     if member.joined_at:
         days_in_guild = (datetime.now(timezone.utc) - member.joined_at).total_seconds() / 86400.0
         if days_in_guild > 7:
@@ -238,7 +411,6 @@ async def is_established_member(member: discord.Member, message: discord.Message
             db.save_data()
             return True
 
-    # 4. Roles check: has 2+ custom non-default roles, or staff/moderator permissions
     custom_roles = [
         r for r in member.roles
         if hasattr(r, 'is_default') and not r.is_default() and not (hasattr(r, 'is_premium_subscriber') and r.is_premium_subscriber()) and not (hasattr(r, 'is_integration') and r.is_integration()) and not (hasattr(r, 'is_bot_managed') and r.is_bot_managed())
@@ -255,15 +427,531 @@ async def is_established_member(member: discord.Member, message: discord.Message
         db.save_data()
         return True
 
-    # Genuine new member sending their first message!
     return False
 
-class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
-    """Greets new members on their very first message in the server or general chat."""
+# ─────────────────────────────────────────────────────────────
+# 🌟 WELCOMER & FAREWELL COG
+# ─────────────────────────────────────────────────────────────
+
+class WelcomerCog(commands.Cog, name="Welcomer"):
+    """Comprehensive Welcome and Farewell system featuring rich embed cards, animated GIFs, and custom formats."""
     def __init__(self, bot):
         self.bot = bot
 
-    # Slash Command Group: /first_welcome strictly protected with Administrator permissions
+    # ══════════════════════════════════════════════════════════════
+    # 🌟 /welcome COMMAND GROUP (Server Join Greetings)
+    # ══════════════════════════════════════════════════════════════
+    welcome_group = app_commands.Group(
+        name="welcome",
+        description="Configure server-join welcome greetings for new members",
+        default_permissions=discord.Permissions(administrator=True)
+    )
+
+    @welcome_group.command(name="setup", description="Complete setup for server-join welcome greetings.")
+    @app_commands.describe(
+        channel="Destination channel for welcome cards (defaults to current channel if blank)",
+        message="Custom message template ({user}, {username}, {server}, {member_count}, {rules}, {channel})",
+        title="Custom card title template",
+        image="URL to banner image or animated GIF",
+        embed="Send as rich embed card (True) or plain chat text (False)",
+        ping="Ping/mention the new member in chat (True/False)"
+    )
+    async def welcome_setup(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel = None,
+        message: str = None,
+        title: str = None,
+        image: str = None,
+        embed: bool = True,
+        ping: bool = True
+    ):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        target_channel = channel or interaction.channel
+        gid = str(interaction.guild.id)
+        if gid not in db.welcome:
+            db.welcome[gid] = {}
+
+        db.welcome[gid]["channel_id"] = str(target_channel.id)
+        db.welcome[gid]["enabled"] = True
+        db.welcome[gid]["is_embed"] = embed
+        db.welcome[gid]["ping_user"] = ping
+        if message is not None:
+            db.welcome[gid]["message"] = message
+        if title is not None:
+            db.welcome[gid]["title"] = title
+        if image is not None:
+            clean_img = image.strip()
+            db.welcome[gid]["image_url"] = "" if clean_img.lower() in ("none", "remove", "clear", "0") else clean_img
+
+        db.save_data()
+
+        cfg = get_welcome_config(gid)
+        summary = (
+            f"• **Status:** 🟢 Active\n"
+            f"• **Channel:** {target_channel.mention}\n"
+            f"• **Card Format:** `{'Rich Embed' if cfg.get('is_embed') else 'Plain Text'}`\n"
+            f"• **Ping Member:** `{'Enabled' if cfg.get('ping_user') else 'Disabled'}`\n"
+            f"• **Banner Image/GIF:** `{'Configured' if cfg.get('image_url') else 'None'}`\n\n"
+            f"Friday will now warmly greet every newly joined member in {target_channel.mention}!"
+        )
+        await reply_box(interaction, summary, title="WELCOME SYSTEM CONFIGURED", status="success", ephemeral=True)
+
+    @welcome_group.command(name="channel", description="Set or change the welcome greetings destination channel.")
+    @app_commands.describe(channel="Target channel (leave blank to use current channel)")
+    async def welcome_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        target_channel = channel or interaction.channel
+        gid = str(interaction.guild.id)
+        if gid not in db.welcome:
+            db.welcome[gid] = {}
+
+        db.welcome[gid]["channel_id"] = str(target_channel.id)
+        db.welcome[gid]["enabled"] = True
+        db.save_data()
+
+        await reply_box(
+            interaction,
+            f"• **Welcome Channel Set:** {target_channel.mention}\n• **Status:** Active\nNew members will be greeted here upon joining.",
+            title="WELCOME CHANNEL UPDATED",
+            status="success",
+            ephemeral=True
+        )
+
+    @welcome_group.command(name="message", description="Update the welcome message template.")
+    @app_commands.describe(template="New message (supports {user}, {username}, {server}, {member_count}, {rules}, {channel})")
+    async def welcome_message(self, interaction: discord.Interaction, template: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.welcome:
+            db.welcome[gid] = {}
+
+        db.welcome[gid]["message"] = template
+        db.welcome[gid]["enabled"] = True
+        db.save_data()
+
+        await reply_box(
+            interaction,
+            f"• **Welcome Message Saved:**\n>>> {template}",
+            title="WELCOME TEMPLATE UPDATED",
+            status="success",
+            ephemeral=True
+        )
+
+    @welcome_group.command(name="title", description="Update the welcome embed title template.")
+    @app_commands.describe(title="Card title template (supports {server}, {user}, {username})")
+    async def welcome_title(self, interaction: discord.Interaction, title: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.welcome:
+            db.welcome[gid] = {}
+
+        db.welcome[gid]["title"] = title
+        db.save_data()
+
+        await reply_box(
+            interaction,
+            f"• **Welcome Title Saved:** `{title}`",
+            title="WELCOME TITLE UPDATED",
+            status="success",
+            ephemeral=True
+        )
+
+    @welcome_group.command(name="image", description="Set or remove the welcome banner image / animated GIF.")
+    @app_commands.describe(url="Direct URL to image or GIF (type 'none' to remove)")
+    async def welcome_image(self, interaction: discord.Interaction, url: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.welcome:
+            db.welcome[gid] = {}
+
+        clean_url = url.strip()
+        if clean_url.lower() in ("none", "remove", "clear", "0"):
+            db.welcome[gid]["image_url"] = ""
+            msg = "• Welcome banner image/GIF has been **removed**."
+        else:
+            db.welcome[gid]["image_url"] = clean_url
+            msg = f"• Welcome banner image/GIF updated:\n<{clean_url}>"
+
+        db.save_data()
+        await reply_box(interaction, msg, title="WELCOME IMAGE UPDATED", status="success", ephemeral=True)
+
+    @welcome_group.command(name="toggle", description="Enable or disable server-join welcome greetings.")
+    @app_commands.describe(status="Choose whether to enable or disable welcome greetings")
+    @app_commands.choices(status=[
+        app_commands.Choice(name="Enable Welcome Greetings", value="on"),
+        app_commands.Choice(name="Disable Welcome Greetings", value="off")
+    ])
+    async def welcome_toggle(self, interaction: discord.Interaction, status: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.welcome:
+            db.welcome[gid] = {}
+
+        is_on = (status == "on")
+        db.welcome[gid]["enabled"] = is_on
+        db.save_data()
+
+        if is_on:
+            await reply_box(interaction, "• Server-join welcome greetings are now **ACTIVE**.", title="WELCOME ACTIVATED", status="success", ephemeral=True)
+        else:
+            await reply_box(interaction, "• Server-join welcome greetings are now **DISABLED**.", title="WELCOME PAUSED", status="warning", ephemeral=True)
+
+    @welcome_group.command(name="status", description="Review current server-join welcome settings.")
+    async def welcome_status(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        cfg = get_welcome_config(gid)
+
+        chan_id = cfg.get("channel_id")
+        chan_text = f"<#{chan_id}>" if chan_id else "`Not Set (Disabled)`"
+        status_text = "🟢 Active" if cfg.get("enabled") else "🔴 Disabled"
+
+        desc = (
+            f"• **System Status:** {status_text}\n"
+            f"• **Destination Channel:** {chan_text}\n"
+            f"• **Card Format:** `{'Rich Embed' if cfg.get('is_embed') else 'Plain Text'}`\n"
+            f"• **Avatar Thumbnail:** `{'Enabled' if cfg.get('show_avatar') else 'Disabled'}`\n"
+            f"• **Ping Member:** `{'Enabled' if cfg.get('ping_user') else 'Disabled'}`\n"
+            f"• **Theme Accent:** `{cfg.get('custom_hex', '#10b981')}`\n"
+            f"• **Banner Image/GIF:** `{'Yes' if cfg.get('image_url') else 'None'}`\n\n"
+            f"**Title Template:**\n`{cfg.get('title')}`\n\n"
+            f"**Message Template:**\n>>> {cfg.get('message')}"
+        )
+
+        embed = make_box_embed(title="WELCOME SYSTEM STATUS", description=desc, status="info", footer="Friday Welcomer")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @welcome_group.command(name="test", description="Send a test welcome card into the configured channel or current channel.")
+    async def welcome_test(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        cfg = get_welcome_config(gid)
+
+        target_ch = None
+        if cfg.get("channel_id"):
+            target_ch = interaction.guild.get_channel(int(cfg["channel_id"]))
+        if not target_ch:
+            target_ch = interaction.channel
+
+        if cfg.get("is_embed", True):
+            embed = build_welcome_embed(interaction.user, interaction.guild, cfg, target_ch)
+            content = f"👋 **[Welcome Preview]** Welcome {interaction.user.mention}!" if cfg.get("ping_user", True) else None
+            await target_ch.send(content=content, embed=embed)
+        else:
+            text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), interaction.user, interaction.guild, target_ch)
+            await target_ch.send(content=f"🧪 **[Test Welcome Message]**\n{text}")
+
+        await reply_box(
+            interaction,
+            f"• Test welcome card dispatched to {target_ch.mention}!",
+            title="TEST DISPATCHED",
+            status="success",
+            ephemeral=True
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 🚪 /farewell COMMAND GROUP (Server Leave Messages)
+    # ══════════════════════════════════════════════════════════════
+    farewell_group = app_commands.Group(
+        name="farewell",
+        description="Configure farewell messages when members leave the server",
+        default_permissions=discord.Permissions(administrator=True)
+    )
+
+    @farewell_group.command(name="setup", description="Complete setup for server-leave farewell announcements.")
+    @app_commands.describe(
+        channel="Destination channel for farewell notices (defaults to current channel if blank)",
+        message="Custom message template ({user_display}, {username}, {id}, {server}, {member_count}, {channel})",
+        title="Custom card title template",
+        image="URL to farewell image or animated GIF",
+        identifier="How to display the leaving member (Username, ID Only, Mention, Both)",
+        embed="Send as rich embed card (True) or plain chat text (False)"
+    )
+    @app_commands.choices(identifier=[
+        app_commands.Choice(name="Username (Fallback to User ID if not cached)", value="name"),
+        app_commands.Choice(name="User ID Only (Numeric Snowflake ID)", value="id"),
+        app_commands.Choice(name="User Mention (<@ID>)", value="mention"),
+        app_commands.Choice(name="Both Username + User ID", value="both")
+    ])
+    async def farewell_setup(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel = None,
+        message: str = None,
+        title: str = None,
+        image: str = None,
+        identifier: str = "name",
+        embed: bool = True
+    ):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        target_channel = channel or interaction.channel
+        gid = str(interaction.guild.id)
+        if gid not in db.farewell:
+            db.farewell[gid] = {}
+
+        db.farewell[gid]["channel_id"] = str(target_channel.id)
+        db.farewell[gid]["enabled"] = True
+        db.farewell[gid]["is_embed"] = embed
+        db.farewell[gid]["identifier_mode"] = identifier
+        if message is not None:
+            db.farewell[gid]["message"] = message
+        if title is not None:
+            db.farewell[gid]["title"] = title
+        if image is not None:
+            clean_img = image.strip()
+            db.farewell[gid]["image_url"] = "" if clean_img.lower() in ("none", "remove", "clear", "0") else clean_img
+
+        db.save_data()
+
+        cfg = get_farewell_config(gid)
+        summary = (
+            f"• **Status:** 🟢 Active\n"
+            f"• **Channel:** {target_channel.mention}\n"
+            f"• **Member Identifier Mode:** `{identifier}`\n"
+            f"• **Card Format:** `{'Rich Embed' if cfg.get('is_embed') else 'Plain Text'}`\n"
+            f"• **Banner Image/GIF:** `{'Configured' if cfg.get('image_url') else 'None'}`\n\n"
+            f"Friday will now post a farewell notice whenever someone leaves {interaction.guild.name}."
+        )
+        await reply_box(interaction, summary, title="FAREWELL SYSTEM CONFIGURED", status="success", ephemeral=True)
+
+    @farewell_group.command(name="channel", description="Set or change the farewell notices destination channel.")
+    @app_commands.describe(channel="Target channel (leave blank to use current channel)")
+    async def farewell_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        target_channel = channel or interaction.channel
+        gid = str(interaction.guild.id)
+        if gid not in db.farewell:
+            db.farewell[gid] = {}
+
+        db.farewell[gid]["channel_id"] = str(target_channel.id)
+        db.farewell[gid]["enabled"] = True
+        db.save_data()
+
+        await reply_box(
+            interaction,
+            f"• **Farewell Channel Set:** {target_channel.mention}\n• **Status:** Active\nDeparting member notices will be posted here.",
+            title="FAREWELL CHANNEL UPDATED",
+            status="success",
+            ephemeral=True
+        )
+
+    @farewell_group.command(name="message", description="Update the farewell message template.")
+    @app_commands.describe(template="New message (supports {user_display}, {username}, {id}, {server}, {member_count}, {channel})")
+    async def farewell_message(self, interaction: discord.Interaction, template: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.farewell:
+            db.farewell[gid] = {}
+
+        db.farewell[gid]["message"] = template
+        db.farewell[gid]["enabled"] = True
+        db.save_data()
+
+        await reply_box(
+            interaction,
+            f"• **Farewell Message Saved:**\n>>> {template}",
+            title="FAREWELL TEMPLATE UPDATED",
+            status="success",
+            ephemeral=True
+        )
+
+    @farewell_group.command(name="title", description="Update the farewell embed title template.")
+    @app_commands.describe(title="Card title template (supports {server}, {user_display}, {username})")
+    async def farewell_title(self, interaction: discord.Interaction, title: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.farewell:
+            db.farewell[gid] = {}
+
+        db.farewell[gid]["title"] = title
+        db.save_data()
+
+        await reply_box(
+            interaction,
+            f"• **Farewell Title Saved:** `{title}`",
+            title="FAREWELL TITLE UPDATED",
+            status="success",
+            ephemeral=True
+        )
+
+    @farewell_group.command(name="identifier", description="Choose how departing members are identified (Name, ID, Mention, Both).")
+    @app_commands.describe(mode="Identification method for leaving members")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="Username (Fallback to User ID if not cached)", value="name"),
+        app_commands.Choice(name="User ID Only (Numeric Snowflake ID)", value="id"),
+        app_commands.Choice(name="User Mention (<@ID>)", value="mention"),
+        app_commands.Choice(name="Both Username + User ID", value="both")
+    ])
+    async def farewell_identifier(self, interaction: discord.Interaction, mode: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.farewell:
+            db.farewell[gid] = {}
+
+        db.farewell[gid]["identifier_mode"] = mode
+        db.save_data()
+
+        labels = {
+            "name": "Username with User ID Fallback",
+            "id": "User Snowflake ID Only",
+            "mention": "User Mention (<@ID>)",
+            "both": "Both Username and User ID"
+        }
+        await reply_box(
+            interaction,
+            f"• **Farewell Identifier Mode Set:** `{labels.get(mode, mode)}`\nDeparting members will now be represented using this format.",
+            title="IDENTIFIER MODE SAVED",
+            status="success",
+            ephemeral=True
+        )
+
+    @farewell_group.command(name="image", description="Set or remove the farewell banner image / animated GIF.")
+    @app_commands.describe(url="Direct URL to image or GIF (type 'none' to remove)")
+    async def farewell_image(self, interaction: discord.Interaction, url: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.farewell:
+            db.farewell[gid] = {}
+
+        clean_url = url.strip()
+        if clean_url.lower() in ("none", "remove", "clear", "0"):
+            db.farewell[gid]["image_url"] = ""
+            msg = "• Farewell banner image/GIF has been **removed**."
+        else:
+            db.farewell[gid]["image_url"] = clean_url
+            msg = f"• Farewell banner image/GIF updated:\n<{clean_url}>"
+
+        db.save_data()
+        await reply_box(interaction, msg, title="FAREWELL IMAGE UPDATED", status="success", ephemeral=True)
+
+    @farewell_group.command(name="toggle", description="Enable or disable server-leave farewell messages.")
+    @app_commands.describe(status="Choose whether to enable or disable farewell messages")
+    @app_commands.choices(status=[
+        app_commands.Choice(name="Enable Farewell Messages", value="on"),
+        app_commands.Choice(name="Disable Farewell Messages", value="off")
+    ])
+    async def farewell_toggle(self, interaction: discord.Interaction, status: str):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.farewell:
+            db.farewell[gid] = {}
+
+        is_on = (status == "on")
+        db.farewell[gid]["enabled"] = is_on
+        db.save_data()
+
+        if is_on:
+            await reply_box(interaction, "• Server-leave farewell announcements are now **ACTIVE**.", title="FAREWELL ACTIVATED", status="success", ephemeral=True)
+        else:
+            await reply_box(interaction, "• Server-leave farewell announcements are now **DISABLED**.", title="FAREWELL PAUSED", status="warning", ephemeral=True)
+
+    @farewell_group.command(name="status", description="Review current server-leave farewell settings.")
+    async def farewell_status(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        cfg = get_farewell_config(gid)
+
+        chan_id = cfg.get("channel_id")
+        chan_text = f"<#{chan_id}>" if chan_id else "`Not Set (Disabled)`"
+        status_text = "🟢 Active" if cfg.get("enabled") else "🔴 Disabled"
+
+        desc = (
+            f"• **System Status:** {status_text}\n"
+            f"• **Destination Channel:** {chan_text}\n"
+            f"• **Identifier Mode:** `{cfg.get('identifier_mode', 'name')}`\n"
+            f"• **Card Format:** `{'Rich Embed' if cfg.get('is_embed') else 'Plain Text'}`\n"
+            f"• **Avatar Thumbnail:** `{'Enabled' if cfg.get('show_avatar') else 'Disabled'}`\n"
+            f"• **Theme Accent:** `{cfg.get('custom_hex', '#ef4444')}`\n"
+            f"• **Banner Image/GIF:** `{'Yes' if cfg.get('image_url') else 'None'}`\n\n"
+            f"**Title Template:**\n`{cfg.get('title')}`\n\n"
+            f"**Message Template:**\n>>> {cfg.get('message')}"
+        )
+
+        embed = make_box_embed(title="FAREWELL SYSTEM STATUS", description=desc, status="info", footer="Friday Welcomer")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @farewell_group.command(name="test", description="Send a test farewell card into the configured channel or current channel.")
+    async def farewell_test(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        cfg = get_farewell_config(gid)
+
+        target_ch = None
+        if cfg.get("channel_id"):
+            target_ch = interaction.guild.get_channel(int(cfg["channel_id"]))
+        if not target_ch:
+            target_ch = interaction.channel
+
+        if cfg.get("is_embed", True):
+            embed = build_farewell_embed(interaction.user, interaction.guild, cfg, target_ch)
+            await target_ch.send(content="🚪 **[Farewell Preview]**", embed=embed)
+        else:
+            text = format_farewell_text(cfg.get("message", DEFAULT_FAREWELL_MSG), interaction.user, interaction.guild, target_ch, cfg.get("identifier_mode", "name"))
+            await target_ch.send(content=f"🧪 **[Test Farewell Message]**\n{text}")
+
+        await reply_box(
+            interaction,
+            f"• Test farewell card dispatched to {target_ch.mention}!",
+            title="TEST DISPATCHED",
+            status="success",
+            ephemeral=True
+        )
+
+    # ══════════════════════════════════════════════════════════════
+    # 💬 /first_welcome COMMAND GROUP (First Chat Message Preserved)
+    # ══════════════════════════════════════════════════════════════
     first_welcome_group = app_commands.Group(
         name="first_welcome",
         description="Configure first message welcome greetings for new members",
@@ -272,7 +960,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
 
     @first_welcome_group.command(name="set", description="Set welcome channel. Leave empty to use THIS current channel!")
     @app_commands.describe(channel="Channel to use (Leave empty to automatically use THIS channel where you run the command!)")
-    async def set_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
+    async def fw_set_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
@@ -288,7 +976,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
 
         await reply_box(
             interaction,
-            f"• **Welcome Channel Set:** {target_channel.mention}\n"
+            f"• **First Chat Channel Set:** {target_channel.mention}\n"
             f"• **Status:** Active\n"
             f"• Friday will now greet new members with their avatar on their very first message in {target_channel.mention}!",
             title="FIRST WELCOME ACTIVATED",
@@ -297,7 +985,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         )
 
     @first_welcome_group.command(name="disable", description="Disable first-chat welcome greetings.")
-    async def disable(self, interaction: discord.Interaction):
+    async def fw_disable(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
@@ -316,13 +1004,13 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         )
 
     @first_welcome_group.command(name="status", description="View current first-welcome configuration.")
-    async def status(self, interaction: discord.Interaction):
+    async def fw_status(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
 
         gid = str(interaction.guild.id)
-        cfg = get_welcome_config(gid)
+        cfg = get_first_welcome_config(gid)
 
         chan_id = cfg.get("channel_id")
         chan_text = f"<#{chan_id}>" if chan_id else "`Any Chat Channel`"
@@ -345,23 +1033,23 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @first_welcome_group.command(name="test", description="Send a test welcome card to preview the layout.")
-    async def test(self, interaction: discord.Interaction):
+    async def fw_test(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
 
         gid = str(interaction.guild.id)
-        cfg = get_welcome_config(gid)
+        cfg = get_first_welcome_config(gid)
         embed = build_welcome_embed(interaction.user, interaction.guild, cfg, interaction.channel)
         await interaction.response.send_message(
-            content="🔍 **Test Preview of Squeezed First Chat Welcome Card:**",
+            content="🔍 **Test Preview of First Chat Welcome Card:**",
             embed=embed,
             ephemeral=True
         )
 
-    @first_welcome_group.command(name="message", description="Update the welcome message format.")
+    @first_welcome_group.command(name="message", description="Update the first-welcome message format.")
     @app_commands.describe(template="New template (use {user}, {username}, {server}, {member_count}, {rules}, {channel})")
-    async def set_message(self, interaction: discord.Interaction, template: str):
+    async def fw_set_message(self, interaction: discord.Interaction, template: str):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
@@ -384,7 +1072,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
 
     @first_welcome_group.command(name="reset", description="Reset first-welcome history for a member or all members to re-test greetings.")
     @app_commands.describe(member="Member to reset (leave empty to reset all members in this server)")
-    async def reset_history(self, interaction: discord.Interaction, member: discord.Member = None):
+    async def fw_reset_history(self, interaction: discord.Interaction, member: discord.Member = None):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
@@ -420,23 +1108,28 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         description="Set THIS channel (or chosen channel) for welcome greetings. No channel name required!"
     )
     @app_commands.describe(
-        mode="Welcome mode (defaults to 'first' chat greeting)",
+        mode="Welcome mode (server join or first chat)",
         channel="Channel to use (Leave empty to use THIS channel automatically!)"
     )
     @app_commands.choices(mode=[
-        app_commands.Choice(name="First Message Greeting (Default)", value="first"),
+        app_commands.Choice(name="Server Join Greeting (New Member Arrival)", value="join"),
+        app_commands.Choice(name="First Message Greeting (First Chat in Channel)", value="first"),
     ])
     @app_commands.default_permissions(administrator=True)
     async def set_welcomer_command(
         self,
         interaction: discord.Interaction,
-        mode: str = "first",
+        mode: str = "join",
         channel: discord.TextChannel = None
     ):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
-        await self.set_channel.callback(self, interaction, channel=channel)
+
+        if mode == "first":
+            await self.fw_set_channel.callback(self, interaction, channel=channel)
+        else:
+            await self.welcome_channel.callback(self, interaction, channel=channel)
 
     @app_commands.command(
         name="set_first_welcome",
@@ -452,10 +1145,102 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         if not interaction.user.guild_permissions.administrator:
             await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
             return
-        await self.set_channel.callback(self, interaction, channel=channel)
+        await self.fw_set_channel.callback(self, interaction, channel=channel)
+
+    # ══════════════════════════════════════════════════════════════
+    # 🎧 DISCORD EVENT LISTENERS
+    # ══════════════════════════════════════════════════════════════
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        """Greets new members immediately when they join the Discord server."""
+        if member.bot or not member.guild:
+            return
+
+        gid = str(member.guild.id)
+        cfg = get_welcome_config(gid)
+        if not cfg.get("enabled"):
+            return
+
+        channel_id = cfg.get("channel_id")
+        if not channel_id:
+            return
+
+        try:
+            target_channel = member.guild.get_channel(int(channel_id))
+        except (ValueError, TypeError):
+            return
+
+        if not target_channel:
+            return
+
+        # Check bot permissions
+        perms = target_channel.permissions_for(member.guild.me)
+        if not perms.send_messages:
+            return
+
+        try:
+            if cfg.get("is_embed", True):
+                if not perms.embed_links:
+                    # Fallback to plain text if embed permission is missing
+                    text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), member, member.guild, target_channel)
+                    await target_channel.send(content=text)
+                    return
+
+                embed = build_welcome_embed(member, member.guild, cfg, target_channel)
+                content = f"👋 Welcome {member.mention}!" if cfg.get("ping_user", True) else None
+                await target_channel.send(content=content, embed=embed)
+            else:
+                text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), member, member.guild, target_channel)
+                await target_channel.send(content=text)
+        except Exception as e:
+            print(f"[Welcomer] Error delivering server join greeting in {member.guild.name}: {e}")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member):
+        """Sends a farewell notification when a member leaves or is removed from the Discord server."""
+        if not member.guild:
+            return
+
+        gid = str(member.guild.id)
+        cfg = get_farewell_config(gid)
+        if not cfg.get("enabled"):
+            return
+
+        channel_id = cfg.get("channel_id")
+        if not channel_id:
+            return
+
+        try:
+            target_channel = member.guild.get_channel(int(channel_id))
+        except (ValueError, TypeError):
+            return
+
+        if not target_channel:
+            return
+
+        perms = target_channel.permissions_for(member.guild.me)
+        if not perms.send_messages:
+            return
+
+        try:
+            if cfg.get("is_embed", True):
+                if not perms.embed_links:
+                    text = format_farewell_text(cfg.get("message", DEFAULT_FAREWELL_MSG), member, member.guild, target_channel, cfg.get("identifier_mode", "name"))
+                    await target_channel.send(content=text)
+                    return
+
+                embed = build_farewell_embed(member, member.guild, cfg, target_channel)
+                await target_channel.send(embed=embed)
+            else:
+                text = format_farewell_text(cfg.get("message", DEFAULT_FAREWELL_MSG), member, member.guild, target_channel, cfg.get("identifier_mode", "name"))
+                await target_channel.send(content=text)
+        except Exception as e:
+            print(f"[Welcomer] Error delivering server leave farewell in {member.guild.name}: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        """Greets genuine newcomers on their very first message in chat (preserved First Chat Welcome)."""
         if message.author.bot or not message.guild:
             return
 
@@ -463,7 +1248,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
         uid = str(message.author.id)
 
         # 1. Check if first-welcome is configured and enabled
-        cfg = get_welcome_config(gid)
+        cfg = get_first_welcome_config(gid)
         if not cfg.get("enabled"):
             return
 
@@ -504,7 +1289,7 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
                 except Exception as e:
                     print(f"[FirstWelcome] Error sending in current channel: {e}")
 
-        # Case B: Dedicated target channel configured (e.g. #welcome or #general)
+        # Case B: Dedicated target channel configured
         if destination_channel:
             try:
                 await destination_channel.send(
@@ -520,4 +1305,4 @@ class FirstWelcomeCog(commands.Cog, name="FirstWelcome"):
                     await message.channel.send(content=f"🎉 Welcome {message.author.mention}!", embed=embed)
 
 async def setup(bot):
-    await bot.add_cog(FirstWelcomeCog(bot))
+    await bot.add_cog(WelcomerCog(bot))
