@@ -47214,6 +47214,15 @@ async function loadWelcomeSettings() {
         const embedToggle = document.getElementById('welcomeEmbedToggle');
         if (embedToggle) embedToggle.checked = (cfg.is_embed !== false);
 
+        const hdrInput = document.getElementById('welcomeHeaderText');
+        if (hdrInput) {
+            hdrInput.value = cfg.header_text || "👋 Welcome {user} !";
+            const richHdr = document.getElementById('welcomeHeaderText_rich');
+            if (richHdr && typeof rawMarkdownToRichHtml === 'function') {
+                richHdr.innerHTML = rawMarkdownToRichHtml(hdrInput.value);
+            }
+        }
+
         const titleInput = document.getElementById('welcomeTitleInput');
         if (titleInput) {
             titleInput.value = cfg.title || "WELCOME TO {server}!";
@@ -47328,11 +47337,28 @@ function updateWelcomePreview() {
             return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
         }
 
+        const hdrInput = document.getElementById('welcomeHeaderText');
+        const richHdr = document.getElementById('welcomeHeaderText_rich');
+        let rawHdr = '';
+        if (richHdr && typeof richHtmlToRawMarkdown === 'function') {
+            rawHdr = richHtmlToRawMarkdown(richHdr);
+        } else if (hdrInput) {
+            rawHdr = hdrInput.value;
+        }
+        if (!rawHdr && hdrInput) rawHdr = hdrInput.value || '👋 Welcome {user} !';
+
         const simEmbed = document.getElementById('welcomeSimEmbed');
         if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
 
         const simPingLine = document.getElementById('welcomeSimPingLine');
-        if (simPingLine) simPingLine.style.display = showPing ? 'block' : 'none';
+        if (simPingLine) {
+            if (!showPing) {
+                simPingLine.style.display = 'none';
+            } else {
+                simPingLine.style.display = 'block';
+                simPingLine.innerHTML = parseTemplate(rawHdr || '👋 Welcome {user} !');
+            }
+        }
 
         const simTitle = document.getElementById('welcomeSimTitle');
         if (simTitle) {
@@ -47414,10 +47440,20 @@ async function saveWelcomeSettings() {
         rawMsg = msgInput.value;
     }
 
+    const hdrInput = document.getElementById('welcomeHeaderText');
+    const richHdr = document.getElementById('welcomeHeaderText_rich');
+    let rawHdr = '';
+    if (richHdr && typeof richHtmlToRawMarkdown === 'function') {
+        rawHdr = richHtmlToRawMarkdown(richHdr);
+    } else if (hdrInput) {
+        rawHdr = hdrInput.value;
+    }
+
     const payload = {
         enabled: tgl ? tgl.checked : false,
         channel_id: chanSelect ? chanSelect.value : null,
         is_embed: embedToggle ? embedToggle.checked : true,
+        header_text: rawHdr || '👋 Welcome {user} !',
         title: rawTitle,
         message: rawMsg,
         image_url: imgInput ? imgInput.value.trim() : '',
@@ -47491,6 +47527,15 @@ async function loadFarewellSettings() {
         const idSelect = document.getElementById('farewellIdentifierSelect');
         if (idSelect && cfg.identifier_mode) {
             idSelect.value = cfg.identifier_mode;
+        }
+
+        const hdrInput = document.getElementById('farewellHeaderText');
+        if (hdrInput) {
+            hdrInput.value = cfg.header_text || "👋 Farewell {user} !";
+            const richHdr = document.getElementById('farewellHeaderText_rich');
+            if (richHdr && typeof rawMarkdownToRichHtml === 'function') {
+                richHdr.innerHTML = rawMarkdownToRichHtml(hdrInput.value);
+            }
         }
 
         const titleInput = document.getElementById('farewellTitleInput');
@@ -47609,6 +47654,26 @@ function updateFarewellPreview() {
             return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
         }
 
+        const hdrInput = document.getElementById('farewellHeaderText');
+        const richHdr = document.getElementById('farewellHeaderText_rich');
+        let rawHdr = '';
+        if (richHdr && typeof richHtmlToRawMarkdown === 'function') {
+            rawHdr = richHtmlToRawMarkdown(richHdr);
+        } else if (hdrInput) {
+            rawHdr = hdrInput.value;
+        }
+        if (!rawHdr && hdrInput) rawHdr = hdrInput.value;
+
+        const simFarewellPing = document.getElementById('farewellSimPingLine');
+        if (simFarewellPing) {
+            if (!rawHdr || !rawHdr.trim()) {
+                simFarewellPing.style.display = 'none';
+            } else {
+                simFarewellPing.style.display = 'block';
+                simFarewellPing.innerHTML = parseTemplate(rawHdr);
+            }
+        }
+
         const simEmbed = document.getElementById('farewellSimEmbed');
         if (simEmbed) simEmbed.style.borderLeftColor = colorHex;
 
@@ -47692,11 +47757,21 @@ async function saveFarewellSettings() {
         rawMsg = msgInput.value;
     }
 
+    const hdrInput = document.getElementById('farewellHeaderText');
+    const richHdr = document.getElementById('farewellHeaderText_rich');
+    let rawHdr = '';
+    if (richHdr && typeof richHtmlToRawMarkdown === 'function') {
+        rawHdr = richHtmlToRawMarkdown(richHdr);
+    } else if (hdrInput) {
+        rawHdr = hdrInput.value;
+    }
+
     const payload = {
         enabled: tgl ? tgl.checked : false,
         channel_id: chanSelect ? chanSelect.value : null,
         is_embed: embedToggle ? embedToggle.checked : true,
         identifier_mode: idSelect ? idSelect.value : 'name',
+        header_text: rawHdr || '👋 Farewell {user} !',
         title: rawTitle,
         message: rawMsg,
         image_url: imgInput ? imgInput.value.trim() : '',
@@ -47752,24 +47827,29 @@ function setupBannerUploader(prefix) {
     const dropzone = document.getElementById(`${prefix}BannerDropzone`);
 
     const updatePreviewFn = (prefix === 'welcome') ? updateWelcomePreview : updateFarewellPreview;
+    const saveFn = (prefix === 'welcome') ? saveWelcomeSettings : saveFarewellSettings;
 
     if (uploadBtn && fileInput) {
         uploadBtn.addEventListener('click', (e) => {
             e.preventDefault();
+            if (!currentGuildId) return showToast("⚠️ Select a server first!");
             fileInput.click();
         });
     }
 
     if (dropzone && fileInput) {
         dropzone.addEventListener('click', (e) => {
-            if (e.target !== fileInput) fileInput.click();
+            if (e.target !== fileInput && e.target !== clearBtn) {
+                if (!currentGuildId) return showToast("⚠️ Select a server first!");
+                fileInput.click();
+            }
         });
 
         ['dragenter', 'dragover'].forEach(eventName => {
             dropzone.addEventListener(eventName, (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                dropzone.classList.add('dragover');
+                dropzone.classList.add('border-indigo-500', 'bg-indigo-500/10');
             });
         });
 
@@ -47777,11 +47857,14 @@ function setupBannerUploader(prefix) {
             dropzone.addEventListener(eventName, (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                dropzone.classList.remove('dragover');
+                dropzone.classList.remove('border-indigo-500', 'bg-indigo-500/10');
             });
         });
 
         dropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('border-indigo-500', 'bg-indigo-500/10');
             const files = e.dataTransfer.files;
             if (files && files.length > 0) {
                 handleFileUpload(files[0]);
@@ -47790,13 +47873,14 @@ function setupBannerUploader(prefix) {
     }
 
     if (clearBtn && textInput) {
-        clearBtn.addEventListener('click', (e) => {
+        clearBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             textInput.value = '';
             clearBtn.style.display = 'none';
             if (fileInput) fileInput.value = '';
             updatePreviewFn();
             showToast("🗑️ Banner removed.");
+            await saveFn();
         });
     }
 
@@ -47804,6 +47888,33 @@ function setupBannerUploader(prefix) {
         fileInput.addEventListener('change', () => {
             if (fileInput.files && fileInput.files.length > 0) {
                 handleFileUpload(fileInput.files[0]);
+            }
+        });
+    }
+
+    if (textInput) {
+        ['input', 'keyup', 'paste'].forEach(evt => {
+            textInput.addEventListener(evt, () => setTimeout(updatePreviewFn, 40));
+        });
+        textInput.addEventListener('change', async () => {
+            const val = (textInput.value || '').trim();
+            if (val.startsWith('http://') || val.startsWith('https://')) {
+                try {
+                    const cResp = await fetch(`/api/guild/${currentGuildId}/auto-cache-banner`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: val, category: prefix })
+                    });
+                    const cData = await cResp.json();
+                    if (cData.success && cData.url) {
+                        textInput.value = cData.url;
+                        showToast("⚡ Preserved image locally on server! It will never expire.");
+                        updatePreviewFn();
+                        await saveFn();
+                    } else if (cData.error && cData.error.includes("404")) {
+                        showToast("⚠️ Note: This Discord image link has expired on Discord CDN. Please upload the GIF file directly with 'Browse File' or drag and drop.", 6000);
+                    }
+                } catch(e) {}
             }
         });
     }
@@ -47824,9 +47935,10 @@ function setupBannerUploader(prefix) {
         showToast("⏳ Uploading banner...");
         const formData = new FormData();
         formData.append('banner_file', file);
+        const uploadUrl = (prefix === 'farewell') ? `/api/guild/${currentGuildId}/farewell/upload-banner` : `/api/guild/${currentGuildId}/welcome/upload-banner`;
 
         try {
-            const resp = await fetch(`/api/guild/${currentGuildId}/welcome/upload-banner`, {
+            const resp = await fetch(uploadUrl, {
                 method: 'POST',
                 body: formData
             });
@@ -47835,7 +47947,8 @@ function setupBannerUploader(prefix) {
                 if (textInput) textInput.value = data.url;
                 if (clearBtn) clearBtn.style.display = 'inline-flex';
                 updatePreviewFn();
-                showToast("✅ Banner uploaded & rendered in preview!");
+                showToast("✅ Banner uploaded & permanently hosted!");
+                await saveFn();
             } else {
                 showToast(`❌ Upload failed: ${data.error || 'Server error'}`);
             }
@@ -47880,8 +47993,8 @@ function setupWelcomeAndFarewellEvents() {
     // Input listeners for Welcome
     const welcomeInputs = [
         'welcomeChannelSelect', 'welcomeEmbedToggle', 'welcomeTitleInput', 'welcomeMsgInput',
-        'welcomeTitleInput_rich', 'welcomeMsgInput_rich', 'welcomeImageUrlInput',
-        'welcomeAvatarToggle', 'welcomePingToggle', 'welcomeHexInput'
+        'welcomeTitleInput_rich', 'welcomeMsgInput_rich', 'welcomeHeaderText', 'welcomeHeaderText_rich',
+        'welcomeImageUrlInput', 'welcomeAvatarToggle', 'welcomePingToggle', 'welcomeHexInput'
     ];
     welcomeInputs.forEach(id => {
         const el = document.getElementById(id);
@@ -47904,6 +48017,41 @@ function setupWelcomeAndFarewellEvents() {
     });
 
     // Welcome Emojis
+    
+    // Welcome Header Emoji Pickers
+    const bindHdrEmoji = (btnId, inputId, updateFn) => {
+        const btn = document.getElementById(btnId);
+        const input = document.getElementById(inputId);
+        if (btn && input) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const richEl = document.getElementById(inputId + '_rich');
+                if (richEl) {
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                        richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                    }
+                    openEmojiPicker(btn, (emojiVal) => {
+                        if (!emojiVal) return;
+                        insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                        updateFn();
+                    });
+                    return;
+                }
+                openEmojiPicker(btn, (emojiVal) => {
+                    if (!emojiVal) return;
+                    input.value += emojiVal;
+                    updateFn();
+                });
+            });
+        }
+    };
+    bindHdrEmoji('welcomeHeaderEmojiBtn', 'welcomeHeaderText', updateWelcomePreview);
+    bindHdrEmoji('welcomeHeaderEmojiInlineBtn', 'welcomeHeaderText', updateWelcomePreview);
+    bindHdrEmoji('farewellHeaderEmojiBtn', 'farewellHeaderText', updateFarewellPreview);
+    bindHdrEmoji('farewellHeaderEmojiInlineBtn', 'farewellHeaderText', updateFarewellPreview);
+
     const wTitleEmojiBtn = document.getElementById('welcomeTitleEmojiBtn');
     const wTitleInput = document.getElementById('welcomeTitleInput');
     if (wTitleEmojiBtn && wTitleInput) {
@@ -48042,6 +48190,7 @@ function setupWelcomeAndFarewellEvents() {
     const farewellInputs = [
         'farewellChannelSelect', 'farewellEmbedToggle', 'farewellIdentifierSelect',
         'farewellTitleInput', 'farewellMsgInput', 'farewellTitleInput_rich', 'farewellMsgInput_rich',
+        'farewellHeaderText', 'farewellHeaderText_rich',
         'farewellImageUrlInput', 'farewellAvatarToggle', 'farewellHexInput'
     ];
     farewellInputs.forEach(id => {
@@ -61027,7 +61176,7 @@ function updateGwPreview() {
 
 
 
-    const iconUrl = currentGuildIcon || currentBotAvatar || '/static/avatar.png';
+    const iconUrl = currentGuildIcon || currentBotAvatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
 
 
 

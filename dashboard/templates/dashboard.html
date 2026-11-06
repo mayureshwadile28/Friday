@@ -6163,6 +6163,27 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                 </div>
 
+                <!-- Header / Chat Ping Text (Above Embed Card) -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Header / Chat Notice Text (Above Embed Box)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Text sent directly in chat above the embed</span>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center;">
+                        <button type="button" class="resp-var-badge" data-target="welcomeHeaderText" data-var="{user}">+ {user}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeHeaderText" data-var="{username}">+ {username}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeHeaderText" data-var="{server}">+ {server}</button>
+                        <button type="button" class="resp-var-badge" data-target="welcomeHeaderText" data-var="{member_count}">+ {member_count}</button>
+                        <button type="button" class="resp-emoji-btn" id="welcomeHeaderEmojiBtn" data-target="welcomeHeaderText" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; color: #c7d2fe; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;">
+                            😊 Server Emojis
+                        </button>
+                    </div>
+                    <div class="emoji-input-wrap">
+                        <input type="text" id="welcomeHeaderText" class="text-input" style="flex: 1;" value="👋 Welcome {user} !" placeholder="👋 Welcome {user} !">
+                        <button type="button" class="btn-emoji-trigger" id="welcomeHeaderEmojiInlineBtn" title="Insert server emoji">😊</button>
+                    </div>
+                </div>
+
                 <!-- Card Mode & Title -->
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -6325,7 +6346,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                                     </div>
                                     <!-- Banner Image or GIF -->
                                     <div id="welcomeSimBannerWrap" class="welcome-sim-banner-wrap" style="display: none; margin-top: 10px;">
-                                        <img id="welcomeSimBannerImg" referrerpolicy="no-referrer" src="" alt="Banner Preview">
+                                <img id="welcomeSimBannerImg" referrerpolicy="no-referrer" src="" alt="">
                                     </div>
                                     <!-- Footer -->
                                     <div style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
@@ -6390,6 +6411,28 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </select>
                     <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
                         Choose how departed users are identified. If Discord no longer caches their username, Friday automatically uses their permanent snowflake ID so messages never fail.
+                    </div>
+                </div>
+
+                <!-- Header / Chat Notice Text (Above Embed Card) -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Header / Chat Notice Text (Above Embed Box)</label>
+                        <span style="font-size: 11px; color: var(--text-muted);">Text sent directly in chat above the embed</span>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center;">
+                        <button type="button" class="resp-var-badge" data-target="farewellHeaderText" data-var="{user}">+ {user}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellHeaderText" data-var="{username}">+ {username}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellHeaderText" data-var="{id}">+ {id}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellHeaderText" data-var="{server}">+ {server}</button>
+                        <button type="button" class="resp-var-badge" data-target="farewellHeaderText" data-var="{member_count}">+ {member_count}</button>
+                        <button type="button" class="resp-emoji-btn" id="farewellHeaderEmojiBtn" data-target="farewellHeaderText" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; color: #c7d2fe; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;">
+                            😊 Server Emojis
+                        </button>
+                    </div>
+                    <div class="emoji-input-wrap">
+                        <input type="text" id="farewellHeaderText" class="text-input" style="flex: 1;" value="👋 Farewell {user} !" placeholder="👋 Farewell {user} !">
+                        <button type="button" class="btn-emoji-trigger" id="farewellHeaderEmojiInlineBtn" title="Insert server emoji">😊</button>
                     </div>
                 </div>
 
@@ -6520,6 +6563,9 @@ Click an inquiry button below to open a confidential support ticket with our tea
                                     <span class="discord-bot-tag">BOT</span>
                                     <span class="discord-timestamp">Just now</span>
                                 </div>
+                                <div id="farewellSimPingLine" style="margin: 4px 0 6px 0; font-size: 13px; color: #dbdee1;">
+                                    👋 Farewell <span style="background: rgba(88, 101, 242, 0.3); color: #c7d2fe; padding: 1px 4px; border-radius: 3px; font-weight: 500;">@Alex</span> !
+                                </div>
                                 <!-- Embed Box -->
                                 <div id="farewellSimEmbed" style="border-left: 4px solid #ef4444; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 480px; transition: all 0.2s ease;">
                                     <!-- Author Header -->
@@ -6539,7 +6585,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                                     </div>
                                     <!-- Banner Image or GIF -->
                                     <div id="farewellSimBannerWrap" class="welcome-sim-banner-wrap" style="display: none; margin-top: 10px;">
-                                        <img id="farewellSimBannerImg" referrerpolicy="no-referrer" src="" alt="Farewell Banner Preview">
+                                        <img id="farewellSimBannerImg" referrerpolicy="no-referrer" src="" alt="">
                                     </div>
                                     <!-- Footer -->
                                     <div style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">

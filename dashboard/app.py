@@ -76,6 +76,16 @@ def fetch_user_info(user_id):
 def dashboard():
     return render_template('dashboard.html')
 
+@app.route('/favicon.ico')
+def favicon():
+    from flask import Response
+    return Response(status=204)
+
+@app.route('/static/avatar.png')
+def default_avatar_redirect():
+    from flask import redirect
+    return redirect("https://cdn.discordapp.com/embed/avatars/0.png")
+
 # ───────────────────── API: Bot Profile & Guilds ─────────────────────
 
 @app.route('/api/bot/profile')
@@ -1696,7 +1706,7 @@ def update_welcome(gid):
     if gid_str not in db.welcome or not isinstance(db.welcome[gid_str], dict):
         db.welcome[gid_str] = {}
     
-    for key in ["enabled", "channel_id", "title", "message", "image_url", "show_avatar", "ping_user", "is_embed", "status_color", "custom_hex"]:
+    for key in ["enabled", "channel_id", "header_text", "title", "message", "image_url", "show_avatar", "ping_user", "is_embed", "status_color", "custom_hex"]:
         if key in data:
             val = data[key]
             if key in ("enabled", "show_avatar", "ping_user", "is_embed"):
@@ -1738,7 +1748,10 @@ def test_welcome(gid):
         sample_member = guild.owner or guild.me
         if cfg.get("is_embed", True):
             embed = build_welcome_embed(sample_member, guild, cfg, channel)
-            content = f"👋 **[Welcome Preview]** Welcome {sample_member.mention}!" if cfg.get("ping_user", True) else None
+            content = None
+            if cfg.get("ping_user", True):
+                raw_hdr = cfg.get("header_text") or "👋 Welcome {user} !"
+                content = f"👋 **[Welcome Preview]** " + format_welcome_text(raw_hdr, sample_member, guild, channel)
             discord_file = None
             raw_img = str(cfg.get("image_url", "")).strip()
             if "/static/uploads/welcome_banners/" in raw_img:
@@ -1747,7 +1760,7 @@ def test_welcome(gid):
                 if os.path.exists(lpath):
                     discord_file = discord.File(lpath, filename=bname)
                     embed.set_image(url=f"attachment://{bname}")
-            send_kw = {"content": content, "embed": embed}
+            send_kw = {"content": content, "embed": embed} if content else {"embed": embed}
             if discord_file:
                 send_kw["file"] = discord_file
             await channel.send(**send_kw)
@@ -1762,6 +1775,70 @@ def test_welcome(gid):
         return jsonify({"success": True, "channel_name": chan_name})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/farewell/upload-banner', methods=['POST'])
+def upload_farewell_banner(gid):
+    try:
+        if 'banner_file' not in flask_request.files:
+            return jsonify({"success": False, "error": "No file uploaded."}), 400
+        file = flask_request.files['banner_file']
+        if not file or not file.filename:
+            return jsonify({"success": False, "error": "Empty filename."}), 400
+        
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+            return jsonify({"success": False, "error": "Unsupported file format. Please upload PNG, JPG, GIF, or WebP."}), 400
+        
+        token = uuid.uuid4().hex[:12]
+        safe_filename = f"farewell_{gid}_{token}{ext}"
+        save_path = os.path.join(FAREWELL_UPLOAD_DIR, safe_filename)
+        file.save(save_path)
+        
+        rel_url = f"/static/uploads/farewell_banners/{safe_filename}"
+        return jsonify({
+            "success": True,
+            "url": rel_url,
+            "filename": safe_filename
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/auto-cache-banner', methods=['POST'])
+def auto_cache_banner(gid):
+    try:
+        body = flask_request.json or {}
+        raw_url = str(body.get('url', '')).strip()
+        category = str(body.get('category', 'welcome')).strip().lower()
+        if not raw_url or not raw_url.startswith(('http://', 'https://')):
+            return jsonify({"success": False, "error": "Invalid URL"}), 400
+        
+        target_dir = WELCOME_UPLOAD_DIR
+        url_prefix = "welcome_banners"
+        if category == 'farewell':
+            target_dir = FAREWELL_UPLOAD_DIR
+            url_prefix = "farewell_banners"
+        elif category == 'giveaway':
+            target_dir = BANNER_UPLOAD_DIR
+            url_prefix = "giveaway_banners"
+            
+        import urllib.request
+        req = urllib.request.Request(raw_url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+        })
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            data = resp.read()
+            ct = resp.headers.get('content-type', '').lower()
+            ext = '.gif' if 'gif' in ct or '.gif' in raw_url.lower() else ('.png' if 'png' in ct else ('.webp' if 'webp' in ct else '.jpg'))
+            token = uuid.uuid4().hex[:12]
+            safe_filename = f"{category}_{gid}_{token}{ext}"
+            save_path = os.path.join(target_dir, safe_filename)
+            with open(save_path, 'wb') as out_f:
+                out_f.write(data)
+            rel_url = f"/static/uploads/{url_prefix}/{safe_filename}"
+            return jsonify({"success": True, "url": rel_url, "filename": safe_filename})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 @app.route('/api/guild/<gid>/farewell', methods=['GET'])
 def get_farewell(gid):
@@ -1791,7 +1868,7 @@ def update_farewell(gid):
     data = flask_request.json or {}
     if gid_str not in db.farewell or not isinstance(db.farewell[gid_str], dict):
         db.farewell[gid_str] = {}
-    for key in ["enabled", "channel_id", "title", "message", "image_url", "show_avatar", "identifier_mode", "is_embed", "status_color", "custom_hex"]:
+    for key in ["enabled", "channel_id", "header_text", "title", "message", "image_url", "show_avatar", "identifier_mode", "is_embed", "status_color", "custom_hex"]:
         if key in data:
             val = data[key]
             if key in ("enabled", "show_avatar", "is_embed"):
@@ -1835,13 +1912,17 @@ def test_farewell(gid):
             embed = build_farewell_embed(sample_member, guild, cfg, channel)
             discord_file = None
             raw_img = str(cfg.get("image_url", "")).strip()
-            if "/static/uploads/welcome_banners/" in raw_img:
+            target_dir = FAREWELL_UPLOAD_DIR if "/static/uploads/farewell_banners/" in raw_img else WELCOME_UPLOAD_DIR
+            target_url_part = "farewell_banners" if "/static/uploads/farewell_banners/" in raw_img else "welcome_banners"
+            if f"/static/uploads/{target_url_part}/" in raw_img:
                 bname = os.path.basename(raw_img)
-                lpath = os.path.join(WELCOME_UPLOAD_DIR, bname)
+                lpath = os.path.join(target_dir, bname)
                 if os.path.exists(lpath):
                     discord_file = discord.File(lpath, filename=bname)
                     embed.set_image(url=f"attachment://{bname}")
-            send_kw = {"content": "🚪 **[Farewell Preview]**", "embed": embed}
+            raw_hdr = str(cfg.get("header_text", "")).strip()
+            content = format_farewell_text(raw_hdr, sample_member, guild, channel, cfg.get("identifier_mode", "name")) if raw_hdr else "🚪 **[Farewell Preview]**"
+            send_kw = {"content": content, "embed": embed}
             if discord_file:
                 send_kw["file"] = discord_file
             await channel.send(**send_kw)
@@ -2527,6 +2608,8 @@ BANNER_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "giveaway_b
 os.makedirs(BANNER_UPLOAD_DIR, exist_ok=True)
 WELCOME_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "welcome_banners")
 os.makedirs(WELCOME_UPLOAD_DIR, exist_ok=True)
+FAREWELL_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "farewell_banners")
+os.makedirs(FAREWELL_UPLOAD_DIR, exist_ok=True)
 
 def validate_image_url(url):
     if not url:

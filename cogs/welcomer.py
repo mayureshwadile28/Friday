@@ -49,6 +49,7 @@ def get_welcome_config(gid: str) -> dict:
     return {
         "enabled": bool(cfg.get("enabled", False)),
         "channel_id": cfg.get("channel_id", None),
+        "header_text": cfg.get("header_text", "👋 Welcome {user} !"),
         "title": cfg.get("title", DEFAULT_WELCOME_TITLE),
         "message": cfg.get("message", DEFAULT_WELCOME_MSG),
         "image_url": cfg.get("image_url", "").strip(),
@@ -69,6 +70,7 @@ def get_farewell_config(gid: str) -> dict:
     return {
         "enabled": bool(cfg.get("enabled", False)),
         "channel_id": cfg.get("channel_id", None),
+        "header_text": cfg.get("header_text", "👋 Farewell {user} !"),
         "title": cfg.get("title", DEFAULT_FAREWELL_TITLE),
         "message": cfg.get("message", DEFAULT_FAREWELL_MSG),
         "image_url": cfg.get("image_url", "").strip(),
@@ -1188,7 +1190,10 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
                     return
 
                 embed = build_welcome_embed(member, member.guild, cfg, target_channel)
-                content = f"👋 Welcome {member.mention}!" if cfg.get("ping_user", True) else None
+                content = None
+                if cfg.get("ping_user", True):
+                    raw_hdr = cfg.get("header_text") or "👋 Welcome {user} !"
+                    content = format_welcome_text(raw_hdr, member, member.guild, target_channel)
                 discord_file = None
                 img_url = str(cfg.get("image_url", "")).strip()
                 if "/static/uploads/welcome_banners/" in img_url:
@@ -1244,17 +1249,22 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
                     return
 
                 embed = build_farewell_embed(member, member.guild, cfg, target_channel)
+                content = None
+                raw_hdr = str(cfg.get("header_text", "")).strip()
+                if raw_hdr:
+                    content = format_farewell_text(raw_hdr, member, member.guild, target_channel, cfg.get("identifier_mode", "name"))
                 discord_file = None
                 img_url = str(cfg.get("image_url", "")).strip()
-                if "/static/uploads/welcome_banners/" in img_url:
+                target_dir = "farewell_banners" if "/static/uploads/farewell_banners/" in img_url else "welcome_banners"
+                if f"/static/uploads/{target_dir}/" in img_url:
                     fname = os.path.basename(img_url)
-                    fpath = os.path.join("dashboard", "static", "uploads", "welcome_banners", fname)
+                    fpath = os.path.join("dashboard", "static", "uploads", target_dir, fname)
                     if not os.path.exists(fpath):
-                        fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "welcome_banners", fname)
+                        fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", target_dir, fname)
                     if os.path.exists(fpath):
                         discord_file = discord.File(fpath, filename=fname)
                         embed.set_image(url=f"attachment://{fname}")
-                send_kwargs = {"embed": embed}
+                send_kwargs = {"content": content, "embed": embed} if content else {"embed": embed}
                 if discord_file:
                     send_kwargs["file"] = discord_file
                 await target_channel.send(**send_kwargs)
