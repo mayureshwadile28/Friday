@@ -6838,11 +6838,9 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                 <select class="text-input" id="gwEntryMethodSelect">
 
-                    <option value="button" selected>Modern Button Only (Clean, single clickable button)</option>
+                    <option value="button" selected>Modern Button Only (Curved button &amp; participants list)</option>
 
                     <option value="reaction">Reaction Only (Classic emoji reaction pill, no button)</option>
-
-                    <option value="both">Both (Button &amp; Reaction Emoji together)</option>
 
                 </select>
 
@@ -7092,21 +7090,70 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                 </div>
 
+                <!-- Participants Button Icon -->
+                <div class="emoji-field-card" style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px;">
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Participants Button Icon</label>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwEmojiParticipantsBtn" type="button" style="width: 48px; height: 44px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
+                            <span id="gwEmojiParticipantsPreview" style="display: inline-flex; align-items: center; justify-content: center;">👥</span>
+                        </button>
+                        <div id="gwEmojiParticipantsVisual" style="flex: 1; min-width: 0; background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 6px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; cursor: pointer;" title="Click to change emoji">
+                            <span id="gwEmojiParticipantsImg" style="display: inline-flex; align-items: center;">👥</span>
+                            <span id="gwEmojiParticipantsText" style="font-size: 12px; font-weight: 600; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">👥 Participants Icon</span>
+                        </div>
+                        <input class="gw-emoji-input" id="gwEmojiParticipants" type="hidden" value="👥" />
+                    </div>
+                </div>
+
 
 
                 <!-- Server Default Giveaway Banner -->
 
-                <div style="grid-column: 1 / -1; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 12px; margin-top: 4px;">
+                <div style="grid-column: 1 / -1; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px; margin-top: 4px;">
 
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
 
-                        <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Default Server Giveaway Banner (Image or GIF URL)</label>
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Default Server Giveaway Banner (Image or Animated GIF)</label>
 
-                        <span style="font-size: 11px; color: var(--text-muted);">Applied automatically to new giveaways unless overridden</span>
+                        <span style="font-size: 11px; color: var(--text-muted);">Web URL or local device upload (.gif, .png, .jpg, .webp)</span>
 
                     </div>
 
-                    <input class="text-input" id="gwDefaultBanner" placeholder="https://media.discordapp.net/.../banner.gif or https://... (.gif / .png / .jpg)" type="text" style="font-size: 12px;" />
+                    <div style="display: flex; gap: 8px; align-items: center;">
+
+                        <input class="text-input" id="gwDefaultBanner" placeholder="Paste image/GIF URL or upload from local files..." type="text" style="flex: 1; font-size: 12px;" />
+
+                        <button class="btn btn-secondary" id="gwDefaultBannerUploadBtn" type="button" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; height: 38px; font-size: 12px; font-weight: 600;">
+
+                            📁 Browse File / GIF
+
+                        </button>
+
+                        <button class="btn btn-secondary" id="gwDefaultBannerClearBtn" type="button" style="display: none; padding: 0 10px; height: 38px; color: #ef4444;" title="Remove banner">
+
+                            ✕
+
+                        </button>
+
+                        <input type="file" id="gwDefaultBannerFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;" />
+
+                    </div>
+
+                    <!-- Drag & Drop Zone -->
+
+                    <div id="gwDefaultBannerDropzone" class="welcome-dropzone" style="margin-top: 8px; border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 14px 16px; text-align: center; background: rgba(255, 255, 255, 0.02); cursor: pointer; transition: all 0.2s ease;">
+
+                        <div style="font-size: 16px; margin-bottom: 4px;">🖼️ Drag &amp; Drop Image or Animated GIF here</div>
+
+                        <div style="font-size: 11px; color: var(--text-muted);">or click to select from your local folders (PNG, JPG, animated GIF, WebP)</div>
+
+                    </div>
+
+                    <div class="helper-text" style="font-size: 11px; color: var(--text-muted); margin-top: 6px;">
+
+                        Applied automatically as default banner to all server giveaways. Friday renders animated GIFs in full motion!
+
+                    </div>
 
                 </div>
 
@@ -7546,22 +7593,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 
 
-                <!-- Header Announcement Emoji Input with Emoji Picker & Tile -->
-                <div style="margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Header Announcement Emoji (Above Embed)</label>
-                        <span style="font-size: 11px; color: var(--text-muted);">Customizes emojis surrounding "New Giveaway"</span>
-                    </div>
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <button class="btn btn-secondary gw-emoji-tile-btn" id="gwCreateHeaderEmojiBtn" type="button" style="width: 48px; height: 38px; border-radius: 6px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;" title="Click to choose emoji">
-                            <span id="gwCreateHeaderEmojiPreview" style="display: inline-flex; align-items: center; justify-content: center; font-size: 16px;">🎉</span>
-                        </button>
-                        <input class="text-input" id="gwCreateHeaderEmojiInput" placeholder="e.g. 🎉 or custom server emoji" style="flex: 1;" value="🎉" />
-                        <button class="btn btn-secondary emoji-picker-btn" id="gwCreateHeaderEmojiPickerBtn" data-target="gwCreateHeaderEmojiInput" style="height: 38px; padding: 0 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" type="button">
-                            😊 Emojis
-                        </button>
-                    </div>
-                </div>
+
 
                 <!-- Prize Title Input with Emoji Button -->
 
@@ -7688,7 +7720,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
 
-                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Banner Image or GIF (Optional)</label>
+                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Banner Image or Animated GIF (Optional)</label>
 
                         <span style="font-size: 11px; color: var(--text-muted);">Web URL or local file upload (.gif / .png / .jpg / .webp)</span>
 
@@ -7700,7 +7732,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                         <button class="btn btn-secondary" id="gwBannerUploadBtn" type="button" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; height: 38px; font-size: 12px; font-weight: 600;">
 
-                            📁 Upload File / GIF
+                            📁 Browse File / GIF
 
                         </button>
 
@@ -7711,6 +7743,16 @@ Click an inquiry button below to open a confidential support ticket with our tea
                         </button>
 
                         <input type="file" id="gwBannerFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;" />
+
+                    </div>
+
+                    <!-- Drag & Drop Zone -->
+
+                    <div id="gwBannerDropzone" class="welcome-dropzone" style="margin-top: 8px; border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 14px 16px; text-align: center; background: rgba(255, 255, 255, 0.02); cursor: pointer; transition: all 0.2s ease;">
+
+                        <div style="font-size: 16px; margin-bottom: 4px;">🖼️ Drag &amp; Drop Image or Animated GIF here</div>
+
+                        <div style="font-size: 11px; color: var(--text-muted);">or click to select from your local folders (PNG, JPG, animated GIF, WebP)</div>
 
                     </div>
 
@@ -7888,9 +7930,9 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     <!-- Large Embedded Image / GIF Banner Preview -->
 
-                    <div id="gwSimBannerWrap" style="margin-bottom: 12px; border-radius: 4px; overflow: hidden; display: none;">
+                    <div id="gwSimBannerWrap" style="margin-bottom: 12px; border-radius: 6px; overflow: hidden; display: none; background: #1e1f22;">
 
-                        <img id="gwSimBanner" src="" style="width: 100%; height: auto; max-height: 240px; object-fit: cover; border-radius: 4px; display: block;" onerror="document.getElementById('gwSimBannerWrap').style.display='none';" />
+                        <img id="gwSimBanner" src="" style="width: 100%; height: auto; max-height: 240px; object-fit: cover; border-radius: 6px; display: block;" alt="Giveaway Banner Preview" />
 
                     </div>
 
@@ -7922,7 +7964,15 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     </button>
 
-                    <div id="gwSimReactionPill" style="display: inline-flex; align-items: center; gap: 6px; background: rgba(88, 101, 242, 0.18); border: 1px solid #5865f2; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: #c9cdfb; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);" title="Members on Discord can also react directly with this emoji to enter" onmouseover="this.style.background='rgba(88, 101, 242, 0.3)';" onmouseout="this.style.background='rgba(88, 101, 242, 0.18)';">
+                    <button type="button" id="gwSimParticipantsBtn" style="background: #4e5058; color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 24px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);" onmouseover="this.style.background='#6d6f78'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#4e5058'; this.style.transform='none';" title="View participant list (ephemeral transparency)">
+
+                        <span id="gwSimParticipantsIcon" style="display: inline-flex; align-items: center;">👥</span>
+
+                        <span id="gwSimParticipantsText">Participants</span>
+
+                    </button>
+
+                    <div id="gwSimReactionPill" style="display: none; align-items: center; gap: 6px; background: rgba(88, 101, 242, 0.18); border: 1px solid #5865f2; border-radius: 20px; padding: 6px 14px; font-size: 12px; font-weight: 600; color: #c9cdfb; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);" title="Members on Discord can also react directly with this emoji to enter" onmouseover="this.style.background='rgba(88, 101, 242, 0.3)';" onmouseout="this.style.background='rgba(88, 101, 242, 0.18)';">
 
                         <span id="gwSimReactionIcon" style="display: inline-flex; align-items: center;">🎁</span>
 

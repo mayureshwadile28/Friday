@@ -2707,10 +2707,11 @@ def save_guild_giveaway_config(gid):
     if "embed_color" in body:
         cfg["embed_color"] = str(body.get("embed_color", "#5865F2")).strip() or "#5865F2" 
     if "entry_method" in body:
-        cfg["entry_method"] = str(body.get("entry_method", "button")).strip().lower()
+        val = str(body.get("entry_method", "button")).strip().lower()
+        cfg["entry_method"] = "reaction" if val == "reaction" else "button"
 
     # Custom styling emojis
-    for emoji_key in ["emoji_header", "emoji_prize", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended", "emoji_bullet"]:
+    for emoji_key in ["emoji_header", "emoji_prize", "emoji_participants", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended", "emoji_bullet"]:
         if emoji_key in body:
             val = str(body.get(emoji_key, "")).strip()
             if val:
@@ -2927,6 +2928,9 @@ def create_guild_giveaway(gid):
         host_mention = host_member.mention if host_member else "Server Staff"
         sponsor_id = str(host_member.id) if host_member else str(guild.owner_id if guild.owner else "0")
         entry_method = str(body.get("entry_method") or cfg.get("entry_method") or "button").lower()
+        if entry_method != "reaction":
+            entry_method = "button"
+        emoji_participants = resolve_safe_emoji(bot_instance, cfg.get("emoji_participants"), fallback="👥")
 
         default_instr = "Click the button below to participate!" if entry_method != "reaction" else f"React with {emoji_prize} to participate!"
         desc_body = (
@@ -2968,7 +2972,7 @@ def create_guild_giveaway(gid):
 
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{gid}_{temp_id}"
-        real_view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize) if entry_method in ("button", "both") else None
+        real_view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_participants) if entry_method == "button" else None
 
         send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
         if real_view:
@@ -2978,8 +2982,8 @@ def create_guild_giveaway(gid):
 
         msg = await channel.send(**send_kwargs)
 
-        # Only add reaction if entry_method is 'reaction' or 'both'
-        if entry_method in ("reaction", "both"):
+        # Only add reaction if entry_method is 'reaction'
+        if entry_method == "reaction":
             try:
                 if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
                     m = re.search(r":(\d+)>$", emoji_prize)
@@ -3004,8 +3008,8 @@ def create_guild_giveaway(gid):
             final_image_url = msg.attachments[0].url
 
         real_key = f"{gid}_{msg.id}"
-        if entry_method in ("button", "both"):
-            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
+        if entry_method == "button":
+            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_participants)
             await msg.edit(view=real_view)
 
         gw_data = {

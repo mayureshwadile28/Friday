@@ -155,12 +155,13 @@ def parse_discord_button_emoji(emoji_str: Optional[str]):
 class GiveawayEnterView(discord.ui.View):
     """
     Persistent button view for giveaway messages.
-    Allows members to enter or leave the giveaway with real-time counter updates.
+    Allows members to enter or leave the giveaway, or view participants list with real-time updates.
     """
-    def __init__(self, giveaway_key: str, entry_count: int = 0, disabled: bool = False, emoji: str = "🎁"):
+    def __init__(self, giveaway_key: str, entry_count: int = 0, disabled: bool = False, emoji: str = "🎁", emoji_participants: str = "👥"):
         super().__init__(timeout=None)
         self.giveaway_key = giveaway_key
         self.emoji = emoji or "🎁"
+        self.emoji_participants = emoji_participants or "👥"
         parsed_emoji = parse_discord_button_emoji(self.emoji) if not disabled else "🔒"
         button_label = f"Enter Giveaway ({entry_count})" if not disabled else f"Giveaway Ended ({entry_count})"
         self.enter_btn = discord.ui.Button(
@@ -168,10 +169,53 @@ class GiveawayEnterView(discord.ui.View):
             label=button_label,
             emoji=parsed_emoji,
             custom_id=f"gw_enter:{giveaway_key}",
-            disabled=disabled
+            disabled=disabled,
+            row=0
         )
         self.enter_btn.callback = self.enter_callback
         self.add_item(self.enter_btn)
+
+        # Participants Button (same secondary curved gray style, ephemeral visibility)
+        parsed_part_emoji = parse_discord_button_emoji(self.emoji_participants)
+        self.participants_btn = discord.ui.Button(
+            style=discord.ButtonStyle.secondary,
+            label="Participants",
+            emoji=parsed_part_emoji,
+            custom_id=f"gw_parts:{giveaway_key}",
+            disabled=False,
+            row=0
+        )
+        self.participants_btn.callback = self.participants_callback
+        self.add_item(self.participants_btn)
+
+    async def participants_callback(self, interaction: discord.Interaction):
+        gw = db.giveaways.get(self.giveaway_key)
+        if not gw:
+            await interaction.response.send_message("⚠️ Giveaway data could not be found or has expired.", ephemeral=True)
+            return
+
+        entries = gw.get("entries", [])
+        total = len(entries)
+        prize = gw.get("prize", "the prize")
+
+        if total == 0:
+            await interaction.response.send_message(f"👥 **Participants for {prize} (0):**\nNo members have entered this giveaway yet. Be the first to enter!", ephemeral=True)
+            return
+
+        header = f"👥 **Participants for {prize} ({total}):**\n"
+        p_lines = []
+        for idx, uid in enumerate(entries[:60], 1):
+            p_lines.append(f"{idx}. <@{uid}>")
+        
+        body = "\n".join(p_lines)
+        if total > 60:
+            body += f"\n\n*... and {total - 60} more participants.*"
+
+        full_msg = header + body
+        if len(full_msg) > 1950:
+            full_msg = full_msg[:1900] + f"\n\n*... and {total - len(p_lines)} more participants.*"
+
+        await interaction.response.send_message(full_msg, ephemeral=True)
 
     async def enter_callback(self, interaction: discord.Interaction):
         gw = db.giveaways.get(self.giveaway_key)
@@ -311,15 +355,50 @@ class GiveawayApprovalView(discord.ui.View):
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
         embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
-        gw_key = f"{guild.id}_{self.request_id}"
-        view = GiveawayEnterView(giveaway_key=gw_key, entry_count=0, emoji=emoji_prize)
-
         cfg = get_giveaway_config(guild.id)
+        emoji_parts = cfg.get("emoji_participants", "👥")
+        entry_method = str(cfg.get("entry_method", "button")).lower()
+        if entry_method != "reaction":
+            entry_method = "button"
+
+        gw_key = f"{guild.id}_{self.request_id}"
+        view = GiveawayEnterView(giveaway_key=gw_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts) if entry_method == "button" else None
+
         emoji_header = resolve_safe_emoji(self.bot, req.get("header_emoji") or req.get("emoji_header") or cfg.get("emoji_header"), fallback="🎉")
-        gw_msg = await gw_channel.send(content=f"{emoji_header} **New Giveaway** {emoji_header}", embed=embed, view=view)
+        send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
+        if view:
+            send_kwargs["view"] = view
+        gw_msg = await gw_channel.send(**send_kwargs)
+
+        if entry_method == "reaction":
+            try:
+                if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
+                    m = re.search(r":(\d+)>$", emoji_prize)
+                    if m:
+                        rx = self.bot.get_emoji(int(m.group(1)))
+                        if rx:
+                            await gw_msg.add_reaction(rx)
+                        else:
+                            await gw_msg.add_reaction("🎁")
+                    else:
+                        await gw_msg.add_reaction("🎁")
+                else:
+                    await gw_msg.add_reaction(emoji_prize)
+            except Exception:
+                try:
+                    await gw_msg.add_reaction("🎁")
+                except Exception:
+                    pass
 
         # Re-key with the real message id
         real_key = f"{guild.id}_{gw_msg.id}"
+        if entry_method == "button":
+            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts)
+            try:
+                await gw_msg.edit(view=real_view)
+            except Exception:
+                pass
+
         gw_data = {
             "message_id": gw_msg.id,
             "channel_id": gw_channel.id,
@@ -327,6 +406,7 @@ class GiveawayApprovalView(discord.ui.View):
             "prize": prize,
             "host_id": interaction.user.id,
             "sponsor_id": sponsor_id,
+            "entry_method": entry_method,
             "winners_count": winners_count,
             "created_at": now,
             "end_time": end_time,
@@ -829,7 +909,10 @@ class Giveaways(commands.Cog):
                 if isinstance(data, dict):
                     if data.get("status") == "active":
                         entries = data.get("entries", [])
-                        self.bot.add_view(GiveawayEnterView(giveaway_key=key, entry_count=len(entries)))
+                        cfg = get_giveaway_config(data.get("guild_id", 0))
+                        emoji_prize = cfg.get("emoji_prize", "🎁")
+                        emoji_parts = cfg.get("emoji_participants", "👥")
+                        self.bot.add_view(GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize, emoji_participants=emoji_parts))
                     elif data.get("status") == "pending" and key.startswith("req_"):
                         req_id = key.replace("req_", "")
                         self.bot.add_view(GiveawayApprovalView(request_id=req_id))
@@ -1262,7 +1345,10 @@ class Giveaways(commands.Cog):
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{guild.id}_{temp_id}"
         entry_method = str(cfg.get("entry_method", "button")).lower()
-        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize) if entry_method in ("button", "both") else None
+        if entry_method != "reaction":
+            entry_method = "button"
+        emoji_parts = cfg.get("emoji_participants", "👥")
+        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts) if entry_method == "button" else None
 
         emoji_header = resolve_safe_emoji(self.bot, header_emoji or cfg.get("emoji_header"), fallback="🎉")
         send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
@@ -1270,8 +1356,8 @@ class Giveaways(commands.Cog):
             send_kwargs["view"] = view
         gw_msg = await target_channel.send(**send_kwargs)
 
-        # Only add reaction if entry_method is 'reaction' or 'both'
-        if entry_method in ("reaction", "both"):
+        # Only add reaction if entry_method is 'reaction'
+        if entry_method == "reaction":
             try:
                 if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
                     m = re.search(r":(\d+)>$", emoji_prize)
@@ -1292,8 +1378,8 @@ class Giveaways(commands.Cog):
                     pass
 
         real_key = f"{guild.id}_{gw_msg.id}"
-        if entry_method in ("button", "both"):
-            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize)
+        if entry_method == "button":
+            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts)
             await gw_msg.edit(view=real_view)
 
         # Save giveaway

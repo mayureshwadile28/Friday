@@ -60000,6 +60000,7 @@ function setGwEmojiVisual(id, val) {
 
             'gwEmojiHeader': '🎉',
             'gwEmojiPrize': '🎁',
+            'gwEmojiParticipants': '👥',
 
 
 
@@ -60194,6 +60195,7 @@ function setGwEmojiVisual(id, val) {
 
         'gwEmojiHeader': 'Header Announcement Icon',
         'gwEmojiPrize': 'Prize & Button Icon',
+        'gwEmojiParticipants': 'Participants Button Icon',
 
 
 
@@ -60715,7 +60717,7 @@ function updateGwPreview() {
 
 
     const prizeInput = document.getElementById('gwPrizeInput');
-    const headerEmojiVal = (document.getElementById('gwCreateHeaderEmojiInput')?.value.trim()) || (document.getElementById('gwEmojiHeader')?.value.trim()) || '🎉';
+    const headerEmojiVal = (document.getElementById('gwEmojiHeader')?.value.trim()) || '🎉';
     const simHeaderEl = document.getElementById('gwSimHeaderContent');
     if (simHeaderEl) {
         const renderedHdrEmoji = renderEmojiHtmlOrChar(headerEmojiVal, 16);
@@ -61306,332 +61308,67 @@ function updateGwPreview() {
 
 
     // Banner image / GIF handling
-
-
-
-
-
-
-
     const bannerUrl = (bannerInput && bannerInput.value.trim()) || (defaultBannerInput && defaultBannerInput.value.trim()) || '';
-
-
-
-
-
-
-
     if (simBannerWrap && simBanner) {
-
-
-
-
-
-
-
         if (bannerUrl) {
-
-
-
-
-
-
-
+            simBanner.onload = () => {
+                simBannerWrap.style.display = 'block';
+            };
+            simBanner.onerror = () => {
+                simBannerWrap.style.display = 'none';
+            };
             simBanner.src = bannerUrl;
-
-
-
-
-
-
-
             simBannerWrap.style.display = 'block';
-
-
-
-
-
-
-
         } else {
-
-
-
-
-
-
-
+            simBanner.onload = null;
+            simBanner.onerror = null;
+            simBanner.src = '';
             simBannerWrap.style.display = 'none';
-
-
-
-
-
-
-
         }
-
-
-
-
-
-
-
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     if (simButtonIcon) simButtonIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
-
-
-
-
-
-
-
     const simReactionIcon = document.getElementById('gwSimReactionIcon');
-
-
-
-
-
-
-
     if (simReactionIcon) simReactionIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    const emojiParticipants = (document.getElementById('gwEmojiParticipants')?.value.trim()) || '👥';
+    const simPartsIcon = document.getElementById('gwSimParticipantsIcon');
+    if (simPartsIcon) simPartsIcon.innerHTML = renderDiscordMarkdown(emojiParticipants);
 
     // Embed Left Border Accent Color
-
-
-
-
-
-
-
     const embedColor = (document.getElementById('gwEmbedColor')?.value.trim()) || (document.getElementById('gwDefaultEmbedColor')?.value.trim()) || "#5865F2";
-
-
-
-
-
-
-
     const simEmbed = document.getElementById('gwSimEmbed');
-
-
-
-
-
-
-
     if (simEmbed) simEmbed.style.borderLeftColor = embedColor;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     // Update Host / Sponsor label in simulator
-
-
-
-
-
-
-
     const hostSelect = document.getElementById('gwHostSelect');
-
-
-
-
-
-
-
     let hostLabel = '@ServerStaff';
-
-
-
-
-
-
-
     if (hostSelect && hostSelect.selectedOptions && hostSelect.selectedOptions[0] && hostSelect.value) {
-
-
-
-
-
-
-
         hostLabel = hostSelect.selectedOptions[0].textContent;
-
-
-
-
-
-
-
     }
-
-
-
-
-
-
-
     const simHost = document.getElementById('gwSimHost');
-
-
-
-
-
-
-
     if (simHost) simHost.textContent = hostLabel;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Respect Entry Method: Button Only vs Reaction Only vs Both
-
-
-
-
-
-
-
+    // Respect Entry Method: Button Only vs Reaction Only
     const entryMethod = (document.getElementById('gwEntryMethodSelect')?.value) || 'button';
-
-
-
-
-
-
-
     const simBtn = document.getElementById('gwSimButton');
-
-
-
-
-
-
-
+    const simPartsBtn = document.getElementById('gwSimParticipantsBtn');
     const simRx = document.getElementById('gwSimReactionPill');
-
-
-
-
-
-
-
-    if (simBtn) simBtn.style.display = (entryMethod === 'reaction') ? 'none' : 'inline-flex';
-
-
-
-
-
-
-
-    if (simRx) simRx.style.display = (entryMethod === 'button') ? 'none' : 'inline-flex';
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    if (entryMethod === 'reaction') {
+        if (simBtn) simBtn.style.display = 'none';
+        if (simPartsBtn) simPartsBtn.style.display = 'none';
+        if (simRx) simRx.style.display = 'inline-flex';
+    } else {
+        if (simBtn) simBtn.style.display = 'inline-flex';
+        if (simPartsBtn) simPartsBtn.style.display = 'inline-flex';
+        if (simRx) simRx.style.display = 'none';
+    }
 
     // Clear banner button visibility
-
-
-
-
-
-
-
     const clearBtn = document.getElementById('gwBannerClearBtn');
-
-
-
-
-
-
-
     if (clearBtn) clearBtn.style.display = (bannerInput && bannerInput.value.trim()) ? 'inline-flex' : 'none';
-
-
-
-
-
-
-
+    const defaultClearBtn = document.getElementById('gwDefaultBannerClearBtn');
+    if (defaultClearBtn) defaultClearBtn.style.display = (defaultBannerInput && defaultBannerInput.value.trim()) ? 'inline-flex' : 'none';
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 function setGwEmbedColor(hex) {
 
@@ -62044,53 +61781,17 @@ async function loadGiveawaysData() {
 
 
         setGwEmojiVisual('gwEmojiHeader', cfg.emoji_header || '🎉');
-        if (document.getElementById('gwCreateHeaderEmojiInput') && !document.getElementById('gwCreateHeaderEmojiInput').dataset.userModified) {
-            document.getElementById('gwCreateHeaderEmojiInput').value = cfg.emoji_header || '🎉';
-            const prev = document.getElementById('gwCreateHeaderEmojiPreview');
-            if (prev) prev.innerHTML = renderEmojiHtmlOrChar(cfg.emoji_header || '🎉', 20);
-        }
         setGwEmojiVisual('gwEmojiPrize', cfg.emoji_prize || '🎁');
-
-
-
-
-
-
-
+        setGwEmojiVisual('gwEmojiParticipants', cfg.emoji_participants || '👥');
         setGwEmojiVisual('gwEmojiHost', cfg.emoji_host || '👑');
-
-
-
-
-
-
-
         setGwEmojiVisual('gwEmojiWinners', cfg.emoji_winners || '🏆');
-
-
-
-
-
-
-
         setGwEmojiVisual('gwEmojiEntries', cfg.emoji_entries || '🎟️');
-
-
-
-
-
-
-
         setGwEmojiVisual('gwEmojiEnds', cfg.emoji_ends || '⏳');
-
-
-
-
-
-
-
         setGwEmojiVisual('gwEmojiEnded', cfg.emoji_ended || '🔒');
         setGwEmojiVisual('gwEmojiBullet', cfg.emoji_bullet || '•');
+        if (document.getElementById('gwDefaultBanner')) {
+            document.getElementById('gwDefaultBanner').value = cfg.default_banner || '';
+        }
 
 
 
@@ -64651,56 +64352,14 @@ async function saveGwConfig() {
 
 
         emoji_header: document.getElementById('gwEmojiHeader')?.value.trim() || '🎉',
-        emoji_header: document.getElementById('gwCreateHeaderEmojiInput')?.value.trim() || document.getElementById('gwEmojiHeader')?.value.trim() || '🎉',
-                emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
-
-
-
-
-
-
-
+        emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
+        emoji_participants: document.getElementById('gwEmojiParticipants')?.value.trim() || '👥',
         emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
-
-
-
-
-
-
-
         emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
-
-
-
-
-
-
-
         emoji_entries: document.getElementById('gwEmojiEntries')?.value.trim() || '🎟️',
-
-
-
-
-
-
-
         emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳',
-
-
-
-
-
-
-
         emoji_ended: document.getElementById('gwEmojiEnded')?.value.trim() || '🔒',
         emoji_bullet: document.getElementById('gwEmojiBullet')?.value.trim() || '•',
-
-
-
-
-
-
-
         default_banner: document.getElementById('gwDefaultBanner')?.value.trim() || null,
 
 
@@ -65542,45 +65201,12 @@ async function launchGiveaway() {
 
 
                 image_url: document.getElementById('gwBannerInput')?.value.trim() || null,
-
-
-
-
-
-
-
+                emoji_header: document.getElementById('gwEmojiHeader')?.value.trim() || '🎉',
                 emoji_prize: document.getElementById('gwEmojiPrize')?.value.trim() || '🎁',
-
-
-
-
-
-
-
+                emoji_participants: document.getElementById('gwEmojiParticipants')?.value.trim() || '👥',
                 emoji_host: document.getElementById('gwEmojiHost')?.value.trim() || '👑',
-
-
-
-
-
-
-
                 emoji_winners: document.getElementById('gwEmojiWinners')?.value.trim() || '🏆',
-
-
-
-
-
-
-
                 emoji_entries: document.getElementById('gwEmojiEntries')?.value.trim() || '🎟️',
-
-
-
-
-
-
-
                 emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳'
 
 
@@ -66671,375 +66297,91 @@ function setupGiveawayEvents() {
 
 
 
-    // Banner file upload & clear button
-
-
-
-
-
-
-
-    const bannerUploadBtn = document.getElementById('gwBannerUploadBtn');
-
-
-
-
-
-
-
-    const bannerFileInput = document.getElementById('gwBannerFileInput');
-
-
-
-
-
-
-
-    const bannerClearBtn = document.getElementById('gwBannerClearBtn');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (bannerUploadBtn && bannerFileInput) {
-
-
-
-
-
-
-
-        bannerUploadBtn.addEventListener('click', (e) => {
-
-
-
-
-
-
-
-            e.preventDefault();
-
-
-
-
-
-
-
-            if (!currentGuildId) return showToast("⚠️ Select a server first!");
-
-
-
-
-
-
-
-            bannerFileInput.click();
-
-
-
-
-
-
-
-        });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        bannerFileInput.addEventListener('change', async () => {
-
-
-
-
-
-
-
-            if (!bannerFileInput.files || !bannerFileInput.files[0]) return;
-
-
-
-
-
-
-
-            const file = bannerFileInput.files[0];
-
-
-
-
-
-
-
-            const formData = new FormData();
-
-
-
-
-
-
-
-            formData.append('banner_file', file);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-            try {
-
-
-
-
-
-
-
-                showToast("📤 Uploading giveaway banner/GIF...");
-
-
-
-
-
-
-
-                const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/upload-banner`, {
-
-
-
-
-
-
-
-                    method: 'POST',
-
-
-
-
-
-
-
-                    body: formData
-
-
-
-
-
-
-
+    // Helper to setup Giveaway Banner File Upload, Dropzone, and Clear
+    function setupGiveawayBannerDropzone(inputId, fileInputId, uploadBtnId, clearBtnId, dropzoneId) {
+        const inputEl = document.getElementById(inputId);
+        const fileInputEl = document.getElementById(fileInputId);
+        const uploadBtn = document.getElementById(uploadBtnId);
+        const clearBtn = document.getElementById(clearBtnId);
+        const dropzone = document.getElementById(dropzoneId);
+
+        if (uploadBtn && fileInputEl) {
+            uploadBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!currentGuildId) return showToast("⚠️ Select a server first!");
+                fileInputEl.click();
+            });
+
+            fileInputEl.addEventListener('change', async () => {
+                if (!fileInputEl.files || !fileInputEl.files[0]) return;
+                await handleGiveawayBannerUpload(fileInputEl.files[0], inputEl);
+                fileInputEl.value = '';
+            });
+        }
+
+        if (clearBtn && inputEl) {
+            clearBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                inputEl.value = '';
+                updateGwPreview();
+            });
+        }
+
+        if (dropzone && inputEl) {
+            ['dragenter', 'dragover'].forEach(evtName => {
+                dropzone.addEventListener(evtName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.add('border-indigo-500', 'bg-indigo-500/10');
                 });
-
-
-
-
-
-
-
-                const data = await resp.json();
-
-
-
-
-
-
-
-                if (data.success) {
-
-
-
-
-
-
-
-                    if (bannerInput) bannerInput.value = data.url;
-
-
-
-
-
-
-
-                    showToast("✅ Banner uploaded successfully!");
-
-
-
-
-
-
-
-                    updateGwPreview();
-
-
-
-
-
-
-
-                } else {
-
-
-
-
-
-
-
-                    showToast(`❌ Error: ${data.error || 'Upload failed'}`);
-
-
-
-
-
-
-
-                }
-
-
-
-
-
-
-
-            } catch (err) {
-
-
-
-
-
-
-
-                showToast("❌ Network error uploading banner");
-
-
-
-
-
-
-
-            } finally {
-
-
-
-
-
-
-
-                bannerFileInput.value = '';
-
-
-
-
-
-
-
+            });
+
+            ['dragleave', 'drop'].forEach(evtName => {
+                dropzone.addEventListener(evtName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    dropzone.classList.remove('border-indigo-500', 'bg-indigo-500/10');
+                });
+            });
+
+            dropzone.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const dt = e.dataTransfer;
+                const files = dt ? dt.files : null;
+                if (!files || !files[0]) return;
+                await handleGiveawayBannerUpload(files[0], inputEl);
+            });
+        }
+    }
+
+    async function handleGiveawayBannerUpload(file, targetInput) {
+        if (!currentGuildId) return showToast("⚠️ Select a server first!");
+        const formData = new FormData();
+        formData.append('banner_file', file);
+
+        try {
+            showToast("📤 Uploading giveaway banner/GIF...");
+            const resp = await fetch(`/api/guild/${currentGuildId}/giveaways/upload-banner`, {
+                method: 'POST',
+                body: formData
+            });
+            const data = await resp.json();
+            if (data.success) {
+                if (targetInput) targetInput.value = data.url;
+                showToast("✅ Banner uploaded successfully!");
+                updateGwPreview();
+            } else {
+                showToast(`❌ Error: ${data.error || 'Upload failed'}`);
             }
-
-
-
-
-
-
-
-        });
-
-
-
-
-
-
-
+        } catch (err) {
+            showToast("❌ Network error uploading banner");
+        }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if (bannerClearBtn && bannerInput) {
-
-
-
-
-
-
-
-        bannerClearBtn.addEventListener('click', (e) => {
-
-
-
-
-
-
-
-            e.preventDefault();
-
-
-
-
-
-
-
-            bannerInput.value = '';
-
-
-
-
-
-
-
-            updateGwPreview();
-
-
-
-
-
-
-
-        });
-
-
-
-
-
-
-
-    }
+    // Setup both create banner and default banner uploaders
+    setupGiveawayBannerDropzone('gwBannerInput', 'gwBannerFileInput', 'gwBannerUploadBtn', 'gwBannerClearBtn', 'gwBannerDropzone');
+    setupGiveawayBannerDropzone('gwDefaultBanner', 'gwDefaultBannerFileInput', 'gwDefaultBannerUploadBtn', 'gwDefaultBannerClearBtn', 'gwDefaultBannerDropzone');
 
 
 
@@ -67164,7 +66506,7 @@ function setupGiveawayEvents() {
 
 
 
-    ['gwEmojiHeader', 'gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(id => {
+    ['gwEmojiHeader', 'gwEmojiPrize', 'gwEmojiParticipants', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(id => {
 
 
 
@@ -67348,7 +66690,7 @@ function setupGiveawayEvents() {
 
 
 
-    ['gwEmojiHeader', 'gwEmojiPrize', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(bindGwEmojiTile);
+    ['gwEmojiHeader', 'gwEmojiPrize', 'gwEmojiParticipants', 'gwEmojiHost', 'gwEmojiWinners', 'gwEmojiEntries', 'gwEmojiEnds', 'gwEmojiEnded', 'gwEmojiBullet'].forEach(bindGwEmojiTile);
 
 
 
@@ -67421,54 +66763,13 @@ function setupGiveawayEvents() {
 
 
         resetEmojisBtn.addEventListener('click', () => {
-
-
-
-
-
-
-
             setGwEmojiVisual('gwEmojiHeader', '🎉');
             setGwEmojiVisual('gwEmojiPrize', '🎁');
-
-
-
-
-
-
-
+            setGwEmojiVisual('gwEmojiParticipants', '👥');
             setGwEmojiVisual('gwEmojiHost', '👑');
-
-
-
-
-
-
-
             setGwEmojiVisual('gwEmojiWinners', '🏆');
-
-
-
-
-
-
-
             setGwEmojiVisual('gwEmojiEntries', '🎟️');
-
-
-
-
-
-
-
             setGwEmojiVisual('gwEmojiEnds', '⏳');
-
-
-
-
-
-
-
             setGwEmojiVisual('gwEmojiEnded', '🔒');
             setGwEmojiVisual('gwEmojiBullet', '•');
 
@@ -67519,54 +66820,15 @@ function setupGiveawayEvents() {
 
 
     // Set initial visual state for giveaway emojis
-
-
-
-
-
-
-
+    setGwEmojiVisual('gwEmojiHeader', document.getElementById('gwEmojiHeader')?.value || '🎉');
     setGwEmojiVisual('gwEmojiPrize', document.getElementById('gwEmojiPrize')?.value || '🎁');
-
-
-
-
-
-
-
+    setGwEmojiVisual('gwEmojiParticipants', document.getElementById('gwEmojiParticipants')?.value || '👥');
     setGwEmojiVisual('gwEmojiHost', document.getElementById('gwEmojiHost')?.value || '👑');
-
-
-
-
-
-
-
     setGwEmojiVisual('gwEmojiWinners', document.getElementById('gwEmojiWinners')?.value || '🏆');
-
-
-
-
-
-
-
     setGwEmojiVisual('gwEmojiEntries', document.getElementById('gwEmojiEntries')?.value || '🎟️');
-
-
-
-
-
-
-
     setGwEmojiVisual('gwEmojiEnds', document.getElementById('gwEmojiEnds')?.value || '⏳');
-
-
-
-
-
-
-
     setGwEmojiVisual('gwEmojiEnded', document.getElementById('gwEmojiEnded')?.value || '🔒');
+    setGwEmojiVisual('gwEmojiBullet', document.getElementById('gwEmojiBullet')?.value || '•');
 
 
 
