@@ -1683,6 +1683,10 @@ def get_welcome(gid):
 @app.route('/api/guild/<gid>/welcome/toggle', methods=['POST'])
 def toggle_welcome(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     data = flask_request.json or {}
     active = bool(data.get("active", False))
     if gid_str not in db.welcome or not isinstance(db.welcome[gid_str], dict):
@@ -1721,6 +1725,10 @@ def upload_welcome_banner(gid):
 @app.route('/api/guild/<gid>/welcome/update', methods=['POST'])
 def update_welcome(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     data = flask_request.json or {}
     if gid_str not in db.welcome or not isinstance(db.welcome[gid_str], dict):
         db.welcome[gid_str] = {}
@@ -1873,6 +1881,10 @@ def get_farewell(gid):
 @app.route('/api/guild/<gid>/farewell/toggle', methods=['POST'])
 def toggle_farewell(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     data = flask_request.json or {}
     active = bool(data.get("active", False))
     if gid_str not in db.farewell or not isinstance(db.farewell[gid_str], dict):
@@ -1884,6 +1896,10 @@ def toggle_farewell(gid):
 @app.route('/api/guild/<gid>/farewell/update', methods=['POST'])
 def update_farewell(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     data = flask_request.json or {}
     if gid_str not in db.farewell or not isinstance(db.farewell[gid_str], dict):
         db.farewell[gid_str] = {}
@@ -1984,6 +2000,10 @@ def get_first_welcome(gid):
 @app.route('/api/guild/<gid>/first_welcome/toggle', methods=['POST'])
 def toggle_first_welcome(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     data = flask_request.json or {}
     active = bool(data.get("active", False))
     
@@ -1997,6 +2017,10 @@ def toggle_first_welcome(gid):
 @app.route('/api/guild/<gid>/first_welcome/update', methods=['POST'])
 def update_first_welcome(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     data = flask_request.json or {}
     
     if gid_str not in db.first_welcome or not isinstance(db.first_welcome[gid_str], dict):

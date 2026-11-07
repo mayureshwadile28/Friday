@@ -43,6 +43,10 @@ def get_welcome_config(gid: str) -> dict:
     """Returns the server-join welcome configuration for a guild with defaults."""
     gid_str = str(gid)
     gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
     cfg = db.welcome.get(gid_str) or db.welcome.get(gid_int) or {}
     if not isinstance(cfg, dict):
         cfg = {}
@@ -64,6 +68,10 @@ def get_farewell_config(gid: str) -> dict:
     """Returns the server-leave farewell configuration for a guild with defaults."""
     gid_str = str(gid)
     gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
     cfg = db.farewell.get(gid_str) or db.farewell.get(gid_int) or {}
     if not isinstance(cfg, dict):
         cfg = {}
@@ -85,6 +93,10 @@ def get_first_welcome_config(gid: str) -> dict:
     """Returns the first-chat welcome configuration for a guild with defaults populated."""
     gid_str = str(gid)
     gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
     cfg = db.first_welcome.get(gid_str) or db.first_welcome.get(gid_int) or {}
     if not isinstance(cfg, dict):
         cfg = {}
@@ -1166,29 +1178,44 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         channel_id = cfg.get("channel_id")
         if not channel_id:
+            print(f"[Welcomer] Welcome enabled for {member.guild.name} ({gid}) but no channel_id configured.")
             return
 
         try:
-            target_channel = member.guild.get_channel(int(channel_id))
+            cid = int(channel_id)
         except (ValueError, TypeError):
+            print(f"[Welcomer] Invalid welcome channel_id '{channel_id}' in {member.guild.name}.")
             return
+
+        target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
+        if not target_channel:
+            try:
+                target_channel = await self.bot.fetch_channel(cid)
+            except Exception as fe:
+                print(f"[Welcomer] Failed to fetch welcome channel {cid} for {member.guild.name}: {fe}")
+                return
 
         if not target_channel:
+            print(f"[Welcomer] Target welcome channel {cid} not found for {member.guild.name}.")
             return
 
-        # Check bot permissions
-        perms = target_channel.permissions_for(member.guild.me)
-        if not perms.send_messages:
-            return
+        # Check bot permissions safely
+        bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+        if not bot_member and self.bot.user:
+            try:
+                bot_member = await member.guild.fetch_member(self.bot.user.id)
+            except Exception:
+                bot_member = None
+
+        if bot_member:
+            perms = target_channel.permissions_for(bot_member)
+            if not perms.send_messages:
+                print(f"[Welcomer] Missing send_messages permission in #{target_channel.name} ({member.guild.name}).")
+                return
 
         try:
-            if cfg.get("is_embed", True):
-                if not perms.embed_links:
-                    # Fallback to plain text if embed permission is missing
-                    text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), member, member.guild, target_channel)
-                    await target_channel.send(content=text)
-                    return
-
+            can_embed = perms.embed_links if bot_member else True
+            if cfg.get("is_embed", True) and can_embed:
                 embed = build_welcome_embed(member, member.guild, cfg, target_channel)
                 content = None
                 if cfg.get("ping_user", True):
@@ -1204,13 +1231,18 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
                     if os.path.exists(fpath):
                         discord_file = discord.File(fpath, filename=fname)
                         embed.set_image(url=f"attachment://{fname}")
+                elif img_url and (img_url.startswith("http://") or img_url.startswith("https://")):
+                    embed.set_image(url=img_url)
+
                 send_kwargs = {"content": content, "embed": embed} if content else {"embed": embed}
                 if discord_file:
                     send_kwargs["file"] = discord_file
                 await target_channel.send(**send_kwargs)
+                print(f"[Welcomer] Successfully delivered welcome card for {member} in #{target_channel.name} ({member.guild.name})")
             else:
                 text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), member, member.guild, target_channel)
                 await target_channel.send(content=text)
+                print(f"[Welcomer] Successfully delivered plain welcome text for {member} in #{target_channel.name} ({member.guild.name})")
         except Exception as e:
             print(f"[Welcomer] Error delivering server join greeting in {member.guild.name}: {e}")
 
@@ -1227,27 +1259,43 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         channel_id = cfg.get("channel_id")
         if not channel_id:
+            print(f"[Welcomer] Farewell enabled for {member.guild.name} ({gid}) but no channel_id configured.")
             return
 
         try:
-            target_channel = member.guild.get_channel(int(channel_id))
+            cid = int(channel_id)
         except (ValueError, TypeError):
+            print(f"[Welcomer] Invalid farewell channel_id '{channel_id}' in {member.guild.name}.")
             return
+
+        target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
+        if not target_channel:
+            try:
+                target_channel = await self.bot.fetch_channel(cid)
+            except Exception as fe:
+                print(f"[Welcomer] Failed to fetch farewell channel {cid} for {member.guild.name}: {fe}")
+                return
 
         if not target_channel:
+            print(f"[Welcomer] Target farewell channel {cid} not found for {member.guild.name}.")
             return
 
-        perms = target_channel.permissions_for(member.guild.me)
-        if not perms.send_messages:
-            return
+        bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+        if not bot_member and self.bot.user:
+            try:
+                bot_member = await member.guild.fetch_member(self.bot.user.id)
+            except Exception:
+                bot_member = None
+
+        if bot_member:
+            perms = target_channel.permissions_for(bot_member)
+            if not perms.send_messages:
+                print(f"[Welcomer] Missing send_messages permission for farewell in #{target_channel.name} ({member.guild.name}).")
+                return
 
         try:
-            if cfg.get("is_embed", True):
-                if not perms.embed_links:
-                    text = format_farewell_text(cfg.get("message", DEFAULT_FAREWELL_MSG), member, member.guild, target_channel, cfg.get("identifier_mode", "name"))
-                    await target_channel.send(content=text)
-                    return
-
+            can_embed = perms.embed_links if bot_member else True
+            if cfg.get("is_embed", True) and can_embed:
                 embed = build_farewell_embed(member, member.guild, cfg, target_channel)
                 content = None
                 raw_hdr = str(cfg.get("header_text", "")).strip()
@@ -1264,13 +1312,18 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
                     if os.path.exists(fpath):
                         discord_file = discord.File(fpath, filename=fname)
                         embed.set_image(url=f"attachment://{fname}")
+                elif img_url and (img_url.startswith("http://") or img_url.startswith("https://")):
+                    embed.set_image(url=img_url)
+
                 send_kwargs = {"content": content, "embed": embed} if content else {"embed": embed}
                 if discord_file:
                     send_kwargs["file"] = discord_file
                 await target_channel.send(**send_kwargs)
+                print(f"[Welcomer] Successfully delivered farewell card for {member} in #{target_channel.name} ({member.guild.name})")
             else:
                 text = format_farewell_text(cfg.get("message", DEFAULT_FAREWELL_MSG), member, member.guild, target_channel, cfg.get("identifier_mode", "name"))
                 await target_channel.send(content=text)
+                print(f"[Welcomer] Successfully delivered plain farewell text for {member} in #{target_channel.name} ({member.guild.name})")
         except Exception as e:
             print(f"[Welcomer] Error delivering server leave farewell in {member.guild.name}: {e}")
 
@@ -1294,6 +1347,8 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         # 3. Mark user as greeted in database
         guild_history = db.first_chat_welcomes.setdefault(gid, [])
+        if uid in guild_history:
+            return
         guild_history.append(uid)
         db.save_data()
 
@@ -1302,7 +1357,13 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         destination_channel = None
         if target_channel_id:
             try:
-                destination_channel = message.guild.get_channel(int(target_channel_id))
+                cid = int(target_channel_id)
+                destination_channel = message.guild.get_channel(cid) or self.bot.get_channel(cid)
+                if not destination_channel:
+                    try:
+                        destination_channel = await self.bot.fetch_channel(cid)
+                    except Exception:
+                        destination_channel = None
             except (ValueError, TypeError):
                 destination_channel = None
 
