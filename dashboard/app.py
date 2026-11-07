@@ -1548,8 +1548,8 @@ def add_autoresponder(gid):
     response_text = str(data.get("response", "")).strip()
     raw_emoji = str(data.get("emoji", "")).strip()
 
-    if not response_text:
-        return jsonify({"success": False, "error": "Response message is required"}), 400
+    if not response_text and not raw_emoji:
+        return jsonify({"success": False, "error": "Please provide either an auto-response message, an emoji reaction, or both."}), 400
 
     if gid_str not in db.autoresponder or not isinstance(db.autoresponder[gid_str], dict):
         db.autoresponder[gid_str] = {"rules": [], "ignored_channels": []}
@@ -3203,9 +3203,29 @@ def create_guild_giveaway(gid):
                 banner_name = os.path.basename(raw_image)
                 local_path = os.path.join(BANNER_UPLOAD_DIR, banner_name)
                 if os.path.exists(local_path):
-                    discord_file = discord.File(local_path, filename=banner_name)
-                    embed.set_image(url=f"attachment://{banner_name}")
-                    final_image_url = raw_image
+                    # To permanently prevent Discord from displaying loose/duplicate attachment images above the embed card,
+                    # upload the asset to log_channel to obtain a permanent Discord CDN URL so the public card has ZERO loose attachments.
+                    cdn_url = None
+                    try:
+                        cfg_gw = db.giveaways_config.get(str(gid), {})
+                        log_ch = await resolve_giveaway_log_channel(bot_instance, guild, cfg_gw)
+                        if log_ch:
+                            asset_msg = await log_ch.send(
+                                content=f"🖼️ **Giveaway Asset Stored for `{prize}`**",
+                                file=discord.File(local_path, filename=banner_name)
+                            )
+                            if asset_msg.attachments:
+                                cdn_url = asset_msg.attachments[0].url
+                    except Exception as e:
+                        print(f"[Giveaway Asset Upload Notice] {e}")
+
+                    if cdn_url:
+                        embed.set_image(url=cdn_url)
+                        final_image_url = cdn_url
+                    else:
+                        discord_file = discord.File(local_path, filename=banner_name)
+                        embed.set_image(url=f"attachment://{banner_name}")
+                        final_image_url = raw_image
             else:
                 validated = validate_image_url(raw_image)
                 if validated:

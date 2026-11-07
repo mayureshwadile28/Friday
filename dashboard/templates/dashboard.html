@@ -5860,7 +5860,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 6px;">
 
-                        <label class="form-sublabel" style="margin-bottom:0;">Automated Response Message</label>
+                        <label class="form-sublabel" style="margin-bottom:0;">Automated Response Message <span style="font-size:11px;font-weight:normal;color:#94a3b8;">(Optional if emoji reaction is selected)</span></label>
 
                         <div class="resp-vars-wrap">
 
@@ -5874,7 +5874,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     <div class="resp-input-group">
 
-                        <input class="text-input" id="autoRespTextInput" placeholder="e.g. {author}, the server IP is play.myserver.com!" type="text"/>
+                        <input class="text-input" id="autoRespTextInput" placeholder="Optional if emoji is set: e.g. {author}, the server IP is play.myserver.com!" type="text"/>
 
                         <button class="resp-emoji-btn" data-target="autoRespTextInput" type="button" title="Insert Server Emoji">
 
@@ -6109,26 +6109,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
             </div>
 
         </div>
-
-        <!-- CARD 4: GIVEAWAY PARTICIPANTS AUTO-RESPONSE -->
-        <div class="automation-card" style="margin-top: 16px; border: 1px solid rgba(88, 101, 242, 0.25); background: linear-gradient(135deg, rgba(88, 101, 242, 0.08) 0%, rgba(20, 20, 24, 0.6) 100%);">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(88, 101, 242, 0.2); display: flex; align-items: center; justify-content: center; font-size: 18px;">
-                        👥
-                    </div>
-                    <div>
-                        <h3 class="automation-card-title" style="margin: 0; font-size: 15px;">Giveaway Participants Auto-Response</h3>
-                        <p class="automation-card-desc" style="margin: 0; font-size: 12px;">Customize the automated ephemeral response, custom server emojis, and member list formatting shown when users click the Participants button on active giveaways.</p>
-                    </div>
-                </div>
-                <button class="btn btn-secondary" type="button" onclick="switchTab('giveawaysSection'); setTimeout(() => { const b = document.getElementById('gwTabParticipantsBtn'); if(b) b.click(); const el = document.getElementById('gwParticipantsPanel'); if(el) el.scrollIntoView({behavior: 'smooth', block: 'center'}); }, 150);" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; border-color: rgba(88, 101, 242, 0.4); color: #c7d2fe;">
-                    ⚙️ Configure in Giveaway Studio →
-                </button>
-            </div>
-        </div>
-
-    </div>
+</div>
 
 </div> <!-- End #automationsSection -->
 
@@ -7309,15 +7290,15 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 
 
-        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(380px, 480px); gap: 24px; align-items: start;">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 440px); gap: 24px; align-items: start;">
 
             <!-- Left: Form Controls -->
 
-            <div>
+            <div style="min-width: 0;">
 
                 <!-- Mode Selector Tabs -->
 
-                <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 10px;">
 
                     <button class="btn btn-secondary" id="gwTabWinnerBtn" type="button" style="padding: 6px 14px; font-size: 12px; font-weight: 700; background: rgba(245, 158, 11, 0.2); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">
 

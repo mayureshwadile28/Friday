@@ -256,16 +256,16 @@ class Expressions(commands.Cog):
 
     @autoresponder.command(name="add", description="Set Friday to auto-reply and/or react on member mention or standalone keyword.")
     @app_commands.describe(
-        response="The reply message ({author} and {user} supported)",
+        response="Optional reply message ({author} and {user} supported). Can be omitted if emoji is provided.",
         member="Target member to trigger on mention (optional if using keyword)",
         keyword="Standalone word/keyword to trigger (e.g. 'ip') (optional if using member)",
-        emoji="Optional emoji to react to the message with"
+        emoji="Optional emoji to react to the message with. Can be set with or without reply text."
     )
     @app_commands.default_permissions(manage_guild=True)
     async def autoresponder_add(
         self,
         interaction: discord.Interaction,
-        response: str,
+        response: Optional[str] = None,
         member: Optional[discord.Member] = None,
         keyword: Optional[str] = None,
         emoji: Optional[str] = None
@@ -274,9 +274,18 @@ class Expressions(commands.Cog):
         if gid not in db.autoresponder or not isinstance(db.autoresponder[gid], dict):
             db.autoresponder[gid] = {"rules": [], "ignored_channels": []}
 
-        clean_resp = response.strip()
+        clean_resp = response.strip() if response else ""
         clean_emoji = emoji.strip() if emoji else ""
         rules = db.autoresponder[gid].setdefault("rules", [])
+
+        if not clean_resp and not clean_emoji:
+            embed = discord.Embed(
+                title="✖ Missing Action",
+                description="Please provide either a **response** reply message or an **emoji** reaction (or both).",
+                color=0xed4245
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
 
         if not member and not keyword:
             embed = discord.Embed(

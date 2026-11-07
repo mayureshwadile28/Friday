@@ -42557,31 +42557,19 @@ function renderAutoResponderRules() {
 
 
 
+            ${rule.response ? `
             <div class="auto-rule-bubble ${isWord ? 'word-bubble' : ''}">
-
-
-
-
-
-
-
                 <div class="auto-rule-bubble-label">Automated Reply:</div>
-
-
-
-
-
-
-
                 <div class="auto-rule-bubble-text">${renderDiscordMarkdown(rule.response || '')}</div>
-
-
-
-
-
-
-
             </div>
+            ` : `
+            <div class="auto-rule-bubble ${isWord ? 'word-bubble' : ''}" style="background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.12); padding: 8px 12px; border-radius: 8px;">
+                <div class="auto-rule-bubble-label" style="color: #94a3b8; font-size: 11px;">Reaction-Only Dispatch:</div>
+                <div class="auto-rule-bubble-text" style="color: #cbd5e1; display: flex; align-items: center; gap: 8px; margin-top: 2px;">
+                    <span>Reacts to message with</span> ${renderEmojiHtmlOrChar(rule.emoji, 20)} <span>(No chat reply message)</span>
+                </div>
+            </div>
+            `}
 
 
 
@@ -43413,22 +43401,6 @@ async function addAutoResponderRule() {
 
 
 
-    if (!responseText) return showToast("⚠️ Please enter a response message!");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     const emojiInput = document.getElementById('autoRespEmojiInput');
 
 
@@ -43438,6 +43410,9 @@ async function addAutoResponderRule() {
 
 
     const rawEmoji = emojiInput ? (emojiInput.dataset.rawEmoji || emojiInput.value).trim() : '';
+    if (!responseText && !rawEmoji) {
+        return showToast("⚠️ Please enter a response message, choose an emoji reaction, or both!");
+    }
 
 
 

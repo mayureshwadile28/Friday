@@ -214,14 +214,36 @@ class GiveawayEnterView(discord.ui.View):
         self.participants_btn.callback = self.participants_callback
         self.add_item(self.participants_btn)
 
+    def _resolve_gw(self, interaction: discord.Interaction):
+        """Resolves the giveaway record safely across interaction message ID, giveaway_key, and stored aliases."""
+        msg_id = interaction.message.id if interaction.message else None
+        guild_id = interaction.guild_id
+
+        # 1. Primary Infallible Strategy: Direct match by message ID and guild ID
+        if guild_id and msg_id:
+            real_key = f"{guild_id}_{msg_id}"
+            if real_key in getattr(db, "giveaways", {}):
+                return real_key, db.giveaways[real_key]
+
+        # 2. Secondary Strategy: Direct match by self.giveaway_key
+        if self.giveaway_key and self.giveaway_key in getattr(db, "giveaways", {}):
+            return self.giveaway_key, db.giveaways[self.giveaway_key]
+
+        # 3. Tertiary Fallback Strategy: Search all records by message_id or key suffix
+        for k, v in list(getattr(db, "giveaways", {}).items()):
+            if isinstance(v, dict):
+                v_mid = v.get("message_id")
+                if msg_id and (v_mid == msg_id or str(v_mid) == str(msg_id)):
+                    return k, v
+                if self.giveaway_key:
+                    clean_part = self.giveaway_key.split("_")[-1]
+                    if clean_part and (str(v_mid) == clean_part or str(k).endswith(clean_part)):
+                        return k, v
+
+        return None, None
+
     async def participants_callback(self, interaction: discord.Interaction):
-        gw = db.giveaways.get(self.giveaway_key)
-        if not gw:
-            clean_part = self.giveaway_key.split("_")[-1]
-            for k, v in list(getattr(db, "giveaways", {}).items()):
-                if isinstance(v, dict) and (v.get("giveaway_key") == self.giveaway_key or str(v.get("message_id")) == clean_part or str(k).endswith(clean_part)):
-                    gw = v
-                    break
+        real_key, gw = self._resolve_gw(interaction)
         if not gw:
             await interaction.response.send_message("⚠️ Giveaway data could not be found or has expired.", ephemeral=True)
             return
@@ -278,17 +300,16 @@ class GiveawayEnterView(discord.ui.View):
         await interaction.response.send_message(full_msg, ephemeral=True)
 
     async def enter_callback(self, interaction: discord.Interaction):
-        gw = db.giveaways.get(self.giveaway_key)
+        real_key, gw = self._resolve_gw(interaction)
         if not gw:
-            clean_part = self.giveaway_key.split("_")[-1]
-            for k, v in list(getattr(db, "giveaways", {}).items()):
-                if isinstance(v, dict) and (v.get("giveaway_key") == self.giveaway_key or str(v.get("message_id")) == clean_part or str(k).endswith(clean_part)):
-                    gw = v
-                    break
-        if not gw or gw.get("status") != "active":
-            await interaction.response.send_message("⚠️ This giveaway has already ended or is no longer active.", ephemeral=True)
+            # Under NO circumstances should missing cache or a sync delay permanently disable an active giveaway card!
+            await interaction.response.send_message("⚠️ Giveaway data is currently syncing with Friday Engine. Please try clicking again in a few seconds.", ephemeral=True)
+            return
+
+        if gw.get("status") != "active":
+            await interaction.response.send_message("⚠️ This giveaway has already ended.", ephemeral=True)
             self.enter_btn.disabled = True
-            self.enter_btn.label = f"Giveaway Ended ({len(gw.get('entries', [])) if gw else 0})"
+            self.enter_btn.label = f"Giveaway Ended ({len(gw.get('entries', []))})"
             self.enter_btn.emoji = "🔒"
             try:
                 await interaction.message.edit(view=self)
@@ -323,8 +344,6 @@ class GiveawayEnterView(discord.ui.View):
 
         try:
             # ONLY edit view (the button label). Never re-edit the embed upon entry click!
-            # Re-editing the embed on a message with attachment files causes Discord API to
-            # un-embed the attachment and display duplicate GIF/image banners above the embed card.
             await interaction.message.edit(view=self)
         except Exception:
             pass
@@ -1216,7 +1235,11 @@ class Giveaways(commands.Cog):
                 ended_embed.set_footer(text="Ended • Friday Engine", icon_url=guild.icon.url if guild.icon else None)
 
                 disabled_view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), disabled=True, emoji=emoji_ended)
-                await msg.edit(embed=ended_embed, view=disabled_view)
+                try:
+                    # Pass attachments=[] to explicitly clear any loose file attachments in Discord, preventing duplicate GIF/image glitches
+                    await msg.edit(embed=ended_embed, view=disabled_view, attachments=[])
+                except Exception:
+                    await msg.edit(embed=ended_embed, view=disabled_view)
         except Exception as e:
             print(f"[Giveaways] Failed to edit ended message {message_id}: {e}")
 
