@@ -1135,5 +1135,171 @@ async def setup(bot):
         )
         await ctx.reply(embed=embed, mention_author=False)
 
+    # ─────────────────────────────────────────────────────────────
+    # Role Management Slash Commands
+    # ─────────────────────────────────────────────────────────────
+    role_group = app_commands.Group(
+        name="role",
+        description="Assign, remove, and inspect roles with hierarchy security.",
+        default_permissions=discord.Permissions(manage_roles=True)
+    )
+
+    @role_group.command(name="add", description="Assign a role to a server member.")
+    @app_commands.describe(member="The member to receive the role", role="The role to assign")
+    @app_commands.default_permissions(manage_roles=True)
+    async def role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
+        # 1. Invalid / default / managed role checks
+        if role.is_default():
+            await reply_box(interaction, "Cannot assign the default @everyone role.", title="INVALID ROLE", status="error", ephemeral=True)
+            return
+        if role.managed:
+            await reply_box(interaction, f"The role {role.mention} is managed by an integration or bot and cannot be assigned manually.", title="INTEGRATION ROLE", status="error", ephemeral=True)
+            return
+
+        # 2. Already has role check
+        if role in member.roles:
+            await reply_box(interaction, f"{member.mention} already has the {role.mention} role.", title="ALREADY ASSIGNED", status="error", ephemeral=True)
+            return
+
+        # 3. Hierarchy check: executor vs target role
+        if interaction.user.id != interaction.guild.owner_id and role >= interaction.user.top_role:
+            await reply_box(
+                interaction,
+                f"You cannot assign {role.mention} because it is higher than or equal to your highest role ({interaction.user.top_role.mention}).",
+                title="HIERARCHY ERROR",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        # 4. Hierarchy check: executor vs target member
+        if interaction.user.id != interaction.guild.owner_id and member.top_role >= interaction.user.top_role and member.id != interaction.user.id:
+            await reply_box(
+                interaction,
+                f"You cannot modify roles for {member.mention} because their highest role ({member.top_role.mention}) is equal to or higher than yours.",
+                title="HIERARCHY ERROR",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        # 5. Hierarchy check: bot vs target role
+        if role >= interaction.guild.me.top_role:
+            await reply_box(
+                interaction,
+                f"Friday cannot assign {role.mention} because it is higher than or equal to Friday's highest role ({interaction.guild.me.top_role.mention}).\n"
+                "Please drag Friday's role higher in Server Settings > Roles.",
+                title="BOT HIERARCHY LIMIT",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        # 6. Assign role
+        try:
+            await member.add_roles(role, reason=f"Role added by {interaction.user} ({interaction.user.id})")
+            await reply_box(
+                interaction,
+                f"Successfully added {role.mention} to {member.mention}.",
+                title="ROLE ASSIGNED",
+                status="success"
+            )
+        except discord.Forbidden:
+            await reply_box(interaction, f"Friday lacks permission to assign {role.mention}.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        except Exception as e:
+            await reply_box(interaction, f"Failed to add role: {e}", title="EXECUTION ERROR", status="error", ephemeral=True)
+
+    @role_group.command(name="remove", description="Remove a role from a server member.")
+    @app_commands.describe(member="The member to remove the role from", role="The role to remove")
+    @app_commands.default_permissions(manage_roles=True)
+    async def role_remove(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
+        # 1. Has role check
+        if role not in member.roles:
+            await reply_box(interaction, f"{member.mention} does not have the {role.mention} role.", title="ROLE NOT FOUND", status="error", ephemeral=True)
+            return
+
+        if role.is_default() or role.managed:
+            await reply_box(interaction, f"The role {role.mention} cannot be modified manually.", title="INVALID ROLE", status="error", ephemeral=True)
+            return
+
+        # 2. Hierarchy check: executor vs target role
+        if interaction.user.id != interaction.guild.owner_id and role >= interaction.user.top_role:
+            await reply_box(
+                interaction,
+                f"You cannot remove {role.mention} because it is higher than or equal to your highest role ({interaction.user.top_role.mention}).",
+                title="HIERARCHY ERROR",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        # 3. Hierarchy check: executor vs target member
+        if interaction.user.id != interaction.guild.owner_id and member.top_role >= interaction.user.top_role and member.id != interaction.user.id:
+            await reply_box(
+                interaction,
+                f"You cannot modify roles for {member.mention} because their highest role ({member.top_role.mention}) is equal to or higher than yours.",
+                title="HIERARCHY ERROR",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        # 4. Hierarchy check: bot vs target role
+        if role >= interaction.guild.me.top_role:
+            await reply_box(
+                interaction,
+                f"Friday cannot remove {role.mention} because it is higher than or equal to Friday's highest role ({interaction.guild.me.top_role.mention}).\n"
+                "Please drag Friday's role higher in Server Settings > Roles.",
+                title="BOT HIERARCHY LIMIT",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        # 5. Remove role
+        try:
+            await member.remove_roles(role, reason=f"Role removed by {interaction.user} ({interaction.user.id})")
+            await reply_box(
+                interaction,
+                f"Successfully removed {role.mention} from {member.mention}.",
+                title="ROLE REMOVED",
+                status="success"
+            )
+        except discord.Forbidden:
+            await reply_box(interaction, f"Friday lacks permission to remove {role.mention}.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        except Exception as e:
+            await reply_box(interaction, f"Failed to remove role: {e}", title="EXECUTION ERROR", status="error", ephemeral=True)
+
+    @role_group.command(name="info", description="Display detailed information about a role.")
+    @app_commands.describe(role="The role to inspect")
+    async def role_info(self, interaction: discord.Interaction, role: discord.Role):
+        created_ts = int(role.created_at.timestamp())
+        member_count = len(role.members)
+        hex_color = str(role.color).upper()
+        
+        desc = (
+            f"> **Name:** {role.mention} (`{role.name}`)\n"
+            f"> **Role ID:** `{role.id}`\n"
+            f"> **Color:** `{hex_color}`\n"
+            f"> **Position:** `{role.position}` (from bottom)\n"
+            f"> **Hoisted (Separated):** {'Yes' if role.hoist else 'No'}\n"
+            f"> **Mentionable:** {'Yes' if role.mentionable else 'No'}\n"
+            f"> **Managed (Bot/Integration):** {'Yes' if role.managed else 'No'}\n"
+            f"> **Members Assigned:** `{member_count}`\n"
+            f"> **Created At:** <t:{created_ts}:R> (<t:{created_ts}:F>)"
+        )
+        await reply_box(interaction, desc, title=f"ROLE INFO: {role.name}", status="info")
+
+    @role_group.command(name="list", description="List all roles assigned to a member.")
+    @app_commands.describe(member="The member whose roles to view")
+    async def role_list(self, interaction: discord.Interaction, member: discord.Member):
+        roles = [r.mention for r in reversed(member.roles) if not r.is_default()]
+        count = len(roles)
+        if not roles:
+            desc = f"{member.mention} has no special roles assigned."
+        else:
+            desc = f"**Total Roles ({count}):**\n" + ", ".join(roles)
+        await reply_box(interaction, desc, title=f"ROLES: {member.display_name}", status="info")
+
 async def setup(bot):
     await bot.add_cog(Moderation(bot))

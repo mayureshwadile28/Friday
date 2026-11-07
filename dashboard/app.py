@@ -2665,6 +2665,8 @@ WELCOME_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "welcome_b
 os.makedirs(WELCOME_UPLOAD_DIR, exist_ok=True)
 FAREWELL_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "farewell_banners")
 os.makedirs(FAREWELL_UPLOAD_DIR, exist_ok=True)
+BIRTHDAY_BANNER_DIR = os.path.join(app.root_path, "static", "uploads", "birthday_banners")
+os.makedirs(BIRTHDAY_BANNER_DIR, exist_ok=True)
 
 def validate_image_url(url):
     if not url:
@@ -3568,6 +3570,238 @@ def cancel_guild_giveaway(gid):
         return jsonify({"success": True, "message": "Giveaway cancelled."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ───────────────────── Birthday Studio & Tracker ─────────────────────
+
+@app.route('/api/guild/<gid>/birthdays', methods=['GET'])
+def get_guild_birthdays(gid):
+    gid_str = str(gid)
+    cfg = db.birthdays_config.get(gid_str, {})
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    bds_map = db.birthdays.get(gid_str, {})
+    if not isinstance(bds_map, dict):
+        bds_map = {}
+
+    birthdays_list = []
+    for uid, rec in bds_map.items():
+        birthdays_list.append({
+            "user_id": str(uid),
+            "user_name": str(rec.get("user_name") or f"Member {uid}"),
+            "month": int(rec.get("month", 1)),
+            "day": int(rec.get("day", 1)),
+            "registered_at": rec.get("registered_at", "")
+        })
+    birthdays_list.sort(key=lambda x: (x["month"], x["day"]))
+
+    restricted_list = [str(x) for x in db.birthdays_restricted.get(gid_str, [])]
+
+    return jsonify({
+        "success": True,
+        "config": cfg,
+        "birthdays": birthdays_list,
+        "restricted": restricted_list
+    })
+
+@app.route('/api/guild/<gid>/birthdays/config', methods=['POST'])
+def update_birthday_config(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+
+    cfg = db.birthdays_config.setdefault(gid_str, {})
+    cfg["enabled"] = bool(data.get("enabled", False))
+    cfg["form_channel_id"] = str(data.get("form_channel_id") or "").strip()
+    cfg["wish_channel_id"] = str(data.get("wish_channel_id") or "").strip()
+    cfg["role_id"] = str(data.get("role_id") or "").strip()
+    cfg["ping_everyone"] = bool(data.get("ping_everyone", False))
+    cfg["mention_user"] = bool(data.get("mention_user", True))
+    cfg["wish_time"] = str(data.get("wish_time") or "00:00").strip()
+    cfg["timezone"] = str(data.get("timezone") or "Asia/Kolkata").strip()
+    cfg["form_card_title"] = str(data.get("form_card_title") or "🎂 Member Birthday Registration").strip()
+    cfg["form_card_desc"] = str(data.get("form_card_desc") or "").strip()
+    cfg["form_card_banner"] = str(data.get("form_card_banner") or "").strip()
+    cfg["wish_message"] = str(data.get("wish_message") or "🎂 Happy Birthday {mention}! Let's celebrate! 🎉").strip()
+    cfg["embed_title"] = str(data.get("embed_title") or "🎉 HAPPY BIRTHDAY, {user}! 🎂").strip()
+    cfg["embed_description"] = str(data.get("embed_description") or "").strip()
+    cfg["embed_color"] = str(data.get("embed_color") or "#ff69b4").strip()
+    cfg["embed_image"] = str(data.get("embed_image") or "").strip()
+    cfg["embed_footer"] = str(data.get("embed_footer") or "Friday Birthday Engine • Wish them in chat!").strip()
+
+    db.save_data()
+    return jsonify({"success": True, "message": "Birthday settings saved successfully.", "config": cfg})
+
+@app.route('/api/guild/<gid>/birthdays/upload-banner', methods=['POST'])
+def upload_birthday_banner(gid):
+    try:
+        if 'banner_file' not in flask_request.files:
+            return jsonify({"success": False, "error": "No file uploaded."}), 400
+        file = flask_request.files['banner_file']
+        if not file or not file.filename:
+            return jsonify({"success": False, "error": "Empty filename."}), 400
+
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+            return jsonify({"success": False, "error": "Unsupported file format. Please upload PNG, JPG, GIF, or WebP."}), 400
+
+        token = uuid.uuid4().hex[:12]
+        safe_filename = f"bd_{gid}_{token}{ext}"
+        save_path = os.path.join(BIRTHDAY_BANNER_DIR, safe_filename)
+        file.save(save_path)
+
+        rel_url = f"/static/uploads/birthday_banners/{safe_filename}"
+        return jsonify({
+            "success": True,
+            "url": rel_url,
+            "filename": safe_filename
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/birthdays/post-form', methods=['POST'])
+def post_birthday_form_card(gid):
+    if not bot_instance or not bot_instance.loop:
+        return jsonify({"success": False, "error": "Friday bot is not connected."}), 503
+
+    gid_str = str(gid)
+    cfg = db.birthdays_config.get(gid_str, {})
+    form_chan_id = cfg.get("form_channel_id")
+    if not form_chan_id:
+        return jsonify({"success": False, "error": "Please select and save a Form Channel first."}), 400
+
+    async def do_post():
+        guild = bot_instance.get_guild(int(gid))
+        if not guild:
+            raise Exception("Guild not found.")
+        channel = guild.get_channel(int(form_chan_id))
+        if not channel:
+            raise Exception("Form channel could not be found.")
+
+        card_title = cfg.get("form_card_title", "🎂 Member Birthday Registration")
+        card_desc = cfg.get(
+            "form_card_desc",
+            "Click the button below to register your birthday!\n\n"
+            "🎉 Friday will deliver celebratory wishes on your special day.\n"
+            "🔒 **Strict Privacy:** Only Month & Day are saved. Zero birth year or age is stored."
+        )
+        embed = discord.Embed(
+            title=card_title,
+            description=card_desc,
+            color=0xff69b4
+        )
+        banner_url = cfg.get("form_card_banner")
+        if banner_url:
+            embed.set_image(url=banner_url)
+        embed.set_footer(text="Friday Birthday Engine • Ephemeral & Private Submission")
+
+        from cogs.birthdays import BirthdayRegisterView
+        msg = await channel.send(embed=embed, view=BirthdayRegisterView())
+        cfg["form_message_id"] = str(msg.id)
+        db.save_data()
+        return msg.id
+
+    try:
+        fut = asyncio.run_coroutine_threadsafe(do_post(), bot_instance.loop)
+        msg_id = fut.result(timeout=10)
+        return jsonify({"success": True, "message": "Interactive Registration Card deployed to channel!", "message_id": str(msg_id)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/birthdays/test', methods=['POST'])
+def test_birthday_wish(gid):
+    if not bot_instance or not bot_instance.loop:
+        return jsonify({"success": False, "error": "Friday bot is not connected."}), 503
+
+    gid_str = str(gid)
+    cfg = db.birthdays_config.get(gid_str, {})
+    wish_chan_id = cfg.get("wish_channel_id")
+    if not wish_chan_id:
+        return jsonify({"success": False, "error": "Please select and save a Wish Channel first."}), 400
+
+    async def do_test():
+        guild = bot_instance.get_guild(int(gid))
+        if not guild:
+            raise Exception("Guild not found.")
+        channel = guild.get_channel(int(wish_chan_id))
+        if not channel:
+            raise Exception("Wish channel could not be found.")
+
+        cog = bot_instance.get_cog("Birthdays")
+        if not cog:
+            raise Exception("Birthdays cog is not active.")
+
+        sample_member = guild.owner or guild.me
+        await cog._send_birthday_wish(guild, channel, sample_member, cfg)
+
+    try:
+        fut = asyncio.run_coroutine_threadsafe(do_test(), bot_instance.loop)
+        fut.result(timeout=10)
+        return jsonify({"success": True, "message": "Sample birthday wish sent to the wish channel!"})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/birthdays/member/edit', methods=['POST'])
+def edit_birthday_member(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    uid = str(data.get("user_id") or "").strip()
+    if not uid:
+        return jsonify({"success": False, "error": "User ID required."}), 400
+
+    try:
+        month = int(data.get("month"))
+        day = int(data.get("day"))
+    except (ValueError, TypeError):
+        return jsonify({"success": False, "error": "Valid Month (1-12) and Day (1-31) required."}), 400
+
+    if month < 1 or month > 12 or day < 1 or day > 31:
+        return jsonify({"success": False, "error": "Date values out of range."}), 400
+
+    guild_bds = db.birthdays.setdefault(gid_str, {})
+    rec = guild_bds.setdefault(uid, {"user_id": uid, "registered_at": datetime.now(timezone.utc).isoformat()})
+    rec["month"] = month
+    rec["day"] = day
+    if "user_name" in data and data["user_name"]:
+        rec["user_name"] = str(data["user_name"]).strip()
+
+    db.save_data()
+    return jsonify({"success": True, "message": "Member birthday updated."})
+
+@app.route('/api/guild/<gid>/birthdays/member/delete', methods=['POST'])
+def delete_birthday_member(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    uid = str(data.get("user_id") or "").strip()
+    if not uid:
+        return jsonify({"success": False, "error": "User ID required."}), 400
+
+    guild_bds = db.birthdays.get(gid_str, {})
+    if uid in guild_bds:
+        del guild_bds[uid]
+
+    restricted = db.birthdays_restricted.setdefault(gid_str, [])
+    if uid not in restricted:
+        restricted.append(uid)
+
+    db.save_data()
+    return jsonify({"success": True, "message": "Member birthday removed and locked from self-registration."})
+
+@app.route('/api/guild/<gid>/birthdays/member/unlock', methods=['POST'])
+def unlock_birthday_member(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    uid = str(data.get("user_id") or "").strip()
+    if not uid:
+        return jsonify({"success": False, "error": "User ID required."}), 400
+
+    restricted = db.birthdays_restricted.get(gid_str, [])
+    if uid in restricted:
+        restricted.remove(uid)
+        db.save_data()
+        return jsonify({"success": True, "message": f"Member {uid} unlocked! They can now register their birthday again."})
+
+    return jsonify({"success": True, "message": "Member was not in restricted list."})
 
 
 # ───────────────────── Bot Lifecycle ─────────────────────

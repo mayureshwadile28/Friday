@@ -47,6 +47,12 @@ class Database:
         self.giveaways = gw if isinstance(gw, dict) else {}
         gw_cfg = self.data.get("giveaways_config")
         self.giveaways_config = gw_cfg if isinstance(gw_cfg, dict) else {}
+        bd = self.data.get("birthdays")
+        self.birthdays = bd if isinstance(bd, dict) else {}
+        bdr = self.data.get("birthdays_restricted")
+        self.birthdays_restricted = bdr if isinstance(bdr, dict) else {}
+        bd_cfg = self.data.get("birthdays_config")
+        self.birthdays_config = bd_cfg if isinstance(bd_cfg, dict) else {}
 
     def load_data(self):
         try:
@@ -89,7 +95,10 @@ class Database:
                 "server_backups": {},
                 "special_invites": {},
                 "giveaways": {},
-                "giveaways_config": {}
+                "giveaways_config": {},
+                "birthdays": {},
+                "birthdays_restricted": {},
+                "birthdays_config": {}
             }
 
     def __getattr__(self, name):

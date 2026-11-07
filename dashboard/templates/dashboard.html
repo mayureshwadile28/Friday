@@ -379,6 +379,32 @@
 
                 </a>
 
+                <a class="nav-item" data-tab="birthdaysSection" href="#">
+
+                    <div class="nav-icon-wrap" style="color: #ec4899;">
+
+                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16">
+
+                            <path d="M20 21v-8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8"></path>
+
+                            <path d="M4 16s.5-1 2-1 2.5 2 4 2 2.5-2 4-2 2.5 2 4 2 2-1 2-1"></path>
+
+                            <path d="M2 21h20"></path>
+
+                            <line x1="7" y1="8" x2="7" y2="4"></line>
+
+                            <line x1="12" y1="8" x2="12" y2="4"></line>
+
+                            <line x1="17" y1="8" x2="17" y2="4"></line>
+
+                        </svg>
+
+                    </div>
+
+                    Birthday Studio &amp; Tracker
+
+                </a>
+
 </div>
 
 </div>
@@ -9714,6 +9740,355 @@ Click an inquiry button below to open a confidential support ticket with our tea
     </div>
 
 </div> <!-- End #specialInvitesSection -->
+
+
+<!-- ──────────────── MODULE 16: BIRTHDAY STUDIO & TRACKER ──────────────── -->
+<div class="content-section" id="birthdaysSection" style="display: none;">
+    <!-- Hero Banner Card -->
+    <div class="automation-card" style="margin-bottom: 24px; border-left: 4px solid #ec4899;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(236, 72, 153, 0.15); color: #ec4899; display: flex; align-items: center; justify-content: center; font-size: 22px;">
+                    🎂
+                </div>
+                <div>
+                    <h2 class="automation-card-title" style="margin: 0; font-size: 18px; color: #fff;">Birthday Studio &amp; Tracker</h2>
+                    <p class="automation-card-desc" style="margin: 4px 0 0; color: #94a3b8; font-size: 12.5px;">
+                        Automated member birthday wishes, interactive registration cards (Month &amp; Day only), anti-exploit lockouts, and 24-hour celebratory roles.
+                    </p>
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <label class="switch-wrap" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                    <span style="font-size: 13px; font-weight: 600; color: #e2e8f0;">System Active</span>
+                    <input type="checkbox" id="birthdayMasterToggle" style="display: none;">
+                    <div class="toggle-slider" id="birthdayToggleSlider"></div>
+                </label>
+                <button type="button" class="btn-action-primary" id="saveBirthdayConfigBtn" style="height: 38px; padding: 0 16px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Studio Layout -->
+    <div class="birthday-studio-layout">
+        <!-- Left Column: Settings & Designers -->
+        <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+            <!-- Card 1: Channels & Role Setup -->
+            <div class="automation-card">
+                <div class="composer-section-title" style="color: #ec4899; margin-bottom: 12px;">📍 Channels &amp; Role Automation</div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                    <div class="form-field-full">
+                        <label class="form-sublabel">Registration Form Channel</label>
+                        <select class="custom-select select-styled" id="birthdayFormChannelSelect">
+                            <option value="">Select channel for registration card...</option>
+                        </select>
+                        <span class="field-hint-text">Where Friday keeps the interactive registration card.</span>
+                    </div>
+
+                    <div class="form-field-full">
+                        <label class="form-sublabel">Wish Announcement Channel</label>
+                        <select class="custom-select select-styled" id="birthdayWishChannelSelect">
+                            <option value="">Select channel for birthday wishes...</option>
+                        </select>
+                        <span class="field-hint-text">Where celebratory birthday embeds are sent.</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 14px; display: flex; gap: 12px; align-items: center;">
+                    <button type="button" class="btn-action-secondary" id="deployBirthdayFormBtn" style="height: 36px; font-size: 12.5px;">
+                        📌 Deploy / Refresh Registration Card in Form Channel
+                    </button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px;">
+                    <div class="form-field-full">
+                        <label class="form-sublabel">24-Hour Birthday Role (Optional)</label>
+                        <select class="custom-select select-styled" id="birthdayRoleSelect">
+                            <option value="">No automatic role</option>
+                        </select>
+                        <span class="field-hint-text">Granted on birthday, revoked after 24 hours.</span>
+                    </div>
+
+                    <div class="form-field-full">
+                        <label class="form-sublabel">Wish Time &amp; Timezone</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" class="text-input" id="birthdayWishTimeInput" placeholder="00:00" value="00:00" style="width: 80px; text-align: center;">
+                            <select class="custom-select select-styled" id="birthdayTimezoneSelect" style="flex: 1;">
+                                <option value="Asia/Kolkata">IST (Asia/Kolkata)</option>
+                                <option value="UTC">UTC</option>
+                                <option value="America/New_York">EST (America/New_York)</option>
+                                <option value="America/Los_Angeles">PST (America/Los_Angeles)</option>
+                                <option value="Europe/London">GMT (Europe/London)</option>
+                            </select>
+                        </div>
+                        <span class="field-hint-text">Time when Friday delivers daily wishes.</span>
+                    </div>
+                </div>
+
+                <!-- Mentions & Pings -->
+                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1; cursor: pointer;">
+                        <input type="checkbox" id="birthdayMentionUserToggle" checked style="accent-color: #ec4899;">
+                        Mention Birthday Member ({mention})
+                    </label>
+                    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1; cursor: pointer;">
+                        <input type="checkbox" id="birthdayPingEveryoneToggle" style="accent-color: #ec4899;">
+                        Ping @everyone with Wish
+                    </label>
+                </div>
+            </div>
+
+            <!-- Card 2: Wish Message & Embed Designer -->
+            <div class="automation-card">
+                <div class="composer-section-title" style="color: #ec4899; margin-bottom: 12px;">🎨 Birthday Wish Card Designer</div>
+
+                <!-- Header Message -->
+                <div class="form-field-full">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                        <label class="form-sublabel" style="margin-bottom: 0;">Message Header (Above Embed)</label>
+                        <div class="resp-vars-wrap">
+                            <span class="resp-var-badge" data-target="birthdayWishMsgInput" data-var="{mention}">{mention}</span>
+                            <span class="resp-var-badge" data-target="birthdayWishMsgInput" data-var="{user}">{user}</span>
+                            <span class="resp-var-badge" data-target="birthdayWishMsgInput" data-var="{server}">{server}</span>
+                        </div>
+                    </div>
+                    <div class="resp-input-group">
+                        <input type="text" class="text-input" id="birthdayWishMsgInput" placeholder="e.g. 🎂 Happy Birthday {mention}! Let's celebrate! 🎉" value="🎂 Happy Birthday {mention}! Let's celebrate! 🎉">
+                        <button type="button" class="resp-emoji-btn" data-target="birthdayWishMsgInput" title="Insert Server Emoji">😊 Emojis</button>
+                    </div>
+                </div>
+
+                <!-- Embed Title -->
+                <div class="form-field-full" style="margin-top: 14px;">
+                    <label class="form-sublabel">Embed Card Title</label>
+                    <div class="resp-input-group">
+                        <input type="text" class="text-input" id="birthdayEmbedTitleInput" placeholder="🎉 HAPPY BIRTHDAY, {user}! 🎂" value="🎉 HAPPY BIRTHDAY, {user}! 🎂">
+                        <button type="button" class="resp-emoji-btn" data-target="birthdayEmbedTitleInput" title="Insert Server Emoji">😊 Emojis</button>
+                    </div>
+                </div>
+
+                <!-- Embed Description -->
+                <div class="form-field-full" style="margin-top: 14px;">
+                    <label class="form-sublabel">Embed Description (Markdown supported)</label>
+                    <div class="resp-input-group" style="align-items: flex-start;">
+                        <textarea class="text-input" id="birthdayEmbedDescInput" rows="3" style="resize: vertical; min-height: 70px;" placeholder="Wishing you a fabulous day filled with love and laughter! ✨">Wishing a very Happy Birthday to {mention}! May your special day be filled with happiness, success, and endless joy! 🎈✨</textarea>
+                        <button type="button" class="resp-emoji-btn" data-target="birthdayEmbedDescInput" style="height: 38px;" title="Insert Server Emoji">😊 Emojis</button>
+                    </div>
+                </div>
+
+                <!-- Color & Image Banner -->
+                <div style="display: grid; grid-template-columns: 140px 1fr; gap: 14px; margin-top: 14px;">
+                    <div class="form-field-full">
+                        <label class="form-sublabel">Embed Color</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="color" id="birthdayEmbedColorPicker" value="#ff69b4" style="width: 38px; height: 38px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; background: transparent; padding: 2px;">
+                            <input type="text" class="text-input" id="birthdayEmbedColorInput" value="#ff69b4" style="flex: 1; text-align: center; font-family: monospace;">
+                        </div>
+                    </div>
+
+                    <div class="form-field-full">
+                        <label class="form-sublabel">Celebratory Banner Image / GIF</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" class="text-input" id="birthdayEmbedImageInput" placeholder="https://... or upload below" style="flex: 1;">
+                            <label class="btn-action-secondary" style="margin: 0; padding: 0 12px; height: 38px; display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap;">
+                                📁 Upload GIF
+                                <input type="file" id="birthdayBannerFileInput" accept="image/*" style="display: none;">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Embed Footer -->
+                <div class="form-field-full" style="margin-top: 14px;">
+                    <label class="form-sublabel">Embed Footer</label>
+                    <div class="resp-input-group">
+                        <input type="text" class="text-input" id="birthdayEmbedFooterInput" placeholder="Friday Birthday Engine • Wish them in chat!" value="Friday Birthday Engine • Wish them in chat!">
+                        <button type="button" class="resp-emoji-btn" data-target="birthdayEmbedFooterInput" title="Insert Server Emoji">😊 Emojis</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: Form Card Customization -->
+            <div class="automation-card">
+                <div class="composer-section-title" style="color: #ec4899; margin-bottom: 12px;">📝 Registration Card Customization (In Form Channel)</div>
+                <div class="form-field-full">
+                    <label class="form-sublabel">Card Title</label>
+                    <input type="text" class="text-input" id="birthdayCardTitleInput" value="🎂 Member Birthday Registration">
+                </div>
+                <div class="form-field-full" style="margin-top: 12px;">
+                    <label class="form-sublabel">Card Description</label>
+                    <textarea class="text-input" id="birthdayCardDescInput" rows="2" style="resize: vertical;">Click the button below to register your birthday! Friday will celebrate and deliver custom wishes on your special day! (Strict Privacy: Only Month &amp; Day saved).</textarea>
+                </div>
+                <div class="form-field-full" style="margin-top: 12px;">
+                    <label class="form-sublabel">Card Banner URL (Optional)</label>
+                    <input type="text" class="text-input" id="birthdayCardBannerInput" placeholder="https://...">
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Live Simulator, 1000+ Scrollable Members List, Lockouts -->
+        <div style="display: flex; flex-direction: column; gap: 20px; min-width: 0;">
+            <!-- Live Simulator -->
+            <div class="automation-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="composer-section-title" style="color: #ec4899;">👁️ Live Discord Wish Simulator</div>
+                    <button type="button" class="btn-action-primary" id="testBirthdayWishBtn" style="height: 32px; font-size: 11.5px; padding: 0 12px;">
+                        🚀 Send Test Wish
+                    </button>
+                </div>
+
+                <div class="discord-preview-box" style="background: #313338; border-radius: 8px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; gap: 12px;">
+                        <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 40px; height: 40px; border-radius: 50%;" alt="Friday">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                <span style="font-weight: 700; color: #fff; font-size: 14px;">Friday</span>
+                                <span style="background: #5865f2; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 4px;">BOT</span>
+                                <span style="color: #949ba4; font-size: 11px;">Today at 00:00</span>
+                            </div>
+                            <div id="previewBirthdayWishHeader" style="color: #dbdee1; font-size: 14px; margin-bottom: 8px; word-break: break-word;">
+                                🎂 Happy Birthday @Member! Let's celebrate! 🎉
+                            </div>
+
+                            <!-- Embed Simulator -->
+                            <div id="previewBirthdayEmbed" style="border-left: 4px solid #ff69b4; background: #2b2d31; border-radius: 4px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+                                <div style="display: flex; justify-content: space-between; gap: 10px;">
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div id="previewBirthdayEmbedTitle" style="font-weight: 700; color: #fff; font-size: 15px; margin-bottom: 6px; word-break: break-word;">
+                                            🎉 HAPPY BIRTHDAY, Member! 🎂
+                                        </div>
+                                        <div id="previewBirthdayEmbedDesc" style="color: #dbdee1; font-size: 13px; line-height: 1.4; word-break: break-word;">
+                                            Wishing a very Happy Birthday to @Member! May your special day be filled with happiness, success, and endless joy! 🎈✨
+                                        </div>
+                                    </div>
+                                    <img id="previewBirthdayAvatar" src="https://cdn.discordapp.com/embed/avatars/1.png" style="width: 55px; height: 55px; border-radius: 50%; object-fit: cover;" alt="Avatar">
+                                </div>
+                                <img id="previewBirthdayBanner" src="" style="width: 100%; border-radius: 6px; max-height: 200px; object-fit: cover; display: none;" alt="Banner">
+                                <div id="previewBirthdayFooter" style="color: #949ba4; font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                                    Friday Birthday Engine • Wish them in chat!
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Registered Birthdays (High-Capacity 1,000+ Members Support) -->
+            <div class="automation-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div>
+                        <div class="composer-section-title" style="color: #ec4899; margin: 0;">
+                            🎂 Registered Birthdays (<span id="birthdayCountBadge">0</span>)
+                        </div>
+                        <span class="field-hint-text" style="margin-top: 2px;">Scrollable box optimized for 1,000+ members.</span>
+                    </div>
+                    <button type="button" class="btn-action-secondary" id="refreshBirthdaysBtn" style="height: 30px; font-size: 11.5px; padding: 0 10px;">
+                        🔄 Refresh
+                    </button>
+                </div>
+
+                <!-- Search & Filters -->
+                <div style="margin-bottom: 10px;">
+                    <input type="text" class="text-input" id="birthdaySearchInput" placeholder="🔍 Search member name or ID..." style="height: 34px; font-size: 12.5px;">
+                </div>
+
+                <!-- 12-Month Filter Tabs -->
+                <div class="birthday-month-tabs" id="birthdayMonthTabs">
+                    <button type="button" class="birthday-month-tab active" data-month="all">All</button>
+                    <button type="button" class="birthday-month-tab" data-month="1">Jan</button>
+                    <button type="button" class="birthday-month-tab" data-month="2">Feb</button>
+                    <button type="button" class="birthday-month-tab" data-month="3">Mar</button>
+                    <button type="button" class="birthday-month-tab" data-month="4">Apr</button>
+                    <button type="button" class="birthday-month-tab" data-month="5">May</button>
+                    <button type="button" class="birthday-month-tab" data-month="6">Jun</button>
+                    <button type="button" class="birthday-month-tab" data-month="7">Jul</button>
+                    <button type="button" class="birthday-month-tab" data-month="8">Aug</button>
+                    <button type="button" class="birthday-month-tab" data-month="9">Sep</button>
+                    <button type="button" class="birthday-month-tab" data-month="10">Oct</button>
+                    <button type="button" class="birthday-month-tab" data-month="11">Nov</button>
+                    <button type="button" class="birthday-month-tab" data-month="12">Dec</button>
+                </div>
+
+                <!-- In-Box Scrollable Members Container -->
+                <div class="birthday-list-scroll-box" id="birthdayMembersList">
+                    <div style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13px;">
+                        No birthdays registered yet.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Anti-Loop Lockout & Reset Approvals Panel -->
+            <div class="automation-card" style="border: 1px dashed rgba(239, 68, 68, 0.3);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div class="composer-section-title" style="color: #ef4444; margin: 0;">
+                        🔒 Restricted Members / Reset Approvals (<span id="birthdayRestrictedCountBadge">0</span>)
+                    </div>
+                </div>
+                <p style="font-size: 12px; color: #94a3b8; line-height: 1.4; margin: 0 0 10px;">
+                    Members who removed their birthday or were reset are locked from self-registration to prevent repeated date cycling perks. Click <strong>Unlock</strong> to grant permission to re-register.
+                </p>
+
+                <div class="birthday-list-scroll-box" id="birthdayRestrictedList" style="max-height: 200px;">
+                    <div style="padding: 16px; text-align: center; color: #64748b; font-size: 12px;">
+                        No members currently restricted.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div> <!-- End #birthdaysSection -->
+
+
+<!-- Member Birthday Edit Modal -->
+<div class="modal-backdrop" id="birthdayEditModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 9999; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div class="modal-dialog" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 24px; max-width: 440px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(236, 72, 153, 0.15); color: #ec4899; display: flex; align-items: center; justify-content: center; font-size: 20px;">
+                🎂
+            </div>
+            <div>
+                <h3 style="font-size: 16px; font-weight: 700; color: #fff; margin: 0;">Edit Member Birthday</h3>
+                <span style="font-size: 12px; color: var(--text-muted);" id="modalBirthdayUserText">Member: ...</span>
+            </div>
+        </div>
+
+        <input type="hidden" id="modalBirthdayUserId">
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px;">
+            <div class="form-field-full">
+                <label class="form-sublabel">Birth Month</label>
+                <select class="custom-select select-styled" id="modalBirthdayMonthSelect">
+                    <option value="1">January (1)</option>
+                    <option value="2">February (2)</option>
+                    <option value="3">March (3)</option>
+                    <option value="4">April (4)</option>
+                    <option value="5">May (5)</option>
+                    <option value="6">June (6)</option>
+                    <option value="7">July (7)</option>
+                    <option value="8">August (8)</option>
+                    <option value="9">September (9)</option>
+                    <option value="10">October (10)</option>
+                    <option value="11">November (11)</option>
+                    <option value="12">December (12)</option>
+                </select>
+            </div>
+
+            <div class="form-field-full">
+                <label class="form-sublabel">Birth Day</label>
+                <input type="number" min="1" max="31" class="text-input" id="modalBirthdayDayInput" style="text-align: center;">
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn-action-secondary" id="closeBirthdayModalBtn" style="height: 38px; padding: 0 16px;">Cancel</button>
+            <button type="button" class="btn-action-primary" id="saveBirthdayModalBtn" style="height: 38px; padding: 0 16px;">Save Changes</button>
+        </div>
+    </div>
+</div>
 
 
 

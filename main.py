@@ -113,7 +113,8 @@ async def on_ready():
         "cogs.ai_chat",
         "cogs.temp_voice",
         "cogs.backup",
-        "cogs.giveaways"
+        "cogs.giveaways",
+        "cogs.birthdays"
     ]
     for cog in cogs_list:
         try:
