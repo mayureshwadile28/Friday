@@ -191,7 +191,20 @@ def format_welcome_text(text: str, member: discord.Member, guild: discord.Guild,
            .replace("{channel_box}", channel.mention if channel else "#chat")
     )
 
-    # Resolve server custom emojis if formatted with :emoji_name:
+    # Dynamic channel pattern: <#channel_name> or <#channel_id>
+    def replace_bracket_channel_pattern(m):
+        raw = m.group(1).strip()
+        clean = raw.lstrip("#").strip()
+        if not clean:
+            return m.group(0)
+        if clean.isdigit():
+            return f"<#{clean}>"
+        for ch in guild.text_channels:
+            if ch.name.lower() == clean.lower():
+                return f"<#{ch.id}>"
+        return m.group(0)
+
+    res = re.sub(r'<#([^>]+)>', replace_bracket_channel_pattern, res)
     res = replace_plain_emojis(res, guild=guild)
     return res
 
@@ -263,7 +276,20 @@ def format_farewell_text(text: str, member: discord.Member, guild: discord.Guild
            .replace("{channel_box}", channel.mention if channel else "#chat")
     )
 
-    # Resolve server custom emojis if formatted with :emoji_name:
+    # Dynamic channel pattern: <#channel_name> or <#channel_id>
+    def replace_bracket_channel_pattern(m):
+        raw = m.group(1).strip()
+        clean = raw.lstrip("#").strip()
+        if not clean:
+            return m.group(0)
+        if clean.isdigit():
+            return f"<#{clean}>"
+        for ch in guild.text_channels:
+            if ch.name.lower() == clean.lower():
+                return f"<#{ch.id}>"
+        return m.group(0)
+
+    res = re.sub(r'<#([^>]+)>', replace_bracket_channel_pattern, res)
     res = replace_plain_emojis(res, guild=guild)
     return res
 
@@ -1168,35 +1194,53 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         """Greets new members immediately when they join the Discord server."""
-        if member.bot or not member.guild:
+        print(f"📥 [Welcomer Event] on_member_join triggered for {member.name}#{getattr(member, 'discriminator', '0')} (ID: {member.id}, bot={member.bot}) in '{getattr(member.guild, 'name', 'Unknown')}' (ID: {getattr(member.guild, 'id', '0')})")
+        if member.bot:
+            print(f"ℹ️ [Welcomer] Skipping bot account {member.name} in '{getattr(member.guild, 'name', 'Unknown')}'.")
+            return
+        if not member.guild:
             return
 
         gid = str(member.guild.id)
         cfg = get_welcome_config(gid)
         if not cfg.get("enabled"):
+            print(f"ℹ️ [Welcomer] Welcome is currently PAUSED / DISABLED for '{member.guild.name}' ({gid}).")
             return
 
         channel_id = cfg.get("channel_id")
-        if not channel_id:
-            print(f"[Welcomer] Welcome enabled for {member.guild.name} ({gid}) but no channel_id configured.")
-            return
-
-        try:
-            cid = int(channel_id)
-        except (ValueError, TypeError):
-            print(f"[Welcomer] Invalid welcome channel_id '{channel_id}' in {member.guild.name}.")
-            return
-
-        target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
-        if not target_channel:
+        target_channel = None
+        if channel_id:
             try:
-                target_channel = await self.bot.fetch_channel(cid)
-            except Exception as fe:
-                print(f"[Welcomer] Failed to fetch welcome channel {cid} for {member.guild.name}: {fe}")
-                return
+                cid = int(channel_id)
+                target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
+                if not target_channel:
+                    try:
+                        target_channel = await self.bot.fetch_channel(cid)
+                    except Exception as fe:
+                        print(f"⚠️ [Welcomer] Failed to fetch configured welcome channel {cid}: {fe}")
+            except (ValueError, TypeError):
+                print(f"⚠️ [Welcomer] Invalid welcome channel_id '{channel_id}' in {member.guild.name}.")
+
+        # Smart fallback if channel_id is not set or channel was not found
+        if not target_channel:
+            print(f"🔍 [Welcomer] Configured channel not found for '{member.guild.name}', attempting auto-discovery fallback...")
+            bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+            if member.guild.system_channel and (not bot_member or member.guild.system_channel.permissions_for(bot_member).send_messages):
+                target_channel = member.guild.system_channel
+            if not target_channel:
+                for candidate_name in ["welcome", "welcome-and-rules", "joins", "general", "lobby", "chat"]:
+                    ch = discord.utils.get(member.guild.text_channels, name=candidate_name)
+                    if ch and (not bot_member or ch.permissions_for(bot_member).send_messages):
+                        target_channel = ch
+                        break
+            if not target_channel and bot_member:
+                for ch in member.guild.text_channels:
+                    if ch.permissions_for(bot_member).send_messages:
+                        target_channel = ch
+                        break
 
         if not target_channel:
-            print(f"[Welcomer] Target welcome channel {cid} not found for {member.guild.name}.")
+            print(f"❌ [Welcomer] No writable welcome channel found for {member.guild.name}.")
             return
 
         # Check bot permissions safely
@@ -1210,7 +1254,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         if bot_member:
             perms = target_channel.permissions_for(bot_member)
             if not perms.send_messages:
-                print(f"[Welcomer] Missing send_messages permission in #{target_channel.name} ({member.guild.name}).")
+                print(f"❌ [Welcomer] Missing send_messages permission in #{target_channel.name} ({member.guild.name}).")
                 return
 
         try:
@@ -1238,46 +1282,61 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
                 if discord_file:
                     send_kwargs["file"] = discord_file
                 await target_channel.send(**send_kwargs)
-                print(f"[Welcomer] Successfully delivered welcome card for {member} in #{target_channel.name} ({member.guild.name})")
+                print(f"✅ [Welcomer] Successfully delivered welcome card for {member} in #{target_channel.name} ({member.guild.name})")
             else:
                 text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), member, member.guild, target_channel)
                 await target_channel.send(content=text)
-                print(f"[Welcomer] Successfully delivered plain welcome text for {member} in #{target_channel.name} ({member.guild.name})")
+                print(f"✅ [Welcomer] Successfully delivered plain welcome text for {member} in #{target_channel.name} ({member.guild.name})")
         except Exception as e:
-            print(f"[Welcomer] Error delivering server join greeting in {member.guild.name}: {e}")
+            print(f"❌ [Welcomer] Error delivering server join greeting in {member.guild.name}: {e}")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
         """Sends a farewell notification when a member leaves or is removed from the Discord server."""
+        print(f"📤 [Welcomer Event] on_member_remove triggered for {member.name}#{getattr(member, 'discriminator', '0')} (ID: {member.id}) from '{getattr(member.guild, 'name', 'Unknown')}' (ID: {getattr(member.guild, 'id', '0')})")
         if not member.guild:
             return
 
         gid = str(member.guild.id)
         cfg = get_farewell_config(gid)
         if not cfg.get("enabled"):
+            print(f"ℹ️ [Welcomer] Farewell is currently PAUSED / DISABLED for '{member.guild.name}' ({gid}).")
             return
 
         channel_id = cfg.get("channel_id")
-        if not channel_id:
-            print(f"[Welcomer] Farewell enabled for {member.guild.name} ({gid}) but no channel_id configured.")
-            return
-
-        try:
-            cid = int(channel_id)
-        except (ValueError, TypeError):
-            print(f"[Welcomer] Invalid farewell channel_id '{channel_id}' in {member.guild.name}.")
-            return
-
-        target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
-        if not target_channel:
+        target_channel = None
+        if channel_id:
             try:
-                target_channel = await self.bot.fetch_channel(cid)
-            except Exception as fe:
-                print(f"[Welcomer] Failed to fetch farewell channel {cid} for {member.guild.name}: {fe}")
-                return
+                cid = int(channel_id)
+                target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
+                if not target_channel:
+                    try:
+                        target_channel = await self.bot.fetch_channel(cid)
+                    except Exception as fe:
+                        print(f"⚠️ [Welcomer] Failed to fetch configured farewell channel {cid}: {fe}")
+            except (ValueError, TypeError):
+                print(f"⚠️ [Welcomer] Invalid farewell channel_id '{channel_id}' in {member.guild.name}.")
+
+        # Smart fallback if channel_id is not set or channel was not found
+        if not target_channel:
+            print(f"🔍 [Welcomer] Configured farewell channel not found for '{member.guild.name}', attempting auto-discovery fallback...")
+            bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+            if member.guild.system_channel and (not bot_member or member.guild.system_channel.permissions_for(bot_member).send_messages):
+                target_channel = member.guild.system_channel
+            if not target_channel:
+                for candidate_name in ["farewell", "goodbye", "welcome", "general", "lobby", "chat"]:
+                    ch = discord.utils.get(member.guild.text_channels, name=candidate_name)
+                    if ch and (not bot_member or ch.permissions_for(bot_member).send_messages):
+                        target_channel = ch
+                        break
+            if not target_channel and bot_member:
+                for ch in member.guild.text_channels:
+                    if ch.permissions_for(bot_member).send_messages:
+                        target_channel = ch
+                        break
 
         if not target_channel:
-            print(f"[Welcomer] Target farewell channel {cid} not found for {member.guild.name}.")
+            print(f"❌ [Welcomer] No writable farewell channel found for {member.guild.name}.")
             return
 
         bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
@@ -1290,7 +1349,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         if bot_member:
             perms = target_channel.permissions_for(bot_member)
             if not perms.send_messages:
-                print(f"[Welcomer] Missing send_messages permission for farewell in #{target_channel.name} ({member.guild.name}).")
+                print(f"❌ [Welcomer] Missing send_messages permission for farewell in #{target_channel.name} ({member.guild.name}).")
                 return
 
         try:
@@ -1319,13 +1378,13 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
                 if discord_file:
                     send_kwargs["file"] = discord_file
                 await target_channel.send(**send_kwargs)
-                print(f"[Welcomer] Successfully delivered farewell card for {member} in #{target_channel.name} ({member.guild.name})")
+                print(f"✅ [Welcomer] Successfully delivered farewell card for {member} in #{target_channel.name} ({member.guild.name})")
             else:
                 text = format_farewell_text(cfg.get("message", DEFAULT_FAREWELL_MSG), member, member.guild, target_channel, cfg.get("identifier_mode", "name"))
                 await target_channel.send(content=text)
-                print(f"[Welcomer] Successfully delivered plain farewell text for {member} in #{target_channel.name} ({member.guild.name})")
+                print(f"✅ [Welcomer] Successfully delivered plain farewell text for {member} in #{target_channel.name} ({member.guild.name})")
         except Exception as e:
-            print(f"[Welcomer] Error delivering server leave farewell in {member.guild.name}: {e}")
+            print(f"❌ [Welcomer] Error delivering server leave farewell in {member.guild.name}: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

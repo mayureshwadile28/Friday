@@ -217,7 +217,9 @@ class GiveawayEnterView(discord.ui.View):
             await interaction.response.send_message(empty_msg, ephemeral=True)
             return
 
-        header_tpl = cfg.get("participants_header") or "{emoji} **Participants for {prize} ({count}):**\n"
+        gid_str = str(guild_id)
+        cr = getattr(db, "custom_responses", {}).get(gid_str, {})
+        header_tpl = cr.get("gw_participants_response") or cfg.get("participants_header") or "{emoji} **Participants for {prize} ({count}):**\n"
         header = (
             header_tpl
             .replace("{emoji}", safe_part_emoji)

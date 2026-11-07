@@ -19497,6 +19497,8 @@ function renderDiscordMarkdown(rawText) {
 
         processed = processed.replace(/\{user\}/gi, '<span class="discord-mention">@Alex</span>');
         processed = processed.replace(/\{level\}/g, '<span class="discord-level-badge">5</span>');
+        processed = processed.replace(/\{user\}/g, '<span class="discord-mention">@Alex</span>');
+        processed = processed.replace(/\{username\}/g, 'Alex');
         processed = processed.replace(/\{winners?\}/g, '<span class="discord-mention">@Tony Daddy</span>');
         processed = processed.replace(/\{prize\}/g, '<strong style="color: #facc15;">1M OWO</strong>');
         processed = processed.replace(/\{host\}/g, '<span class="discord-mention">@Tony Daddy</span>');
@@ -19504,9 +19506,10 @@ function renderDiscordMarkdown(rawText) {
         processed = processed.replace(/\{channel(?:_link|_box)?\}/gi, '<span class="discord-channel-mention">#welcome</span>');
         processed = processed.replace(/\{link:#?([^\}]+)\}/gi, '<span class="discord-channel-mention">#$1</span>');
         processed = processed.replace(/\{link\}/g, '<span style="color:#5865F2; text-decoration:underline;"># giveaways › 💬</span>');
-        processed = processed.replace(/(?:&lt;|<)#([a-zA-Z0-9_\-]+)(?:&gt;|>)/g, '<span class="discord-channel-mention">#$1</span>');
+        processed = processed.replace(/(?:&lt;|<)#([^>&]+)(?:&gt;|>)/g, '<span class="discord-channel-mention">#$1</span>');
         processed = processed.replace(/(?:&lt;|<)@!?([a-zA-Z0-9_.\-]+)(?:&gt;|>)/g, '<span class="discord-mention">@$1</span>');
         processed = processed.replace(/(?:^|[\s(])#([a-zA-Z0-9_\-]{2,32})(?=[\s).,!?]|$)/g, ' <span class="discord-channel-mention">#$1</span>');
+        processed = processed.replace(/(?:^|[\s(])@([a-zA-Z0-9_.\-]{2,32})(?=[\s).,!?]|$)/g, ' <span class="discord-mention">@$1</span>');
 
 
 
@@ -35306,6 +35309,7 @@ const CUSTOM_RESPONSES_SCHEMA = [
 
     {"id": "welcome_greeting_text", "label": "Server Join Welcome Message", "category": "Welcomer", "vars": ["{user}", "{username}", "{server}", "{member_count}", "{channel}", "{rules}"]},
     {"id": "farewell_notice_text", "label": "Server Leave Farewell Notice", "category": "Welcomer", "vars": ["{user_display}", "{username}", "{id}", "{server}", "{member_count}", "{channel}"]},
+    {"id": "gw_participants_response", "label": "Giveaway Participants Response Header", "category": "Giveaways", "vars": ["{emoji}", "{prize}", "{count}", "{server}"]}
 ];
 
 
@@ -47060,6 +47064,9 @@ async function loadWelcomeSettings() {
         const hdrInput = document.getElementById('welcomeHeaderText');
         if (hdrInput) {
             hdrInput.value = cfg.header_text || "👋 Welcome {user} !";
+            if (!document.getElementById('welcomeHeaderText_rich') && typeof attachRichEmojiEditor === 'function') {
+                attachRichEmojiEditor('welcomeHeaderText', true);
+            }
             const richHdr = document.getElementById('welcomeHeaderText_rich');
             if (richHdr && typeof rawMarkdownToRichHtml === 'function') {
                 richHdr.innerHTML = rawMarkdownToRichHtml(hdrInput.value);
@@ -47069,6 +47076,9 @@ async function loadWelcomeSettings() {
         const titleInput = document.getElementById('welcomeTitleInput');
         if (titleInput) {
             titleInput.value = cfg.title || "WELCOME TO {server}!";
+            if (!document.getElementById('welcomeTitleInput_rich') && typeof attachRichEmojiEditor === 'function') {
+                attachRichEmojiEditor('welcomeTitleInput', true);
+            }
             const richTitle = document.getElementById('welcomeTitleInput_rich');
             if (richTitle && typeof rawMarkdownToRichHtml === 'function') {
                 richTitle.innerHTML = rawMarkdownToRichHtml(titleInput.value);
@@ -47078,6 +47088,9 @@ async function loadWelcomeSettings() {
         const msgInput = document.getElementById('welcomeMsgInput');
         if (msgInput) {
             msgInput.value = cfg.message || "Hey {user}, welcome to **{server}**! 🎉\n\n> We're thrilled to have you here with us.\n> Feel free to introduce yourself and say hello!\n\n📌 Review {rules} to get started and enjoy your stay.";
+            if (!document.getElementById('welcomeMsgInput_rich') && typeof attachRichEmojiEditor === 'function') {
+                attachRichEmojiEditor('welcomeMsgInput');
+            }
             const richMsg = document.getElementById('welcomeMsgInput_rich');
             if (richMsg && typeof rawMarkdownToRichHtml === 'function') {
                 richMsg.innerHTML = rawMarkdownToRichHtml(msgInput.value);
@@ -47375,6 +47388,9 @@ async function loadFarewellSettings() {
         const hdrInput = document.getElementById('farewellHeaderText');
         if (hdrInput) {
             hdrInput.value = cfg.header_text || "👋 Farewell {user} !";
+            if (!document.getElementById('farewellHeaderText_rich') && typeof attachRichEmojiEditor === 'function') {
+                attachRichEmojiEditor('farewellHeaderText', true);
+            }
             const richHdr = document.getElementById('farewellHeaderText_rich');
             if (richHdr && typeof rawMarkdownToRichHtml === 'function') {
                 richHdr.innerHTML = rawMarkdownToRichHtml(hdrInput.value);
@@ -47384,6 +47400,9 @@ async function loadFarewellSettings() {
         const titleInput = document.getElementById('farewellTitleInput');
         if (titleInput) {
             titleInput.value = cfg.title || "GOODBYE {username}!";
+            if (!document.getElementById('farewellTitleInput_rich') && typeof attachRichEmojiEditor === 'function') {
+                attachRichEmojiEditor('farewellTitleInput', true);
+            }
             const richTitle = document.getElementById('farewellTitleInput_rich');
             if (richTitle && typeof rawMarkdownToRichHtml === 'function') {
                 richTitle.innerHTML = rawMarkdownToRichHtml(titleInput.value);
@@ -47393,6 +47412,9 @@ async function loadFarewellSettings() {
         const msgInput = document.getElementById('farewellMsgInput');
         if (msgInput) {
             msgInput.value = cfg.message || "**{user_display}** has left the server. 👋\n\n> We're sad to see you go! Thank you for being a part of our community.\n\n📉 We now have **{member_count}** members remaining.";
+            if (!document.getElementById('farewellMsgInput_rich') && typeof attachRichEmojiEditor === 'function') {
+                attachRichEmojiEditor('farewellMsgInput');
+            }
             const richMsg = document.getElementById('farewellMsgInput_rich');
             if (richMsg && typeof rawMarkdownToRichHtml === 'function') {
                 richMsg.innerHTML = rawMarkdownToRichHtml(msgInput.value);
