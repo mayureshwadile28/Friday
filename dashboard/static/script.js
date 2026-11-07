@@ -18347,6 +18347,17 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('gwNoEntriesMessage');
     attachRichEmojiEditor('gwParticipantsHeader', true);
     attachRichEmojiEditor('gwParticipantsEmpty');
+    attachRichEmojiEditor('gwLogCreatedTitle', true);
+    attachRichEmojiEditor('gwLogCreatedMessage');
+    attachRichEmojiEditor('gwLogConcludedTitle', true);
+    attachRichEmojiEditor('gwLogConcludedMessage');
+    attachRichEmojiEditor('gwLogRerollTitle', true);
+    attachRichEmojiEditor('gwLogRerollMessage');
+    attachRichEmojiEditor('gwReqSubmittedMessage', true);
+    attachRichEmojiEditor('gwReqApprovalTitle', true);
+    attachRichEmojiEditor('gwReqApprovalMessage');
+    attachRichEmojiEditor('gwReqApprovedMessage', true);
+    attachRichEmojiEditor('gwReqRejectedMessage', true);
 
 
 
@@ -59408,142 +59419,31 @@ function setGwDuration(val) {
 
 
 
-function insertGwVar(val) {
-
-
-
-
-
-
-
-    const input = document.getElementById('gwDescInput');
-
-
-
-
-
-
-
-    const richEl = document.getElementById('gwDescInput_rich');
-
-
-
-
-
-
-
+function insertGwVar(targetOrVal, maybeVal) {
+    let targetId = 'gwDescInput';
+    let val = targetOrVal;
+    if (maybeVal !== undefined) {
+        targetId = targetOrVal;
+        val = maybeVal;
+    }
+    const input = document.getElementById(targetId);
+    const richEl = document.getElementById(targetId + '_rich');
     if (richEl) {
-
-
-
-
-
-
-
         insertEmojiOrTextIntoRichEditor(richEl, val);
-
-
-
-
-
-
-
         updateGwPreview();
-
-
-
-
-
-
-
+        updateGwWinnerPreview();
         return;
-
-
-
-
-
-
-
     }
-
-
-
-
-
-
-
     if (input) {
-
-
-
-
-
-
-
-        const start = input.selectionStart || input.value.length;
-
-
-
-
-
-
-
-        const end = input.selectionEnd || input.value.length;
-
-
-
-
-
-
-
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
         const text = input.value;
-
-
-
-
-
-
-
         input.value = text.substring(0, start) + val + text.substring(end);
-
-
-
-
-
-
-
         input.selectionStart = input.selectionEnd = start + val.length;
-
-
-
-
-
-
-
         input.focus();
-
-
-
-
-
-
-
         updateGwPreview();
-
-
-
-
-
-
-
+        updateGwWinnerPreview();
     }
-
-
-
-
-
-
-
 }
 
 
@@ -59806,6 +59706,44 @@ function updateGwWinnerPreview() {
         if (simHostLabel) simHostLabel.textContent = 'Requested:';
         if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiParts);
         if (simEntriesLabel) simEntriesLabel.textContent = 'List Mode:';
+    } else if (currentGwAnnouncementMode === 'logs') {
+        const titleVal = document.getElementById('gwLogConcludedTitle')?.value || '📜 Giveaway Concluded';
+        const msgVal = document.getElementById('gwLogConcludedMessage')?.value || '**Prize:** 1 Month Discord Nitro Classic\n**Winners (1):** @Alex\n**Total Entries:** 42\n**Channel:** #giveaway\n**Sponsored by:** @Mayuresh.exe';
+        const formattedLog = msgVal
+            .replace(/{prize}/g, '1 Month Discord Nitro Classic')
+            .replace(/{winners}/g, '@Alex')
+            .replace(/{winner_count}/g, '1')
+            .replace(/{entries}/g, '42')
+            .replace(/{channel}/g, '#giveaway')
+            .replace(/{host}/g, '@Mayuresh.exe')
+            .replace(/{server}/g, window.currentGuildName || 'Our Server');
+        if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
+        if (simBody) simBody.innerHTML = renderDiscordMarkdown(formattedLog);
+        if (simPing) simPing.innerHTML = '<span style="font-size:11px;color:#facc15;background:rgba(245,158,11,0.15);padding:2px 8px;border-radius:4px;">📜 In-Server Audit Trail • Delivered to #giveaway-logs</span>';
+        if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown('📜');
+        if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
+        if (simHostLabel) simHostLabel.textContent = 'Audited:';
+        if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiWinners);
+        if (simEntriesLabel) simEntriesLabel.textContent = 'Status:';
+    } else if (currentGwAnnouncementMode === 'requests') {
+        const titleVal = document.getElementById('gwReqApprovalTitle')?.value || '📝 New Member Giveaway Request';
+        const msgVal = document.getElementById('gwReqApprovalMessage')?.value || 'A member has requested to host a giveaway!\n\n**Prize:** 1 Month Discord Nitro Classic\n**Sponsor:** @Mayuresh.exe\n**Duration:** 1h\n**Winners:** 1\n**Description:** Community reward';
+        const formattedReq = msgVal
+            .replace(/{prize}/g, '1 Month Discord Nitro Classic')
+            .replace(/{user}/g, '@Mayuresh.exe')
+            .replace(/{sponsor}/g, '@Mayuresh.exe')
+            .replace(/{duration}/g, '1h')
+            .replace(/{winners}/g, '1')
+            .replace(/{description}/g, 'Community reward')
+            .replace(/{server}/g, window.currentGuildName || 'Our Server');
+        if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
+        if (simBody) simBody.innerHTML = renderDiscordMarkdown(formattedReq);
+        if (simPing) simPing.innerHTML = '<span style="font-size:11px;color:#60a5fa;background:rgba(59,130,246,0.15);padding:2px 8px;border-radius:4px;">🛡️ Staff Review Queue • Delivered to #giveaway-approvals</span>';
+        if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown('📝');
+        if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
+        if (simHostLabel) simHostLabel.textContent = 'Requester:';
+        if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown('⚖️');
+        if (simEntriesLabel) simEntriesLabel.textContent = 'Action:';
     }
 }
 
@@ -62116,46 +62054,37 @@ async function loadGiveawaysData() {
 
 
         if (document.getElementById('gwRerollMessage') && cfg.reroll_message) {
-
-
-
-
-
-
-
             document.getElementById('gwRerollMessage').value = cfg.reroll_message;
-
-
-
-
-
-
-
             if (typeof document.getElementById('gwRerollMessage')._syncToRich === 'function') {
-
-
-
-
-
-
-
                 document.getElementById('gwRerollMessage')._syncToRich();
-
-
-
-
-
-
-
             }
-
-
-
-
-
-
-
         }
+
+        const extraTemplateKeys = [
+            { id: 'gwNoEntriesMessage', key: 'no_entries_message' },
+            { id: 'gwParticipantsHeader', key: 'participants_header' },
+            { id: 'gwParticipantsEmpty', key: 'participants_empty' },
+            { id: 'gwLogCreatedTitle', key: 'log_created_title' },
+            { id: 'gwLogCreatedMessage', key: 'log_created_message' },
+            { id: 'gwLogConcludedTitle', key: 'log_concluded_title' },
+            { id: 'gwLogConcludedMessage', key: 'log_concluded_message' },
+            { id: 'gwLogRerollTitle', key: 'log_reroll_title' },
+            { id: 'gwLogRerollMessage', key: 'log_reroll_message' },
+            { id: 'gwReqSubmittedMessage', key: 'req_submitted_message' },
+            { id: 'gwReqApprovalTitle', key: 'req_approval_title' },
+            { id: 'gwReqApprovalMessage', key: 'req_approval_message' },
+            { id: 'gwReqApprovedMessage', key: 'req_approved_message' },
+            { id: 'gwReqRejectedMessage', key: 'req_rejected_message' }
+        ];
+        extraTemplateKeys.forEach(item => {
+            const el = document.getElementById(item.id);
+            if (el && cfg[item.key] !== undefined && cfg[item.key] !== null) {
+                el.value = cfg[item.key];
+                if (typeof el._syncToRich === 'function') {
+                    el._syncToRich();
+                }
+            }
+        });
 
 
 
@@ -64351,14 +64280,18 @@ async function saveGwConfig(silent = false) {
 
 
 
-        reroll_message: document.getElementById('gwRerollMessage')?.value.trim() || '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}'
-
-
-
-
-
-
-
+        reroll_message: document.getElementById('gwRerollMessage')?.value.trim() || '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}',
+        log_created_title: document.getElementById('gwLogCreatedTitle')?.value.trim() || '🎉 New Giveaway Started!',
+        log_created_message: document.getElementById('gwLogCreatedMessage')?.value.trim() || '**Prize:** {prize}\n**Host:** {host}\n**Winners:** {winners}\n**Ends:** {duration}\n**Channel:** {channel}',
+        log_concluded_title: document.getElementById('gwLogConcludedTitle')?.value.trim() || '📜 Giveaway Concluded',
+        log_concluded_message: document.getElementById('gwLogConcludedMessage')?.value.trim() || '**Prize:** {prize}\n**Winners ({winner_count}):** {winners}\n**Total Entries:** {entries}\n**Channel:** {channel}\n**Sponsored by:** {host}',
+        log_reroll_title: document.getElementById('gwLogRerollTitle')?.value.trim() || '🎲 Giveaway Rerolled',
+        log_reroll_message: document.getElementById('gwLogRerollMessage')?.value.trim() || '**Prize:** {prize}\n**New Winners:** {winners}\n**Channel:** {channel}',
+        req_submitted_message: document.getElementById('gwReqSubmittedMessage')?.value.trim() || '🎉 **Your giveaway request has been submitted to staff!**\n> **Prize:** {prize}\n> **Review Status:** Pending Staff Approval\nWe will notify you here once staff reviews your request.',
+        req_approval_title: document.getElementById('gwReqApprovalTitle')?.value.trim() || '📝 New Member Giveaway Request',
+        req_approval_message: document.getElementById('gwReqApprovalMessage')?.value.trim() || 'A member has requested to host a giveaway in this server!\n\n**Prize:** {prize}\n**Sponsor:** {user}\n**Duration:** {duration}\n**Winners:** {winners}\n**Description:** {description}',
+        req_approved_message: document.getElementById('gwReqApprovedMessage')?.value.trim() || '✅ **Your giveaway proposal for {prize} has been approved by staff!**\nIt has now been published to {channel}. Good luck to all participants!',
+        req_rejected_message: document.getElementById('gwReqRejectedMessage')?.value.trim() || '❌ **Your giveaway proposal for {prize} was declined by staff.**\nReason: {reason}'
     };
 
 
@@ -66809,68 +66742,46 @@ function setupGiveawayEvents() {
     const tabWinBtn = document.getElementById('gwTabWinnerBtn');
     const tabReBtn = document.getElementById('gwTabRerollBtn');
     const tabPartsBtn = document.getElementById('gwTabParticipantsBtn');
+    const tabLogsBtn = document.getElementById('gwTabLogsBtn');
+    const tabReqsBtn = document.getElementById('gwTabRequestsBtn');
     const panelWin = document.getElementById('gwWinnerPanel');
     const panelRe = document.getElementById('gwRerollPanel');
     const panelParts = document.getElementById('gwParticipantsPanel');
+    const panelLogs = document.getElementById('gwLogsPanel');
+    const panelReqs = document.getElementById('gwRequestsPanel');
 
-    if (tabWinBtn && tabReBtn && panelWin && panelRe) {
-        tabWinBtn.addEventListener('click', () => {
-            currentGwAnnouncementMode = 'winner';
-            tabWinBtn.style.background = 'rgba(245, 158, 11, 0.2)';
-            tabWinBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-            tabWinBtn.style.color = '#fbbf24';
-            tabReBtn.style.background = '';
-            tabReBtn.style.borderColor = '';
-            tabReBtn.style.color = 'var(--text-secondary)';
-            if (tabPartsBtn) {
-                tabPartsBtn.style.background = '';
-                tabPartsBtn.style.borderColor = '';
-                tabPartsBtn.style.color = 'var(--text-secondary)';
-            }
-            panelWin.style.display = 'block';
-            panelRe.style.display = 'none';
-            if (panelParts) panelParts.style.display = 'none';
-            updateGwWinnerPreview();
-        });
+    const allGwTabs = [
+        { btn: tabWinBtn, panel: panelWin, mode: 'winner', bg: 'rgba(245, 158, 11, 0.2)', border: 'rgba(245, 158, 11, 0.4)', color: '#fbbf24' },
+        { btn: tabReBtn, panel: panelRe, mode: 'reroll', bg: 'rgba(245, 158, 11, 0.2)', border: 'rgba(245, 158, 11, 0.4)', color: '#fbbf24' },
+        { btn: tabPartsBtn, panel: panelParts, mode: 'participants', bg: 'rgba(88, 101, 242, 0.2)', border: 'rgba(88, 101, 242, 0.4)', color: '#818cf8' },
+        { btn: tabLogsBtn, panel: panelLogs, mode: 'logs', bg: 'rgba(234, 179, 8, 0.2)', border: 'rgba(234, 179, 8, 0.4)', color: '#facc15' },
+        { btn: tabReqsBtn, panel: panelReqs, mode: 'requests', bg: 'rgba(59, 130, 246, 0.2)', border: 'rgba(59, 130, 246, 0.4)', color: '#60a5fa' }
+    ];
 
-        tabReBtn.addEventListener('click', () => {
-            currentGwAnnouncementMode = 'reroll';
-            tabReBtn.style.background = 'rgba(245, 158, 11, 0.2)';
-            tabReBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-            tabReBtn.style.color = '#fbbf24';
-            tabWinBtn.style.background = '';
-            tabWinBtn.style.borderColor = '';
-            tabWinBtn.style.color = 'var(--text-secondary)';
-            if (tabPartsBtn) {
-                tabPartsBtn.style.background = '';
-                tabPartsBtn.style.borderColor = '';
-                tabPartsBtn.style.color = 'var(--text-secondary)';
-            }
-            panelRe.style.display = 'block';
-            panelWin.style.display = 'none';
-            if (panelParts) panelParts.style.display = 'none';
-            updateGwWinnerPreview();
-        });
-
-        if (tabPartsBtn) {
-            tabPartsBtn.addEventListener('click', () => {
-                currentGwAnnouncementMode = 'participants';
-                tabPartsBtn.style.background = 'rgba(88, 101, 242, 0.2)';
-                tabPartsBtn.style.borderColor = 'rgba(88, 101, 242, 0.4)';
-                tabPartsBtn.style.color = '#818cf8';
-                tabWinBtn.style.background = '';
-                tabWinBtn.style.borderColor = '';
-                tabWinBtn.style.color = 'var(--text-secondary)';
-                tabReBtn.style.background = '';
-                tabReBtn.style.borderColor = '';
-                tabReBtn.style.color = 'var(--text-secondary)';
-                if (panelParts) panelParts.style.display = 'block';
-                panelWin.style.display = 'none';
-                panelRe.style.display = 'none';
+    allGwTabs.forEach(item => {
+        if (item.btn) {
+            item.btn.addEventListener('click', () => {
+                currentGwAnnouncementMode = item.mode;
+                allGwTabs.forEach(other => {
+                    if (other.btn) {
+                        if (other === item) {
+                            other.btn.style.background = other.bg;
+                            other.btn.style.borderColor = other.border;
+                            other.btn.style.color = other.color;
+                        } else {
+                            other.btn.style.background = '';
+                            other.btn.style.borderColor = '';
+                            other.btn.style.color = 'var(--text-secondary)';
+                        }
+                    }
+                    if (other.panel) {
+                        other.panel.style.display = (other === item) ? 'block' : 'none';
+                    }
+                });
                 updateGwWinnerPreview();
             });
         }
-    }
+    });
 
 
 
@@ -67078,8 +66989,15 @@ function setupGiveawayEvents() {
 
 
 
-        // Participants Announcement & Response Listeners
-    ['gwParticipantsHeader', 'gwParticipantsEmpty', 'gwNoEntriesMessage'].forEach(id => {
+        // Participants & Log & Request Announcement & Response Listeners
+    [
+        'gwParticipantsHeader', 'gwParticipantsEmpty', 'gwNoEntriesMessage',
+        'gwLogCreatedTitle', 'gwLogCreatedMessage',
+        'gwLogConcludedTitle', 'gwLogConcludedMessage',
+        'gwLogRerollTitle', 'gwLogRerollMessage',
+        'gwReqSubmittedMessage', 'gwReqApprovalTitle',
+        'gwReqApprovalMessage', 'gwReqApprovedMessage', 'gwReqRejectedMessage'
+    ].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', updateGwWinnerPreview);
         const richEl = document.getElementById(id + '_rich');
@@ -67120,6 +67038,17 @@ function setupGiveawayEvents() {
     bindGwFieldEmoji('gwParticipantsHeaderEmojiBtn', 'gwParticipantsHeader');
     bindGwFieldEmoji('gwParticipantsEmptyEmojiBtn', 'gwParticipantsEmpty');
     bindGwFieldEmoji('gwNoEntriesMsgEmojiBtn', 'gwNoEntriesMessage');
+    bindGwFieldEmoji('gwLogCreatedTitleEmojiBtn', 'gwLogCreatedTitle');
+    bindGwFieldEmoji('gwLogCreatedMsgEmojiBtn', 'gwLogCreatedMessage');
+    bindGwFieldEmoji('gwLogConcludedTitleEmojiBtn', 'gwLogConcludedTitle');
+    bindGwFieldEmoji('gwLogConcludedMsgEmojiBtn', 'gwLogConcludedMessage');
+    bindGwFieldEmoji('gwLogRerollTitleEmojiBtn', 'gwLogRerollTitle');
+    bindGwFieldEmoji('gwLogRerollMsgEmojiBtn', 'gwLogRerollMessage');
+    bindGwFieldEmoji('gwReqSubmittedMsgEmojiBtn', 'gwReqSubmittedMessage');
+    bindGwFieldEmoji('gwReqApprovalTitleEmojiBtn', 'gwReqApprovalTitle');
+    bindGwFieldEmoji('gwReqApprovalMsgEmojiBtn', 'gwReqApprovalMessage');
+    bindGwFieldEmoji('gwReqApprovedMsgEmojiBtn', 'gwReqApprovedMessage');
+    bindGwFieldEmoji('gwReqRejectedMsgEmojiBtn', 'gwReqRejectedMessage');
 
     const saveAnnounceBtn = document.getElementById('gwSaveAnnouncementBtn');
 

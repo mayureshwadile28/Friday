@@ -2802,13 +2802,26 @@ def get_guild_giveaways(gid):
     
     import time
     now = time.time()
-    for key, item in all_gw.items():
+    seen_msg_ids = set()
+    for key, item in list(all_gw.items()):
         if not isinstance(item, dict) or key.startswith("req_"):
             continue
         if str(item.get("guild_id")) == gid_str:
-            gw_copy = dict(item)
             msg_id_val = str(item.get("message_id") or key.split("_")[-1])
-            gw_copy["key"] = key
+            # Guard against triplication: if this message_id was already processed, skip duplicate alias rows
+            if msg_id_val in seen_msg_ids:
+                # If this is a redundant temp_key or bare msg.id, clean it up from db if canonical real_key exists
+                real_k = f"{gid_str}_{msg_id_val}"
+                if key != real_k and real_k in all_gw:
+                    try:
+                        all_gw.pop(key, None)
+                    except Exception:
+                        pass
+                continue
+            seen_msg_ids.add(msg_id_val)
+
+            gw_copy = dict(item)
+            gw_copy["key"] = f"{gid_str}_{msg_id_val}"
             gw_copy["id"] = msg_id_val
             gw_copy["message_id"] = msg_id_val
             gw_copy["channel_id"] = str(item.get("channel_id") or "")
@@ -2896,8 +2909,14 @@ def save_guild_giveaway_config(gid):
         val = str(body.get("default_banner", "")).strip()
         cfg["default_banner"] = val or None
 
-    # Announcement & Response formatting templates
-    for text_key in ["winner_title", "winner_message", "winner_ping", "reroll_title", "reroll_message", "reroll_ping", "participants_header", "participants_empty", "no_entries_title", "no_entries_message"]:
+    # Announcement, Log, and Proposal formatting templates
+    for text_key in [
+        "winner_title", "winner_message", "winner_ping", "reroll_title", "reroll_message", "reroll_ping",
+        "participants_header", "participants_empty", "no_entries_title", "no_entries_message",
+        "log_created_title", "log_created_message", "log_concluded_title", "log_concluded_message",
+        "log_reroll_title", "log_reroll_message", "req_submitted_message", "req_approval_title",
+        "req_approval_message", "req_approved_message", "req_rejected_message"
+    ]:
         if text_key in body:
             val = str(body.get(text_key, "")).strip()
             if val:
@@ -3032,6 +3051,31 @@ def get_giveaway_entries(gid, gw_id):
         "total": len(entry_ids),
         "participants": participants
     })
+
+async def resolve_giveaway_log_channel(bot, guild, cfg: dict = None):
+    """Resolves the Discord log channel for giveaways with safe integer conversion, cache lookup, fetch, and auto-discovery."""
+    if not guild:
+        return None
+    if cfg is None:
+        cfg = getattr(db, "giveaways_config", {}).get(str(guild.id), {}) if hasattr(db, "giveaways_config") else {}
+    log_ch_id = cfg.get("log_channel") if isinstance(cfg, dict) else None
+    ch = None
+    if log_ch_id:
+        try:
+            cid = int(str(log_ch_id).strip())
+            ch = guild.get_channel(cid)
+            if not ch and bot:
+                ch = bot.get_channel(cid)
+            if not ch and bot:
+                ch = await bot.fetch_channel(cid)
+        except Exception:
+            ch = None
+    if not ch and hasattr(guild, "text_channels"):
+        for name in ("giveaway-logs", "giveaways-log", "gw-logs", "giveaway-log", "gw_logs", "giveaways_log"):
+            ch = discord.utils.get(guild.text_channels, name=name)
+            if ch:
+                break
+    return ch
 
 @app.route('/api/guild/<gid>/giveaways/create', methods=['POST'])
 def create_guild_giveaway(gid):
@@ -3210,9 +3254,19 @@ def create_guild_giveaway(gid):
 
         real_key = f"{gid}_{msg.id}"
 
+        # Re-edit the message to bind the persistent view to real_key and fix CDN image URL (prevents attachment detachment)
+        if entry_method == "button":
+            try:
+                real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_participants)
+                if final_image_url:
+                    embed.set_image(url=final_image_url)
+                await msg.edit(embed=embed, view=real_view)
+            except Exception:
+                pass
+
         gw_data = {
             "message_id": msg.id,
-            "giveaway_key": temp_key,
+            "giveaway_key": real_key,
             "key": real_key,
             "channel_id": channel.id,
             "guild_id": gid_int,
@@ -3232,27 +3286,53 @@ def create_guild_giveaway(gid):
             "embed_color": embed_color_hex,
             "header_emoji": emoji_header
         }
-        # Save by temp_key (assigned to initial button view), real_key, and msg.id
-        db.giveaways[temp_key] = gw_data
+        # ONLY store canonical real_key! Pop temporary uuid key and bare msg.id to eliminate duplicate rows in UI
+        db.giveaways.pop(temp_key, None)
+        db.giveaways.pop(str(msg.id), None)
         db.giveaways[real_key] = gw_data
-        db.giveaways[str(msg.id)] = gw_data
         db.save_data()
 
-        # Log event if log channel exists
-        cfg = db.giveaways_config.get(str(gid), {})
-        log_ch_id = cfg.get("log_channel")
-        log_channel = guild.get_channel(log_ch_id) if log_ch_id else None
-        if log_channel:
-            log_embed = discord.Embed(
-                title="📜 Giveaway Created (Dashboard)",
-                description=f"**Prize:** {prize}\n**Channel:** {channel.mention}\n**Winners:** {winners_count}\n**Duration:** {duration_str}\n[Jump to Giveaway]({msg.jump_url})",
-                color=discord.Color.blue(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            try:
+        # Log event in #giveaway-logs channel
+        try:
+            cfg = db.giveaways_config.get(str(gid), {})
+            log_channel = await resolve_giveaway_log_channel(bot_instance, guild, cfg)
+            if log_channel:
+                default_log_title = "📜 Giveaway Created (Dashboard)"
+                default_log_desc = (
+                    f"**Prize:** {prize}\n"
+                    f"**Channel:** {channel.mention}\n"
+                    f"**Sponsored by:** {host_display}\n"
+                    f"**Winners Count:** {winners_count}\n"
+                    f"**Duration:** {duration_str}\n"
+                    f"**Entry Method:** {entry_method.title()}\n"
+                    f"[Jump to Giveaway]({msg.jump_url})"
+                )
+                raw_log_title = cfg.get("log_created_title") or default_log_title
+                raw_log_desc = cfg.get("log_created_message") or default_log_desc
+                formatted_log_desc = (
+                    raw_log_desc
+                    .replace("{prize}", prize)
+                    .replace("{channel}", channel.mention)
+                    .replace("{host}", host_display)
+                    .replace("{winners}", str(winners_count))
+                    .replace("{duration}", duration_str)
+                    .replace("{entry_method}", entry_method.title())
+                    .replace("{server}", guild.name)
+                    .replace("{link}", msg.jump_url)
+                )
+                log_embed = discord.Embed(
+                    title=raw_log_title.replace("{prize}", prize),
+                    description=formatted_log_desc,
+                    color=discord.Color.blue(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                if final_image_url and final_image_url.startswith("http"):
+                    log_embed.set_thumbnail(url=final_image_url)
+                if guild.icon:
+                    log_embed.set_footer(text="Friday Giveaway Engine • Audit Log", icon_url=guild.icon.url)
                 await log_channel.send(embed=log_embed)
-            except Exception:
-                pass
+        except Exception as e:
+            print(f"[Giveaways] Error logging giveaway creation to Discord channel: {e}")
 
         return {
             "message_id": str(msg.id),
@@ -3356,6 +3436,40 @@ def reroll_guild_giveaway(gid):
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
                 await ch.send(content=f"🎲 **Giveaway Rerolled!** Congratulations {mentions}!", embed=embed, view=view)
 
+                # Log reroll to #giveaway-logs channel
+                try:
+                    log_channel = await resolve_giveaway_log_channel(bot_instance, guild, cfg)
+                    if log_channel:
+                        default_reroll_log_title = "🎲 Giveaway Rerolled"
+                        default_reroll_log_desc = (
+                            f"**Prize:** {gw.get('prize')}\n"
+                            f"**New Winner(s):** {mentions}\n"
+                            f"**Channel:** <#{ch.id}>\n"
+                            f"**Rerolled by:** Dashboard Administrator"
+                        )
+                        raw_reroll_log_title = cfg.get("log_reroll_title") or default_reroll_log_title
+                        raw_reroll_log_desc = cfg.get("log_reroll_message") or default_reroll_log_desc
+                        formatted_log = (
+                            raw_reroll_log_desc
+                            .replace("{prize}", str(gw.get("prize")))
+                            .replace("{winners}", mentions)
+                            .replace("{channel}", f"<#{ch.id}>")
+                            .replace("{staff}", "Dashboard Administrator")
+                            .replace("{server}", guild.name)
+                            .replace("{link}", jump_url)
+                        )
+                        reroll_log_embed = discord.Embed(
+                            title=raw_reroll_log_title.replace("{prize}", str(gw.get("prize"))),
+                            description=formatted_log,
+                            color=discord.Color.from_rgb(245, 158, 11),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        if guild.icon:
+                            reroll_log_embed.set_footer(text="Friday Giveaway Engine • Audit Log", icon_url=guild.icon.url)
+                        await log_channel.send(embed=reroll_log_embed)
+                except Exception as e:
+                    print(f"[Giveaways] Error logging reroll to Discord channel: {e}")
+
     try:
         fut = asyncio.run_coroutine_threadsafe(do_announce(), bot_instance.loop)
         fut.result(timeout=10)
@@ -3398,6 +3512,23 @@ def cancel_guild_giveaway(gid):
                         await m.edit(embed=embed, view=view)
                 except Exception:
                     pass
+
+                # Log cancellation to #giveaway-logs
+                try:
+                    cfg = db.giveaways_config.get(str(gid), {})
+                    log_channel = await resolve_giveaway_log_channel(bot_instance, guild, cfg)
+                    if log_channel:
+                        cancel_log = discord.Embed(
+                            title="❌ Giveaway Cancelled",
+                            description=f"**Prize:** {gw.get('prize')}\n**Channel:** <#{ch.id}>\n**Action:** Cancelled via Dashboard",
+                            color=discord.Color.red(),
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        if guild.icon:
+                            cancel_log.set_footer(text="Friday Giveaway Engine • Audit Log", icon_url=guild.icon.url)
+                        await log_channel.send(embed=cancel_log)
+                except Exception as e:
+                    print(f"[Giveaways] Error logging cancellation: {e}")
 
     try:
         fut = asyncio.run_coroutine_threadsafe(do_cancel(), bot_instance.loop)

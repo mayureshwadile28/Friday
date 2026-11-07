@@ -7337,6 +7337,18 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     </button>
 
+                    <button class="btn btn-secondary" id="gwTabLogsBtn" type="button" style="padding: 6px 14px; font-size: 12px; font-weight: 700; color: var(--text-secondary);">
+
+                        📜 Audit Logs Channel
+
+                    </button>
+
+                    <button class="btn btn-secondary" id="gwTabRequestsBtn" type="button" style="padding: 6px 14px; font-size: 12px; font-weight: 700; color: var(--text-secondary);">
+
+                        📝 Member Proposals &amp; Requests
+
+                    </button>
+
                 </div>
 
 
@@ -7586,6 +7598,198 @@ Click an inquiry button below to open a confidential support ticket with our tea
                             </button>
                         </div>
                         <textarea class="text-input" id="gwParticipantsEmpty" rows="3" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">{emoji} **Participants for {prize} (0):**&#10;No members have entered this giveaway yet. Be the first to enter!</textarea>
+                    </div>
+                </div>
+
+                <!-- Audit Logs Channel Panel -->
+                <div id="gwLogsPanel" style="display: none;">
+                    <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 18px;">📜</span>
+                        <div style="font-size: 12px; color: #fde68a; line-height: 1.4;">
+                            <strong>In-Server Audit Log:</strong> Automatically delivered to the configured <code>#giveaway-logs</code> channel for staff auditing whenever a giveaway starts, concludes, or is rerolled.
+                        </div>
+                    </div>
+
+                    <!-- 1. Created Log Card -->
+                    <div style="margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <label style="font-size: 12px; font-weight: 700; color: #60a5fa; text-transform: uppercase; margin-bottom: 6px; display: block;">🎉 Giveaway Created / Started Log</label>
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 4px;">Log Embed Title</label>
+                            <div style="display: flex; gap: 6px;">
+                                <input class="text-input" id="gwLogCreatedTitle" type="text" value="📜 Giveaway Created" style="font-size: 13px; font-weight: 600;" />
+                                <button class="btn btn-secondary emoji-picker-btn" id="gwLogCreatedTitleEmojiBtn" data-target="gwLogCreatedTitle" type="button" style="padding: 0 12px;">😊 Server Emojis</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Log Embed Description</label>
+                                <span style="font-size: 11px; color: var(--text-muted);">Dynamic Tags &amp; Markdown</span>
+                            </div>
+                            <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                <button class="resp-var-badge var-chip" data-target="gwLogCreatedMessage" data-var="{prize}" type="button">+ {prize}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogCreatedMessage" data-var="{channel}" type="button">+ {channel}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogCreatedMessage" data-var="{host}" type="button">+ {host}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogCreatedMessage" data-var="{winners}" type="button">+ {winners}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogCreatedMessage" data-var="{duration}" type="button">+ {duration}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogCreatedMessage" data-var="{entry_method}" type="button">+ {entry_method}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogCreatedMessage" data-var="{server}" type="button">+ {server}</button>
+                                <button class="var-chip emoji-picker-btn" id="gwLogCreatedMsgEmojiBtn" data-target="gwLogCreatedMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                    😊 Server Emojis
+                                </button>
+                            </div>
+                            <textarea class="text-input" id="gwLogCreatedMessage" rows="4" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">**Prize:** {prize}&#10;**Channel:** {channel}&#10;**Sponsored by:** {host}&#10;**Winners Count:** {winners}&#10;**Duration:** {duration}&#10;**Entry Method:** {entry_method}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- 2. Concluded Log Card -->
+                    <div style="margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <label style="font-size: 12px; font-weight: 700; color: #fbbf24; text-transform: uppercase; margin-bottom: 6px; display: block;">🏆 Giveaway Concluded Log</label>
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 4px;">Log Embed Title</label>
+                            <div style="display: flex; gap: 6px;">
+                                <input class="text-input" id="gwLogConcludedTitle" type="text" value="📜 Giveaway Concluded" style="font-size: 13px; font-weight: 600;" />
+                                <button class="btn btn-secondary emoji-picker-btn" id="gwLogConcludedTitleEmojiBtn" data-target="gwLogConcludedTitle" type="button" style="padding: 0 12px;">😊 Server Emojis</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Log Embed Description</label>
+                                <span style="font-size: 11px; color: var(--text-muted);">Dynamic Tags &amp; Markdown</span>
+                            </div>
+                            <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                <button class="resp-var-badge var-chip" data-target="gwLogConcludedMessage" data-var="{prize}" type="button">+ {prize}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogConcludedMessage" data-var="{winners}" type="button">+ {winners}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogConcludedMessage" data-var="{winner_count}" type="button">+ {winner_count}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogConcludedMessage" data-var="{entries}" type="button">+ {entries}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogConcludedMessage" data-var="{channel}" type="button">+ {channel}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogConcludedMessage" data-var="{host}" type="button">+ {host}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogConcludedMessage" data-var="{link}" type="button">+ {link}</button>
+                                <button class="var-chip emoji-picker-btn" id="gwLogConcludedMsgEmojiBtn" data-target="gwLogConcludedMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                    😊 Server Emojis
+                                </button>
+                            </div>
+                            <textarea class="text-input" id="gwLogConcludedMessage" rows="4" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">**Prize:** {prize}&#10;**Winners ({winner_count}):** {winners}&#10;**Total Entries:** {entries}&#10;**Channel:** {channel}&#10;**Sponsored by:** {host}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- 3. Reroll Log Card -->
+                    <div style="margin-bottom: 14px;">
+                        <label style="font-size: 12px; font-weight: 700; color: #a78bfa; text-transform: uppercase; margin-bottom: 6px; display: block;">🎲 Giveaway Reroll Log</label>
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 4px;">Log Embed Title</label>
+                            <div style="display: flex; gap: 6px;">
+                                <input class="text-input" id="gwLogRerollTitle" type="text" value="🎲 Giveaway Rerolled" style="font-size: 13px; font-weight: 600;" />
+                                <button class="btn btn-secondary emoji-picker-btn" id="gwLogRerollTitleEmojiBtn" data-target="gwLogRerollTitle" type="button" style="padding: 0 12px;">😊 Server Emojis</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Log Embed Description</label>
+                                <span style="font-size: 11px; color: var(--text-muted);">Dynamic Tags &amp; Markdown</span>
+                            </div>
+                            <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                <button class="resp-var-badge var-chip" data-target="gwLogRerollMessage" data-var="{prize}" type="button">+ {prize}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogRerollMessage" data-var="{winners}" type="button">+ {winners}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogRerollMessage" data-var="{channel}" type="button">+ {channel}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogRerollMessage" data-var="{staff}" type="button">+ {staff}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwLogRerollMessage" data-var="{link}" type="button">+ {link}</button>
+                                <button class="var-chip emoji-picker-btn" id="gwLogRerollMsgEmojiBtn" data-target="gwLogRerollMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                    😊 Server Emojis
+                                </button>
+                            </div>
+                            <textarea class="text-input" id="gwLogRerollMessage" rows="4" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">**Prize:** {prize}&#10;**New Winner(s):** {winners}&#10;**Channel:** {channel}&#10;**Rerolled by:** {staff}</textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Member Proposals & Requests Panel -->
+                <div id="gwRequestsPanel" style="display: none;">
+                    <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 18px;">🛡️</span>
+                        <div style="font-size: 12px; color: #bfdbfe; line-height: 1.4;">
+                            <strong>Member Giveaway Proposals:</strong> Triggered when server members propose giveaways via <code>/grequest</code>. Staff review and approve or decline proposals inside <code>#giveaway-approvals</code>.
+                        </div>
+                    </div>
+
+                    <!-- Member Proposal Submitted Ephemeral Reply -->
+                    <div style="margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Proposal Submitted Reply (to Member)</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Ephemeral confirmation to member</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwReqSubmittedMessage" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwReqSubmittedMessage" data-var="{user}" type="button">+ {user}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwReqSubmittedMessage" data-var="{channel}" type="button">+ {channel}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwReqSubmittedMessage" data-var="{server}" type="button">+ {server}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwReqSubmittedMsgEmojiBtn" data-target="gwReqSubmittedMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <input class="text-input" id="gwReqSubmittedMessage" type="text" value="🎉 Your giveaway proposal for **{prize}** has been submitted to server staff for review!" style="font-size: 13px; font-weight: 600;" />
+                    </div>
+
+                    <!-- Staff Approval Embed Card Template -->
+                    <div style="margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <label style="font-size: 12px; font-weight: 700; color: #f59e0b; text-transform: uppercase; margin-bottom: 6px; display: block;">Staff Approval Queue Card (#giveaway-approvals)</label>
+                        <div style="margin-bottom: 10px;">
+                            <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; display: block; margin-bottom: 4px;">Approval Card Title</label>
+                            <div style="display: flex; gap: 6px;">
+                                <input class="text-input" id="gwReqApprovalTitle" type="text" value="📝 New Member Giveaway Request" style="font-size: 13px; font-weight: 600;" />
+                                <button class="btn btn-secondary emoji-picker-btn" id="gwReqApprovalTitleEmojiBtn" data-target="gwReqApprovalTitle" type="button" style="padding: 0 12px;">😊 Server Emojis</button>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Approval Card Description Body</label>
+                                <span style="font-size: 11px; color: var(--text-muted);">Dynamic Tags &amp; Markdown</span>
+                            </div>
+                            <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                                <button class="resp-var-badge var-chip" data-target="gwReqApprovalMessage" data-var="{prize}" type="button">+ {prize}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwReqApprovalMessage" data-var="{user}" type="button">+ {user}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwReqApprovalMessage" data-var="{duration}" type="button">+ {duration}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwReqApprovalMessage" data-var="{winners}" type="button">+ {winners}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwReqApprovalMessage" data-var="{description}" type="button">+ {description}</button>
+                                <button class="resp-var-badge var-chip" data-target="gwReqApprovalMessage" data-var="{server}" type="button">+ {server}</button>
+                                <button class="var-chip emoji-picker-btn" id="gwReqApprovalMsgEmojiBtn" data-target="gwReqApprovalMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                    😊 Server Emojis
+                                </button>
+                            </div>
+                            <textarea class="text-input" id="gwReqApprovalMessage" rows="5" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">A member has requested to host a giveaway!&#10;&#10;**Prize:** {prize}&#10;**Sponsor:** {user}&#10;**Duration:** {duration}&#10;**Winners:** {winners}&#10;**Description:** {description}</textarea>
+                        </div>
+                    </div>
+
+                    <!-- Member Notification DM: Approved -->
+                    <div style="margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: #10b981; text-transform: uppercase;">Member Notification DM: Approved</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Sent to sponsor in DM upon approval</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwReqApprovedMessage" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwReqApprovedMessage" data-var="{channel}" type="button">+ {channel}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwReqApprovedMessage" data-var="{server}" type="button">+ {server}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwReqApprovedMsgEmojiBtn" data-target="gwReqApprovedMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <input class="text-input" id="gwReqApprovedMessage" type="text" value="✅ Your giveaway request for **{prize}** has been approved by staff and is now live in {channel}!" style="font-size: 13px; font-weight: 600;" />
+                    </div>
+
+                    <!-- Member Notification DM: Rejected -->
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: #ef4444; text-transform: uppercase;">Member Notification DM: Rejected</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Sent to sponsor in DM upon rejection</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwReqRejectedMessage" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwReqRejectedMessage" data-var="{server}" type="button">+ {server}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwReqRejectedMsgEmojiBtn" data-target="gwReqRejectedMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <input class="text-input" id="gwReqRejectedMessage" type="text" value="❌ Your giveaway request for **{prize}** was declined by the staff team in **{server}**." style="font-size: 13px; font-weight: 600;" />
                     </div>
                 </div>
 
