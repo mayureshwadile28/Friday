@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import datetime
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union
 from database import db
 from response_utils import make_box_embed, reply_box
 
@@ -196,21 +196,21 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             await reply_box(interaction, "Discord restricts bots from bulk-deleting messages older than 14 days.", title="PURGE RESTRICTION", status="warning", ephemeral=True)
 
-    @app_commands.command(name="lock", description="Lock a channel to prevent regular members from sending messages.")
+    @app_commands.command(name="lock", description="Lock a text or voice channel chat to prevent regular members from chatting.")
     @app_commands.describe(
-        channel="The channel to lock (leave empty for current channel)",
+        channel="The text or voice channel to lock (leave empty for current channel)",
         reason="Reason for locking the channel"
     )
     @app_commands.default_permissions(manage_channels=True)
     async def lock(
         self,
         interaction: discord.Interaction,
-        channel: Optional[discord.TextChannel] = None,
+        channel: Optional[Union[discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread]] = None,
         reason: str = "Channel locked by staff."
     ):
         target = channel or interaction.channel
-        if not isinstance(target, discord.TextChannel):
-            await reply_box(interaction, "Only text channels can be locked.", title="INVALID TARGET", status="error", ephemeral=True)
+        if not isinstance(target, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread)):
+            await reply_box(interaction, "Only text, voice, or stage channels (and threads) can be locked.", title="INVALID TARGET", status="error", ephemeral=True)
             return
 
         bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
@@ -218,46 +218,53 @@ class Moderation(commands.Cog):
             await reply_box(interaction, "Friday lacks the **Manage Channels** permission in that channel.", title="PERMISSION FAULT", status="error", ephemeral=True)
             return
 
-        default_role = interaction.guild.default_role
-        current_ow = target.overwrites_for(default_role)
-        current_ow.send_messages = False
-        current_ow.send_messages_in_threads = False
-        current_ow.create_public_threads = False
-        current_ow.create_private_threads = False
-        current_ow.add_reactions = False
+        channel_type_name = "Voice Chat" if isinstance(target, discord.VoiceChannel) else ("Stage Chat" if isinstance(target, discord.StageChannel) else ("Thread" if isinstance(target, discord.Thread) else "Channel"))
 
         try:
-            await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel locked by {interaction.user}: {reason}")
+            if isinstance(target, discord.Thread):
+                await target.edit(locked=True, reason=f"Thread locked by {interaction.user}: {reason}")
+            else:
+                default_role = interaction.guild.default_role
+                current_ow = target.overwrites_for(default_role)
+                current_ow.send_messages = False
+                current_ow.add_reactions = False
+                if hasattr(current_ow, "send_messages_in_threads"):
+                    current_ow.send_messages_in_threads = False
+                if hasattr(current_ow, "create_public_threads"):
+                    current_ow.create_public_threads = False
+                if hasattr(current_ow, "create_private_threads"):
+                    current_ow.create_private_threads = False
+                await target.set_permissions(default_role, overwrite=current_ow, reason=f"{channel_type_name} locked by {interaction.user}: {reason}")
         except discord.Forbidden:
-            await reply_box(interaction, "Failed to lock channel due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
+            await reply_box(interaction, f"Failed to lock {channel_type_name.lower()} due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
             return
 
         lock_embed = make_box_embed(
-            title="CHANNEL LOCKED",
-            description=f"🔒 This channel has been locked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Regular members cannot send messages until unlocked by staff.*",
+            title=f"{channel_type_name.upper()} LOCKED",
+            description=f"🔒 This {channel_type_name.lower()} has been locked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Regular members cannot send messages until unlocked by staff.*",
             status="error"
         )
         if target.id == interaction.channel_id:
             await interaction.response.send_message(embed=lock_embed)
         else:
             await target.send(embed=lock_embed)
-            await reply_box(interaction, f"Successfully locked {target.mention}.", title="CHANNEL LOCKED", status="error", ephemeral=True)
+            await reply_box(interaction, f"Successfully locked {target.mention}.", title=f"{channel_type_name.upper()} LOCKED", status="error", ephemeral=True)
 
-    @app_commands.command(name="unlock", description="Unlock a previously locked channel to allow chatting.")
+    @app_commands.command(name="unlock", description="Unlock a previously locked text or voice channel chat.")
     @app_commands.describe(
-        channel="The channel to unlock (leave empty for current channel)",
+        channel="The text or voice channel to unlock (leave empty for current channel)",
         reason="Reason for unlocking the channel"
     )
     @app_commands.default_permissions(manage_channels=True)
     async def unlock(
         self,
         interaction: discord.Interaction,
-        channel: Optional[discord.TextChannel] = None,
+        channel: Optional[Union[discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread]] = None,
         reason: str = "Channel unlocked by staff."
     ):
         target = channel or interaction.channel
-        if not isinstance(target, discord.TextChannel):
-            await reply_box(interaction, "Only text channels can be unlocked.", title="INVALID TARGET", status="error", ephemeral=True)
+        if not isinstance(target, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread)):
+            await reply_box(interaction, "Only text, voice, or stage channels (and threads) can be unlocked.", title="INVALID TARGET", status="error", ephemeral=True)
             return
 
         bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
@@ -265,32 +272,39 @@ class Moderation(commands.Cog):
             await reply_box(interaction, "Friday lacks the **Manage Channels** permission in that channel.", title="PERMISSION FAULT", status="error", ephemeral=True)
             return
 
-        default_role = interaction.guild.default_role
-        current_ow = target.overwrites_for(default_role)
-        current_ow.send_messages = None
-        current_ow.send_messages_in_threads = None
-        current_ow.create_public_threads = None
-        current_ow.create_private_threads = None
-        current_ow.add_reactions = None
+        channel_type_name = "Voice Chat" if isinstance(target, discord.VoiceChannel) else ("Stage Chat" if isinstance(target, discord.StageChannel) else ("Thread" if isinstance(target, discord.Thread) else "Channel"))
 
         try:
-            await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel unlocked by {interaction.user}: {reason}")
+            if isinstance(target, discord.Thread):
+                await target.edit(locked=False, reason=f"Thread unlocked by {interaction.user}: {reason}")
+            else:
+                default_role = interaction.guild.default_role
+                current_ow = target.overwrites_for(default_role)
+                current_ow.send_messages = None
+                current_ow.add_reactions = None
+                if hasattr(current_ow, "send_messages_in_threads"):
+                    current_ow.send_messages_in_threads = None
+                if hasattr(current_ow, "create_public_threads"):
+                    current_ow.create_public_threads = None
+                if hasattr(current_ow, "create_private_threads"):
+                    current_ow.create_private_threads = None
+                await target.set_permissions(default_role, overwrite=current_ow, reason=f"{channel_type_name} unlocked by {interaction.user}: {reason}")
         except discord.Forbidden:
-            await reply_box(interaction, "Failed to unlock channel due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
+            await reply_box(interaction, f"Failed to unlock {channel_type_name.lower()} due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
             return
 
         unlock_embed = make_box_embed(
-            title="CHANNEL UNLOCKED",
-            description=f"🔓 This channel has been unlocked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Members may now send messages and participate in chat.*",
+            title=f"{channel_type_name.upper()} UNLOCKED",
+            description=f"🔓 This {channel_type_name.lower()} has been unlocked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Members may now send messages and participate in chat.*",
             status="success"
         )
         if target.id == interaction.channel_id:
             await interaction.response.send_message(embed=unlock_embed)
         else:
             await target.send(embed=unlock_embed)
-            await reply_box(interaction, f"Successfully unlocked {target.mention}.", title="CHANNEL UNLOCKED", status="success", ephemeral=True)
+            await reply_box(interaction, f"Successfully unlocked {target.mention}.", title=f"{channel_type_name.upper()} UNLOCKED", status="success", ephemeral=True)
 
-    @app_commands.command(name="slowmode", description="Set or disable the slowmode chat cooldown for a channel.")
+    @app_commands.command(name="slowmode", description="Set or disable the slowmode chat cooldown for a text or voice channel.")
     @app_commands.describe(
         seconds="Cooldown in seconds (0 to disable slowmode, max 21600 / 6h)",
         channel="The channel to modify (leave empty for current channel)"
@@ -300,11 +314,11 @@ class Moderation(commands.Cog):
         self,
         interaction: discord.Interaction,
         seconds: app_commands.Range[int, 0, 21600],
-        channel: Optional[discord.TextChannel] = None
+        channel: Optional[Union[discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread]] = None
     ):
         target = channel or interaction.channel
-        if not isinstance(target, discord.TextChannel):
-            await reply_box(interaction, "Only text channels support slowmode.", title="INVALID TARGET", status="error", ephemeral=True)
+        if not isinstance(target, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread)):
+            await reply_box(interaction, "Only text, voice, or stage channels (and threads) support slowmode.", title="INVALID TARGET", status="error", ephemeral=True)
             return
 
         try:
