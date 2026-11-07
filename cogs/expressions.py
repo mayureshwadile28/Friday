@@ -259,8 +259,14 @@ class Expressions(commands.Cog):
         response="Optional reply message ({author} and {user} supported). Can be omitted if emoji is provided.",
         member="Target member to trigger on mention (optional if using keyword)",
         keyword="Standalone word/keyword to trigger (e.g. 'ip') (optional if using member)",
-        emoji="Optional emoji to react to the message with. Can be set with or without reply text."
+        emoji="Optional emoji to react to the message with. Can be set with or without reply text.",
+        channel="Optional channel to restrict or exclude this rule from",
+        scope="Channel scope mode if channel is selected ('only' in this channel, or 'ignore' in this channel)"
     )
+    @app_commands.choices(scope=[
+        app_commands.Choice(name="🎯 Only in this channel", value="only"),
+        app_commands.Choice(name="🚫 Ignore in this channel", value="ignore")
+    ])
     @app_commands.default_permissions(manage_guild=True)
     async def autoresponder_add(
         self,
@@ -268,7 +274,9 @@ class Expressions(commands.Cog):
         response: Optional[str] = None,
         member: Optional[discord.Member] = None,
         keyword: Optional[str] = None,
-        emoji: Optional[str] = None
+        emoji: Optional[str] = None,
+        channel: Optional[discord.TextChannel] = None,
+        scope: Optional[app_commands.Choice[str]] = None
     ):
         gid = str(interaction.guild.id)
         if gid not in db.autoresponder or not isinstance(db.autoresponder[gid], dict):
@@ -277,6 +285,13 @@ class Expressions(commands.Cog):
         clean_resp = response.strip() if response else ""
         clean_emoji = emoji.strip() if emoji else ""
         rules = db.autoresponder[gid].setdefault("rules", [])
+
+        # Channel filter configuration
+        channel_mode = "all"
+        rule_channels = []
+        if channel:
+            channel_mode = scope.value if scope else "only"
+            rule_channels = [str(channel.id)]
 
         if not clean_resp and not clean_emoji:
             embed = discord.Embed(
@@ -296,6 +311,13 @@ class Expressions(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
+        scope_desc = ""
+        if channel:
+            if channel_mode == "only":
+                scope_desc = f"\n> **Channel Scope:** 🎯 Triggers ONLY in {channel.mention}"
+            else:
+                scope_desc = f"\n> **Channel Scope:** 🚫 Ignored in {channel.mention} (triggers elsewhere)"
+
         if keyword:
             clean_word = keyword.strip()
             rule_id = str(uuid.uuid4())[:8]
@@ -306,6 +328,8 @@ class Expressions(commands.Cog):
                     r["trigger"] = clean_word
                     r["response"] = clean_resp
                     r["emoji"] = clean_emoji
+                    r["channel_mode"] = channel_mode
+                    r["channels"] = rule_channels
                     existing = True
                     break
             if not existing:
@@ -314,14 +338,16 @@ class Expressions(commands.Cog):
                     "type": "word",
                     "trigger": clean_word,
                     "response": clean_resp,
-                    "emoji": clean_emoji
+                    "emoji": clean_emoji,
+                    "channel_mode": channel_mode,
+                    "channels": rule_channels
                 })
             db.save_data()
 
             emoji_note = f"\n> **Reaction:** {clean_emoji}" if clean_emoji else ""
             embed = discord.Embed(
                 title="✔ Keyword Auto-Responder Configured",
-                description=f"When someone writes standalone word `{clean_word}` (e.g. 'what is the {clean_word}?'), Friday will reply with:\n> {clean_resp}{emoji_note}\n\n*Note: Partial words like `{clean_word}L` will strictly NOT trigger.*",
+                description=f"When someone writes standalone word `{clean_word}` (e.g. 'what is the {clean_word}?'), Friday will reply with:\n> {clean_resp}{emoji_note}{scope_desc}\n\n*Note: Partial words like `{clean_word}L` will strictly NOT trigger.*",
                 color=0x2b2d31
             )
             await interaction.response.send_message(embed=embed)
@@ -337,6 +363,8 @@ class Expressions(commands.Cog):
                     r["response"] = clean_resp
                     r["user_name"] = member.display_name
                     r["emoji"] = clean_emoji
+                    r["channel_mode"] = channel_mode
+                    r["channels"] = rule_channels
                     existing = True
                     break
             if not existing:
@@ -346,17 +374,20 @@ class Expressions(commands.Cog):
                     "user_id": uid,
                     "user_name": member.display_name,
                     "response": clean_resp,
-                    "emoji": clean_emoji
+                    "emoji": clean_emoji,
+                    "channel_mode": channel_mode,
+                    "channels": rule_channels
                 })
             db.save_data()
 
             emoji_note = f"\n> **Reaction:** {clean_emoji}" if clean_emoji else ""
             embed = discord.Embed(
                 title="✔ Mention Auto-Responder Configured",
-                description=f"When {member.mention} is tagged, Friday will reply with:\n> {clean_resp}{emoji_note}",
+                description=f"When {member.mention} is tagged, Friday will reply with:\n> {clean_resp}{emoji_note}{scope_desc}",
                 color=0x2b2d31
             )
             await interaction.response.send_message(embed=embed)
+            return
 
     @autoresponder.command(name="remove", description="Remove auto-responder rule for a member or keyword.")
     @app_commands.describe(
@@ -443,7 +474,15 @@ class Expressions(commands.Cog):
             mlines = []
             for r in mention_rules[:15]:
                 react_str = f" [React: {r.get('emoji')}]" if r.get("emoji") else ""
-                mlines.append(f"• <@{r.get('user_id')}>: \"{r.get('response')}\"{react_str}")
+                scope_str = ""
+                r_mode = r.get("channel_mode", "all")
+                r_chans = r.get("channels", [])
+                if r_mode == "only" and r_chans:
+                    scope_str = f" [🎯 Only: {', '.join('<#' + str(c) + '>' for c in r_chans)}]"
+                elif r_mode == "ignore" and r_chans:
+                    scope_str = f" [🚫 Ignored: {', '.join('<#' + str(c) + '>' for c in r_chans)}]"
+                resp_text = r.get('response') or '(Reaction only)'
+                mlines.append(f"• <@{r.get('user_id')}>: \"{resp_text}\"{react_str}{scope_str}")
             embed.add_field(name="Mention Triggers", value="\n".join(mlines), inline=False)
         else:
             embed.add_field(name="Mention Triggers", value="None configured yet.", inline=False)
@@ -452,7 +491,15 @@ class Expressions(commands.Cog):
             wlines = []
             for r in word_rules[:15]:
                 react_str = f" [React: {r.get('emoji')}]" if r.get("emoji") else ""
-                wlines.append(f"• Word `{r.get('trigger')}`: \"{r.get('response')}\"{react_str}")
+                scope_str = ""
+                r_mode = r.get("channel_mode", "all")
+                r_chans = r.get("channels", [])
+                if r_mode == "only" and r_chans:
+                    scope_str = f" [🎯 Only: {', '.join('<#' + str(c) + '>' for c in r_chans)}]"
+                elif r_mode == "ignore" and r_chans:
+                    scope_str = f" [🚫 Ignored: {', '.join('<#' + str(c) + '>' for c in r_chans)}]"
+                resp_text = r.get('response') or '(Reaction only)'
+                wlines.append(f"• Word `{r.get('trigger')}`: \"{resp_text}\"{react_str}{scope_str}")
             embed.add_field(name="Keyword / Word Triggers", value="\n".join(wlines), inline=False)
         else:
             embed.add_field(name="Keyword / Word Triggers", value="None configured yet.", inline=False)
@@ -588,13 +635,26 @@ class Expressions(commands.Cog):
         if isinstance(ar_data, dict):
             rules = ar_data.get("rules", [])
             ignored_channels = [str(c) for c in ar_data.get("ignored_channels", [])]
+            curr_chan_id = str(message.channel.id)
 
-            # Skip if current channel is ignored
-            if str(message.channel.id) not in ignored_channels and rules:
+            # Skip if current channel is globally ignored
+            if curr_chan_id not in ignored_channels and rules:
                 responded = False
+
+                # Helper to check if a rule is eligible in the current channel
+                def _is_channel_eligible(r):
+                    mode = r.get("channel_mode", "all")
+                    chan_list = [str(c) for c in r.get("channels", []) if str(c).strip()]
+                    if mode == "only":
+                        return bool(chan_list and curr_chan_id in chan_list)
+                    elif mode == "ignore":
+                        return bool(curr_chan_id not in chan_list)
+                    return True
 
                 # 2A. Check Word / Keyword Triggers (whole-word boundary match)
                 for rule in rules:
+                    if not _is_channel_eligible(rule):
+                        continue
                     trigger = rule.get("trigger", "").strip() if (rule.get("type") == "word" or "trigger" in rule) else ""
                     if trigger:
                         # Match standalone word/phrase (e.g. 'ip' matches 'what is the ip?' but NOT 'IPL' or 'equipment')
@@ -622,6 +682,8 @@ class Expressions(commands.Cog):
                 # 2B. If no keyword triggered, check Mention Triggers
                 if not responded and explicitly_mentioned_ids:
                     for rule in rules:
+                        if not _is_channel_eligible(rule):
+                            continue
                         target_id = str(rule.get("user_id", ""))
                         if target_id and target_id in explicitly_mentioned_ids:
                             # Suppress autoresponder if target is currently AFK to prevent dual/conflicting messages

@@ -11477,6 +11477,10 @@ async function loadCoreData() {
 
 
         }
+        const autoRespChanSelect = document.getElementById('autoRespChannelSelect');
+        if (autoRespChanSelect) {
+            autoRespChanSelect.innerHTML = currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+        }
 
 
 
@@ -41894,6 +41898,7 @@ function renderAutoReactRules() {
 
 
 let autoRespCurrentType = 'mention';
+let autoRespCurrentChannelMode = 'all';
 
 
 
@@ -42077,7 +42082,26 @@ function renderAutoResponderRules() {
 
 
 
-        const isWord = (rule.type === 'word' || (!rule.user_id && rule.trigger));
+                const isWord = (rule.type === 'word' || (!rule.user_id && rule.trigger));
+
+        const cMode = rule.channel_mode || 'all';
+        const cList = Array.isArray(rule.channels) ? rule.channels : [];
+        let channelScopeBadge = '';
+        if (cMode === 'only' && cList.length > 0) {
+            const names = cList.map(cid => {
+                const ch = (currentGuildChannels || []).find(c => String(c.id) === String(cid));
+                return ch ? `#${ch.name}` : `#${cid}`;
+            }).join(', ');
+            channelScopeBadge = `<span class="auto-rule-chan-badge only" title="Triggers ONLY in: ${escapeHtml(names)}">🎯 ${escapeHtml(names)}</span>`;
+        } else if (cMode === 'ignore' && cList.length > 0) {
+            const names = cList.map(cid => {
+                const ch = (currentGuildChannels || []).find(c => String(c.id) === String(cid));
+                return ch ? `#${ch.name}` : `#${cid}`;
+            }).join(', ');
+            channelScopeBadge = `<span class="auto-rule-chan-badge ignore" title="Excluded in: ${escapeHtml(names)}">🚫 Excluded: ${escapeHtml(names)}</span>`;
+        } else {
+            channelScopeBadge = `<span class="auto-rule-chan-badge all" title="Active in all server channels">🌐 All Channels</span>`;
+        }
 
 
 
@@ -42173,7 +42197,9 @@ function renderAutoResponderRules() {
 
 
 
-                        </div>
+                        
+                            ${channelScopeBadge}
+</div>
 
 
 
@@ -42349,7 +42375,9 @@ function renderAutoResponderRules() {
 
 
 
-                        </div>
+                        
+                            ${channelScopeBadge}
+</div>
 
 
 
@@ -43428,15 +43456,21 @@ async function addAutoResponderRule() {
 
 
 
+        let selectedChannels = [];
+    if (autoRespCurrentChannelMode === 'only' || autoRespCurrentChannelMode === 'ignore') {
+        const chanSelect = document.getElementById('autoRespChannelSelect');
+        if (chanSelect) {
+            selectedChannels = Array.from(chanSelect.selectedOptions).map(o => o.value).filter(Boolean);
+        }
+        if (selectedChannels.length === 0) {
+            return showToast("⚠️ Please select at least one channel from the list for the chosen channel filter!");
+        }
+    }
+
     const payload = {
-
-
-
-
-
-
-
         type: autoRespCurrentType,
+        channel_mode: autoRespCurrentChannelMode,
+        channels: selectedChannels,
 
 
 
@@ -43669,6 +43703,21 @@ async function addAutoResponderRule() {
 
 
             showToast("✅ Auto-responder rule saved!");
+            // Reset channel filter selection
+            autoRespCurrentChannelMode = 'all';
+            const allChanBtn = document.getElementById('autoRespChanAllBtn');
+            const onlyChanBtn = document.getElementById('autoRespChanOnlyBtn');
+            const ignChanBtn = document.getElementById('autoRespChanIgnoreBtn');
+            if (allChanBtn) allChanBtn.classList.add('active');
+            if (onlyChanBtn) onlyChanBtn.classList.remove('active');
+            if (ignChanBtn) ignChanBtn.classList.remove('active');
+            const chanPickerWrap = document.getElementById('autoRespChannelPickerWrap');
+            if (chanPickerWrap) chanPickerWrap.style.display = 'none';
+            const chanSelectEl = document.getElementById('autoRespChannelSelect');
+            if (chanSelectEl) {
+                Array.from(chanSelectEl.options).forEach(o => o.selected = false);
+            }
+
 
 
 
@@ -44723,6 +44772,44 @@ function setupAutomationEvents() {
 
 
 
+
+        const allChanBtn = document.getElementById('autoRespChanAllBtn');
+    const onlyChanBtn = document.getElementById('autoRespChanOnlyBtn');
+    const ignChanBtn = document.getElementById('autoRespChanIgnoreBtn');
+    const chanPickerWrap = document.getElementById('autoRespChannelPickerWrap');
+    const chanPickerLabel = document.getElementById('autoRespChannelPickerLabel');
+
+    if (allChanBtn && onlyChanBtn && ignChanBtn) {
+        allChanBtn.addEventListener('click', () => {
+            autoRespCurrentChannelMode = 'all';
+            allChanBtn.classList.add('active');
+            onlyChanBtn.classList.remove('active');
+            ignChanBtn.classList.remove('active');
+            if (chanPickerWrap) chanPickerWrap.style.display = 'none';
+        });
+
+        onlyChanBtn.addEventListener('click', () => {
+            autoRespCurrentChannelMode = 'only';
+            onlyChanBtn.classList.add('active');
+            allChanBtn.classList.remove('active');
+            ignChanBtn.classList.remove('active');
+            if (chanPickerWrap) {
+                chanPickerWrap.style.display = 'block';
+                if (chanPickerLabel) chanPickerLabel.textContent = 'Trigger ONLY in these channel(s) (Hold Ctrl/Cmd for multiple):';
+            }
+        });
+
+        ignChanBtn.addEventListener('click', () => {
+            autoRespCurrentChannelMode = 'ignore';
+            ignChanBtn.classList.add('active');
+            allChanBtn.classList.remove('active');
+            onlyChanBtn.classList.remove('active');
+            if (chanPickerWrap) {
+                chanPickerWrap.style.display = 'block';
+                if (chanPickerLabel) chanPickerLabel.textContent = 'Exclude / Ignore in these channel(s) (Runs everywhere else):';
+            }
+        });
+    }
 
     const mentionBtn = document.getElementById('autoRespTypeMentionBtn');
 

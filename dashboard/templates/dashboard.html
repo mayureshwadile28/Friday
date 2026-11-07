@@ -5800,9 +5800,9 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     <label class="form-sublabel">Trigger Type</label>
 
-                    <div class="mode-segment-group" id="autoRespTypeGroup">
+                    <div class="mode-segment-group" id="autoRespTypeGroup" style="width: 100%; display: flex; flex-wrap: wrap;">
 
-                        <button type="button" class="mode-segment-btn active" data-type="mention" id="autoRespTypeMentionBtn">
+                        <button type="button" class="mode-segment-btn active" data-type="mention" id="autoRespTypeMentionBtn" style="flex: 1 1 150px; justify-content: center;">
 
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
 
@@ -5810,7 +5810,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                         </button>
 
-                        <button type="button" class="mode-segment-btn" data-type="word" id="autoRespTypeWordBtn">
+                        <button type="button" class="mode-segment-btn" data-type="word" id="autoRespTypeWordBtn" style="flex: 1 1 150px; justify-content: center;">
 
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"></line><line x1="4" y1="15" x2="20" y2="15"></line><line x1="10" y1="3" x2="8" y2="21"></line><line x1="16" y1="3" x2="14" y2="21"></line></svg>
 
@@ -5903,6 +5903,54 @@ Click an inquiry button below to open a confidential support ticket with our tea
                         <input class="text-input emoji-text-input" id="autoRespEmojiInput" placeholder="Click button or type emoji (:name:)" type="text" style="flex:1;height:40px;"/>
 
                         <button class="btn-clear-subtle" id="autoRespEmojiClearBtn" type="button" title="Clear reaction emoji" style="display:none;background:none;border:none;color:#94a3b8;cursor:pointer;padding:6px;font-size:14px;">✕</button>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- Channel Filter & Scope (Per-Rule Channel Target / Exclusion) -->
+
+                <div class="form-field-full" style="margin-top: 14px;">
+
+                    <label class="form-sublabel">Channel Filter &amp; Scope</label>
+
+                    <div class="mode-segment-group" id="autoRespChannelScopeGroup" style="width: 100%; display: flex; flex-wrap: wrap;">
+
+                        <button type="button" class="mode-segment-btn active" data-mode="all" id="autoRespChanAllBtn" style="flex: 1 1 120px; justify-content: center; font-size: 12px; padding: 7px 10px;">
+
+                            🌐 All Channels
+
+                        </button>
+
+                        <button type="button" class="mode-segment-btn" data-mode="only" id="autoRespChanOnlyBtn" style="flex: 1 1 120px; justify-content: center; font-size: 12px; padding: 7px 10px;">
+
+                            🎯 Only in Specific Channel(s)
+
+                        </button>
+
+                        <button type="button" class="mode-segment-btn" data-mode="ignore" id="autoRespChanIgnoreBtn" style="flex: 1 1 120px; justify-content: center; font-size: 12px; padding: 7px 10px;">
+
+                            🚫 Exclude / Ignore Channel(s)
+
+                        </button>
+
+                    </div>
+
+
+
+                    <div id="autoRespChannelPickerWrap" style="display: none; margin-top: 10px;">
+
+                        <label class="form-sublabel" id="autoRespChannelPickerLabel" style="font-size: 11.5px; color: #94a3b8; margin-bottom: 4px;">Select Channel(s) (Hold Ctrl/Cmd to select multiple):</label>
+
+                        <select class="custom-select select-styled" id="autoRespChannelSelect" multiple size="4" style="width: 100%; height: auto; min-height: 95px; padding: 6px; border-radius: 8px;">
+
+                            <option value="">Loading channels...</option>
+
+                        </select>
+
+                        <span class="field-hint-text" id="autoRespChannelHint">Tip: Hold Ctrl (or Cmd on Mac) to select multiple channels for this rule.</span>
 
                     </div>
 

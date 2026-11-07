@@ -1547,6 +1547,10 @@ def add_autoresponder(gid):
     rule_type = str(data.get("type", "mention")).strip().lower()
     response_text = str(data.get("response", "")).strip()
     raw_emoji = str(data.get("emoji", "")).strip()
+    channel_mode = str(data.get("channel_mode", "all")).strip().lower()
+    if channel_mode not in ("all", "only", "ignore"):
+        channel_mode = "all"
+    channels = [str(c).strip() for c in data.get("channels", []) if str(c).strip()]
 
     if not response_text and not raw_emoji:
         return jsonify({"success": False, "error": "Please provide either an auto-response message, an emoji reaction, or both."}), 400
@@ -1569,6 +1573,8 @@ def add_autoresponder(gid):
                 rule["trigger"] = trigger
                 rule["response"] = response_text
                 rule["emoji"] = raw_emoji
+                rule["channel_mode"] = channel_mode
+                rule["channels"] = channels
                 existing = True
                 break
         if not existing:
@@ -1577,7 +1583,9 @@ def add_autoresponder(gid):
                 "type": "word",
                 "trigger": trigger,
                 "response": response_text,
-                "emoji": raw_emoji
+                "emoji": raw_emoji,
+                "channel_mode": channel_mode,
+                "channels": channels
             })
     else:
         # Mention rule
@@ -1592,6 +1600,8 @@ def add_autoresponder(gid):
                 rule["user_name"] = user_name
                 rule["response"] = response_text
                 rule["emoji"] = raw_emoji
+                rule["channel_mode"] = channel_mode
+                rule["channels"] = channels
                 existing = True
                 break
         if not existing:
@@ -1601,7 +1611,9 @@ def add_autoresponder(gid):
                 "user_id": user_id,
                 "user_name": user_name,
                 "response": response_text,
-                "emoji": raw_emoji
+                "emoji": raw_emoji,
+                "channel_mode": channel_mode,
+                "channels": channels
             })
 
     db.save_data()
