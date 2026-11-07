@@ -471,6 +471,7 @@ let currentAnnColor = "#2dd4bf";
 
 
 let currentAnnShowThumbnail = true;
+let currentAnnAvatarMode = "friday";
 
 
 
@@ -8596,54 +8597,53 @@ function setupEventListeners() {
 
 
     const annThumbnailCheckbox = document.getElementById('annThumbnailCheckbox');
-
-
-
-
-
-
-
     if (annThumbnailCheckbox) {
-
-
-
-
-
-
-
         annThumbnailCheckbox.addEventListener('change', (e) => {
-
-
-
-
-
-
-
             currentAnnShowThumbnail = e.target.checked;
-
-
-
-
-
-
-
+            currentAnnAvatarMode = e.target.checked ? 'friday' : 'none';
+            syncAnnAvatarPillUI();
             updateAnnPreview();
-
-
-
-
-
-
-
         });
-
-
-
-
-
-
-
     }
+
+    function syncAnnAvatarPillUI() {
+        ['friday', 'server', 'none'].forEach(m => {
+            const btn = document.getElementById('annAvatar' + m.charAt(0).toUpperCase() + m.slice(1) + 'Btn');
+            if (btn) {
+                if (m === currentAnnAvatarMode) {
+                    btn.classList.add('active');
+                    btn.style.border = '1px solid rgba(88, 101, 242, 0.4)';
+                    btn.style.background = 'rgba(88, 101, 242, 0.2)';
+                    btn.style.color = '#fff';
+                } else {
+                    btn.classList.remove('active');
+                    btn.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                    btn.style.background = 'rgba(255, 255, 255, 0.05)';
+                    btn.style.color = 'var(--text-secondary)';
+                }
+            }
+        });
+        const hiddenMode = document.getElementById('annAvatarMode');
+        if (hiddenMode) hiddenMode.value = currentAnnAvatarMode;
+    }
+
+    window.setAnnAvatarMode = function(mode) {
+        currentAnnAvatarMode = mode;
+        currentAnnShowThumbnail = (mode !== 'none');
+        if (annThumbnailCheckbox) annThumbnailCheckbox.checked = currentAnnShowThumbnail;
+        syncAnnAvatarPillUI();
+        updateAnnPreview();
+    };
+
+    ['friday', 'server', 'none'].forEach(m => {
+        const btn = document.getElementById('annAvatar' + m.charAt(0).toUpperCase() + m.slice(1) + 'Btn');
+        if (btn) {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.setAnnAvatarMode(m);
+            });
+        }
+    });
 
 
 
@@ -19495,47 +19495,18 @@ function renderDiscordMarkdown(rawText) {
 
 
 
-        processed = processed.replace(/\{user\}/g, '<span class="discord-mention">@User</span>');
-
-
-
-
-
-
-
+        processed = processed.replace(/\{user\}/gi, '<span class="discord-mention">@Alex</span>');
         processed = processed.replace(/\{level\}/g, '<span class="discord-level-badge">5</span>');
-
-
-
-
-
-
-
         processed = processed.replace(/\{winners?\}/g, '<span class="discord-mention">@Tony Daddy</span>');
-
-
-
-
-
-
-
         processed = processed.replace(/\{prize\}/g, '<strong style="color: #facc15;">1M OWO</strong>');
-
-
-
-
-
-
-
         processed = processed.replace(/\{host\}/g, '<span class="discord-mention">@Tony Daddy</span>');
-
-
-
-
-
-
-
+        processed = processed.replace(/\{rules(?:_link|_box)?\}/gi, '<span class="discord-channel-mention">#rules</span>');
+        processed = processed.replace(/\{channel(?:_link|_box)?\}/gi, '<span class="discord-channel-mention">#welcome</span>');
+        processed = processed.replace(/\{link:#?([^\}]+)\}/gi, '<span class="discord-channel-mention">#$1</span>');
         processed = processed.replace(/\{link\}/g, '<span style="color:#5865F2; text-decoration:underline;"># giveaways › 💬</span>');
+        processed = processed.replace(/(?:&lt;|<)#([a-zA-Z0-9_\-]+)(?:&gt;|>)/g, '<span class="discord-channel-mention">#$1</span>');
+        processed = processed.replace(/(?:&lt;|<)@!?([a-zA-Z0-9_.\-]+)(?:&gt;|>)/g, '<span class="discord-mention">@$1</span>');
+        processed = processed.replace(/(?:^|[\s(])#([a-zA-Z0-9_\-]{2,32})(?=[\s).,!?]|$)/g, ' <span class="discord-channel-mention">#$1</span>');
 
 
 
@@ -28230,70 +28201,21 @@ function updateAnnPreview() {
 
 
 
-        // Thumbnail
-
-
-
-
-
-
+        // Thumbnail & Icon Source (Friday, Server, or None)
+        let chosenAvatar = null;
+        if (currentAnnAvatarMode === 'friday') {
+            chosenAvatar = currentBotAvatar;
+        } else if (currentAnnAvatarMode === 'server') {
+            chosenAvatar = (typeof currentGuildIcon !== 'undefined' && currentGuildIcon) ? currentGuildIcon : (window.currentGuildIcon || currentBotAvatar);
+        }
 
         if (simThumb && simThumbImg) {
-
-
-
-
-
-
-
-            if (currentAnnShowThumbnail && currentBotAvatar) {
-
-
-
-
-
-
-
+            if (currentAnnAvatarMode !== 'none' && chosenAvatar) {
                 simThumb.style.display = 'block';
-
-
-
-
-
-
-
-                simThumbImg.src = currentBotAvatar;
-
-
-
-
-
-
-
+                simThumbImg.src = chosenAvatar;
             } else {
-
-
-
-
-
-
-
                 simThumb.style.display = 'none';
-
-
-
-
-
-
-
             }
-
-
-
-
-
-
-
         }
 
 
@@ -28343,61 +28265,12 @@ function updateAnnPreview() {
 
 
         if (simFooterIcon) {
-
-
-
-
-
-
-
-            if (currentBotAvatar && currentAnnShowThumbnail) {
-
-
-
-
-
-
-
+            if (currentAnnAvatarMode !== 'none' && chosenAvatar) {
                 simFooterIcon.style.display = 'block';
-
-
-
-
-
-
-
-                simFooterIcon.src = currentBotAvatar;
-
-
-
-
-
-
-
+                simFooterIcon.src = chosenAvatar;
             } else {
-
-
-
-
-
-
-
                 simFooterIcon.style.display = 'none';
-
-
-
-
-
-
-
             }
-
-
-
-
-
-
-
         }
 
 
@@ -28734,7 +28607,8 @@ async function broadcastAnnouncement() {
 
 
 
-                show_thumbnail: currentAnnShowThumbnail,
+                show_thumbnail: currentAnnAvatarMode !== 'none',
+                avatar_mode: currentAnnAvatarMode,
 
 
 
@@ -60582,18 +60456,15 @@ function setupGwHostPicker() {
 
 
     searchInput.addEventListener('input', (e) => {
-
         if (dropdown && dropdown.style.display !== 'block') {
-
             dropdown.style.display = 'block';
-
             wrap.classList.add('open');
-
         }
-
         renderGwHostOptions(e.target.value);
         updateGwPreview();
     });
+    searchInput.addEventListener('change', () => updateGwPreview());
+    searchInput.addEventListener('keyup', () => updateGwPreview());
 
 
 
@@ -65207,6 +65078,7 @@ async function launchGiveaway() {
 
 
                 host_id: document.getElementById('gwHostSelect')?.value || null,
+                host_name: document.getElementById('gwHostSearchInput')?.value || null,
 
 
 

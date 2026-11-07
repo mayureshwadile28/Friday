@@ -275,31 +275,12 @@ class GiveawayEnterView(discord.ui.View):
         self.enter_btn.emoji = parse_discord_button_emoji(self.emoji)
 
         try:
-            # Check if embed actually has a legacy 'entries' field to update.
-            # If not, ONLY edit the view (buttons). Re-editing the embed on a message
-            # with local attachment causes Discord to detach attachment:// media into an extra banner!
-            has_entries_field = False
-            if interaction.message.embeds:
-                embed = interaction.message.embeds[0]
-                for i, field in enumerate(embed.fields):
-                    if "entries" in field.name.lower():
-                        embed.set_field_at(i, name=field.name, value=f"**{count}**", inline=True)
-                        has_entries_field = True
-                        break
-
-            if has_entries_field:
-                # Maintain attachment:// filename if message has file attachments to prevent duplicate media
-                if interaction.message.attachments and embed.image:
-                    first_att = interaction.message.attachments[0]
-                    embed.set_image(url=f"attachment://{first_att.filename}")
-                await interaction.message.edit(embed=embed, view=self)
-            else:
-                await interaction.message.edit(view=self)
+            # ONLY edit view (the button label). Never re-edit the embed upon entry click!
+            # Re-editing the embed on a message with attachment files causes Discord API to
+            # un-embed the attachment and display duplicate GIF/image banners above the embed card.
+            await interaction.message.edit(view=self)
         except Exception:
-            try:
-                await interaction.message.edit(view=self)
-            except Exception:
-                pass
+            pass
 
         await interaction.response.send_message(action_msg, ephemeral=True)
 
@@ -1049,6 +1030,13 @@ class Giveaways(commands.Cog):
         prize = gw.get("prize", "Unknown Prize")
         host_id = gw.get("host_id")
         sponsor_id = gw.get("sponsor_id", host_id)
+        host_name = gw.get("host_name")
+        if sponsor_id and str(sponsor_id).isdigit() and str(sponsor_id) != "0":
+            host_display = f"<@{sponsor_id}>"
+        elif host_name and host_name != "Server Staff":
+            host_display = f"@{host_name.lstrip('@')}"
+        else:
+            host_display = "Server Staff"
         winners_count = gw.get("winners_count", 1)
         entries = gw.get("entries", [])
 
@@ -1081,7 +1069,7 @@ class Giveaways(commands.Cog):
                 dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
                 ended_desc = (
                     f"{dot} **Winners:** {winners_text}\n"
-                    f"{dot} **Hosted By:** <@{sponsor_id}>\n"
+                    f"{dot} **Hosted By:** {host_display}\n"
                     f"{dot} **Total Entries:** **{len(entries)}**\n\n"
                     f"{dot} {gw.get('description') or 'Giveaway has ended.'}"
                 )
@@ -1128,7 +1116,7 @@ class Giveaways(commands.Cog):
                 formatted_desc = raw_template.replace("{winners}", mentions_str)\
                                              .replace("{winner}", mentions_str)\
                                              .replace("{prize}", prize)\
-                                             .replace("{host}", f"<@{sponsor_id}>")\
+                                             .replace("{host}", host_display)\
                                              .replace("{link}", jump_url)\
                                              .replace("{entries}", str(len(entries)))
                 
@@ -1139,7 +1127,7 @@ class Giveaways(commands.Cog):
                     timestamp=datetime.now(timezone.utc)
                 )
                 embed.add_field(name=f"{emoji_prize} Prize", value=f"**{prize}**", inline=True)
-                embed.add_field(name=f"{emoji_host} Hosted By", value=f"<@{sponsor_id}>", inline=True)
+                embed.add_field(name=f"{emoji_host} Hosted By", value=host_display, inline=True)
                 embed.add_field(name=f"{emoji_entries} Total Entries", value=f"**{len(entries)}**", inline=True)
                 embed.set_footer(text="Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
                 
@@ -1152,7 +1140,7 @@ class Giveaways(commands.Cog):
                                        .replace("{winner}", mentions_str)\
                                        .replace("{prize}", prize)\
                                        .replace("{emoji_prize}", emoji_prize)\
-                                       .replace("{host}", f"<@{sponsor_id}>")
+                                       .replace("{host}", host_display)
                 await channel.send(content=ping_content, embed=embed, view=view)
             else:
                 embed = discord.Embed(
@@ -1181,7 +1169,7 @@ class Giveaways(commands.Cog):
                     f"**Winners ({len(chosen)}):** {winners_str}\n"
                     f"**Total Entries:** {len(entries)}\n"
                     f"**Channel:** <#{channel_id}>\n"
-                    f"**Sponsored by:** <@{sponsor_id}>"
+                    f"**Sponsored by:** {host_display}"
                 ),
                 color=discord.Color.gold(),
                 timestamp=datetime.now(timezone.utc)

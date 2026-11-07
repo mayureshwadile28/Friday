@@ -5,6 +5,7 @@ import sys
 import uuid
 import requests
 import asyncio
+import time
 import discord
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -74,7 +75,15 @@ def fetch_user_info(user_id):
 
 @app.route('/')
 def dashboard():
-    return render_template('dashboard.html')
+    return render_template('dashboard.html', cache_buster=int(time.time()))
+
+@app.after_request
+def add_no_cache_headers(response):
+    if flask_request.path.startswith('/static/'):
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
 
 @app.route('/favicon.ico')
 def favicon():
@@ -1222,6 +1231,7 @@ def broadcast_announcement(gid):
     ping = data.get("ping", "none").strip()
     color_hex = data.get("color", "#2dd4bf")
     show_thumbnail = data.get("show_thumbnail", False)
+    avatar_mode = str(data.get("avatar_mode") or ("friday" if show_thumbnail else "none")).lower()
     footer_text = data.get("footer", "").strip()
     ann_format = data.get("format", "embed").strip().lower()
 
@@ -1274,12 +1284,21 @@ def broadcast_announcement(gid):
                 color=discord.Color(color_int)
             )
 
-            avatar_url = str(bot_instance.user.display_avatar.url) if bot_instance.user and bot_instance.user.display_avatar else None
-            if show_thumbnail and avatar_url:
-                embed.set_thumbnail(url=avatar_url)
+            chosen_avatar_url = None
+            if avatar_mode == "friday":
+                if bot_instance.user and bot_instance.user.display_avatar:
+                    chosen_avatar_url = str(bot_instance.user.display_avatar.url)
+            elif avatar_mode == "server":
+                if guild.icon:
+                    chosen_avatar_url = str(guild.icon.url)
+                elif bot_instance.user and bot_instance.user.display_avatar:
+                    chosen_avatar_url = str(bot_instance.user.display_avatar.url)
+
+            if chosen_avatar_url:
+                embed.set_thumbnail(url=chosen_avatar_url)
 
             if footer_text:
-                embed.set_footer(text=footer_text, icon_url=avatar_url if show_thumbnail else None)
+                embed.set_footer(text=footer_text, icon_url=chosen_avatar_url)
 
             msg = await channel.send(
                 content=mention_str if mention_str else None,
@@ -3052,13 +3071,39 @@ def create_guild_giveaway(gid):
         emoji_bullet = resolve_safe_emoji(bot_instance, body.get("emoji_bullet") or cfg.get("emoji_bullet"), fallback="•")
 
         host_id = body.get("host_id")
+        host_name = str(body.get("host_name") or "").strip()
         host_member = None
-        if host_id and str(host_id).isdigit():
+        if host_id and str(host_id).isdigit() and str(host_id) != "0":
             host_member = guild.get_member(int(host_id))
-        if not host_member and guild.owner:
-            host_member = guild.owner
-        host_mention = host_member.mention if host_member else "Server Staff"
-        sponsor_id = str(host_member.id) if host_member else str(guild.owner_id if guild.owner else "0")
+            if not host_member:
+                try:
+                    host_member = await guild.fetch_member(int(host_id))
+                except Exception:
+                    try:
+                        host_member = await bot_instance.fetch_user(int(host_id))
+                    except Exception:
+                        host_member = None
+
+        if not host_member and host_name and host_name != "Server Staff (Default)":
+            clean_search = host_name.lstrip("@").lower()
+            for m in guild.members:
+                if m.name.lower() == clean_search or (m.global_name and m.global_name.lower() == clean_search) or m.display_name.lower() == clean_search:
+                    host_member = m
+                    break
+
+        if host_member:
+            sponsor_id = str(host_member.id)
+            host_mention = host_member.mention
+            saved_host_name = host_member.display_name or host_member.name
+        elif host_name and host_name != "Server Staff (Default)":
+            sponsor_id = "0"
+            host_mention = f"@{host_name.lstrip('@')}"
+            saved_host_name = host_name.lstrip('@')
+        else:
+            sponsor_id = "0"
+            host_mention = "Server Staff"
+            saved_host_name = "Server Staff"
+
         entry_method = str(body.get("entry_method") or cfg.get("entry_method") or "button").lower()
         if entry_method != "reaction":
             entry_method = "button"
@@ -3150,7 +3195,7 @@ def create_guild_giveaway(gid):
             "prize": prize,
             "host_id": sponsor_id,
             "sponsor_id": sponsor_id,
-            "host_name": host_member.display_name if host_member else "Server Staff",
+            "host_name": saved_host_name,
             "entry_method": entry_method,
             "winners_count": winners_count,
             "created_at": now,

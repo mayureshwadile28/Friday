@@ -19,7 +19,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
 
-<link href="/static/style.css" rel="stylesheet"/>
+<link href="/static/style.css?v={{ cache_buster or '2.7.0' }}" rel="stylesheet"/>
 
 </head>
 
@@ -3521,13 +3521,22 @@ We are excited to introduce seamless broadcast capability.
 
 <div style="display: flex; flex-direction: column; gap: 10px;">
 
-<label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
-
-<label class="switch"><input checked="" id="annThumbnailCheckbox" style="accent-color: var(--primary);" type="checkbox"/><span class="slider"></span></label>
-
-<span>Include Friday Bot Avatar Thumbnail</span>
-
-</label>
+<div style="margin-bottom: 4px;">
+<label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Thumbnail & Icon Source</label>
+<div class="ann-avatar-pill-group" style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <button type="button" class="ann-avatar-pill active" data-mode="friday" id="annAvatarFridayBtn" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; border: 1px solid rgba(88, 101, 242, 0.4); background: rgba(88, 101, 242, 0.2); color: #fff; transition: all 0.15s ease;">
+        🤖 Friday Avatar
+    </button>
+    <button type="button" class="ann-avatar-pill" data-mode="server" id="annAvatarServerBtn" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); transition: all 0.15s ease;">
+        🏰 Server Icon
+    </button>
+    <button type="button" class="ann-avatar-pill" data-mode="none" id="annAvatarNoneBtn" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.05); color: var(--text-secondary); transition: all 0.15s ease;">
+        🚫 None
+    </button>
+</div>
+<input type="hidden" id="annAvatarMode" value="friday">
+<input type="checkbox" id="annThumbnailCheckbox" checked style="display: none;">
+</div>
 
 <div>
 
@@ -9652,7 +9661,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 </div>
 
-<script src="/static/script.js"></script>
+<script src="/static/script.js?v={{ cache_buster or '2.7.0' }}"></script>
 
 </body>
 
