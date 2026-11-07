@@ -269,6 +269,13 @@ class GiveawayEnterView(discord.ui.View):
             entries.append(uid)
             action_msg = f"🎉 You have entered the giveaway for **{prize}**! Good luck! 🍀"
 
+        # Sync entries across all alias keys sharing message_id
+        msg_id = gw.get("message_id")
+        if msg_id:
+            for k, v in getattr(db, "giveaways", {}).items():
+                if isinstance(v, dict) and v.get("message_id") == msg_id:
+                    v["entries"] = list(entries)
+
         db.save_data()
 
         # Update button label with the new entry count
@@ -1011,24 +1018,46 @@ class Giveaways(commands.Cog):
         """Monitors active giveaways every 10 seconds and automatically draws winners upon expiration."""
         now = time.time()
         giveaways_dict = getattr(db, "giveaways", {})
+        processed_msg_ids = set()
 
         for key, gw in list(giveaways_dict.items()):
             if not isinstance(gw, dict) or gw.get("status") != "active":
+                continue
+
+            msg_id = gw.get("message_id")
+            if msg_id and msg_id in processed_msg_ids:
+                gw["status"] = "ended"
                 continue
 
             end_time = gw.get("end_time", 0)
             if now < end_time:
                 continue
 
+            if msg_id:
+                processed_msg_ids.add(msg_id)
+
             # Giveaway has expired: draw winners!
             await self.conclude_giveaway(key, gw)
 
     async def conclude_giveaway(self, key: str, gw: dict):
         """Concludes an active giveaway, picks random winners, edits the card, and logs the result."""
-        gw["status"] = "ended"
+        message_id = gw.get("message_id")
+        
+        # Guard against duplicate conclusions across alias keys
+        if gw.get("status") == "ended" and gw.get("winners") is not None:
+            return
+        if message_id:
+            for k, v in list(getattr(db, "giveaways", {}).items()):
+                if isinstance(v, dict) and v.get("message_id") == message_id:
+                    if v.get("status") == "ended" and v.get("winners") is not None:
+                        gw["status"] = "ended"
+                        gw["winners"] = v.get("winners", [])
+                        gw["ended_at"] = v.get("ended_at", time.time())
+                        db.save_data()
+                        return
+
         guild_id = gw.get("guild_id")
         channel_id = gw.get("channel_id")
-        message_id = gw.get("message_id")
         prize = gw.get("prize", "Unknown Prize")
         host_id = gw.get("host_id")
         sponsor_id = gw.get("sponsor_id", host_id)
@@ -1040,7 +1069,17 @@ class Giveaways(commands.Cog):
         else:
             host_display = "Server Staff"
         winners_count = gw.get("winners_count", 1)
-        entries = gw.get("entries", [])
+
+        # Consolidate entries across any duplicate alias keys
+        all_entries = list(gw.get("entries", []))
+        if message_id:
+            for k, v in getattr(db, "giveaways", {}).items():
+                if isinstance(v, dict) and v.get("message_id") == message_id:
+                    for uid in v.get("entries", []):
+                        if uid not in all_entries:
+                            all_entries.append(uid)
+        entries = all_entries
+        gw["entries"] = entries
 
         # Pick random winners without duplicates
         if entries:
@@ -1048,8 +1087,18 @@ class Giveaways(commands.Cog):
         else:
             chosen = []
 
+        ended_timestamp = time.time()
+        # Mark ALL alias keys sharing message_id as ended at once
+        if message_id:
+            for k, v in getattr(db, "giveaways", {}).items():
+                if isinstance(v, dict) and v.get("message_id") == message_id:
+                    v["status"] = "ended"
+                    v["winners"] = chosen
+                    v["ended_at"] = ended_timestamp
+                    v["entries"] = entries
+        gw["status"] = "ended"
         gw["winners"] = chosen
-        gw["ended_at"] = time.time()
+        gw["ended_at"] = ended_timestamp
         db.save_data()
 
         guild = self.bot.get_guild(guild_id)
@@ -1145,13 +1194,24 @@ class Giveaways(commands.Cog):
                                        .replace("{host}", host_display)
                 await channel.send(content=ping_content, embed=embed, view=view)
             else:
+                gid_str = str(guild_id)
+                cr = getattr(db, "custom_responses", {}).get(gid_str, {})
+                raw_no_entries = cfg.get("no_entries_message") or cr.get("gw_no_entries_response") or "The giveaway for **{prize}** has ended with **0 entries**.\nNo winners could be selected."
+                desc_text = (
+                    raw_no_entries
+                    .replace("{prize}", prize)
+                    .replace("{host}", host_display)
+                    .replace("{link}", jump_url)
+                    .replace("{server}", guild.name)
+                )
+                raw_title = cfg.get("no_entries_title") or "⚠️ Giveaway Concluded • No Entries"
                 embed = discord.Embed(
-                    title="⚠️ Giveaway Concluded • No Entries",
-                    description=f"The giveaway for **{prize}** has ended with **0 entries**.\nNo winners could be selected.",
+                    title=raw_title.replace("{prize}", prize),
+                    description=desc_text,
                     color=discord.Color.from_rgb(107, 114, 128),
                     timestamp=datetime.now(timezone.utc)
                 )
-                embed.set_footer(text="Friday Giveaway Engine", icon_url=guild.icon.url if guild.icon else None)
+                embed.set_footer(text="Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
                 view = discord.ui.View()
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
                 await channel.send(embed=embed, view=view)

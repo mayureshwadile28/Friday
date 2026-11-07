@@ -2897,7 +2897,7 @@ def save_guild_giveaway_config(gid):
         cfg["default_banner"] = val or None
 
     # Announcement & Response formatting templates
-    for text_key in ["winner_title", "winner_message", "winner_ping", "reroll_title", "reroll_message", "reroll_ping", "participants_header", "participants_empty"]:
+    for text_key in ["winner_title", "winner_message", "winner_ping", "reroll_title", "reroll_message", "reroll_ping", "participants_header", "participants_empty", "no_entries_title", "no_entries_message"]:
         if text_key in body:
             val = str(body.get(text_key, "")).strip()
             if val:

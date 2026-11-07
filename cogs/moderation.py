@@ -196,6 +196,171 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             await reply_box(interaction, "Discord restricts bots from bulk-deleting messages older than 14 days.", title="PURGE RESTRICTION", status="warning", ephemeral=True)
 
+    @app_commands.command(name="lock", description="Lock a channel to prevent regular members from sending messages.")
+    @app_commands.describe(
+        channel="The channel to lock (leave empty for current channel)",
+        reason="Reason for locking the channel"
+    )
+    @app_commands.default_permissions(manage_channels=True)
+    async def lock(
+        self,
+        interaction: discord.Interaction,
+        channel: Optional[discord.TextChannel] = None,
+        reason: str = "Channel locked by staff."
+    ):
+        target = channel or interaction.channel
+        if not isinstance(target, discord.TextChannel):
+            await reply_box(interaction, "Only text channels can be locked.", title="INVALID TARGET", status="error", ephemeral=True)
+            return
+
+        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+        if bot_member and not target.permissions_for(bot_member).manage_channels:
+            await reply_box(interaction, "Friday lacks the **Manage Channels** permission in that channel.", title="PERMISSION FAULT", status="error", ephemeral=True)
+            return
+
+        default_role = interaction.guild.default_role
+        current_ow = target.overwrites_for(default_role)
+        current_ow.send_messages = False
+        current_ow.send_messages_in_threads = False
+        current_ow.create_public_threads = False
+        current_ow.create_private_threads = False
+        current_ow.add_reactions = False
+
+        try:
+            await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel locked by {interaction.user}: {reason}")
+        except discord.Forbidden:
+            await reply_box(interaction, "Failed to lock channel due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
+            return
+
+        lock_embed = make_box_embed(
+            title="CHANNEL LOCKED",
+            description=f"🔒 This channel has been locked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Regular members cannot send messages until unlocked by staff.*",
+            status="error"
+        )
+        if target.id == interaction.channel_id:
+            await interaction.response.send_message(embed=lock_embed)
+        else:
+            await target.send(embed=lock_embed)
+            await reply_box(interaction, f"Successfully locked {target.mention}.", title="CHANNEL LOCKED", status="error", ephemeral=True)
+
+    @app_commands.command(name="unlock", description="Unlock a previously locked channel to allow chatting.")
+    @app_commands.describe(
+        channel="The channel to unlock (leave empty for current channel)",
+        reason="Reason for unlocking the channel"
+    )
+    @app_commands.default_permissions(manage_channels=True)
+    async def unlock(
+        self,
+        interaction: discord.Interaction,
+        channel: Optional[discord.TextChannel] = None,
+        reason: str = "Channel unlocked by staff."
+    ):
+        target = channel or interaction.channel
+        if not isinstance(target, discord.TextChannel):
+            await reply_box(interaction, "Only text channels can be unlocked.", title="INVALID TARGET", status="error", ephemeral=True)
+            return
+
+        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+        if bot_member and not target.permissions_for(bot_member).manage_channels:
+            await reply_box(interaction, "Friday lacks the **Manage Channels** permission in that channel.", title="PERMISSION FAULT", status="error", ephemeral=True)
+            return
+
+        default_role = interaction.guild.default_role
+        current_ow = target.overwrites_for(default_role)
+        current_ow.send_messages = None
+        current_ow.send_messages_in_threads = None
+        current_ow.create_public_threads = None
+        current_ow.create_private_threads = None
+        current_ow.add_reactions = None
+
+        try:
+            await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel unlocked by {interaction.user}: {reason}")
+        except discord.Forbidden:
+            await reply_box(interaction, "Failed to unlock channel due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
+            return
+
+        unlock_embed = make_box_embed(
+            title="CHANNEL UNLOCKED",
+            description=f"🔓 This channel has been unlocked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Members may now send messages and participate in chat.*",
+            status="success"
+        )
+        if target.id == interaction.channel_id:
+            await interaction.response.send_message(embed=unlock_embed)
+        else:
+            await target.send(embed=unlock_embed)
+            await reply_box(interaction, f"Successfully unlocked {target.mention}.", title="CHANNEL UNLOCKED", status="success", ephemeral=True)
+
+    @app_commands.command(name="slowmode", description="Set or disable the slowmode chat cooldown for a channel.")
+    @app_commands.describe(
+        seconds="Cooldown in seconds (0 to disable slowmode, max 21600 / 6h)",
+        channel="The channel to modify (leave empty for current channel)"
+    )
+    @app_commands.default_permissions(manage_channels=True)
+    async def slowmode(
+        self,
+        interaction: discord.Interaction,
+        seconds: app_commands.Range[int, 0, 21600],
+        channel: Optional[discord.TextChannel] = None
+    ):
+        target = channel or interaction.channel
+        if not isinstance(target, discord.TextChannel):
+            await reply_box(interaction, "Only text channels support slowmode.", title="INVALID TARGET", status="error", ephemeral=True)
+            return
+
+        try:
+            await target.edit(slowmode_delay=seconds, reason=f"Slowmode adjusted by {interaction.user}")
+            if seconds == 0:
+                await reply_box(interaction, f"Slowmode cooldown has been disabled for {target.mention}.", title="SLOWMODE DISABLED", status="success")
+            else:
+                await reply_box(interaction, f"Slowmode cooldown for {target.mention} has been set to **{seconds} seconds**.", title="SLOWMODE UPDATED", status="info")
+        except discord.Forbidden:
+            await reply_box(interaction, "Friday lacks permission to edit channel settings.", title="PERMISSION FAULT", status="error", ephemeral=True)
+
+    @app_commands.command(name="kick", description="Kick a member from the server.")
+    @app_commands.describe(
+        member="The member to kick",
+        reason="Reason for kicking the member"
+    )
+    @app_commands.default_permissions(kick_members=True)
+    async def kick(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        reason: str = "No reason provided."
+    ):
+        if member.id == interaction.user.id:
+            await reply_box(interaction, "You cannot kick yourself.", title="INVALID TARGET", status="warning", ephemeral=True)
+            return
+
+        if member.id == interaction.guild.owner_id:
+            await reply_box(interaction, "You cannot kick the server owner.", title="INVALID TARGET", status="error", ephemeral=True)
+            return
+
+        if member.top_role >= interaction.user.top_role and interaction.user.id != interaction.guild.owner_id:
+            await reply_box(interaction, f"You cannot kick {member.mention} because their highest role is equal to or higher than yours.", title="HIERARCHY ERROR", status="error", ephemeral=True)
+            return
+
+        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+        if bot_member and member.top_role >= bot_member.top_role:
+            await reply_box(interaction, f"Friday cannot kick {member.mention} because their highest role is higher than Friday's top role.", title="HIERARCHY ERROR", status="error", ephemeral=True)
+            return
+
+        try:
+            try:
+                dm_embed = make_box_embed(
+                    title="YOU WERE KICKED",
+                    description=f"You have been kicked from **{interaction.guild.name}**.\n\n**Reason:** {reason}",
+                    status="error"
+                )
+                await member.send(embed=dm_embed)
+            except Exception:
+                pass
+
+            await member.kick(reason=f"Kicked by {interaction.user}: {reason}")
+            await reply_box(interaction, f"👢 **{member}** has been kicked from the server.\n**Reason:** {reason}", title="MEMBER KICKED", status="error")
+        except discord.Forbidden:
+            await reply_box(interaction, "Friday lacks permission to kick this member.", title="PERMISSION FAULT", status="error", ephemeral=True)
+
     @app_commands.command(name="warn", description="Issue a formal warning to a server member (via DM, Chat, or Both).")
     @app_commands.describe(
         member="The server member to warn",

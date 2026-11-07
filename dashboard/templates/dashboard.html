@@ -7527,6 +7527,23 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     </div>
 
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">No Entries Concluded Message &amp; Body</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">Sent when giveaway ends with 0 entries</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwNoEntriesMessage" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwNoEntriesMessage" data-var="{host}" type="button">+ {host}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwNoEntriesMessage" data-var="{server}" type="button">+ {server}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwNoEntriesMessage" data-var="{link}" type="button">+ {link}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwNoEntriesMsgEmojiBtn" data-target="gwNoEntriesMessage" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <textarea class="text-input" id="gwNoEntriesMessage" rows="3" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">The giveaway for **{prize}** has ended with **0 entries**&#10;No winners could be selected.</textarea>
+                    </div>
+
                 </div>
 
                 <!-- Participants Auto-Response Panel -->

@@ -18344,6 +18344,9 @@ function initAllRichEmojiEditors() {
 
 
     attachRichEmojiEditor('gwRerollPing', true);
+    attachRichEmojiEditor('gwNoEntriesMessage');
+    attachRichEmojiEditor('gwParticipantsHeader', true);
+    attachRichEmojiEditor('gwParticipantsEmpty');
 
 
 
@@ -35309,7 +35312,8 @@ const CUSTOM_RESPONSES_SCHEMA = [
 
     {"id": "welcome_greeting_text", "label": "Server Join Welcome Message", "category": "Welcomer", "vars": ["{user}", "{username}", "{server}", "{member_count}", "{channel}", "{rules}"]},
     {"id": "farewell_notice_text", "label": "Server Leave Farewell Notice", "category": "Welcomer", "vars": ["{user_display}", "{username}", "{id}", "{server}", "{member_count}", "{channel}"]},
-    {"id": "gw_participants_response", "label": "Giveaway Participants Response Header", "category": "Giveaways", "vars": ["{emoji}", "{prize}", "{count}", "{server}"]}
+    {"id": "gw_participants_response", "label": "Giveaway Participants Response Header", "category": "Giveaways", "vars": ["{emoji}", "{prize}", "{count}", "{server}"]},
+    {"id": "gw_no_entries_response", "label": "Giveaway Concluded (No Entries) Body", "category": "Giveaways", "vars": ["{prize}", "{host}", "{server}", "{link}"]}
 ];
 
 
@@ -61719,9 +61723,21 @@ async function loadGiveawaysData() {
 
         if (document.getElementById('gwParticipantsHeader')) {
             document.getElementById('gwParticipantsHeader').value = cfg.participants_header || '{emoji} **Participants for {prize} ({count}):**';
+            if (typeof document.getElementById('gwParticipantsHeader')._syncToRich === 'function') {
+                document.getElementById('gwParticipantsHeader')._syncToRich();
+            }
         }
         if (document.getElementById('gwParticipantsEmpty')) {
             document.getElementById('gwParticipantsEmpty').value = cfg.participants_empty || '{emoji} **Participants for {prize} (0):**\nNo members have entered this giveaway yet. Be the first to enter!';
+            if (typeof document.getElementById('gwParticipantsEmpty')._syncToRich === 'function') {
+                document.getElementById('gwParticipantsEmpty')._syncToRich();
+            }
+        }
+        if (document.getElementById('gwNoEntriesMessage')) {
+            document.getElementById('gwNoEntriesMessage').value = cfg.no_entries_message || 'The giveaway for **{prize}** has ended with **0 entries**.\nNo winners could be selected.';
+            if (typeof document.getElementById('gwNoEntriesMessage')._syncToRich === 'function') {
+                document.getElementById('gwNoEntriesMessage')._syncToRich();
+            }
         }
         if (document.getElementById('gwWinnerPing')) {
 
@@ -64278,6 +64294,7 @@ async function saveGwConfig(silent = false) {
         emoji_bullet: document.getElementById('gwEmojiBullet')?.value.trim() || '•',
         participants_header: document.getElementById('gwParticipantsHeader')?.value.trim() || '{emoji} **Participants for {prize} ({count}):**',
         participants_empty: document.getElementById('gwParticipantsEmpty')?.value.trim() || '{emoji} **Participants for {prize} (0):**\nNo members have entered this giveaway yet. Be the first to enter!',
+        no_entries_message: document.getElementById('gwNoEntriesMessage')?.value.trim() || 'The giveaway for **{prize}** has ended with **0 entries**.\nNo winners could be selected.',
         default_banner: document.getElementById('gwDefaultBanner')?.value.trim() || null,
 
 
@@ -67062,38 +67079,47 @@ function setupGiveawayEvents() {
 
 
         // Participants Announcement & Response Listeners
-    ['gwParticipantsHeader', 'gwParticipantsEmpty'].forEach(id => {
+    ['gwParticipantsHeader', 'gwParticipantsEmpty', 'gwNoEntriesMessage'].forEach(id => {
         const el = document.getElementById(id);
         if (el) el.addEventListener('input', updateGwWinnerPreview);
+        const richEl = document.getElementById(id + '_rich');
+        if (richEl) richEl.addEventListener('input', updateGwWinnerPreview);
     });
 
-    const partHdrEmojiBtn = document.getElementById('gwParticipantsHeaderEmojiBtn');
-    if (partHdrEmojiBtn) {
-        partHdrEmojiBtn.addEventListener('click', (e) => {
+    const bindGwFieldEmoji = (btnId, inputId) => {
+        const btn = document.getElementById(btnId);
+        const input = document.getElementById(inputId);
+        if (!btn || !input) return;
+        btn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const input = document.getElementById('gwParticipantsHeader');
-            openEmojiPicker(partHdrEmojiBtn, (chosen) => {
-                if (!chosen || !input) return;
-                input.value += chosen;
+            const richEl = document.getElementById(inputId + '_rich');
+            if (richEl) {
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                    richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                }
+                openEmojiPicker(btn, (chosen) => {
+                    if (!chosen) return;
+                    insertEmojiOrTextIntoRichEditor(richEl, chosen);
+                    updateGwWinnerPreview();
+                });
+                return;
+            }
+            openEmojiPicker(btn, (chosen) => {
+                if (!chosen) return;
+                const start = input.selectionStart ?? input.value.length;
+                const end = input.selectionEnd ?? input.value.length;
+                input.value = input.value.substring(0, start) + chosen + input.value.substring(end);
+                input.selectionStart = input.selectionEnd = start + chosen.length;
                 updateGwWinnerPreview();
             });
         });
-    }
+    };
 
-    const partEmptyEmojiBtn = document.getElementById('gwParticipantsEmptyEmojiBtn');
-    if (partEmptyEmojiBtn) {
-        partEmptyEmojiBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const input = document.getElementById('gwParticipantsEmpty');
-            openEmojiPicker(partEmptyEmojiBtn, (chosen) => {
-                if (!chosen || !input) return;
-                input.value += chosen;
-                updateGwWinnerPreview();
-            });
-        });
-    }
+    bindGwFieldEmoji('gwParticipantsHeaderEmojiBtn', 'gwParticipantsHeader');
+    bindGwFieldEmoji('gwParticipantsEmptyEmojiBtn', 'gwParticipantsEmpty');
+    bindGwFieldEmoji('gwNoEntriesMsgEmojiBtn', 'gwNoEntriesMessage');
 
     const saveAnnounceBtn = document.getElementById('gwSaveAnnouncementBtn');
 
