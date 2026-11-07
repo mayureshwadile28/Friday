@@ -2200,6 +2200,22 @@ select.text-input option {
 
 }
 
+.discord-channel-mention {
+    background: rgba(88, 101, 242, 0.18);
+    color: #c9cdfb;
+    padding: 0 4px;
+    border-radius: 3px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-block;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.discord-channel-mention:hover {
+    background: rgba(88, 101, 242, 0.35);
+    color: #ffffff;
+}
+
 
 
 .discord-level-badge {

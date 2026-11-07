@@ -2843,7 +2843,7 @@ def save_guild_giveaway_config(gid):
         cfg["entry_method"] = "reaction" if val == "reaction" else "button"
 
     # Custom styling emojis
-    for emoji_key in ["emoji_header", "emoji_prize", "emoji_participants", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended", "emoji_bullet"]:
+    for emoji_key in ["emoji_header", "emoji_prize", "emoji_participants", "emoji_participants_response", "emoji_host", "emoji_winners", "emoji_entries", "emoji_ends", "emoji_ended", "emoji_bullet"]:
         if emoji_key in body:
             val = str(body.get(emoji_key, "")).strip()
             if val:
@@ -2853,8 +2853,8 @@ def save_guild_giveaway_config(gid):
         val = str(body.get("default_banner", "")).strip()
         cfg["default_banner"] = val or None
 
-    # Announcement formatting templates
-    for text_key in ["winner_title", "winner_message", "winner_ping", "reroll_title", "reroll_message", "reroll_ping"]:
+    # Announcement & Response formatting templates
+    for text_key in ["winner_title", "winner_message", "winner_ping", "reroll_title", "reroll_message", "reroll_ping", "participants_header", "participants_empty"]:
         if text_key in body:
             val = str(body.get(text_key, "")).strip()
             if val:
@@ -3140,12 +3140,11 @@ def create_guild_giveaway(gid):
             final_image_url = msg.attachments[0].url
 
         real_key = f"{gid}_{msg.id}"
-        if entry_method == "button":
-            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_participants)
-            await msg.edit(view=real_view)
 
         gw_data = {
             "message_id": msg.id,
+            "giveaway_key": temp_key,
+            "key": real_key,
             "channel_id": channel.id,
             "guild_id": gid_int,
             "prize": prize,
@@ -3153,7 +3152,6 @@ def create_guild_giveaway(gid):
             "sponsor_id": sponsor_id,
             "host_name": host_member.display_name if host_member else "Server Staff",
             "entry_method": entry_method,
-            "sponsor_id": guild.owner_id if guild.owner_id else bot_instance.user.id,
             "winners_count": winners_count,
             "created_at": now,
             "end_time": end_time,
@@ -3165,7 +3163,10 @@ def create_guild_giveaway(gid):
             "embed_color": embed_color_hex,
             "header_emoji": emoji_header
         }
+        # Save by temp_key (assigned to initial button view), real_key, and msg.id
+        db.giveaways[temp_key] = gw_data
         db.giveaways[real_key] = gw_data
+        db.giveaways[str(msg.id)] = gw_data
         db.save_data()
 
         # Log event if log channel exists

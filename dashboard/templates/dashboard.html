@@ -6101,6 +6101,24 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
         </div>
 
+        <!-- CARD 4: GIVEAWAY PARTICIPANTS AUTO-RESPONSE -->
+        <div class="automation-card" style="margin-top: 16px; border: 1px solid rgba(88, 101, 242, 0.25); background: linear-gradient(135deg, rgba(88, 101, 242, 0.08) 0%, rgba(20, 20, 24, 0.6) 100%);">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 36px; height: 36px; border-radius: 8px; background: rgba(88, 101, 242, 0.2); display: flex; align-items: center; justify-content: center; font-size: 18px;">
+                        👥
+                    </div>
+                    <div>
+                        <h3 class="automation-card-title" style="margin: 0; font-size: 15px;">Giveaway Participants Auto-Response</h3>
+                        <p class="automation-card-desc" style="margin: 0; font-size: 12px;">Customize the automated ephemeral response, custom server emojis, and member list formatting shown when users click the Participants button on active giveaways.</p>
+                    </div>
+                </div>
+                <button class="btn btn-secondary" type="button" onclick="switchTab('giveawaysSection'); setTimeout(() => { const b = document.getElementById('gwTabParticipantsBtn'); if(b) b.click(); const el = document.getElementById('gwParticipantsPanel'); if(el) el.scrollIntoView({behavior: 'smooth', block: 'center'}); }, 150);" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; border-color: rgba(88, 101, 242, 0.4); color: #c7d2fe;">
+                    ⚙️ Configure in Giveaway Studio →
+                </button>
+            </div>
+        </div>
+
     </div>
 
 </div> <!-- End #automationsSection -->
@@ -7304,6 +7322,12 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     </button>
 
+                    <button class="btn btn-secondary" id="gwTabParticipantsBtn" type="button" style="padding: 6px 14px; font-size: 12px; font-weight: 700; color: var(--text-secondary);">
+
+                        👥 Participants Auto-Response
+
+                    </button>
+
                 </div>
 
 
@@ -7490,15 +7514,54 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                         <textarea class="text-input" id="gwRerollMessage" rows="5" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">&gt; 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁
 
-
-
 🔗 **Jump to Giveaway:** {link}</textarea>
 
                     </div>
 
                 </div>
 
+                <!-- Participants Auto-Response Panel -->
+                <div id="gwParticipantsPanel" style="display: none;">
+                    <div style="background: rgba(88, 101, 242, 0.1); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: 8px; padding: 10px 14px; margin-bottom: 14px; display: flex; align-items: center; gap: 10px;">
+                        <span style="font-size: 18px;">🔒</span>
+                        <div style="font-size: 12px; color: #c7d2fe; line-height: 1.4;">
+                            <strong>Ephemeral Member Response:</strong> Sent privately in Discord only to the member who clicks the 👥 <strong>Participants</strong> button. Never clutters or spams public chat.
+                        </div>
+                    </div>
 
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Participants List Header Template</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">When entries exist</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwParticipantsHeader" data-var="{emoji}" type="button">+ {emoji}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwParticipantsHeader" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwParticipantsHeader" data-var="{count}" type="button">+ {count}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwParticipantsHeader" data-var="{server}" type="button">+ {server}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwParticipantsHeaderEmojiBtn" data-target="gwParticipantsHeader" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <input class="text-input" id="gwParticipantsHeader" type="text" value="{emoji} **Participants for {prize} ({count}):**" style="font-size: 13px; font-weight: 600;" />
+                    </div>
+
+                    <div style="margin-bottom: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Empty List Message (0 Entries)</label>
+                            <span style="font-size: 11px; color: var(--text-muted);">When nobody has entered yet</span>
+                        </div>
+                        <div class="var-chips-row" style="margin-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+                            <button class="resp-var-badge var-chip" data-target="gwParticipantsEmpty" data-var="{emoji}" type="button">+ {emoji}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwParticipantsEmpty" data-var="{prize}" type="button">+ {prize}</button>
+                            <button class="resp-var-badge var-chip" data-target="gwParticipantsEmpty" data-var="{server}" type="button">+ {server}</button>
+                            <button class="var-chip emoji-picker-btn" id="gwParticipantsEmptyEmojiBtn" data-target="gwParticipantsEmpty" title="Insert server emojis" type="button" style="margin-left: auto;">
+                                😊 Server Emojis
+                            </button>
+                        </div>
+                        <textarea class="text-input" id="gwParticipantsEmpty" rows="3" style="resize: vertical; font-family: inherit; font-size: 13px; line-height: 1.5;">{emoji} **Participants for {prize} (0):**&#10;No members have entered this giveaway yet. Be the first to enter!</textarea>
+                    </div>
+                </div>
 
                 <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
 

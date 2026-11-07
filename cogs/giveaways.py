@@ -194,15 +194,41 @@ class GiveawayEnterView(discord.ui.View):
             await interaction.response.send_message("⚠️ Giveaway data could not be found or has expired.", ephemeral=True)
             return
 
+        guild_id = interaction.guild_id or gw.get("guild_id")
+        cfg = get_giveaway_config(guild_id) if guild_id else {}
         entries = gw.get("entries", [])
         total = len(entries)
         prize = gw.get("prize", "the prize")
 
+        # Resolve customized participants emoji (supports server custom static & animated emojis)
+        raw_part_emoji = cfg.get("emoji_participants_response") or cfg.get("emoji_participants") or self.emoji_participants or "👥"
+        safe_part_emoji = resolve_safe_emoji(interaction.client, raw_part_emoji, fallback="👥")
+
         if total == 0:
-            await interaction.response.send_message(f"👥 **Participants for {prize} (0):**\nNo members have entered this giveaway yet. Be the first to enter!", ephemeral=True)
+            empty_tpl = cfg.get("participants_empty") or "{emoji} **Participants for {prize} (0):**\nNo members have entered this giveaway yet. Be the first to enter!"
+            empty_msg = (
+                empty_tpl
+                .replace("{emoji}", safe_part_emoji)
+                .replace("{prize}", prize)
+                .replace("{count}", "0")
+                .replace("{total}", "0")
+                .replace("{server}", interaction.guild.name if interaction.guild else "this server")
+            )
+            await interaction.response.send_message(empty_msg, ephemeral=True)
             return
 
-        header = f"👥 **Participants for {prize} ({total}):**\n"
+        header_tpl = cfg.get("participants_header") or "{emoji} **Participants for {prize} ({count}):**\n"
+        header = (
+            header_tpl
+            .replace("{emoji}", safe_part_emoji)
+            .replace("{prize}", prize)
+            .replace("{count}", str(total))
+            .replace("{total}", str(total))
+            .replace("{server}", interaction.guild.name if interaction.guild else "this server")
+        )
+        if not header.endswith("\n"):
+            header += "\n"
+
         p_lines = []
         for idx, uid in enumerate(entries[:60], 1):
             p_lines.append(f"{idx}. <@{uid}>")
@@ -243,20 +269,37 @@ class GiveawayEnterView(discord.ui.View):
 
         db.save_data()
 
-        # Update button label and embed entry count
+        # Update button label with the new entry count
         count = len(entries)
         self.enter_btn.label = f"Enter Giveaway ({count})"
         self.enter_btn.emoji = parse_discord_button_emoji(self.emoji)
 
         try:
-            embed = interaction.message.embeds[0]
-            for i, field in enumerate(embed.fields):
-                if "entries" in field.name.lower():
-                    embed.set_field_at(i, name=field.name, value=f"**{count}**", inline=True)
-                    break
-            await interaction.message.edit(embed=embed, view=self)
+            # Check if embed actually has a legacy 'entries' field to update.
+            # If not, ONLY edit the view (buttons). Re-editing the embed on a message
+            # with local attachment causes Discord to detach attachment:// media into an extra banner!
+            has_entries_field = False
+            if interaction.message.embeds:
+                embed = interaction.message.embeds[0]
+                for i, field in enumerate(embed.fields):
+                    if "entries" in field.name.lower():
+                        embed.set_field_at(i, name=field.name, value=f"**{count}**", inline=True)
+                        has_entries_field = True
+                        break
+
+            if has_entries_field:
+                # Maintain attachment:// filename if message has file attachments to prevent duplicate media
+                if interaction.message.attachments and embed.image:
+                    first_att = interaction.message.attachments[0]
+                    embed.set_image(url=f"attachment://{first_att.filename}")
+                await interaction.message.edit(embed=embed, view=self)
+            else:
+                await interaction.message.edit(view=self)
         except Exception:
-            pass
+            try:
+                await interaction.message.edit(view=self)
+            except Exception:
+                pass
 
         await interaction.response.send_message(action_msg, ephemeral=True)
 
@@ -947,7 +990,8 @@ class Giveaways(commands.Cog):
                 msg = await channel.fetch_message(payload.message_id)
                 cfg = get_giveaway_config(payload.guild_id)
                 emoji_prize = cfg.get("emoji_prize", "🎁")
-                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize)
+                emoji_parts = cfg.get("emoji_participants", "👥")
+                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize, emoji_participants=emoji_parts)
                 await msg.edit(view=view)
             except Exception:
                 pass
@@ -973,7 +1017,8 @@ class Giveaways(commands.Cog):
                 msg = await channel.fetch_message(payload.message_id)
                 cfg = get_giveaway_config(payload.guild_id)
                 emoji_prize = cfg.get("emoji_prize", "🎁")
-                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize)
+                emoji_parts = cfg.get("emoji_participants", "👥")
+                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize, emoji_participants=emoji_parts)
                 await msg.edit(view=view)
             except Exception:
                 pass

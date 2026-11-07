@@ -18249,8 +18249,10 @@ function initAllRichEmojiEditors() {
 
 
 
+        attachRichEmojiEditor('welcomeHeaderText', true);
         attachRichEmojiEditor('welcomeTitleInput', true);
     attachRichEmojiEditor('welcomeMsgInput');
+    attachRichEmojiEditor('farewellHeaderText', true);
     attachRichEmojiEditor('farewellTitleInput', true);
     attachRichEmojiEditor('farewellMsgInput');
     attachRichEmojiEditor('firstWelcomeTitleInput', true);
@@ -19797,63 +19799,30 @@ function renderDiscordMarkdown(rawText) {
 
 
 
+        // Numeric channel mentions: <#123456789>
         processed = processed.replace(/&lt;#([0-9]+)&gt;/g, (match, cid) => {
-
-
-
-
-
-
-
             let name = 'channel';
-
-
-
-
-
-
-
             if (typeof currentGuildChannels !== 'undefined' && currentGuildChannels.length) {
-
-
-
-
-
-
-
                 const found = currentGuildChannels.find(c => c.id === cid);
-
-
-
-
-
-
-
                 if (found) name = found.name;
-
-
-
-
-
-
-
             }
-
-
-
-
-
-
-
-            return `<span class="discord-mention">#${escapeHtml(name)}</span>`;
-
-
-
-
-
-
-
+            return `<span class="discord-channel-mention">#${escapeHtml(name)}</span>`;
         });
+
+        // Named channel mentions: <#announcements>, <#general>, <#rules>, <#♡.˚RULES˚.♡>
+        processed = processed.replace(/&lt;#([^&>]+)&gt;/g, (match, chName) => {
+            const cleanName = chName.replace(/^#+/, '').trim();
+            return `<span class="discord-channel-mention">#${escapeHtml(cleanName)}</span>`;
+        });
+
+        // Named user mentions: <@Alex> or <@!Alex>
+        processed = processed.replace(/&lt;@!?([^&>0-9][^&>]*)&gt;/g, (match, uName) => {
+            const cleanName = uName.replace(/^@+/, '').trim();
+            return `<span class="discord-mention">@${escapeHtml(cleanName)}</span>`;
+        });
+
+        // Standalone @mentions in text: @Alex or @User
+        processed = processed.replace(/(^|[\s>(])@([a-zA-Z0-9_\-\.\u0080-\uFFFF]+)(?=[\s<).,!?;:]|$)/g, '$1<span class="discord-mention">@$2</span>');
 
 
 
@@ -47324,16 +47293,16 @@ function updateWelcomePreview() {
         function parseTemplate(text) {
             if (!text) return '';
             let res = text
-                .replace(/\{user\}/gi, '@Alex')
+                .replace(/\{user\}/gi, '<@Alex>')
                 .replace(/\{username\}/gi, 'Alex')
                 .replace(/\{name\}/gi, 'Alex')
                 .replace(/\{id\}/gi, '1179633364358156490')
                 .replace(/\{user_id\}/gi, '1179633364358156490')
                 .replace(/\{server\}/gi, serverName)
                 .replace(/\{member_count\}/gi, '1,420')
-                .replace(/\{rules(?:_link|_box)?\}/gi, '#rules')
-                .replace(/\{channel(?:_link|_box)?\}/gi, '#welcome')
-                .replace(/\{link:#?([^\}]+)\}/gi, '#$1');
+                .replace(/\{rules(?:_link|_box)?\}/gi, '<#rules>')
+                .replace(/\{channel(?:_link|_box)?\}/gi, '<#welcome>')
+                .replace(/\{link:#?([^\}]+)\}/gi, '<#$1>');
             return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
         }
 
@@ -47642,15 +47611,15 @@ function updateFarewellPreview() {
             if (!text) return '';
             let res = text
                 .replace(/\{user_display\}/gi, userDisplay)
-                .replace(/\{user\}/gi, '@Alex')
+                .replace(/\{user\}/gi, '<@Alex>')
                 .replace(/\{username\}/gi, 'Alex')
                 .replace(/\{name\}/gi, 'Alex')
                 .replace(/\{id\}/gi, '1179633364358156490')
                 .replace(/\{user_id\}/gi, '1179633364358156490')
                 .replace(/\{server\}/gi, serverName)
                 .replace(/\{member_count\}/gi, '1,419')
-                .replace(/\{channel(?:_link|_box)?\}/gi, '#goodbye')
-                .replace(/\{link:#?([^\}]+)\}/gi, '#$1');
+                .replace(/\{channel(?:_link|_box)?\}/gi, '<#goodbye>')
+                .replace(/\{link:#?([^\}]+)\}/gi, '<#$1>');
             return (typeof renderDiscordMarkdown === 'function') ? renderDiscordMarkdown(res) : res;
         }
 
@@ -48007,7 +47976,7 @@ function setupWelcomeAndFarewellEvents() {
     });
 
     // Direct dynamic rich editor attachment listeners for Welcome
-    ['welcomeTitleInput_rich', 'welcomeMsgInput_rich'].forEach(id => {
+    ['welcomeTitleInput_rich', 'welcomeMsgInput_rich', 'welcomeHeaderText_rich'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('input', updateWelcomePreview);
@@ -48204,7 +48173,7 @@ function setupWelcomeAndFarewellEvents() {
     });
 
     // Direct dynamic rich editor attachment listeners for Farewell
-    ['farewellTitleInput_rich', 'farewellMsgInput_rich'].forEach(id => {
+    ['farewellTitleInput_rich', 'farewellMsgInput_rich', 'farewellHeaderText_rich'].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
             el.addEventListener('input', updateFarewellPreview);
@@ -59892,237 +59861,52 @@ function updateGwWinnerPreview() {
 
 
     if (currentGwAnnouncementMode === 'winner') {
-
-
-
-
-
-
-
         const titleVal = document.getElementById('gwWinnerTitle')?.value || '🎉 GIVEAWAY CONCLUDED! 🎉';
-
-
-
-
-
-
-
         const msgVal = document.getElementById('gwWinnerMessage')?.value || '> 🎊 Congratulations {winners}! You won **{prize}**! 🎁\n\n👑 **Hosted by:** {host}\n🎟️ **Entries:** {entries}\n🔗 **Jump to Giveaway:** {link}';
-
-
-
-
-
-
-
         const pingVal = (document.getElementById('gwWinnerPing')?.value.trim()) || '🎉 **Congratulations** {winners}! You won **{prize}**! {emoji_prize}';
 
-
-
-
-
-
-
-        
-
-
-
-
-
-
-
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
-
-
-
-
-
-
-
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
-
-
-
-
-
-
-
         const pingText = pingVal.replace(/{emoji_prize}/g, emojiPrize);
-
-
-
-
-
-
-
         if (simPing) simPing.innerHTML = renderDiscordMarkdown(pingText);
-
-
-
-
-
-
-
         if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
-
-
-
-
-
-
-
         if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
-
-
-
-
-
-
-
         if (simHostLabel) simHostLabel.textContent = 'Hosted by:';
-
-
-
-
-
-
-
         if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiEntries);
-
-
-
-
-
-
-
         if (simEntriesLabel) simEntriesLabel.textContent = 'Entries:';
-
-
-
-
-
-
-
-    } else {
-
-
-
-
-
-
-
+    } else if (currentGwAnnouncementMode === 'reroll') {
         const titleVal = document.getElementById('gwRerollTitle')?.value || '🎲 GIVEAWAY REROLLED! 🎲';
-
-
-
-
-
-
-
         const msgVal = document.getElementById('gwRerollMessage')?.value || '> 🥳 New winner selected! Congratulations {winners}! You won **{prize}**! 🎁\n\n🔗 **Jump to Giveaway:** {link}';
-
-
-
-
-
-
-
         const pingVal = (document.getElementById('gwRerollPing')?.value.trim()) || '🎲 **Giveaway Rerolled!** Congratulations {winners}!';
 
-
-
-
-
-
-
-        
-
-
-
-
-
-
-
         if (simTitle) simTitle.innerHTML = renderDiscordMarkdown(titleVal);
-
-
-
-
-
-
-
         if (simBody) simBody.innerHTML = renderDiscordMarkdown(msgVal);
-
-
-
-
-
-
-
-        const pingText = pingVal.replace(/{emoji_prize}/g, emojiPrize);
-
-
-
-
-
-
-
-        if (simPing) simPing.innerHTML = renderDiscordMarkdown(pingText);
-
-
-
-
-
-
-
+        if (simPing) simPing.innerHTML = renderDiscordMarkdown(pingVal);
         if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiPrize);
-
-
-
-
-
-
-
-        if (simHostIcon) simHostIcon.innerHTML = '🎲';
-
-
-
-
-
-
-
-        if (simHostLabel) simHostLabel.textContent = 'Rerolled by:';
-
-
-
-
-
-
-
+        if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiWinners);
+        if (simHostLabel) simHostLabel.textContent = 'Rerolled By:';
         if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiWinners);
-
-
-
-
-
-
-
         if (simEntriesLabel) simEntriesLabel.textContent = 'New Winner(s):';
+    } else if (currentGwAnnouncementMode === 'participants') {
+        const emojiParts = (document.getElementById('gwEmojiParticipants')?.value.trim()) || "👥";
+        const headerVal = document.getElementById('gwParticipantsHeader')?.value || '{emoji} **Participants for {prize} ({count}):**';
+        const formattedHdr = headerVal
+            .replace(/{emoji}/g, emojiParts)
+            .replace(/{prize}/g, '1 Month Discord Nitro Classic')
+            .replace(/{count}/g, '3')
+            .replace(/{total}/g, '3')
+            .replace(/{server}/g, window.currentGuildName || 'Our Server');
+        const sampleBody = `${formattedHdr}\n1. @Alex\n2. @Mayuresh.exe\n3. @Member`;
 
-
-
-
-
-
-
+        if (simTitle) simTitle.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;">🔒 Ephemeral Participant List</span>';
+        if (simBody) simBody.innerHTML = renderDiscordMarkdown(sampleBody);
+        if (simPing) simPing.innerHTML = '<span style="font-size:11px;color:#949ba4;background:rgba(255,255,255,0.05);padding:2px 8px;border-radius:4px;">🔒 Only visible to you • Friday Ephemeral Protocol</span>';
+        if (simPrizeIcon) simPrizeIcon.innerHTML = renderDiscordMarkdown(emojiParts);
+        if (simHostIcon) simHostIcon.innerHTML = renderDiscordMarkdown(emojiHost);
+        if (simHostLabel) simHostLabel.textContent = 'Requested:';
+        if (simEntriesIcon) simEntriesIcon.innerHTML = renderDiscordMarkdown(emojiParts);
+        if (simEntriesLabel) simEntriesLabel.textContent = 'List Mode:';
     }
-
-
-
-
-
-
-
 }
 
 
@@ -60808,7 +60592,7 @@ function setupGwHostPicker() {
         }
 
         renderGwHostOptions(e.target.value);
-
+        updateGwPreview();
     });
 
 
@@ -61542,10 +61326,15 @@ function updateGwPreview() {
     if (simEmbed) simEmbed.style.borderLeftColor = embedColor;
 
     // Update Host / Sponsor label in simulator
+    const searchInput = document.getElementById('gwHostSearchInput');
     const hostSelect = document.getElementById('gwHostSelect');
     let hostLabel = '@ServerStaff';
-    if (hostSelect && hostSelect.selectedOptions && hostSelect.selectedOptions[0] && hostSelect.value) {
+    const rawHostVal = (searchInput?.value || searchInput?.dataset?.selectedName || '').trim();
+    if (rawHostVal && rawHostVal !== 'Server Staff (Default)') {
+        hostLabel = rawHostVal.startsWith('@') ? rawHostVal : `@${rawHostVal}`;
+    } else if (hostSelect && hostSelect.selectedOptions && hostSelect.selectedOptions[0] && hostSelect.value) {
         hostLabel = hostSelect.selectedOptions[0].textContent;
+        if (!hostLabel.startsWith('@')) hostLabel = `@${hostLabel}`;
     }
     const simHost = document.getElementById('gwSimHost');
     if (simHost) simHost.textContent = hostLabel;
@@ -62035,6 +61824,12 @@ async function loadGiveawaysData() {
 
 
 
+        if (document.getElementById('gwParticipantsHeader')) {
+            document.getElementById('gwParticipantsHeader').value = cfg.participants_header || '{emoji} **Participants for {prize} ({count}):**';
+        }
+        if (document.getElementById('gwParticipantsEmpty')) {
+            document.getElementById('gwParticipantsEmpty').value = cfg.participants_empty || '{emoji} **Participants for {prize} (0):**\nNo members have entered this giveaway yet. Be the first to enter!';
+        }
         if (document.getElementById('gwWinnerPing')) {
 
 
@@ -64588,6 +64383,8 @@ async function saveGwConfig(silent = false) {
         emoji_ends: document.getElementById('gwEmojiEnds')?.value.trim() || '⏳',
         emoji_ended: document.getElementById('gwEmojiEnded')?.value.trim() || '🔒',
         emoji_bullet: document.getElementById('gwEmojiBullet')?.value.trim() || '•',
+        participants_header: document.getElementById('gwParticipantsHeader')?.value.trim() || '{emoji} **Participants for {prize} ({count}):**',
+        participants_empty: document.getElementById('gwParticipantsEmpty')?.value.trim() || '{emoji} **Participants for {prize} (0):**\nNo members have entered this giveaway yet. Be the first to enter!',
         default_banner: document.getElementById('gwDefaultBanner')?.value.trim() || null,
 
 
@@ -67051,16 +66848,30 @@ function setupGiveawayEvents() {
 
 
 
-    // Set initial visual state for giveaway emojis
-    setGwEmojiVisual('gwEmojiHeader', document.getElementById('gwEmojiHeader')?.value || '🎉');
-    setGwEmojiVisual('gwEmojiPrize', document.getElementById('gwEmojiPrize')?.value || '🎁');
-    setGwEmojiVisual('gwEmojiParticipants', document.getElementById('gwEmojiParticipants')?.value || '👥');
-    setGwEmojiVisual('gwEmojiHost', document.getElementById('gwEmojiHost')?.value || '👑');
-    setGwEmojiVisual('gwEmojiWinners', document.getElementById('gwEmojiWinners')?.value || '🏆');
-    setGwEmojiVisual('gwEmojiEntries', document.getElementById('gwEmojiEntries')?.value || '🎟️');
-    setGwEmojiVisual('gwEmojiEnds', document.getElementById('gwEmojiEnds')?.value || '⏳');
-    setGwEmojiVisual('gwEmojiEnded', document.getElementById('gwEmojiEnded')?.value || '🔒');
-    setGwEmojiVisual('gwEmojiBullet', document.getElementById('gwEmojiBullet')?.value || '•');
+    // Set initial visual state for giveaway emojis (reads from cached server config first to prevent revert on refresh)
+    try {
+        const cachedStr = currentGuildId ? localStorage.getItem('friday_gw_cfg_' + currentGuildId) : null;
+        const cached = cachedStr ? JSON.parse(cachedStr) : {};
+        setGwEmojiVisual('gwEmojiHeader', cached.emoji_header || document.getElementById('gwEmojiHeader')?.value || '🎉');
+        setGwEmojiVisual('gwEmojiPrize', cached.emoji_prize || document.getElementById('gwEmojiPrize')?.value || '🎁');
+        setGwEmojiVisual('gwEmojiParticipants', cached.emoji_participants || document.getElementById('gwEmojiParticipants')?.value || '👥');
+        setGwEmojiVisual('gwEmojiHost', cached.emoji_host || document.getElementById('gwEmojiHost')?.value || '👑');
+        setGwEmojiVisual('gwEmojiWinners', cached.emoji_winners || document.getElementById('gwEmojiWinners')?.value || '🏆');
+        setGwEmojiVisual('gwEmojiEntries', cached.emoji_entries || document.getElementById('gwEmojiEntries')?.value || '🎟️');
+        setGwEmojiVisual('gwEmojiEnds', cached.emoji_ends || document.getElementById('gwEmojiEnds')?.value || '⏳');
+        setGwEmojiVisual('gwEmojiEnded', cached.emoji_ended || document.getElementById('gwEmojiEnded')?.value || '🔒');
+        setGwEmojiVisual('gwEmojiBullet', cached.emoji_bullet || document.getElementById('gwEmojiBullet')?.value || '•');
+    } catch (e) {
+        setGwEmojiVisual('gwEmojiHeader', document.getElementById('gwEmojiHeader')?.value || '🎉');
+        setGwEmojiVisual('gwEmojiPrize', document.getElementById('gwEmojiPrize')?.value || '🎁');
+        setGwEmojiVisual('gwEmojiParticipants', document.getElementById('gwEmojiParticipants')?.value || '👥');
+        setGwEmojiVisual('gwEmojiHost', document.getElementById('gwEmojiHost')?.value || '👑');
+        setGwEmojiVisual('gwEmojiWinners', document.getElementById('gwEmojiWinners')?.value || '🏆');
+        setGwEmojiVisual('gwEmojiEntries', document.getElementById('gwEmojiEntries')?.value || '🎟️');
+        setGwEmojiVisual('gwEmojiEnds', document.getElementById('gwEmojiEnds')?.value || '⏳');
+        setGwEmojiVisual('gwEmojiEnded', document.getElementById('gwEmojiEnded')?.value || '🔒');
+        setGwEmojiVisual('gwEmojiBullet', document.getElementById('gwEmojiBullet')?.value || '•');
+    }
 
 
 
@@ -67085,253 +66896,69 @@ function setupGiveawayEvents() {
 
 
     const tabWinBtn = document.getElementById('gwTabWinnerBtn');
-
-
-
-
-
-
-
     const tabReBtn = document.getElementById('gwTabRerollBtn');
-
-
-
-
-
-
-
+    const tabPartsBtn = document.getElementById('gwTabParticipantsBtn');
     const panelWin = document.getElementById('gwWinnerPanel');
-
-
-
-
-
-
-
     const panelRe = document.getElementById('gwRerollPanel');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    const panelParts = document.getElementById('gwParticipantsPanel');
 
     if (tabWinBtn && tabReBtn && panelWin && panelRe) {
-
-
-
-
-
-
-
         tabWinBtn.addEventListener('click', () => {
-
-
-
-
-
-
-
             currentGwAnnouncementMode = 'winner';
-
-
-
-
-
-
-
             tabWinBtn.style.background = 'rgba(245, 158, 11, 0.2)';
-
-
-
-
-
-
-
             tabWinBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-
-
-
-
-
-
-
             tabWinBtn.style.color = '#fbbf24';
-
-
-
-
-
-
-
             tabReBtn.style.background = '';
-
-
-
-
-
-
-
             tabReBtn.style.borderColor = '';
-
-
-
-
-
-
-
             tabReBtn.style.color = 'var(--text-secondary)';
-
-
-
-
-
-
-
+            if (tabPartsBtn) {
+                tabPartsBtn.style.background = '';
+                tabPartsBtn.style.borderColor = '';
+                tabPartsBtn.style.color = 'var(--text-secondary)';
+            }
             panelWin.style.display = 'block';
-
-
-
-
-
-
-
             panelRe.style.display = 'none';
-
-
-
-
-
-
-
+            if (panelParts) panelParts.style.display = 'none';
             updateGwWinnerPreview();
-
-
-
-
-
-
-
         });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
         tabReBtn.addEventListener('click', () => {
-
-
-
-
-
-
-
             currentGwAnnouncementMode = 'reroll';
-
-
-
-
-
-
-
             tabReBtn.style.background = 'rgba(245, 158, 11, 0.2)';
-
-
-
-
-
-
-
             tabReBtn.style.borderColor = 'rgba(245, 158, 11, 0.4)';
-
-
-
-
-
-
-
             tabReBtn.style.color = '#fbbf24';
-
-
-
-
-
-
-
             tabWinBtn.style.background = '';
-
-
-
-
-
-
-
             tabWinBtn.style.borderColor = '';
-
-
-
-
-
-
-
             tabWinBtn.style.color = 'var(--text-secondary)';
-
-
-
-
-
-
-
+            if (tabPartsBtn) {
+                tabPartsBtn.style.background = '';
+                tabPartsBtn.style.borderColor = '';
+                tabPartsBtn.style.color = 'var(--text-secondary)';
+            }
             panelRe.style.display = 'block';
-
-
-
-
-
-
-
             panelWin.style.display = 'none';
-
-
-
-
-
-
-
+            if (panelParts) panelParts.style.display = 'none';
             updateGwWinnerPreview();
-
-
-
-
-
-
-
         });
 
-
-
-
-
-
-
+        if (tabPartsBtn) {
+            tabPartsBtn.addEventListener('click', () => {
+                currentGwAnnouncementMode = 'participants';
+                tabPartsBtn.style.background = 'rgba(88, 101, 242, 0.2)';
+                tabPartsBtn.style.borderColor = 'rgba(88, 101, 242, 0.4)';
+                tabPartsBtn.style.color = '#818cf8';
+                tabWinBtn.style.background = '';
+                tabWinBtn.style.borderColor = '';
+                tabWinBtn.style.color = 'var(--text-secondary)';
+                tabReBtn.style.background = '';
+                tabReBtn.style.borderColor = '';
+                tabReBtn.style.color = 'var(--text-secondary)';
+                if (panelParts) panelParts.style.display = 'block';
+                panelWin.style.display = 'none';
+                panelRe.style.display = 'none';
+                updateGwWinnerPreview();
+            });
+        }
     }
 
 
@@ -67539,6 +67166,40 @@ function setupGiveawayEvents() {
 
 
 
+
+        // Participants Announcement & Response Listeners
+    ['gwParticipantsHeader', 'gwParticipantsEmpty'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateGwWinnerPreview);
+    });
+
+    const partHdrEmojiBtn = document.getElementById('gwParticipantsHeaderEmojiBtn');
+    if (partHdrEmojiBtn) {
+        partHdrEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const input = document.getElementById('gwParticipantsHeader');
+            openEmojiPicker(partHdrEmojiBtn, (chosen) => {
+                if (!chosen || !input) return;
+                input.value += chosen;
+                updateGwWinnerPreview();
+            });
+        });
+    }
+
+    const partEmptyEmojiBtn = document.getElementById('gwParticipantsEmptyEmojiBtn');
+    if (partEmptyEmojiBtn) {
+        partEmptyEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const input = document.getElementById('gwParticipantsEmpty');
+            openEmojiPicker(partEmptyEmojiBtn, (chosen) => {
+                if (!chosen || !input) return;
+                input.value += chosen;
+                updateGwWinnerPreview();
+            });
+        });
+    }
 
     const saveAnnounceBtn = document.getElementById('gwSaveAnnouncementBtn');
 
