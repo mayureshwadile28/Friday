@@ -1465,7 +1465,12 @@ def save_ticket_config(gid):
         "buttons": data.get("buttons", []),
         "private": data.get("private", True),
         "transcription": data.get("transcription", True),
-        "color": data.get("color", "#2dd4bf")
+        "color": data.get("color", "#2dd4bf"),
+        "dm_on_close": data.get("dm_on_close", True),
+        "dm_require_modal": data.get("dm_require_modal", True),
+        "dm_title": data.get("dm_title", "🎫 Ticket Closed • {ticket}"),
+        "dm_description": data.get("dm_description", "Hello {user}, your ticket **{ticket}** in **{server}** has been closed.\n\n**Closed By:** {closer}\n**Reason:** {reason}\n\nThank you for reaching out! If you have further questions, feel free to open a new ticket."),
+        "dm_color": data.get("dm_color", "#2dd4bf")
     }
     db.save_data()
     return jsonify({"success": True, "config": db.tickets[gid_str]["config"]})
@@ -1544,7 +1549,12 @@ def create_ticket_panel(gid):
             "transcription": transcription,
             "transcript_channel_id": int(transcript_channel_id) if transcript_channel_id else None,
             "transcript_category_id": int(transcript_category_id) if transcript_category_id else None,
-            "color": embed_color
+            "color": embed_color,
+            "dm_on_close": data.get("dm_on_close", True),
+            "dm_require_modal": data.get("dm_require_modal", True),
+            "dm_title": data.get("dm_title", "🎫 Ticket Closed • {ticket}"),
+            "dm_description": data.get("dm_description", "Hello {user}, your ticket **{ticket}** in **{server}** has been closed.\n\n**Closed By:** {closer}\n**Reason:** {reason}\n\nThank you for reaching out! If you have further questions, feel free to open a new ticket."),
+            "dm_color": data.get("dm_color", "#2dd4bf")
         }
         db.tickets[gid_str]["panels"][str(msg.id)] = panel_record
         db.tickets[gid_str]["config"] = panel_record

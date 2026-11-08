@@ -4223,6 +4223,106 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 </div>
 
+<!-- Card 4: Member DM Notification & Staff Modal Settings (Premium Workflow) -->
+<div class="automation-card" style="margin-top: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="width: 28px; height: 28px; border-radius: 6px; background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(236, 72, 153, 0.3); display: flex; align-items: center; justify-content: center; font-size: 15px;">
+                ✉️
+            </div>
+            <div>
+                <span class="composer-section-title" style="margin: 0; font-size: 15px;">Member DM Notification &amp; Staff Modal</span>
+                <span style="background: rgba(88, 101, 242, 0.18); color: #818cf8; font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 4px; margin-left: 6px; letter-spacing: 0.5px;">PREMIUM WORKFLOW</span>
+            </div>
+        </div>
+    </div>
+    <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.45;">
+        Configure whether Friday sends a private resolution embed to the ticket author upon closure, and prompt staff to input a mandatory closure reason via a Discord modal.
+    </p>
+
+    <!-- Switch 1: DM on Close -->
+    <div class="ticket-switch-card">
+        <div class="ticket-switch-left">
+            <div class="ticket-switch-icon-wrap" style="background: rgba(45, 212, 191, 0.12); border-color: rgba(45, 212, 191, 0.3); color: #2dd4bf;">
+                📬
+            </div>
+            <div>
+                <div class="ticket-switch-title-row">
+                    <span class="ticket-switch-title">Direct Message Closure Embed</span>
+                    <span class="ticket-switch-badge teal">Member Record</span>
+                </div>
+                <div class="ticket-switch-desc">Sends a customized embed box to the ticket creator's DMs summarizing the reason, who closed it, and notes.</div>
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="ticketDmNotifyToggle" checked>
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <!-- Switch 2: Require Close Reason Modal -->
+    <div class="ticket-switch-card" style="margin-top: 10px;">
+        <div class="ticket-switch-left">
+            <div class="ticket-switch-icon-wrap" style="background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.3); color: #f59e0b;">
+                📋
+            </div>
+            <div>
+                <div class="ticket-switch-title-row">
+                    <span class="ticket-switch-title">Staff Close Reason Modal</span>
+                    <span class="ticket-switch-badge amber" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">Interactive Modal</span>
+                </div>
+                <div class="ticket-switch-desc">Displays a pop-up modal inside Discord when staff clicks [Close Ticket], recording the reason and resolution details.</div>
+            </div>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="ticketCloseModalToggle" checked>
+            <span class="slider"></span>
+        </label>
+    </div>
+
+    <!-- DM Customization Container -->
+    <div id="ticketDmCustomizationWrapper" style="margin-top: 14px; padding: 14px 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: var(--radius-md); transition: opacity 0.2s ease;">
+        <!-- DM Embed Title -->
+        <div class="form-field-full">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label class="form-sublabel" style="margin: 0;">DM Embed Title</label>
+            </div>
+            <div class="resp-input-group">
+                <input type="text" class="text-input" id="ticketDmTitleInput" placeholder="🎫 Ticket Closed • {ticket}" value="🎫 Ticket Closed • {ticket}">
+                <button type="button" class="resp-emoji-btn" data-target="ticketDmTitleInput" title="Insert Server Emoji">😊 Emojis</button>
+            </div>
+        </div>
+
+        <!-- DM Embed Description -->
+        <div class="form-field-full" style="margin-top: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+                <label class="form-sublabel" style="margin: 0;">DM Embed Description (Sent to Member)</label>
+                <div class="resp-vars-wrap">
+                    <span class="resp-var-badge" data-target="ticketDmDescInput" data-var="{user}">{user}</span>
+                    <span class="resp-var-badge" data-target="ticketDmDescInput" data-var="{ticket}">{ticket}</span>
+                    <span class="resp-var-badge" data-target="ticketDmDescInput" data-var="{reason}">{reason}</span>
+                    <span class="resp-var-badge" data-target="ticketDmDescInput" data-var="{closer}">{closer}</span>
+                    <span class="resp-var-badge" data-target="ticketDmDescInput" data-var="{server}">{server}</span>
+                    <span class="resp-var-badge" data-target="ticketDmDescInput" data-var="{claimed_by}">{claimed_by}</span>
+                </div>
+            </div>
+            <div class="resp-input-group">
+                <textarea class="text-input" id="ticketDmDescInput" rows="3" style="resize: vertical; min-height: 80px;" placeholder="Hello {user}, your ticket **{ticket}** in **{server}** has been closed.&#10;&#10;**Closed By:** {closer}&#10;**Reason:** {reason}&#10;&#10;Thank you for reaching out! If you have further questions, feel free to open a new ticket.">Hello {user}, your ticket **{ticket}** in **{server}** has been closed.&#10;&#10;**Closed By:** {closer}&#10;**Reason:** {reason}&#10;&#10;Thank you for reaching out! If you have further questions, feel free to open a new ticket.</textarea>
+                <button type="button" class="resp-emoji-btn" data-target="ticketDmDescInput" title="Insert Server Emoji">😊 Emojis</button>
+            </div>
+        </div>
+
+        <!-- DM Embed Color -->
+        <div class="form-field-full" style="margin-top: 14px; display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <label class="form-sublabel" style="margin: 0;">DM Embed Accent Border Color</label>
+                <div style="font-size: 11px; color: var(--text-muted);">Accent color displayed along the left edge of the DM embed card.</div>
+            </div>
+            <input type="color" id="ticketDmColorInput" value="#2dd4bf" style="width: 44px; height: 32px; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; background: transparent; cursor: pointer;">
+        </div>
+    </div>
+</div>
+
 <!-- Deploy Action Bar -->
 
 <div style="display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); margin-top: 20px; flex-wrap: wrap; gap: 14px;">
@@ -4354,6 +4454,87 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
 </div>
 
+</div>
+
+<!-- Simulator 2: Active Ticket Channel Controls (Claim & Close) -->
+<div class="discord-preview-card" style="margin-top: 16px;">
+    <div class="discord-preview-header">
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #38bdf8;"></span>
+            <span>Inside Active Ticket Channel</span>
+        </div>
+        <span style="font-size: 11px; color: #818cf8;">#ticket-001-support</span>
+    </div>
+    <div class="discord-chat-box">
+        <div class="discord-msg">
+            <div class="discord-avatar">F</div>
+            <div class="discord-msg-content" style="width: 100%;">
+                <div class="discord-msg-header">
+                    <span class="discord-bot-name">Friday</span>
+                    <span class="discord-bot-tag">BOT</span>
+                    <span class="discord-timestamp">Today at 1:03 PM</span>
+                </div>
+                <div style="font-size: 13px; color: #dbdee1; margin-bottom: 6px;">
+                    <span class="discord-mention">@Member</span> <span class="discord-mention" style="background: rgba(88, 101, 242, 0.3); color: #c7d2fe;">@Support</span>
+                </div>
+                <div style="border-left: 4px solid #2dd4bf; background: #2b2d31; border-radius: 4px; padding: 12px 14px; max-width: 500px;">
+                    <div style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">
+                        Ticket: General Help &amp; Support
+                    </div>
+                    <div style="font-size: 12.5px; color: #dbdee1; line-height: 1.45;">
+                        Welcome <span class="discord-mention">@Member</span>!<br><br>
+                        Please describe your issue. Support will be with you shortly.
+                    </div>
+                </div>
+                <!-- Action Buttons: Close & Claim -->
+                <div style="display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;">
+                    <button type="button" style="background: #da373c; color: #fff; border: none; border-radius: 4px; padding: 6px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                        🔒 Close Ticket
+                    </button>
+                    <button type="button" id="ticketSimClaimBtn" style="background: #4e5058; color: #fff; border: none; border-radius: 4px; padding: 6px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                        📜 Claim Ticket
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Simulator 3: Member DM Closure Notification -->
+<div class="discord-preview-card" style="margin-top: 16px;">
+    <div class="discord-preview-header">
+        <div style="display: flex; align-items: center; gap: 6px;">
+            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #ec4899;"></span>
+            <span>Direct Message Resolution Preview</span>
+        </div>
+        <span style="font-size: 11px; color: #f472b6;">Member DM</span>
+    </div>
+    <div class="discord-chat-box">
+        <div class="discord-msg">
+            <div class="discord-avatar">F</div>
+            <div class="discord-msg-content" style="width: 100%;">
+                <div class="discord-msg-header">
+                    <span class="discord-bot-name">Friday</span>
+                    <span class="discord-bot-tag">BOT</span>
+                    <span class="discord-timestamp">Today at 1:05 PM</span>
+                </div>
+                <div id="ticketSimDmCard" style="border-left: 4px solid #2dd4bf; background: #2b2d31; border-radius: 4px; padding: 12px 14px; max-width: 500px; transition: border-color 0.2s ease;">
+                    <div id="ticketSimDmTitle" style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 6px;">
+                        🎫 Ticket Closed • ticket-001-general
+                    </div>
+                    <div id="ticketSimDmDesc" style="font-size: 12.5px; color: #dbdee1; line-height: 1.5; white-space: pre-wrap;">Hello <span class="discord-mention">@Member</span>, your ticket **ticket-001-general** in **The Heaven** has been closed.
+
+**Closed By:** <span class="discord-mention">@Staff</span>
+**Reason:** Issue resolved
+
+Thank you for reaching out! If you have further questions, feel free to open a new ticket.</div>
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11px; color: #949ba4;">
+                        <span>The Heaven • Ticket Support System</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Flow Diagram & Verification Card -->

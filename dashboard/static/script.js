@@ -6615,6 +6615,14 @@ function setupEventListeners() {
 
 
 
+    ['ticketTitleInput', 'ticketDescInput', 'ticketBtn1', 'ticketBtn2', 'ticketBtn3', 'ticketBtn4', 'ticketDmTitleInput', 'ticketDmDescInput', 'ticketDmColorInput'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateTicketPreview);
+    });
+
+    const dmToggleEl = document.getElementById('ticketDmNotifyToggle');
+    if (dmToggleEl) dmToggleEl.addEventListener('change', updateTicketPreview);
+
     ['ticketTitleInput', 'ticketDescInput', 'ticketBtn1', 'ticketBtn2', 'ticketBtn3', 'ticketBtn4'].forEach(id => {
 
 
@@ -18163,6 +18171,8 @@ function initAllRichEmojiEditors() {
 
 
     [1, 2, 3, 4].forEach(n => attachRichEmojiEditor('ticketBtn' + n, true));
+    attachRichEmojiEditor('ticketDmTitleInput', true);
+    attachRichEmojiEditor('ticketDmDescInput');
 
 
 
@@ -30349,15 +30359,59 @@ function updateTicketPreview() {
 
 
 
-    [1, 2, 3, 4].forEach(n => updateTicketButtonEmojiVisual(n));
-
-
-
-
-
-
-
+        [1, 2, 3, 4].forEach(n => updateTicketButtonEmojiVisual(n));
+    updateTicketDmPreview();
 }
+
+function updateTicketDmPreview() {
+    const titleEl = document.getElementById('ticketDmTitleInput');
+    const descEl = document.getElementById('ticketDmDescInput');
+    const colorEl = document.getElementById('ticketDmColorInput');
+    const cardEl = document.getElementById('ticketSimDmCard');
+    const simTitle = document.getElementById('ticketSimDmTitle');
+    const simDesc = document.getElementById('ticketSimDmDesc');
+    const notifyToggle = document.getElementById('ticketDmNotifyToggle');
+    const wrapper = document.getElementById('ticketDmCustomizationWrapper');
+
+    if (notifyToggle && wrapper) {
+        wrapper.style.opacity = notifyToggle.checked ? '1' : '0.4';
+        wrapper.style.pointerEvents = notifyToggle.checked ? 'auto' : 'none';
+    }
+
+    if (!cardEl || !simTitle || !simDesc) return;
+
+    const color = colorEl ? colorEl.value : '#2dd4bf';
+    cardEl.style.borderLeftColor = color;
+
+    let rawTitle = titleEl ? titleEl.value.trim() : '';
+    if (!rawTitle) rawTitle = '🎫 Ticket Closed • {ticket}';
+    let safeTitle = rawTitle.replace(/\{user\}/gi, '@Member')
+        .replace(/\{username\}/gi, 'Member')
+        .replace(/\{ticket\}/gi, 'ticket-001-general')
+        .replace(/\{reason\}/gi, 'Issue resolved')
+        .replace(/\{closer\}/gi, '@Staff')
+        .replace(/\{closer_name\}/gi, 'Staff')
+        .replace(/\{server\}/gi, 'The Heaven')
+        .replace(/\{claimed_by\}/gi, '@Staff');
+
+    simTitle.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(safeTitle) : escapeHtml(safeTitle);
+
+    let rawDesc = descEl ? descEl.value : '';
+    if (!rawDesc) {
+        rawDesc = 'Hello {user}, your ticket **{ticket}** in **{server}** has been closed.\n\n**Closed By:** {closer}\n**Reason:** {reason}\n\nThank you for reaching out! If you have further questions, feel free to open a new ticket.';
+    }
+    let safeDesc = rawDesc.replace(/\{user\}/gi, '@Member')
+        .replace(/\{username\}/gi, 'Member')
+        .replace(/\{ticket\}/gi, 'ticket-001-general')
+        .replace(/\{reason\}/gi, 'Issue resolved')
+        .replace(/\{closer\}/gi, '@Staff')
+        .replace(/\{closer_name\}/gi, 'Staff')
+        .replace(/\{server\}/gi, 'The Heaven')
+        .replace(/\{claimed_by\}/gi, '@Staff');
+
+    simDesc.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(safeDesc) : escapeHtml(safeDesc);
+}
+
 
 
 
@@ -30966,29 +31020,39 @@ async function loadTicketsSettings() {
 
 
                 document.querySelectorAll('.ticket-theme-chip').forEach(c => {
-
-
-
-
-
-
-
                     c.classList.toggle('active', c.dataset.color.toLowerCase() === hex.toLowerCase());
-
-
-
-
-
-
-
                 });
+            }
 
+            // Restore Member DM & Modal settings
+            const dmNotifyToggle = document.getElementById('ticketDmNotifyToggle');
+            if (dmNotifyToggle && p.dm_on_close !== undefined) {
+                dmNotifyToggle.checked = Boolean(p.dm_on_close);
+                const dmWrap = document.getElementById('ticketDmCustomizationWrapper');
+                if (dmWrap) {
+                    dmWrap.style.opacity = dmNotifyToggle.checked ? '1' : '0.4';
+                    dmWrap.style.pointerEvents = dmNotifyToggle.checked ? 'auto' : 'none';
+                }
+            }
 
+            const closeModalToggle = document.getElementById('ticketCloseModalToggle');
+            if (closeModalToggle && p.dm_require_modal !== undefined) {
+                closeModalToggle.checked = Boolean(p.dm_require_modal);
+            }
 
+            const dmTitleInput = document.getElementById('ticketDmTitleInput');
+            if (dmTitleInput && p.dm_title) {
+                dmTitleInput.value = p.dm_title;
+            }
 
+            const dmDescInput = document.getElementById('ticketDmDescInput');
+            if (dmDescInput && p.dm_description) {
+                dmDescInput.value = p.dm_description;
+            }
 
-
-
+            const dmColorInput = document.getElementById('ticketDmColorInput');
+            if (dmColorInput && p.dm_color) {
+                dmColorInput.value = p.dm_color;
             }
 
 
@@ -31205,6 +31269,12 @@ async function saveTicketConfig() {
 
 
 
+        const dm_on_close = document.getElementById('ticketDmNotifyToggle')?.checked !== false;
+    const dm_require_modal = document.getElementById('ticketCloseModalToggle')?.checked !== false;
+    const dm_title = document.getElementById('ticketDmTitleInput')?.value || '🎫 Ticket Closed • {ticket}';
+    const dm_description = document.getElementById('ticketDmDescInput')?.value || '';
+    const dm_color = document.getElementById('ticketDmColorInput')?.value || '#2dd4bf';
+
     const transcription = document.getElementById('ticketTranscriptToggle').checked;
 
 
@@ -31333,14 +31403,12 @@ channel_id,
 
 
 
-            color: currentTicketColor
-
-
-
-
-
-
-
+            color: currentTicketColor,
+            dm_on_close,
+            dm_require_modal,
+            dm_title,
+            dm_description,
+            dm_color
         };
 
 
@@ -31638,14 +31706,12 @@ async function deployTicketPanel() {
 
 
     const privateTicket = document.getElementById('ticketPrivateToggle').checked;
-
-
-
-
-
-
-
     const transcription = document.getElementById('ticketTranscriptToggle').checked;
+    const dm_on_close = document.getElementById('ticketDmNotifyToggle')?.checked !== false;
+    const dm_require_modal = document.getElementById('ticketCloseModalToggle')?.checked !== false;
+    const dm_title = document.getElementById('ticketDmTitleInput')?.value || '🎫 Ticket Closed • {ticket}';
+    const dm_description = document.getElementById('ticketDmDescInput')?.value || '';
+    const dm_color = document.getElementById('ticketDmColorInput')?.value || '#2dd4bf';
 
 
 
@@ -31877,14 +31943,12 @@ channel_id,
 
 
 
-            color: currentTicketColor
-
-
-
-
-
-
-
+            color: currentTicketColor,
+            dm_on_close,
+            dm_require_modal,
+            dm_title,
+            dm_description,
+            dm_color
         };
 
 
