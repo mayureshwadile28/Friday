@@ -13,11 +13,13 @@ class ReactionRoles(commands.Cog):
         channel="Where to post the panel", title="Title of the panel", description="Text above the roles",
         role1="First Role to assign", emoji1="Emoji for Role 1",
         role2="Second Role to assign", emoji2="Emoji for Role 2",
-        role3="Third Role to assign", emoji3="Emoji for Role 3"
+        role3="Third Role to assign", emoji3="Emoji for Role 3",
+        exclusive="If True, members can only pick 1 role at a time (choosing another auto-cancels old role & reaction)"
     )
     @app_commands.default_permissions(manage_roles=True)
     async def reaction_panel(self, interaction: discord.Interaction, channel: discord.TextChannel, title: str, description: str,
-        role1: discord.Role, emoji1: str, role2: discord.Role = None, emoji2: str = None, role3: discord.Role = None, emoji3: str = None
+        role1: discord.Role, emoji1: str, role2: discord.Role = None, emoji2: str = None, role3: discord.Role = None, emoji3: str = None,
+        exclusive: bool = True
     ):
         await interaction.response.defer(ephemeral=True)
         
@@ -69,6 +71,11 @@ class ReactionRoles(commands.Cog):
                 await msg.add_reaction(emoji_obj) 
                 db.reaction_roles[msg_id][str(emoji_obj)] = role.id
                 
+            db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+                "exclusive": exclusive,
+                "channel_id": str(channel.id),
+                "guild_id": str(interaction.guild.id)
+            }
             db.save_data()
             await interaction.followup.send(f"✅ Reaction panel deployed successfully in {channel.mention}.")
             
@@ -80,21 +87,70 @@ class ReactionRoles(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
-        if payload.member.bot: return
+        if payload.member and payload.member.bot:
+            return
             
         msg_id = str(payload.message_id)
-        if msg_id in db.reaction_roles:
-            emoji_key = str(payload.emoji)
-            role_id = db.reaction_roles[msg_id].get(emoji_key)
-            
-            if role_id:
-                guild = self.bot.get_guild(payload.guild_id)
-                role = guild.get_role(role_id)
-                if role:
-                    try:
-                        await payload.member.add_roles(role)
-                    except discord.Forbidden:
-                        pass
+        if msg_id not in db.reaction_roles:
+            return
+
+        panel_roles = db.reaction_roles[msg_id]
+        emoji_key = str(payload.emoji)
+        role_id = panel_roles.get(emoji_key)
+        
+        if not role_id:
+            return
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+
+        member = payload.member or guild.get_member(payload.user_id)
+        if not member or member.bot:
+            return
+
+        # Exclusive single-choice mode: member can only have 1 role per panel
+        meta = db.data.get("reaction_roles_meta", {}).get(msg_id, {})
+        is_exclusive = meta.get("exclusive", True)
+
+        if is_exclusive:
+            roles_to_remove = []
+            other_emojis_to_clear = []
+
+            for other_e_key, other_r_id in panel_roles.items():
+                if other_e_key != emoji_key and other_r_id != role_id:
+                    other_r = guild.get_role(other_r_id)
+                    if other_r and other_r in member.roles:
+                        roles_to_remove.append(other_r)
+                    other_emojis_to_clear.append(other_e_key)
+
+            if roles_to_remove:
+                try:
+                    await member.remove_roles(*roles_to_remove, reason="Reaction Role: Exclusive choice auto-cancel")
+                except Exception as e:
+                    print(f"[ReactionRoles] Remove error: {e}")
+
+            # Clear member's other reactions on the Discord message so UI displays only 1 chosen reaction
+            if other_emojis_to_clear:
+                try:
+                    channel = guild.get_channel(payload.channel_id)
+                    if channel:
+                        msg = await channel.fetch_message(payload.message_id)
+                        for rx in msg.reactions:
+                            if str(rx.emoji) in other_emojis_to_clear:
+                                try:
+                                    await rx.remove(member)
+                                except Exception:
+                                    pass
+                except Exception as e:
+                    pass
+
+        target_role = guild.get_role(role_id)
+        if target_role and target_role not in member.roles:
+            try:
+                await member.add_roles(target_role, reason="Reaction Role: Claimed role")
+            except discord.Forbidden:
+                pass
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):

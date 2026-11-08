@@ -1114,6 +1114,7 @@ def create_reaction_panel(gid):
         color_int = 0x2dd4bf
 
     show_thumbnail = bool(body.get("show_thumbnail", False))
+    exclusive = bool(body.get("exclusive", True))
     footer_text = (body.get("footer") or "React below to claim your roles!").strip()
 
     if not channel_id:
@@ -1180,6 +1181,12 @@ def create_reaction_panel(gid):
         for role, emoji_obj in roles_setup:
             await msg.add_reaction(emoji_obj)
             db.reaction_roles[msg_id][str(emoji_obj)] = role.id
+
+        db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+            "exclusive": exclusive,
+            "channel_id": str(channel_id),
+            "guild_id": str(gid)
+        }
 
         db.save_data()
         return channel.name, len(roles_setup)

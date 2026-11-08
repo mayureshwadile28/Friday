@@ -3116,11 +3116,13 @@
 <div style="display: flex; flex-direction: column; gap: 10px;">
 
 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
+    <label class="switch"><input id="rrThumbnailCheckbox" style="accent-color: var(--primary);" type="checkbox"/><span class="slider"></span></label>
+    <span>Include Friday Bot Avatar Thumbnail</span>
+</label>
 
-<label class="switch"><input id="rrThumbnailCheckbox" style="accent-color: var(--primary);" type="checkbox"/><span class="slider"></span></label>
-
-<span>Include Friday Bot Avatar Thumbnail</span>
-
+<label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
+    <label class="switch"><input id="rrExclusiveCheckbox" checked type="checkbox"/><span class="slider"></span></label>
+    <span>Exclusive Single-Choice Mode (1 role per user; selecting new role auto-cancels old role &amp; reaction)</span>
 </label>
 
 <div>
@@ -3763,12 +3765,9 @@ We are excited to introduce seamless broadcast capability.
 </div>
 
 <!-- Two-Column Studio & Real-Time Simulator Grid -->
-
 <div class="ticket-studio-grid">
-
 <!-- Left: Studio Controls Column -->
-
-<div class="ticket-studio-left">
+<div class="ticket-studio-left" style="min-width: 0;">
 
 <!-- Card 1: Channel & Staff Routing -->
 
@@ -4143,11 +4142,8 @@ Click an inquiry button below to open a confidential support ticket with our tea
 </div>
 
 <label class="switch">
-
-<label class="switch"><input checked="" id="ticketPrivateToggle" type="checkbox"/><span class="slider"></span></label>
-
-<span class="slider"></span>
-
+    <input checked="" id="ticketPrivateToggle" type="checkbox"/>
+    <span class="slider"></span>
 </label>
 
 </div>
@@ -4181,11 +4177,8 @@ Click an inquiry button below to open a confidential support ticket with our tea
 </div>
 
 <label class="switch">
-
-<label class="switch"><input checked="" id="ticketTranscriptToggle" type="checkbox"/><span class="slider"></span></label>
-
-<span class="slider"></span>
-
+    <input checked="" id="ticketTranscriptToggle" type="checkbox"/>
+    <span class="slider"></span>
 </label>
 
 </div>
@@ -4273,8 +4266,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
 </div>
 
 <!-- Right: Authentic Discord Ticket Panel Live Simulator -->
-
-<div class="ticket-studio-right" style="position: sticky; top: 20px;">
+<div class="ticket-studio-right" style="position: sticky; top: 20px; min-width: 0;">
 
 <div class="discord-preview-card" style="margin-top: 0;">
 
@@ -10116,68 +10108,73 @@ Click the button below to register your birthday! Friday will celebrate and deli
                     </div>
                 </div>
             </div>
+        </div>
+    </div> <!-- End .birthday-studio-layout -->
 
-            <!-- Active Registered Birthdays (High-Capacity 1,000+ Members Support) -->
-            <div class="automation-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                    <div>
-                        <div class="composer-section-title" style="color: #ec4899; margin: 0;">
-                            🎂 Registered Birthdays (<span id="birthdayCountBadge">0</span>)
-                        </div>
-                        <span class="field-hint-text" style="margin-top: 2px;">Scrollable box optimized for 1,000+ members.</span>
+    <!-- Full-Width Member Directory & Access Management (100% Width) -->
+    <div style="margin-top: 24px; display: flex; flex-direction: column; gap: 20px;">
+        <!-- Active Registered Birthdays (High-Capacity 1,000+ Members Support) -->
+        <div class="automation-card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 12px;">
+                <div>
+                    <div class="composer-section-title" style="color: #ec4899; margin: 0; font-size: 16px;">
+                        🎂 Registered Birthdays Directory (<span id="birthdayCountBadge">0</span>)
                     </div>
-                    <button type="button" class="btn-action-secondary" id="refreshBirthdaysBtn" style="height: 30px; font-size: 11.5px; padding: 0 10px;">
-                        🔄 Refresh
-                    </button>
+                    <span class="field-hint-text" style="margin-top: 2px;">High-capacity scrollable directory optimized for 1,000+ members.</span>
                 </div>
-
-                <!-- Search & Filters -->
-                <div style="margin-bottom: 10px;">
-                    <input type="text" class="text-input" id="birthdaySearchInput" placeholder="🔍 Search member name or ID..." style="height: 34px; font-size: 12.5px;">
-                </div>
-
-                <!-- 12-Month Filter Tabs -->
-                <div class="birthday-month-tabs" id="birthdayMonthTabs">
-                    <button type="button" class="birthday-month-tab active" data-month="all">All</button>
-                    <button type="button" class="birthday-month-tab" data-month="1">Jan</button>
-                    <button type="button" class="birthday-month-tab" data-month="2">Feb</button>
-                    <button type="button" class="birthday-month-tab" data-month="3">Mar</button>
-                    <button type="button" class="birthday-month-tab" data-month="4">Apr</button>
-                    <button type="button" class="birthday-month-tab" data-month="5">May</button>
-                    <button type="button" class="birthday-month-tab" data-month="6">Jun</button>
-                    <button type="button" class="birthday-month-tab" data-month="7">Jul</button>
-                    <button type="button" class="birthday-month-tab" data-month="8">Aug</button>
-                    <button type="button" class="birthday-month-tab" data-month="9">Sep</button>
-                    <button type="button" class="birthday-month-tab" data-month="10">Oct</button>
-                    <button type="button" class="birthday-month-tab" data-month="11">Nov</button>
-                    <button type="button" class="birthday-month-tab" data-month="12">Dec</button>
-                </div>
-
-                <!-- In-Box Scrollable Members Container -->
-                <div class="birthday-list-scroll-box" id="birthdayMembersList">
-                    <div style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13px;">
-                        No birthdays registered yet.
-                    </div>
-                </div>
+                <button type="button" class="btn-action-secondary" id="refreshBirthdaysBtn" style="height: 32px; font-size: 12px; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px;">
+                    🔄 Refresh List
+                </button>
             </div>
 
-            <!-- Anti-Loop Lockout & Reset Approvals Panel -->
-            <div class="automation-card" style="border: 1px dashed rgba(239, 68, 68, 0.3);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <div class="composer-section-title" style="color: #ef4444; margin: 0;">
-                        🔒 Restricted Members / Reset Approvals (<span id="birthdayRestrictedCountBadge">0</span>)
-                    </div>
-                </div>
-                <p style="font-size: 12px; color: #94a3b8; line-height: 1.4; margin: 0 0 10px;">
-                    Members who removed their birthday or were reset are locked from self-registration to prevent repeated date cycling perks. Click <strong>Unlock</strong> to grant permission to re-register.
-                </p>
+            <!-- Search & Filters -->
+            <div style="margin-bottom: 12px;">
+                <input type="text" class="text-input" id="birthdaySearchInput" placeholder="🔍 Search member name or ID..." style="height: 36px; font-size: 13px; width: 100%;">
+            </div>
 
-                <div class="birthday-list-scroll-box" id="birthdayRestrictedList" style="max-height: 200px;">
-                    <div style="padding: 16px; text-align: center; color: #64748b; font-size: 12px;">
-                        No members currently restricted.
-                    </div>
+            <!-- 12-Month Filter Tabs -->
+            <div class="birthday-month-tabs" id="birthdayMonthTabs" style="margin-bottom: 14px;">
+                <button type="button" class="birthday-month-tab active" data-month="all">All Months</button>
+                <button type="button" class="birthday-month-tab" data-month="1">Jan</button>
+                <button type="button" class="birthday-month-tab" data-month="2">Feb</button>
+                <button type="button" class="birthday-month-tab" data-month="3">Mar</button>
+                <button type="button" class="birthday-month-tab" data-month="4">Apr</button>
+                <button type="button" class="birthday-month-tab" data-month="5">May</button>
+                <button type="button" class="birthday-month-tab" data-month="6">Jun</button>
+                <button type="button" class="birthday-month-tab" data-month="7">Jul</button>
+                <button type="button" class="birthday-month-tab" data-month="8">Aug</button>
+                <button type="button" class="birthday-month-tab" data-month="9">Sep</button>
+                <button type="button" class="birthday-month-tab" data-month="10">Oct</button>
+                <button type="button" class="birthday-month-tab" data-month="11">Nov</button>
+                <button type="button" class="birthday-month-tab" data-month="12">Dec</button>
+            </div>
+
+            <!-- In-Box Scrollable Members Container (Full Width) -->
+            <div class="birthday-list-scroll-box" id="birthdayMembersList" style="max-height: 440px;">
+                <div style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13px;">
+                    No birthdays registered yet.
                 </div>
             </div>
+        </div>
+
+        <!-- Anti-Loop Lockout & Reset Approvals Panel (Full Width) -->
+        <div class="automation-card" style="border: 1px dashed rgba(239, 68, 68, 0.3);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div class="composer-section-title" style="color: #ef4444; margin: 0; font-size: 15px;">
+                    🔒 Restricted Members / Reset Approvals (<span id="birthdayRestrictedCountBadge">0</span>)
+                </div>
+            </div>
+            <p style="font-size: 12.5px; color: #94a3b8; line-height: 1.45; margin: 0 0 12px;">
+                Members who removed their birthday or were reset are locked from self-registration to prevent repeated date cycling perks. Click <strong>Unlock / Allow Re-register</strong> to grant permission.
+            </p>
+
+            <div class="birthday-list-scroll-box" id="birthdayRestrictedList" style="max-height: 240px;">
+                <div style="padding: 16px; text-align: center; color: #64748b; font-size: 12px;">
+                    No members currently restricted.
+                </div>
+            </div>
+        </div>
+    </div>
         </div>
     </div>
 </div> <!-- End #birthdaysSection -->

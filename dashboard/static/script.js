@@ -25926,13 +25926,7 @@ async function deployReactionPanel() {
 
 
                 show_thumbnail: currentRrShowThumbnail,
-
-
-
-
-
-
-
+                exclusive: document.getElementById('rrExclusiveCheckbox')?.checked !== false,
                 footer: currentRrFooterText
 
 
@@ -30684,29 +30678,13 @@ async function loadTicketsSettings() {
 
 
             const transToggle = document.getElementById('ticketTranscriptToggle');
-
-
-
-
-
-
-
             if (transToggle && p.transcription !== undefined) {
-
-
-
-
-
-
-
                 transToggle.checked = Boolean(p.transcription);
-
-
-
-
-
-
-
+                const wrapper = document.getElementById('ticketTranscriptCategoryWrapper');
+                if (wrapper) {
+                    wrapper.style.opacity = transToggle.checked ? '1' : '0.4';
+                    wrapper.style.pointerEvents = transToggle.checked ? 'auto' : 'none';
+                }
             }
 
 
@@ -67824,8 +67802,11 @@ function updateBirthdayPreview() {
         if (pingEveryone) lines.push('@everyone');
         
         let msg = (rawWishMsg || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
             .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
-            .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1');
+            .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1')
+            .replace(/<[^>]*>/g, '');
 
         if (mentionUser && !msg.includes('{mention}') && !msg.includes('@Member')) {
             lines.push('@Member');
@@ -67861,6 +67842,11 @@ function updateBirthdayPreview() {
     const descEl = document.getElementById('previewBirthdayEmbedDesc');
     if (descEl) {
         let d = (rawDesc || 'Wishing a very Happy Birthday to {mention}! May your special day be filled with happiness, success, and endless joy! 🎈✨')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
+            .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1')
+            .replace(/<[^>]*>/g, '')
             .replace(/\{mention\}/g, '@Member')
             .replace(/\{user\}/g, 'Member')
             .replace(/\{server\}/g, 'Server');
