@@ -67558,7 +67558,10 @@ async function loadBirthdayData() {
         if (masterToggle) masterToggle.checked = !!cfg.enabled;
 
         const wishTime = document.getElementById('birthdayWishTimeInput');
-        if (wishTime) wishTime.value = cfg.wish_time || '00:00';
+        if (wishTime) {
+            wishTime.value = cfg.wish_time || '00:00';
+            updateBirthdayTimeBadge();
+        }
 
         const tzSel = document.getElementById('birthdayTimezoneSelect');
         if (tzSel && cfg.timezone) tzSel.value = cfg.timezone;
@@ -67570,7 +67573,12 @@ async function loadBirthdayData() {
         if (pingEveryToggle) pingEveryToggle.checked = !!cfg.ping_everyone;
 
         const wishMsg = document.getElementById('birthdayWishMsgInput');
-        if (wishMsg) wishMsg.value = cfg.wish_message || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉";
+        if (wishMsg) {
+            const rawMsg = (cfg.wish_message || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉")
+                .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
+                .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1');
+            wishMsg.value = rawMsg;
+        }
 
         const embedTitle = document.getElementById('birthdayEmbedTitleInput');
         if (embedTitle) embedTitle.value = cfg.embed_title || '🎉 HAPPY BIRTHDAY, {user}! 🎂';
@@ -67697,6 +67705,41 @@ function renderBirthdayMembers() {
     listEl.innerHTML = html;
 }
 
+function updateBirthdayTimeBadge() {
+    const timeInput = document.getElementById('birthdayWishTimeInput');
+    const badge = document.getElementById('birthdayTimeReadableBadge');
+    if (!badge || !timeInput) return;
+
+    const val = (timeInput.value || '00:00').trim();
+    let parts = val.split(':');
+    let h = parseInt(parts[0], 10) || 0;
+    let m = parseInt(parts[1], 10) || 0;
+    h = Math.max(0, Math.min(23, h));
+    m = Math.max(0, Math.min(59, m));
+
+    const period = h >= 12 ? 'PM' : 'AM';
+    let h12 = h % 12;
+    if (h12 === 0) h12 = 12;
+    const mStr = String(m).padStart(2, '0');
+
+    let desc = '';
+    if (h === 0 && m === 0) {
+        desc = 'Midnight';
+    } else if (h === 12 && m === 0) {
+        desc = 'Noon';
+    } else if (h >= 5 && h < 12) {
+        desc = 'Morning';
+    } else if (h >= 12 && h < 17) {
+        desc = 'Afternoon';
+    } else if (h >= 17 && h < 21) {
+        desc = 'Evening';
+    } else {
+        desc = 'Night';
+    }
+
+    badge.innerHTML = `⏰ ${h12}:${mStr} ${period} (${desc})`;
+}
+
 function renderBirthdayRestricted() {
     const listEl = document.getElementById('birthdayRestrictedList');
     const badgeEl = document.getElementById('birthdayRestrictedCountBadge');
@@ -67715,17 +67758,31 @@ function renderBirthdayRestricted() {
     }
 
     let html = '';
-    restrictedList.forEach(uid => {
+    restrictedList.forEach(item => {
+        const uid = typeof item === 'object' && item !== null ? String(item.user_id) : String(item);
+        const name = typeof item === 'object' && item !== null && item.user_name ? item.user_name : ('User ' + uid);
+        let defaultIdx = 0;
+        try {
+            defaultIdx = parseInt(uid.slice(-2) || '0', 10) % 5;
+        } catch (e) {
+            defaultIdx = 0;
+        }
+        const avatarUrl = (typeof item === 'object' && item !== null && item.avatar_url) ? item.avatar_url : `https://cdn.discordapp.com/embed/avatars/${defaultIdx}.png`;
+        const safeName = (name || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+
         html += `
             <div class="birthday-locked-item">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 14px;">🔒</span>
-                    <div>
-                        <div style="font-weight: 600; font-size: 12.5px; color: #f1f5f9;">User ID: ${escapeHtml(uid)}</div>
-                        <div style="font-size: 11px; color: #94a3b8;">Anti-exploit lock active (cannot self-register)</div>
+                <div style="display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1;">
+                    <img src="${avatarUrl}" class="birthday-member-avatar" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" alt="Avatar">
+                    <div style="min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="birthday-member-name">${escapeHtml(name)}</span>
+                            <span style="font-size: 10px; font-weight: 700; background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); padding: 1px 6px; border-radius: 4px;">🔒 Locked</span>
+                        </div>
+                        <div class="birthday-member-meta">ID: ${uid} • Anti-exploit lock active (cannot self-register)</div>
                     </div>
                 </div>
-                <button type="button" class="btn-action-secondary" onclick="unlockBirthdayMember('${escapeHtml(uid)}')" style="height: 28px; padding: 0 12px; font-size: 11.5px; border-color: rgba(59, 130, 246, 0.4); color: #60a5fa;">
+                <button type="button" class="btn-action-secondary" onclick="unlockBirthdayMember('${escapeHtml(uid)}', '${safeName}')" style="height: 30px; padding: 0 12px; font-size: 11.5px; border-color: rgba(59, 130, 246, 0.4); color: #60a5fa; flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;">
                     🔓 Unlock / Allow Re-register
                 </button>
             </div>
@@ -67745,12 +67802,31 @@ function updateBirthdayPreview() {
     const embedColor = document.getElementById('birthdayEmbedColorInput')?.value || '#ff69b4';
     const bannerUrl = (document.getElementById('birthdayEmbedImageInput')?.value || '').trim();
 
+    // Update timestamp in simulator header
+    const timeVal = (document.getElementById('birthdayWishTimeInput')?.value || '00:00').trim();
+    const tParts = timeVal.split(':');
+    let th = parseInt(tParts[0], 10) || 0;
+    let tm = parseInt(tParts[1], 10) || 0;
+    th = Math.max(0, Math.min(23, th));
+    tm = Math.max(0, Math.min(59, tm));
+    const tPer = th >= 12 ? 'PM' : 'AM';
+    let th12 = th % 12;
+    if (th12 === 0) th12 = 12;
+    const tmStr = String(tm).padStart(2, '0');
+    const timeTextEl = document.getElementById('previewBirthdayWishTimestamp');
+    if (timeTextEl) {
+        timeTextEl.textContent = `Today at ${th12}:${tmStr} ${tPer}`;
+    }
+
     const headerEl = document.getElementById('previewBirthdayWishHeader');
     if (headerEl) {
         let lines = [];
         if (pingEveryone) lines.push('@everyone');
         
-        let msg = rawWishMsg || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉";
+        let msg = (rawWishMsg || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉")
+            .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
+            .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1');
+
         if (mentionUser && !msg.includes('{mention}') && !msg.includes('@Member')) {
             lines.push('@Member');
         }
@@ -68014,9 +68090,19 @@ async function deleteBirthdayMember(userId, userName) {
         const data = await res.json();
         if (data && (data.success || data.status === 'success')) {
             showNotification('Member birthday removed and locked from self-registration.', 'success');
+            const memObj = window.birthdayData.members[userId];
+            const memAvatar = memObj ? memObj.avatar_url : '';
             delete window.birthdayData.members[userId];
-            if (!window.birthdayData.restricted.includes(userId)) {
-                window.birthdayData.restricted.push(userId);
+            const exists = (window.birthdayData.restricted || []).some(x => {
+                const xid = typeof x === 'object' && x !== null ? x.user_id : x;
+                return String(xid) === String(userId);
+            });
+            if (!exists) {
+                window.birthdayData.restricted.push({
+                    user_id: userId,
+                    user_name: userName || (memObj ? memObj.user_name : `User ${userId}`),
+                    avatar_url: memAvatar
+                });
             }
             renderBirthdayMembers();
             renderBirthdayRestricted();
@@ -68029,7 +68115,7 @@ async function deleteBirthdayMember(userId, userName) {
     }
 }
 
-async function unlockBirthdayMember(userId) {
+async function unlockBirthdayMember(userId, userName) {
     if (!currentGuildId) return;
     try {
         const res = await fetch(`/api/guild/${currentGuildId}/birthdays/member/unlock`, {
@@ -68039,8 +68125,11 @@ async function unlockBirthdayMember(userId) {
         });
         const data = await res.json();
         if (data && (data.success || data.status === 'success')) {
-            showNotification('Member unlocked! They can now register their birthday again.', 'success');
-            window.birthdayData.restricted = window.birthdayData.restricted.filter(id => id !== userId);
+            showNotification(`Member ${userName || userId} unlocked! They can now register their birthday again.`, 'success');
+            window.birthdayData.restricted = (window.birthdayData.restricted || []).filter(item => {
+                const id = typeof item === 'object' && item !== null ? item.user_id : item;
+                return String(id) !== String(userId);
+            });
             renderBirthdayRestricted();
         } else {
             showNotification(data.error || data.message || 'Failed to unlock member.', 'error');
@@ -68206,15 +68295,62 @@ function setupBirthdayEvents() {
         };
     }
 
+    // Wish delivery time live sync
+    const wishTimeInput = document.getElementById('birthdayWishTimeInput');
+    if (wishTimeInput) {
+        wishTimeInput.addEventListener('input', () => {
+            updateBirthdayTimeBadge();
+            updateBirthdayPreview();
+        });
+        wishTimeInput.addEventListener('change', () => {
+            updateBirthdayTimeBadge();
+            updateBirthdayPreview();
+        });
+    }
+
     // Attach rich emoji editors
     if (typeof attachRichEmojiEditor === 'function') {
         attachRichEmojiEditor('birthdayWishMsgInput', true);
         attachRichEmojiEditor('birthdayEmbedTitleInput', true);
-        attachRichEmojiEditor('birthdayEmbedDescInput', true);
+        attachRichEmojiEditor('birthdayEmbedDescInput', false);
         attachRichEmojiEditor('birthdayEmbedFooterInput', true);
         attachRichEmojiEditor('birthdayCardTitleInput', true);
-        attachRichEmojiEditor('birthdayCardDescInput', true);
+        attachRichEmojiEditor('birthdayCardDescInput', false);
     }
+
+    // Ensure all emoji picker buttons in Birthday studio open the rich emoji picker
+    document.querySelectorAll('#birthdaysSection .resp-emoji-btn[data-target]').forEach(btn => {
+        if (!btn.dataset.boundEmoji) {
+            btn.dataset.boundEmoji = 'true';
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const targetId = btn.getAttribute('data-target');
+                const richEl = document.getElementById(targetId + '_rich');
+                if (richEl) {
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount && richEl.contains(sel.anchorNode)) {
+                        richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                    }
+                    if (typeof openEmojiPicker === 'function') {
+                        openEmojiPicker(btn, (emojiVal) => {
+                            if (!emojiVal) return;
+                            insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
+                        });
+                    }
+                } else {
+                    const targetEl = document.getElementById(targetId);
+                    if (targetEl && typeof openEmojiPicker === 'function') {
+                        openEmojiPicker(btn, (emojiVal) => {
+                            if (!emojiVal) return;
+                            targetEl.value = (targetEl.value || '') + emojiVal;
+                            targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+                        });
+                    }
+                }
+            });
+        }
+    });
 
     // Form Simulator interactive testing (Curved buttons & Confirmation box)
     const simRemoveBtn = document.getElementById('simRemoveBtn');

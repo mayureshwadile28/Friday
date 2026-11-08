@@ -9855,17 +9855,28 @@ Click an inquiry button below to open a confidential support ticket with our tea
 
                     <div class="form-field-full">
                         <label class="form-sublabel">Wish Time &amp; Timezone</label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" class="text-input" id="birthdayWishTimeInput" placeholder="00:00" value="00:00" style="width: 80px; text-align: center;">
-                            <select class="custom-select select-styled" id="birthdayTimezoneSelect" style="flex: 1;">
-                                <option value="Asia/Kolkata">IST (Asia/Kolkata)</option>
-                                <option value="UTC">UTC</option>
-                                <option value="America/New_York">EST (America/New_York)</option>
-                                <option value="America/Los_Angeles">PST (America/Los_Angeles)</option>
-                                <option value="Europe/London">GMT (Europe/London)</option>
-                            </select>
+                        <div style="display: flex; flex-direction: column; gap: 6px;">
+                            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                <input type="time" class="text-input" id="birthdayWishTimeInput" value="00:00" style="width: 105px; text-align: center; font-size: 13px; font-weight: 600;">
+                                <span id="birthdayTimeReadableBadge" style="display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 6px; font-size: 11.5px; font-weight: 600; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3);">
+                                    ⏰ 12:00 AM (Midnight)
+                                </span>
+                                <select class="custom-select select-styled" id="birthdayTimezoneSelect" style="flex: 1; min-width: 180px;">
+                                    <option value="Asia/Kolkata">IST — India (Asia/Kolkata)</option>
+                                    <option value="UTC">UTC — Universal Time</option>
+                                    <option value="America/New_York">EST/EDT — New York (Eastern)</option>
+                                    <option value="America/Chicago">CST/CDT — Chicago (Central)</option>
+                                    <option value="America/Denver">MST/MDT — Denver (Mountain)</option>
+                                    <option value="America/Los_Angeles">PST/PDT — Los Angeles (Pacific)</option>
+                                    <option value="Europe/London">GMT/BST — London (UK)</option>
+                                    <option value="Europe/Paris">CET/CEST — Paris (Central Europe)</option>
+                                    <option value="Asia/Dubai">GST — Dubai (Gulf)</option>
+                                    <option value="Asia/Tokyo">JST — Tokyo (Japan)</option>
+                                    <option value="Australia/Sydney">AEST/AEDT — Sydney (Australia)</option>
+                                </select>
+                            </div>
+                            <span class="field-hint-text">Daily wishes deliver at this exact minute in the server timezone (e.g. 10:50 AM or 10:50 PM).</span>
                         </div>
-                        <span class="field-hint-text">Time when Friday delivers daily wishes.</span>
                     </div>
                 </div>
 
@@ -9964,11 +9975,17 @@ Click an inquiry button below to open a confidential support ticket with our tea
                 <div class="composer-section-title" style="color: #ec4899; margin-bottom: 12px;">📝 Registration Card Customization (In Form Channel)</div>
                 <div class="form-field-full">
                     <label class="form-sublabel">Card Title</label>
-                    <input type="text" class="text-input" id="birthdayCardTitleInput" value="🎂 Member Birthday Registration">
+                    <div class="resp-input-group">
+                        <input type="text" class="text-input" id="birthdayCardTitleInput" value="🎂 Member Birthday Registration">
+                        <button type="button" class="resp-emoji-btn" data-target="birthdayCardTitleInput" title="Insert Server Emoji">😊 Emojis</button>
+                    </div>
                 </div>
                 <div class="form-field-full" style="margin-top: 12px;">
                     <label class="form-sublabel">Card Description</label>
-                    <textarea class="text-input" id="birthdayCardDescInput" rows="2" style="resize: vertical;">Click the button below to register your birthday! Friday will celebrate and deliver custom wishes on your special day! (Strict Privacy: Only Month &amp; Day saved).</textarea>
+                    <div class="resp-input-group" style="align-items: flex-start;">
+                        <textarea class="text-input" id="birthdayCardDescInput" rows="2" style="resize: vertical;">Click the button below to register your birthday! Friday will celebrate and deliver custom wishes on your special day! (Strict Privacy: Only Month &amp; Day saved).</textarea>
+                        <button type="button" class="resp-emoji-btn" data-target="birthdayCardDescInput" style="height: 38px;" title="Insert Server Emoji">😊 Emojis</button>
+                    </div>
                 </div>
                 <div class="form-field-full" style="margin-top: 12px;">
                     <label class="form-sublabel">Card Banner Image / GIF (Optional)</label>
@@ -10003,7 +10020,7 @@ Click an inquiry button below to open a confidential support ticket with our tea
                             <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
                                 <span style="font-weight: 700; color: #fff; font-size: 14px;">Friday</span>
                                 <span style="background: #5865f2; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 4px;">BOT</span>
-                                <span style="color: #949ba4; font-size: 11px;">Today at 00:00</span>
+                                <span id="previewBirthdayWishTimestamp" style="color: #949ba4; font-size: 11px;">Today at 00:00</span>
                             </div>
                             <div id="previewBirthdayWishHeader" style="color: #dbdee1; font-size: 14px; margin-bottom: 8px; word-break: break-word;">
                                 🎂 Happy Birthday @Member! Let's celebrate! 🎉

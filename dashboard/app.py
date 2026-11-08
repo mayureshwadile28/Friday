@@ -3684,18 +3684,62 @@ def get_guild_birthdays(gid):
     if not isinstance(bds_map, dict):
         bds_map = {}
 
+    guild = bot_instance.get_guild(int(gid)) if bot_instance else None
+
     birthdays_list = []
     for uid, rec in bds_map.items():
+        name = str(rec.get("user_name") or f"Member {uid}")
+        try:
+            default_idx = int(str(uid)[-2:]) % 5
+        except Exception:
+            default_idx = 0
+        avatar = f"https://cdn.discordapp.com/embed/avatars/{default_idx}.png"
+
+        if guild:
+            try:
+                mem = guild.get_member(int(uid))
+                if mem:
+                    name = mem.display_name
+                    if mem.display_avatar:
+                        avatar = str(mem.display_avatar.url)
+            except Exception:
+                pass
+
         birthdays_list.append({
             "user_id": str(uid),
-            "user_name": str(rec.get("user_name") or f"Member {uid}"),
+            "user_name": name,
+            "avatar_url": avatar,
             "month": int(rec.get("month", 1)),
             "day": int(rec.get("day", 1)),
             "registered_at": rec.get("registered_at", "")
         })
     birthdays_list.sort(key=lambda x: (x["month"], x["day"]))
 
-    restricted_list = [str(x) for x in db.birthdays_restricted.get(gid_str, [])]
+    restricted_data = []
+    for r_uid in db.birthdays_restricted.get(gid_str, []):
+        r_str = str(r_uid)
+        r_name = f"User {r_str}"
+        try:
+            default_idx = int(r_str[-2:]) % 5
+        except Exception:
+            default_idx = 0
+        r_avatar = f"https://cdn.discordapp.com/embed/avatars/{default_idx}.png"
+
+        if guild:
+            try:
+                mem = guild.get_member(int(r_str))
+                if mem:
+                    r_name = mem.display_name
+                    if mem.display_avatar:
+                        r_avatar = str(mem.display_avatar.url)
+            except Exception:
+                pass
+
+        restricted_data.append({
+            "user_id": r_str,
+            "user_name": r_name,
+            "avatar_url": r_avatar
+        })
 
     return jsonify({
         "success": True,
@@ -3703,7 +3747,8 @@ def get_guild_birthdays(gid):
         "config": cfg,
         "birthdays": birthdays_list,
         "members": birthdays_list,
-        "restricted": restricted_list
+        "restricted": restricted_data,
+        "restricted_ids": [x["user_id"] for x in restricted_data]
     })
 
 @app.route('/api/guild/<gid>/birthdays/config', methods=['POST'])

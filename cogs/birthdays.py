@@ -36,6 +36,41 @@ DAYS_IN_MONTH = {
 }
 
 
+def parse_wish_time_hour_min(time_str: str) -> tuple[int, int]:
+    """
+    Parses various time formats into (hour, minute) 24-hr ints.
+    Supports '00:00', '10:50', '10:50 AM', '10:50 PM', '22:50', etc.
+    Defaults to (0, 0) for Midnight.
+    """
+    if not time_str or not isinstance(time_str, str):
+        return (0, 0)
+    cleaned = time_str.strip().upper()
+
+    # 12-Hour AM/PM check
+    if "AM" in cleaned or "PM" in cleaned:
+        for fmt in ("%I:%M %p", "%I:%M%p", "%I %p"):
+            try:
+                dt = datetime.datetime.strptime(cleaned, fmt)
+                return (dt.hour, dt.minute)
+            except Exception:
+                pass
+
+    # 24-Hour HH:MM check
+    try:
+        parts = cleaned.split(":")
+        if len(parts) >= 2:
+            h = int(parts[0])
+            m = int(parts[1][:2])
+            return (max(0, min(23, h)), max(0, min(59, m)))
+        elif len(parts) == 1 and parts[0].isdigit():
+            h = int(parts[0])
+            return (max(0, min(23, h)), 0)
+    except Exception:
+        pass
+
+    return (0, 0)
+
+
 class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
     month_input = discord.ui.TextInput(
         label="Birth Month",
@@ -294,11 +329,11 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         self.daily_birthday_task.cancel()
 
     # ─────────────────────────────────────────────────────────────
-    # Automated Daily Scheduler Loop
+    # Automated Daily Scheduler Loop (Runs every 30 seconds to catch exact minute)
     # ─────────────────────────────────────────────────────────────
-    @tasks.loop(minutes=10)
+    @tasks.loop(seconds=30)
     async def daily_birthday_task(self):
-        """Checks for member birthdays and delivers automated celebratory wishes & temporary roles."""
+        """Checks for member birthdays and delivers automated celebratory wishes & temporary roles at the exact configured time."""
         await self.bot.wait_until_ready()
 
         now_utc = datetime.datetime.now(datetime.timezone.utc)
@@ -317,7 +352,7 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
             if not wish_channel:
                 continue
 
-            # Determine local timezone date
+            # Determine local timezone date and time
             tz_str = cfg.get("timezone", "Asia/Kolkata")
             try:
                 local_tz = pytz.timezone(tz_str)
@@ -328,6 +363,14 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
             today_month = local_now.month
             today_day = local_now.day
             current_year = local_now.year
+
+            # Enforce wish_time (e.g. "10:50", "00:00", "22:50")
+            # Strictly do not deliver before the configured minute in the guild's local timezone
+            wish_time_str = cfg.get("wish_time", "00:00")
+            target_hour, target_minute = parse_wish_time_hour_min(wish_time_str)
+            if (local_now.hour < target_hour) or (local_now.hour == target_hour and local_now.minute < target_minute):
+                # Not yet time for daily wishes in this server's timezone today
+                continue
 
             # Optional: Revoke expired temporary birthday roles (roles older than 24h)
             active_roles = db.data.setdefault("birthday_active_roles", {}).setdefault(gid, {})
