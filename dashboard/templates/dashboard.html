@@ -9939,11 +9939,12 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     <div class="form-field-full">
                         <label class="form-sublabel">Celebratory Banner Image / GIF</label>
                         <div style="display: flex; gap: 8px;">
-                            <input type="text" class="text-input" id="birthdayEmbedImageInput" placeholder="https://... or upload below" style="flex: 1;">
-                            <label class="btn-action-secondary" style="margin: 0; padding: 0 12px; height: 38px; display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap;">
+                            <input type="text" class="text-input" id="birthdayEmbedImageInput" placeholder="https://... or upload local GIF" style="flex: 1;">
+                            <button type="button" class="btn-action-secondary" id="birthdayBannerUploadBtn" style="margin: 0; padding: 0 14px; height: 38px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;">
                                 📁 Upload GIF
-                                <input type="file" id="birthdayBannerFileInput" accept="image/*" style="display: none;">
-                            </label>
+                            </button>
+                            <input type="file" id="birthdayBannerFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;">
+                            <button type="button" class="btn-action-secondary" id="birthdayBannerClearBtn" title="Clear Banner" style="height: 38px; padding: 0 10px;">✖</button>
                         </div>
                     </div>
                 </div>
@@ -9972,11 +9973,11 @@ Click an inquiry button below to open a confidential support ticket with our tea
                 <div class="form-field-full" style="margin-top: 12px;">
                     <label class="form-sublabel">Card Banner Image / GIF (Optional)</label>
                     <div style="display: flex; gap: 8px;">
-                        <input type="text" class="text-input" id="birthdayCardBannerInput" placeholder="https://... or upload local file" style="flex: 1;">
-                        <label class="btn-action-secondary" style="margin: 0; padding: 0 12px; height: 38px; display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap;">
+                        <input type="text" class="text-input" id="birthdayCardBannerInput" placeholder="https://... or upload local GIF" style="flex: 1;">
+                        <button type="button" class="btn-action-secondary" id="birthdayCardBannerUploadBtn" style="margin: 0; padding: 0 14px; height: 38px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap;">
                             📁 Upload GIF
-                            <input type="file" id="birthdayCardBannerFileInput" accept="image/*" style="display: none;">
-                        </label>
+                        </button>
+                        <input type="file" id="birthdayCardBannerFileInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display: none;">
                         <button type="button" class="btn-action-secondary" id="birthdayCardBannerClearBtn" title="Clear Banner" style="height: 38px; padding: 0 10px;">✖</button>
                     </div>
                     <span class="field-hint-text">Paste an image link or select a local PNG/GIF file to display on the permanent registration card.</span>

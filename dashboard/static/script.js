@@ -26799,6 +26799,21 @@ function showToast(msg) {
 
 }
 
+function showNotification(msg, type) {
+    if (typeof showToast === 'function') {
+        let icon = 'ℹ️ ';
+        if (type === 'success') icon = '✅ ';
+        else if (type === 'error') icon = '❌ ';
+        else if (type === 'warning') icon = '⚠️ ';
+        else if (type === 'info') icon = 'ℹ️ ';
+        showToast(icon + msg);
+    } else {
+        console.log(`[${type || 'info'}] ${msg}`);
+    }
+}
+window.showNotification = showNotification;
+
+
 
 
 
@@ -67785,9 +67800,12 @@ function updateBirthdayPreview() {
     const bannerEl = document.getElementById('previewBirthdayBanner');
     if (bannerEl) {
         if (bannerUrl) {
+            bannerEl.onerror = () => { bannerEl.style.display = 'none'; };
+            bannerEl.onload = () => { bannerEl.style.display = 'block'; };
             bannerEl.src = bannerUrl;
             bannerEl.style.display = 'block';
         } else {
+            bannerEl.src = '';
             bannerEl.style.display = 'none';
         }
     }
@@ -67809,9 +67827,12 @@ function updateBirthdayPreview() {
     const cardBannerUrl = (document.getElementById('birthdayCardBannerInput')?.value || '').trim();
     if (cardBannerEl) {
         if (cardBannerUrl) {
+            cardBannerEl.onerror = () => { cardBannerEl.style.display = 'none'; };
+            cardBannerEl.onload = () => { cardBannerEl.style.display = 'block'; };
             cardBannerEl.src = cardBannerUrl;
             cardBannerEl.style.display = 'block';
         } else {
+            cardBannerEl.src = '';
             cardBannerEl.style.display = 'none';
         }
     }
@@ -68031,7 +68052,17 @@ async function unlockBirthdayMember(userId) {
 }
 
 async function handleBirthdayUploadGeneric(file, targetInputId) {
-    if (!currentGuildId || !file) return;
+    if (!currentGuildId) {
+        showNotification('Please select a server first.', 'error');
+        return;
+    }
+    if (!file) return;
+
+    if (file.size > 20 * 1024 * 1024) {
+        showNotification('File is too large. Maximum size is 20MB.', 'error');
+        return;
+    }
+
     const formData = new FormData();
     formData.append('banner_file', file);
     try {
@@ -68043,7 +68074,10 @@ async function handleBirthdayUploadGeneric(file, targetInputId) {
         const data = await res.json();
         if (data && (data.success || data.status === 'success')) {
             const inputEl = document.getElementById(targetInputId);
-            if (inputEl) inputEl.value = data.url || data.banner_url;
+            if (inputEl) {
+                inputEl.value = data.url || data.banner_url;
+                inputEl.dispatchEvent(new Event('input'));
+            }
             updateBirthdayPreview();
             showNotification('Banner uploaded successfully!', 'success');
         } else {
@@ -68127,25 +68161,42 @@ function setupBirthdayEvents() {
     });
 
     // Wish Banner local file upload
+    const wishUploadBtn = document.getElementById('birthdayBannerUploadBtn');
     const wishFileEl = document.getElementById('birthdayBannerFileInput');
+    if (wishUploadBtn && wishFileEl) {
+        wishUploadBtn.onclick = () => wishFileEl.click();
+    }
     if (wishFileEl) {
         wishFileEl.onchange = () => {
             if (wishFileEl.files && wishFileEl.files[0]) {
                 handleBirthdayUploadGeneric(wishFileEl.files[0], 'birthdayEmbedImageInput');
+                wishFileEl.value = '';
             }
+        };
+    }
+    const wishClearBtn = document.getElementById('birthdayBannerClearBtn');
+    if (wishClearBtn) {
+        wishClearBtn.onclick = () => {
+            const input = document.getElementById('birthdayEmbedImageInput');
+            if (input) input.value = '';
+            updateBirthdayPreview();
         };
     }
 
     // Card Banner local file upload
+    const cardUploadBtn = document.getElementById('birthdayCardBannerUploadBtn');
     const cardFileEl = document.getElementById('birthdayCardBannerFileInput');
+    if (cardUploadBtn && cardFileEl) {
+        cardUploadBtn.onclick = () => cardFileEl.click();
+    }
     if (cardFileEl) {
         cardFileEl.onchange = () => {
             if (cardFileEl.files && cardFileEl.files[0]) {
                 handleBirthdayUploadGeneric(cardFileEl.files[0], 'birthdayCardBannerInput');
+                cardFileEl.value = '';
             }
         };
     }
-
     const cardClearBtn = document.getElementById('birthdayCardBannerClearBtn');
     if (cardClearBtn) {
         cardClearBtn.onclick = () => {

@@ -3737,11 +3737,10 @@ def update_birthday_config(gid):
 @app.route('/api/guild/<gid>/birthdays/upload-card-banner', methods=['POST'])
 def upload_birthday_banner(gid):
     try:
+        os.makedirs(BIRTHDAY_BANNER_DIR, exist_ok=True)
         file = flask_request.files.get('banner_file') or flask_request.files.get('banner') or flask_request.files.get('file')
         if not file or not file.filename:
             return jsonify({"success": False, "status": "error", "error": "No file uploaded."}), 400
-        if not file or not file.filename:
-            return jsonify({"success": False, "error": "Empty filename."}), 400
 
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
@@ -3795,12 +3794,26 @@ def post_birthday_form_card(gid):
             color=0xff69b4
         )
         banner_url = cfg.get("form_card_banner")
+        discord_file = None
         if banner_url:
-            embed.set_image(url=banner_url)
+            if banner_url.startswith("/static/"):
+                fname = os.path.basename(banner_url)
+                fpath = os.path.join(app.root_path, "static", "uploads", "birthday_banners", fname)
+                if not os.path.exists(fpath):
+                    fpath = os.path.join(app.root_path, banner_url.lstrip("/").replace("/", os.sep))
+                if os.path.exists(fpath):
+                    discord_file = discord.File(fpath, filename=fname)
+                    embed.set_image(url=f"attachment://{fname}")
+            elif banner_url.startswith(("http://", "https://")):
+                embed.set_image(url=banner_url)
+
         embed.set_footer(text="Friday Birthday Engine • Ephemeral & Private Submission")
 
         from cogs.birthdays import BirthdayRegisterView
-        msg = await channel.send(embed=embed, view=BirthdayRegisterView())
+        if discord_file:
+            msg = await channel.send(embed=embed, file=discord_file, view=BirthdayRegisterView())
+        else:
+            msg = await channel.send(embed=embed, view=BirthdayRegisterView())
         cfg["form_message_id"] = str(msg.id)
         db.save_data()
         return msg.id

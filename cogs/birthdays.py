@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import datetime
+import os
 from typing import Optional, List, Dict
 import pytz
 import re
@@ -435,13 +436,26 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         embed.set_thumbnail(url=member.display_avatar.url)
 
         banner_url = cfg.get("embed_image")
+        discord_file = None
         if banner_url:
-            embed.set_image(url=banner_url)
+            if banner_url.startswith("/static/"):
+                fname = os.path.basename(banner_url)
+                fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "birthday_banners", fname)
+                if not os.path.exists(fpath):
+                    fpath = os.path.join("dashboard", "static", "uploads", "birthday_banners", fname)
+                if os.path.exists(fpath):
+                    discord_file = discord.File(fpath, filename=fname)
+                    embed.set_image(url=f"attachment://{fname}")
+            elif banner_url.startswith(("http://", "https://")):
+                embed.set_image(url=banner_url)
 
         footer_text = cfg.get("embed_footer", "Friday Birthday Engine • Wish them in chat!")
         embed.set_footer(text=footer_text, icon_url=guild.icon.url if guild.icon else None)
 
-        await channel.send(content=header_text, embed=embed)
+        if discord_file:
+            await channel.send(content=header_text, embed=embed, file=discord_file)
+        else:
+            await channel.send(content=header_text, embed=embed)
 
     # ─────────────────────────────────────────────────────────────
     # Member Departure Listener
@@ -516,12 +530,25 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
             color=0xff69b4
         )
         banner_url = cfg.get("form_card_banner")
+        discord_file = None
         if banner_url:
-            embed.set_image(url=banner_url)
+            if banner_url.startswith("/static/"):
+                fname = os.path.basename(banner_url)
+                fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "birthday_banners", fname)
+                if not os.path.exists(fpath):
+                    fpath = os.path.join("dashboard", "static", "uploads", "birthday_banners", fname)
+                if os.path.exists(fpath):
+                    discord_file = discord.File(fpath, filename=fname)
+                    embed.set_image(url=f"attachment://{fname}")
+            elif banner_url.startswith(("http://", "https://")):
+                embed.set_image(url=banner_url)
         embed.set_footer(text="Friday Birthday Engine • Ephemeral & Private Submission")
 
         try:
-            card_msg = await form_channel.send(embed=embed, view=BirthdayRegisterView())
+            if discord_file:
+                card_msg = await form_channel.send(embed=embed, file=discord_file, view=BirthdayRegisterView())
+            else:
+                card_msg = await form_channel.send(embed=embed, view=BirthdayRegisterView())
             cfg["form_message_id"] = str(card_msg.id)
         except Exception as e:
             await reply_box(interaction, f"Failed to post card into {form_channel.mention}: {e}", title="CARD POST FAILED", status="error", ephemeral=True)
