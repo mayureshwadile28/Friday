@@ -56,14 +56,14 @@ class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
         # 1. Anti-abuse / Lockout Check
         restricted_list = db.birthdays_restricted.get(gid, [])
         if uid in restricted_list:
-            embed = discord.Embed(
-                title="⛔ Registration Locked",
+            embed = make_box_embed(
+                title="Registration Locked",
                 description=(
                     "You have previously removed or reset your birthday.\n\n"
                     "To prevent exploit loops, self-registration is locked for your profile. "
                     "Please contact server administration or the bot owner to unlock your registration."
                 ),
-                color=0xed4245
+                status="error"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -74,14 +74,14 @@ class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
             existing = guild_bds[uid]
             m_name = MONTH_NAMES.get(existing.get("month", 1), "Unknown")
             d_val = existing.get("day", 1)
-            embed = discord.Embed(
-                title="ℹ Already Registered",
+            embed = make_box_embed(
+                title="Already Registered",
                 description=(
                     f"Your birthday is already registered as **{m_name} {d_val}**.\n\n"
                     "To prevent date cycling, you cannot change it yourself. "
                     "If you made an honest mistake, please ask a server administrator to update it for you."
                 ),
-                color=0x6366f1
+                status="info"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -90,10 +90,10 @@ class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
         clean_month = self.month_input.value.strip().lower()
         month = MONTH_LOOKUP.get(clean_month)
         if not month:
-            embed = discord.Embed(
-                title="✕ Invalid Month",
+            embed = make_box_embed(
+                title="Invalid Month",
                 description="Please enter a valid month name or number (e.g. `May`, `December`, or `5`).",
-                color=0xed4245
+                status="error"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -102,20 +102,20 @@ class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
         try:
             day = int(self.day_input.value.strip())
         except ValueError:
-            embed = discord.Embed(
-                title="✕ Invalid Day",
+            embed = make_box_embed(
+                title="Invalid Day",
                 description="Please enter a valid day number (e.g. `14`).",
-                color=0xed4245
+                status="error"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         max_days = DAYS_IN_MONTH.get(month, 31)
         if day < 1 or day > max_days:
-            embed = discord.Embed(
-                title="✕ Invalid Day For Month",
+            embed = make_box_embed(
+                title="Invalid Day For Month",
                 description=f"**{MONTH_NAMES[month]}** only has up to **{max_days}** days. Please enter a valid date.",
-                color=0xed4245
+                status="error"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
@@ -135,16 +135,82 @@ class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
         wish_chan_id = cfg.get("wish_channel_id")
         wish_note = f" in <#{wish_chan_id}>" if wish_chan_id else ""
 
-        embed = discord.Embed(
-            title="✓ Birthday Registered",
+        embed = make_box_embed(
+            title="Birthday Registered",
             description=(
                 f"Your birthday has been locked and saved for **{MONTH_NAMES[month]} {day}**! 🎉\n\n"
                 f"Friday will celebrate and wish you{wish_note} when your special day arrives!\n\n"
                 "*Note: Strictly your Day & Month are saved. No birth year or age is stored.*"
             ),
-            color=0x10b981
+            status="success"
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class ConfirmBirthdayRemoveView(discord.ui.View):
+    def __init__(self, user_id: str, guild_id: str):
+        super().__init__(timeout=60)
+        self.user_id = str(user_id)
+        self.guild_id = str(guild_id)
+
+    @discord.ui.button(
+        label="Yes, Confirm Delete",
+        style=discord.ButtonStyle.danger,
+        custom_id="friday_birthday_confirm_del_btn"
+    )
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("This confirmation is not for you.", ephemeral=True)
+            return
+
+        guild_bds = db.birthdays.get(self.guild_id, {})
+        if self.user_id in guild_bds:
+            del guild_bds[self.user_id]
+
+        restricted = db.birthdays_restricted.setdefault(self.guild_id, [])
+        if self.user_id not in restricted:
+            restricted.append(self.user_id)
+        db.save_data()
+
+        # Remove birthday role if assigned
+        cfg = db.birthdays_config.get(self.guild_id, {})
+        role_id = cfg.get("birthday_role_id")
+        if role_id and interaction.guild:
+            try:
+                role = interaction.guild.get_role(int(role_id))
+                mem = interaction.guild.get_member(int(self.user_id))
+                if role and mem and role in mem.roles:
+                    await mem.remove_roles(role, reason="Birthday removed by user")
+            except Exception:
+                pass
+
+        embed = make_box_embed(
+            title="Birthday Removed & Locked",
+            description=(
+                "Your birthday registration has been removed.\n\n"
+                "🔒 **Notice:** To prevent re-registration exploits, your birthday profile is now locked. "
+                "You will be unable to set your birthdate again unless you contact the bot owner / server administrator to unlock your profile."
+            ),
+            status="warning"
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
+
+    @discord.ui.button(
+        label="Cancel",
+        style=discord.ButtonStyle.secondary,
+        custom_id="friday_birthday_cancel_del_btn"
+    )
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if str(interaction.user.id) != self.user_id:
+            await interaction.response.send_message("This confirmation is not for you.", ephemeral=True)
+            return
+
+        embed = make_box_embed(
+            title="Action Cancelled",
+            description="Your birthday remains registered and safe. No changes were made.",
+            status="info"
+        )
+        await interaction.response.edit_message(embed=embed, view=None)
 
 
 class BirthdayRegisterView(discord.ui.View):
@@ -170,31 +236,25 @@ class BirthdayRegisterView(discord.ui.View):
         guild_bds = db.birthdays.get(gid, {})
 
         if uid not in guild_bds:
-            embed = discord.Embed(
-                title="ℹ No Birthday Registered",
+            embed = make_box_embed(
+                title="No Birthday Registered",
                 description="You do not currently have a registered birthday on this server.",
-                color=0x6366f1
+                status="info"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        # Remove from active list and add to restricted list to prevent loop exploits
-        del guild_bds[uid]
-        restricted = db.birthdays_restricted.setdefault(gid, [])
-        if uid not in restricted:
-            restricted.append(uid)
-        db.save_data()
-
-        embed = discord.Embed(
-            title="✓ Birthday Removed",
+        confirm_embed = make_box_embed(
+            title="Confirm Birthday Removal",
             description=(
-                "Your birthday registration has been removed.\n\n"
-                "⚠️ **Notice:** To prevent repeated date-cycling exploits, your registration has been locked. "
-                "If you wish to re-apply in the future, please ask server administration to unlock your registration."
+                "**Are you sure you want to remove your registered birthday?**\n\n"
+                "⚠️ **Important Notice:** If you remove your birthday, you will be **unable to set your birthdate again** unless you contact the bot owner / server administrator to unlock your profile.\n\n"
+                "Click **Yes, Confirm Delete** to proceed, or **Cancel** to keep your birthday."
             ),
-            color=0xf59e0b
+            status="warning"
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        view = ConfirmBirthdayRemoveView(user_id=uid, guild_id=gid)
+        await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
 
 
 class BirthdayPaginationView(discord.ui.View):
@@ -554,19 +614,17 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
             await reply_box(interaction, "You do not have a registered birthday on this server.", title="NOT FOUND", status="error", ephemeral=True)
             return
 
-        del guild_bds[uid]
-        restricted = db.birthdays_restricted.setdefault(gid, [])
-        if uid not in restricted:
-            restricted.append(uid)
-        db.save_data()
-
-        await reply_box(
-            interaction,
-            "Your birthday has been removed. Re-registration is locked to prevent exploit loops. Please ask server administration if you need to register again.",
-            title="BIRTHDAY REMOVED",
-            status="warning",
-            ephemeral=True
+        confirm_embed = make_box_embed(
+            title="Confirm Birthday Removal",
+            description=(
+                "**Are you sure you want to remove your registered birthday?**\n\n"
+                "⚠️ **Important Notice:** If you remove your birthday, you will be **unable to set your birthdate again** unless you contact the bot owner / server administrator to unlock your profile.\n\n"
+                "Click **Yes, Confirm Delete** to proceed, or **Cancel** to keep your birthday."
+            ),
+            status="warning"
         )
+        view = ConfirmBirthdayRemoveView(user_id=uid, guild_id=gid)
+        await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
 
     @birthday_group.command(name="list", description="View upcoming birthdays in the server (Supports 1000+ members with pagination).")
     @app_commands.describe(month="Optional month filter (e.g. May or 5)")

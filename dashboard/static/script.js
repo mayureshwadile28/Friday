@@ -19519,6 +19519,8 @@ function renderDiscordMarkdown(rawText) {
 
 
         processed = processed.replace(/\{user\}/gi, '<span class="discord-mention">@Alex</span>');
+        processed = processed.replace(/\{mention\}/gi, '<span class="discord-mention">@Member</span>');
+        processed = processed.replace(/\{server\}/gi, 'Server');
         processed = processed.replace(/\{level\}/g, '<span class="discord-level-badge">5</span>');
         processed = processed.replace(/\{user\}/g, '<span class="discord-mention">@Alex</span>');
         processed = processed.replace(/\{username\}/g, 'Alex');
@@ -67730,17 +67732,28 @@ function updateBirthdayPreview() {
 
     const headerEl = document.getElementById('previewBirthdayWishHeader');
     if (headerEl) {
-        let parts = [];
-        if (pingEveryone) parts.push('<span class="mention">@everyone</span>');
-        if (mentionUser) parts.push('<span class="mention">@Member</span>');
-        let processedMsg = rawWishMsg
-            .replace(/\{mention\}/g, '<span class="mention">@Member</span>')
-            .replace(/\{user\}/g, 'Member');
-        if (typeof renderDiscordMarkdown === 'function') {
-            processedMsg = renderDiscordMarkdown(processedMsg);
+        let lines = [];
+        if (pingEveryone) lines.push('@everyone');
+        
+        let msg = rawWishMsg || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉";
+        if (mentionUser && !msg.includes('{mention}') && !msg.includes('@Member')) {
+            lines.push('@Member');
         }
-        parts.push(processedMsg);
-        headerEl.innerHTML = parts.join(' ');
+
+        // Clean template substitution with plain text tokens before markdown parsing
+        let cleanText = msg
+            .replace(/\{mention\}/g, '@Member')
+            .replace(/\{user\}/g, 'Member')
+            .replace(/\{server\}/g, 'Server');
+
+        lines.push(cleanText);
+        const fullMarkdown = lines.join('\n');
+
+        if (typeof renderDiscordMarkdown === 'function') {
+            headerEl.innerHTML = renderDiscordMarkdown(fullMarkdown);
+        } else {
+            headerEl.textContent = fullMarkdown;
+        }
     }
 
     const cardEl = document.getElementById('previewBirthdayEmbed');
@@ -67750,19 +67763,23 @@ function updateBirthdayPreview() {
 
     const titleEl = document.getElementById('previewBirthdayEmbedTitle');
     if (titleEl) {
-        let t = rawTitle.replace(/\{user\}/g, 'Member').replace(/\{mention\}/g, '@Member');
+        let t = (rawTitle || '🎉 HAPPY BIRTHDAY, {user}! 🎂').replace(/\{user\}/g, 'Member').replace(/\{mention\}/g, '@Member');
         titleEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(t) : escapeHtml(t);
     }
 
     const descEl = document.getElementById('previewBirthdayEmbedDesc');
     if (descEl) {
-        let d = rawDesc.replace(/\{user\}/g, 'Member').replace(/\{mention\}/g, '@Member');
+        let d = (rawDesc || 'Wishing a very Happy Birthday to {mention}! May your special day be filled with happiness, success, and endless joy! 🎈✨')
+            .replace(/\{mention\}/g, '@Member')
+            .replace(/\{user\}/g, 'Member')
+            .replace(/\{server\}/g, 'Server');
         descEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(d) : escapeHtml(d);
     }
 
     const footerEl = document.getElementById('previewBirthdayFooter');
     if (footerEl) {
-        footerEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(rawFooter) : escapeHtml(rawFooter);
+        let f = rawFooter || 'Friday Birthday Engine • Wish them in chat!';
+        footerEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(f) : escapeHtml(f);
     }
 
     const bannerEl = document.getElementById('previewBirthdayBanner');
@@ -68146,6 +68163,59 @@ function setupBirthdayEvents() {
         attachRichEmojiEditor('birthdayEmbedFooterInput', true);
         attachRichEmojiEditor('birthdayCardTitleInput', true);
         attachRichEmojiEditor('birthdayCardDescInput', true);
+    }
+
+    // Form Simulator interactive testing (Curved buttons & Confirmation box)
+    const simRemoveBtn = document.getElementById('simRemoveBtn');
+    const simDialog = document.getElementById('simBirthdayRemoveDialog');
+    const simResultBox = document.getElementById('simBirthdayResultBox');
+    const simConfirmDelBtn = document.getElementById('simConfirmDelBtn');
+    const simCancelDelBtn = document.getElementById('simCancelDelBtn');
+    const simRegisterBtn = document.getElementById('simRegisterBtn');
+
+    if (simRemoveBtn && simDialog) {
+        simRemoveBtn.onclick = () => {
+            simDialog.style.display = simDialog.style.display === 'none' ? 'block' : 'none';
+            if (simResultBox) simResultBox.style.display = 'none';
+        };
+    }
+
+    if (simCancelDelBtn && simDialog) {
+        simCancelDelBtn.onclick = () => {
+            simDialog.style.display = 'none';
+            if (simResultBox) {
+                simResultBox.style.display = 'block';
+                simResultBox.style.borderLeft = '4px solid #6366f1';
+                simResultBox.style.background = '#2b2d31';
+                simResultBox.innerHTML = `
+                    <div style="font-weight: 700; color: #6366f1; font-size: 13px; margin-bottom: 4px;">◈ Action Cancelled</div>
+                    <div style="color: #dbdee1; font-size: 12px;">Your birthday remains registered and safe. No changes were made.</div>
+                `;
+                setTimeout(() => { if (simResultBox) simResultBox.style.display = 'none'; }, 4000);
+            }
+        };
+    }
+
+    if (simConfirmDelBtn && simDialog) {
+        simConfirmDelBtn.onclick = () => {
+            simDialog.style.display = 'none';
+            if (simResultBox) {
+                simResultBox.style.display = 'block';
+                simResultBox.style.borderLeft = '4px solid #f59e0b';
+                simResultBox.style.background = '#2b2d31';
+                simResultBox.innerHTML = `
+                    <div style="font-weight: 700; color: #f59e0b; font-size: 13px; margin-bottom: 4px;">▲ Birthday Removed &amp; Locked</div>
+                    <div style="color: #dbdee1; font-size: 12px;">Your birthday registration has been removed.<br>🔒 <strong>Notice:</strong> Profile locked to prevent re-registration loops. Contact bot owner to unlock.</div>
+                `;
+                setTimeout(() => { if (simResultBox) simResultBox.style.display = 'none'; }, 6000);
+            }
+        };
+    }
+
+    if (simRegisterBtn) {
+        simRegisterBtn.onclick = () => {
+            showNotification('In Discord, members click this button to open the private Month & Day registration modal.', 'info');
+        };
     }
 
     // Modal buttons

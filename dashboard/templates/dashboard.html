@@ -10063,14 +10063,37 @@ Click the button below to register your birthday! Friday will celebrate and deli
                             </div>
 
                             <!-- Interactive Buttons Preview -->
-                            <div style="display: flex; gap: 8px; margin-top: 10px;">
-                                <button type="button" style="background: #248046; color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                            <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+                                <button type="button" id="simRegisterBtn" style="background: #248046; color: #fff; border: none; border-radius: 20px; padding: 8px 18px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(36, 128, 70, 0.25);">
                                     🎂 Register Birthday
                                 </button>
-                                <button type="button" style="background: #4e5058; color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                                <button type="button" id="simRemoveBtn" style="background: #4e5058; color: #fff; border: none; border-radius: 20px; padding: 8px 18px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; transition: all 0.2s ease; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);">
                                     🗑 Remove Birthday
                                 </button>
                             </div>
+
+                            <!-- Live Confirmation Embed Simulator (Toggled when clicking Remove Birthday) -->
+                            <div id="simBirthdayRemoveDialog" style="display: none; margin-top: 12px; border-left: 4px solid #f59e0b; background: #2b2d31; border-radius: 6px; padding: 12px 14px;">
+                                <div style="font-weight: 700; color: #f59e0b; font-size: 13.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                                    ▲ Confirm Birthday Removal
+                                </div>
+                                <div style="color: #dbdee1; font-size: 12.5px; line-height: 1.45; margin-bottom: 12px;">
+                                    <strong>Are you sure you want to remove your registered birthday?</strong><br><br>
+                                    ⚠️ <strong>Important Notice:</strong> If you remove your birthday, you will be <strong>unable to set your birthdate again</strong> unless you contact the bot owner / server administrator to unlock your profile.<br><br>
+                                    Please confirm your choice below:
+                                </div>
+                                <div style="display: flex; gap: 10px;">
+                                    <button type="button" id="simConfirmDelBtn" style="background: #da373c; color: #fff; border: none; border-radius: 20px; padding: 7px 16px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.2s; box-shadow: 0 2px 6px rgba(218, 55, 60, 0.3);">
+                                        Yes, Confirm Delete
+                                    </button>
+                                    <button type="button" id="simCancelDelBtn" style="background: #4e5058; color: #fff; border: none; border-radius: 20px; padding: 7px 16px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Live Confirmation Result Box -->
+                            <div id="simBirthdayResultBox" style="display: none; margin-top: 12px; border-radius: 6px; padding: 12px 14px;"></div>
                         </div>
                     </div>
                 </div>
