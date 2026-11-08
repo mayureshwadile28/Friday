@@ -3582,16 +3582,36 @@ We are excited to introduce seamless broadcast capability.
 
 </div>
 
-<div style="text-align: right;">
+<!-- Scheduling Controls (Optional Future Delivery) -->
+<div style="margin-top: 16px; margin-bottom: 16px; padding: 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px;">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <label class="switch">
+                <input type="checkbox" id="annScheduleToggle">
+                <span class="slider"></span>
+            </label>
+            <div>
+                <span style="font-size: 13px; font-weight: 600; color: #ffffff;">Schedule for Later</span>
+                <span style="display: block; font-size: 11.5px; color: var(--text-muted);">Set a future date and time for automatic dispatch</span>
+            </div>
+        </div>
+    </div>
+    <div id="annScheduleOptionsWrap" style="display: none; margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.06);">
+        <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Scheduled Broadcast Date &amp; Time (Local / Server Time)</label>
+        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <input type="datetime-local" class="text-input" id="annScheduleDateTimeInput" style="max-width: 260px; height: 38px;">
+            <span style="font-size: 12px; color: #2dd4bf; background: rgba(45, 212, 191, 0.1); padding: 6px 12px; border-radius: 6px;">
+                ⏰ Must be in the future
+            </span>
+        </div>
+    </div>
+</div>
 
-<button class="btn btn-primary" id="broadcastAnnouncementBtn" style="padding: 10px 20px; font-size: 14px;" type="button">
-
-<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
-
-                                Broadcast Announcement
-
-                            </button>
-
+<div style="display: flex; justify-content: flex-end; gap: 12px; align-items: center;">
+    <button class="btn btn-primary" id="broadcastAnnouncementBtn" style="padding: 10px 20px; font-size: 14px;" type="button">
+        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><path d="M11 5L6 9H2v6h4l5 4V5z"></path><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+        <span id="annBroadcastBtnText">Broadcast Now</span>
+    </button>
 </div>
 
 </div>
@@ -3690,6 +3710,24 @@ We are excited to introduce seamless broadcast capability.
 
 </div>
 
+</div>
+
+<!-- Upcoming Scheduled Broadcasts Queue -->
+<div class="card" style="margin-top: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+        <div>
+            <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">🗓️ Scheduled Announcements Queue</h3>
+            <p style="font-size: 12.5px; color: var(--text-secondary); margin: 0;">Announcements queued to be automatically dispatched by Friday at a future time.</p>
+        </div>
+        <button type="button" class="btn btn-secondary" id="refreshScheduledAnnouncementsBtn" style="padding: 6px 14px; font-size: 12px; font-weight: 600;">
+            🔄 Refresh Queue
+        </button>
+    </div>
+    <div id="scheduledAnnouncementsList" style="display: flex; flex-direction: column; gap: 10px;">
+        <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+            No announcements currently scheduled.
+        </div>
+    </div>
 </div>
 
 </div>
@@ -9758,12 +9796,14 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </p>
                 </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <label class="switch-wrap" style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label class="switch">
+                        <input type="checkbox" id="birthdayMasterToggle">
+                        <span class="slider"></span>
+                    </label>
                     <span style="font-size: 13px; font-weight: 600; color: #e2e8f0;">System Active</span>
-                    <input type="checkbox" id="birthdayMasterToggle" style="display: none;">
-                    <div class="toggle-slider" id="birthdayToggleSlider"></div>
-                </label>
+                </div>
                 <button type="button" class="btn-action-primary" id="saveBirthdayConfigBtn" style="height: 38px; padding: 0 16px;">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
                     Save Settings
@@ -9829,16 +9869,22 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     </div>
                 </div>
 
-                <!-- Mentions & Pings -->
-                <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
-                    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1; cursor: pointer;">
-                        <input type="checkbox" id="birthdayMentionUserToggle" checked style="accent-color: #ec4899;">
-                        Mention Birthday Member ({mention})
-                    </label>
-                    <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1; cursor: pointer;">
-                        <input type="checkbox" id="birthdayPingEveryoneToggle" style="accent-color: #ec4899;">
-                        Ping @everyone with Wish
-                    </label>
+                <!-- Mentions & Pings with Modern Switches -->
+                <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-top: 16px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label class="switch">
+                            <input type="checkbox" id="birthdayMentionUserToggle" checked>
+                            <span class="slider"></span>
+                        </label>
+                        <span style="font-size: 13px; color: #cbd5e1; font-weight: 500;">Mention Birthday Member ({mention})</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label class="switch">
+                            <input type="checkbox" id="birthdayPingEveryoneToggle">
+                            <span class="slider"></span>
+                        </label>
+                        <span style="font-size: 13px; color: #cbd5e1; font-weight: 500;">Ping @everyone with Wish</span>
+                    </div>
                 </div>
             </div>
 
@@ -9924,8 +9970,16 @@ Click an inquiry button below to open a confidential support ticket with our tea
                     <textarea class="text-input" id="birthdayCardDescInput" rows="2" style="resize: vertical;">Click the button below to register your birthday! Friday will celebrate and deliver custom wishes on your special day! (Strict Privacy: Only Month &amp; Day saved).</textarea>
                 </div>
                 <div class="form-field-full" style="margin-top: 12px;">
-                    <label class="form-sublabel">Card Banner URL (Optional)</label>
-                    <input type="text" class="text-input" id="birthdayCardBannerInput" placeholder="https://...">
+                    <label class="form-sublabel">Card Banner Image / GIF (Optional)</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" class="text-input" id="birthdayCardBannerInput" placeholder="https://... or upload local file" style="flex: 1;">
+                        <label class="btn-action-secondary" style="margin: 0; padding: 0 12px; height: 38px; display: inline-flex; align-items: center; cursor: pointer; white-space: nowrap;">
+                            📁 Upload GIF
+                            <input type="file" id="birthdayCardBannerFileInput" accept="image/*" style="display: none;">
+                        </label>
+                        <button type="button" class="btn-action-secondary" id="birthdayCardBannerClearBtn" title="Clear Banner" style="height: 38px; padding: 0 10px;">✖</button>
+                    </div>
+                    <span class="field-hint-text">Paste an image link or select a local PNG/GIF file to display on the permanent registration card.</span>
                 </div>
             </div>
         </div>
@@ -9971,6 +10025,51 @@ Click an inquiry button below to open a confidential support ticket with our tea
                                 <div id="previewBirthdayFooter" style="color: #949ba4; font-size: 11px; margin-top: 4px; display: flex; align-items: center; gap: 6px;">
                                     Friday Birthday Engine • Wish them in chat!
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Registration Card Simulator (Form Channel) -->
+            <div class="automation-card" style="margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <div class="composer-section-title" style="color: #ec4899; margin: 0;">📋 Form Channel Card Simulator</div>
+                    <span style="font-size: 11px; color: #94a3b8; background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 4px;">Permanent Form Preview</span>
+                </div>
+
+                <div class="discord-preview-box" style="background: #313338; border-radius: 8px; padding: 14px; border: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; gap: 12px;">
+                        <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 40px; height: 40px; border-radius: 50%;" alt="Friday">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                                <span style="font-weight: 700; color: #fff; font-size: 14px;">Friday</span>
+                                <span style="background: #5865f2; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 4px;">BOT</span>
+                                <span style="color: #949ba4; font-size: 11px;">Pinned in Form Channel</span>
+                            </div>
+
+                            <!-- Registration Embed Simulator -->
+                            <div id="previewBirthdayCardEmbed" style="border-left: 4px solid #ff69b4; background: #2b2d31; border-radius: 4px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;">
+                                <div id="previewBirthdayCardTitle" style="font-weight: 700; color: #fff; font-size: 15px; word-break: break-word;">
+                                    🎂 Member Birthday Registration
+                                </div>
+                                <div id="previewBirthdayCardDesc" style="color: #dbdee1; font-size: 13px; line-height: 1.4; word-break: break-word; white-space: pre-wrap;">
+Click the button below to register your birthday! Friday will celebrate and deliver custom wishes on your special day! (Strict Privacy: Only Month & Day saved).
+                                </div>
+                                <img id="previewBirthdayCardBanner" src="" style="width: 100%; border-radius: 6px; max-height: 200px; object-fit: cover; display: none;" alt="Card Banner">
+                                <div style="color: #949ba4; font-size: 11px; margin-top: 4px;">
+                                    Friday Birthday Engine • Ephemeral &amp; Private Submission
+                                </div>
+                            </div>
+
+                            <!-- Interactive Buttons Preview -->
+                            <div style="display: flex; gap: 8px; margin-top: 10px;">
+                                <button type="button" style="background: #248046; color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                                    🎂 Register Birthday
+                                </button>
+                                <button type="button" style="background: #4e5058; color: #fff; border: none; border-radius: 4px; padding: 7px 14px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                                    🗑 Remove Birthday
+                                </button>
                             </div>
                         </div>
                     </div>

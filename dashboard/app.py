@@ -1243,6 +1243,63 @@ def broadcast_announcement(gid):
     except Exception:
         color_int = 0x2dd4bf
 
+    # Check if this broadcast is scheduled for a future time
+    scheduled_time = data.get("scheduled_time")
+    if scheduled_time:
+        try:
+            if "T" in str(scheduled_time):
+                sched_dt = datetime.datetime.fromisoformat(str(scheduled_time))
+            else:
+                sched_dt = datetime.datetime.strptime(str(scheduled_time), "%Y-%m-%d %H:%M")
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Invalid scheduled date/time format: {e}"}), 400
+
+        tz_name = db.birthdays_config.get(gid_str, {}).get("timezone", "Asia/Kolkata")
+        try:
+            loc_tz = pytz.timezone(tz_name)
+        except Exception:
+            loc_tz = pytz.timezone("Asia/Kolkata")
+
+        if sched_dt.tzinfo is None:
+            sched_dt = loc_tz.localize(sched_dt)
+        sched_utc = sched_dt.astimezone(datetime.timezone.utc)
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+        if sched_utc <= now_utc + datetime.timedelta(seconds=15):
+            return jsonify({"success": False, "error": "Scheduled time must be in the future! Please pick a future date and time."}), 400
+
+        item_id = uuid.uuid4().hex[:10]
+        scheduled_item = {
+            "id": item_id,
+            "guild_id": gid_str,
+            "channel_id": str(channel_id),
+            "title": title,
+            "content": content,
+            "ping": ping,
+            "color": color_hex,
+            "avatar_mode": avatar_mode,
+            "footer": footer_text,
+            "format": ann_format,
+            "format_mode": ann_format,
+            "scheduled_ts": sched_utc.timestamp(),
+            "scheduled_iso": sched_utc.isoformat(),
+            "created_at": now_utc.isoformat(),
+            "status": "pending",
+            "author_name": "Dashboard Admin"
+        }
+        queue = db.scheduled_announcements.setdefault(gid_str, [])
+        queue.append(scheduled_item)
+        db.save_data()
+
+        display_time = sched_dt.strftime("%b %d, %Y at %I:%M %p")
+        return jsonify({
+            "success": True,
+            "scheduled": True,
+            "message": f"Announcement successfully scheduled for {display_time} ({tz_name})!",
+            "scheduled_time": display_time,
+            "item": scheduled_item
+        })
+
     async def do_broadcast():
         guild = bot_instance.get_guild(int(gid))
         if not guild:
@@ -1317,6 +1374,48 @@ def broadcast_announcement(gid):
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+@app.route('/api/guild/<gid>/announcements/scheduled')
+def get_scheduled_announcements(gid):
+    gid_str = str(gid)
+    queue = db.scheduled_announcements.get(gid_str, [])
+    if not isinstance(queue, list):
+        queue = []
+
+    result = []
+    for item in queue:
+        entry = dict(item)
+        ch_name = item.get("channel_id")
+        if bot_instance:
+            try:
+                g = bot_instance.get_guild(int(gid_str))
+                if g:
+                    ch = g.get_channel(int(item.get("channel_id", 0)))
+                    if ch:
+                        ch_name = ch.name
+            except Exception:
+                pass
+        entry["channel_name"] = ch_name
+        result.append(entry)
+
+    result.sort(key=lambda x: x.get("scheduled_ts", 0))
+    return jsonify({"success": True, "scheduled": result})
+
+@app.route('/api/guild/<gid>/announcements/scheduled/<ann_id>/cancel', methods=['POST'])
+def cancel_scheduled_announcement(gid, ann_id):
+    gid_str = str(gid)
+    queue = db.scheduled_announcements.get(gid_str, [])
+    if not isinstance(queue, list):
+        return jsonify({"success": False, "error": "Queue not found."}), 404
+
+    initial_len = len(queue)
+    queue = [x for x in queue if str(x.get("id")) != str(ann_id)]
+    if len(queue) == initial_len:
+        return jsonify({"success": False, "error": "Scheduled announcement not found."}), 404
+
+    db.scheduled_announcements[gid_str] = queue
+    db.save_data()
+    return jsonify({"success": True, "message": "Scheduled announcement cancelled and removed from queue."})
 
 # ───────────────────── API: Tickets System ─────────────────────
 
@@ -3600,8 +3699,10 @@ def get_guild_birthdays(gid):
 
     return jsonify({
         "success": True,
+        "status": "success",
         "config": cfg,
         "birthdays": birthdays_list,
+        "members": birthdays_list,
         "restricted": restricted_list
     })
 
@@ -3633,11 +3734,12 @@ def update_birthday_config(gid):
     return jsonify({"success": True, "message": "Birthday settings saved successfully.", "config": cfg})
 
 @app.route('/api/guild/<gid>/birthdays/upload-banner', methods=['POST'])
+@app.route('/api/guild/<gid>/birthdays/upload-card-banner', methods=['POST'])
 def upload_birthday_banner(gid):
     try:
-        if 'banner_file' not in flask_request.files:
-            return jsonify({"success": False, "error": "No file uploaded."}), 400
-        file = flask_request.files['banner_file']
+        file = flask_request.files.get('banner_file') or flask_request.files.get('banner') or flask_request.files.get('file')
+        if not file or not file.filename:
+            return jsonify({"success": False, "status": "error", "error": "No file uploaded."}), 400
         if not file or not file.filename:
             return jsonify({"success": False, "error": "Empty filename."}), 400
 
@@ -3653,7 +3755,9 @@ def upload_birthday_banner(gid):
         rel_url = f"/static/uploads/birthday_banners/{safe_filename}"
         return jsonify({
             "success": True,
+            "status": "success",
             "url": rel_url,
+            "banner_url": rel_url,
             "filename": safe_filename
         })
     except Exception as e:

@@ -2139,6 +2139,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     setupGiveawayEvents();
     setupBirthdayEvents();
+    setupAnnouncementScheduling();
 
 
 
@@ -11968,6 +11969,7 @@ async function loadDataForActiveTab() {
 
     else if (activeTab === 'giveawaysSection') await loadGiveawaysData();
     else if (activeTab === 'birthdaysSection') await loadBirthdayData();
+    else if (activeTab === 'announcementsSection') await loadScheduledAnnouncements();
 
 
 
@@ -67435,73 +67437,108 @@ window.birthdayCurrentMonthFilter = 'all';
 const BIRTHDAY_MONTH_NAMES = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const BIRTHDAY_FULL_MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-function populateBirthdaySelects() {
+async function populateBirthdaySelects(selectedFormChan, selectedWishChan, selectedRole) {
     const formChan = document.getElementById('birthdayFormChannelSelect');
     const wishChan = document.getElementById('birthdayWishChannelSelect');
     const roleSel = document.getElementById('birthdayRoleSelect');
 
-    const curForm = formChan ? formChan.value : '';
-    const curWish = wishChan ? wishChan.value : '';
-    const curRole = roleSel ? roleSel.value : '';
+    const curForm = selectedFormChan !== undefined ? selectedFormChan : (formChan ? formChan.value : '');
+    const curWish = selectedWishChan !== undefined ? selectedWishChan : (wishChan ? wishChan.value : '');
+    const curRole = selectedRole !== undefined ? selectedRole : (roleSel ? roleSel.value : '');
 
-    if (formChan && typeof currentGuildChannels !== 'undefined' && Array.isArray(currentGuildChannels)) {
+    // Ensure channels are loaded from API if empty
+    if (!currentGuildChannels || currentGuildChannels.length === 0) {
+        if (currentGuildId) {
+            try {
+                const cRes = await fetch(`/api/guild/${currentGuildId}/channels?t=${Date.now()}`);
+                if (cRes.ok) currentGuildChannels = await cRes.json();
+            } catch (e) {
+                console.error('Failed to load guild channels:', e);
+            }
+        }
+    }
+
+    // Ensure roles are loaded from API if empty
+    if (!currentGuildRoles || currentGuildRoles.length === 0) {
+        if (currentGuildId) {
+            try {
+                const rRes = await fetch(`/api/guild/${currentGuildId}/roles?t=${Date.now()}`);
+                if (rRes.ok) currentGuildRoles = await rRes.json();
+            } catch (e) {
+                console.error('Failed to load guild roles:', e);
+            }
+        }
+    }
+
+    if (formChan && typeof populateChannelDropdown === 'function' && Array.isArray(currentGuildChannels) && currentGuildChannels.length) {
+        populateChannelDropdown(formChan, currentGuildChannels, curForm, 'Select channel for registration card...');
+    } else if (formChan && Array.isArray(currentGuildChannels)) {
         let opts = '<option value="">Select channel for registration card...</option>';
         currentGuildChannels.forEach(c => {
-            opts += `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`;
+            const isSel = String(c.id) === String(curForm) ? ' selected' : '';
+            opts += `<option value="${c.id}"${isSel}># ${escapeHtml(c.name)}</option>`;
         });
         formChan.innerHTML = opts;
-        if (curForm) formChan.value = curForm;
     }
 
-    if (wishChan && typeof currentGuildChannels !== 'undefined' && Array.isArray(currentGuildChannels)) {
+    if (wishChan && typeof populateChannelDropdown === 'function' && Array.isArray(currentGuildChannels) && currentGuildChannels.length) {
+        populateChannelDropdown(wishChan, currentGuildChannels, curWish, 'Select channel for birthday wishes...');
+    } else if (wishChan && Array.isArray(currentGuildChannels)) {
         let opts = '<option value="">Select channel for birthday wishes...</option>';
         currentGuildChannels.forEach(c => {
-            opts += `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`;
+            const isSel = String(c.id) === String(curWish) ? ' selected' : '';
+            opts += `<option value="${c.id}"${isSel}># ${escapeHtml(c.name)}</option>`;
         });
         wishChan.innerHTML = opts;
-        if (curWish) wishChan.value = curWish;
     }
 
-    if (roleSel && typeof currentGuildRoles !== 'undefined' && Array.isArray(currentGuildRoles)) {
+    if (roleSel && Array.isArray(currentGuildRoles)) {
         let opts = '<option value="">No automatic role</option>';
         currentGuildRoles.forEach(r => {
             if (r.name !== '@everyone') {
-                opts += `<option value="${r.id}">${escapeHtml(r.name)}</option>`;
+                const isSel = String(r.id) === String(curRole) ? ' selected' : '';
+                opts += `<option value="${r.id}"${isSel}>${escapeHtml(r.name)}</option>`;
             }
         });
         roleSel.innerHTML = opts;
-        if (curRole) roleSel.value = curRole;
     }
 }
 
 async function loadBirthdayData() {
     if (!currentGuildId) return;
     try {
-        const res = await fetch('/api/guild/' + currentGuildId + '/birthdays?t=' + Date.now());
+        const res = await fetch(`/api/guild/${currentGuildId}/birthdays?t=${Date.now()}`);
         const data = await res.json();
-        if (!data || data.status !== 'success') {
+        if (!data || (!data.success && data.status !== 'success')) {
             console.error('Failed to load birthday data:', data);
             return;
         }
 
         window.birthdayData.config = data.config || {};
-        window.birthdayData.members = data.members || {};
+        
+        // Handle members array or map
+        if (Array.isArray(data.birthdays)) {
+            const map = {};
+            data.birthdays.forEach(m => { map[String(m.user_id)] = m; });
+            window.birthdayData.members = map;
+        } else if (Array.isArray(data.members)) {
+            const map = {};
+            data.members.forEach(m => { map[String(m.user_id)] = m; });
+            window.birthdayData.members = map;
+        } else {
+            window.birthdayData.members = data.members || data.birthdays || {};
+        }
+
         window.birthdayData.restricted = data.restricted || [];
 
-        populateBirthdaySelects();
-
         const cfg = window.birthdayData.config;
+
+        // 1. Populate channels and roles with exact selected values
+        await populateBirthdaySelects(cfg.form_channel_id, cfg.wish_channel_id, cfg.role_id);
+
+        // 2. Populate form fields
         const masterToggle = document.getElementById('birthdayMasterToggle');
         if (masterToggle) masterToggle.checked = !!cfg.enabled;
-
-        const formChan = document.getElementById('birthdayFormChannelSelect');
-        if (formChan && cfg.form_channel_id) formChan.value = cfg.form_channel_id;
-
-        const wishChan = document.getElementById('birthdayWishChannelSelect');
-        if (wishChan && cfg.wish_channel_id) wishChan.value = cfg.wish_channel_id;
-
-        const roleSel = document.getElementById('birthdayRoleSelect');
-        if (roleSel && cfg.role_id) roleSel.value = cfg.role_id;
 
         const wishTime = document.getElementById('birthdayWishTimeInput');
         if (wishTime) wishTime.value = cfg.wish_time || '00:00';
@@ -67516,34 +67553,34 @@ async function loadBirthdayData() {
         if (pingEveryToggle) pingEveryToggle.checked = !!cfg.ping_everyone;
 
         const wishMsg = document.getElementById('birthdayWishMsgInput');
-        if (wishMsg) wishMsg.value = cfg.wish_message || '🎉 Wishing you a wonderful birthday {mention}! Have a fantastic day ahead! 🎂✨';
+        if (wishMsg) wishMsg.value = cfg.wish_message || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉";
 
         const embedTitle = document.getElementById('birthdayEmbedTitleInput');
-        if (embedTitle) embedTitle.value = cfg.embed_title || '🎂 HAPPY BIRTHDAY {user}! 🎉';
+        if (embedTitle) embedTitle.value = cfg.embed_title || '🎉 HAPPY BIRTHDAY, {user}! 🎂';
 
         const embedDesc = document.getElementById('birthdayEmbedDescInput');
-        if (embedDesc) embedDesc.value = cfg.embed_desc || 'Today is a special day! The whole server joins together to celebrate your birthday! May your year be filled with happiness, health, and success! 🍰🎁';
+        if (embedDesc) embedDesc.value = cfg.embed_description || cfg.embed_desc || 'Wishing a very Happy Birthday to {mention}! May your special day be filled with happiness, success, and endless joy! 🎈✨';
 
         const embedFooter = document.getElementById('birthdayEmbedFooterInput');
-        if (embedFooter) embedFooter.value = cfg.embed_footer || 'Friday Birthday Celebration System';
+        if (embedFooter) embedFooter.value = cfg.embed_footer || 'Friday Birthday Engine • Wish them in chat!';
 
-        const embedColor = cfg.embed_color || '#f43f5e';
+        const embedColor = cfg.embed_color || '#ff69b4';
         const colorInput = document.getElementById('birthdayEmbedColorInput');
         const colorPicker = document.getElementById('birthdayEmbedColorPicker');
         if (colorInput) colorInput.value = embedColor;
         if (colorPicker) colorPicker.value = embedColor;
 
-        const bannerInput = document.getElementById('birthdayBannerUrlInput');
-        if (bannerInput) bannerInput.value = cfg.banner_url || '';
+        const bannerInput = document.getElementById('birthdayEmbedImageInput');
+        if (bannerInput) bannerInput.value = cfg.embed_image || cfg.banner_url || '';
 
-        const formTitle = document.getElementById('birthdayFormTitleInput');
-        if (formTitle) formTitle.value = cfg.form_title || '🎂 SERVER BIRTHDAY REGISTRY';
+        const cardTitle = document.getElementById('birthdayCardTitleInput');
+        if (cardTitle) cardTitle.value = cfg.form_card_title || '🎂 Member Birthday Registration';
 
-        const formDesc = document.getElementById('birthdayFormDescInput');
-        if (formDesc) formDesc.value = cfg.form_desc || 'Register your birthday (Month & Day only) to receive automated wishes and a special birthday role on your big day!\n\nClick the button below to register or remove your birthday.';
+        const cardDesc = document.getElementById('birthdayCardDescInput');
+        if (cardDesc) cardDesc.value = cfg.form_card_desc || 'Click the button below to register your birthday! Friday will celebrate and deliver custom wishes on your special day! (Strict Privacy: Only Month & Day saved).';
 
-        const formBtnText = document.getElementById('birthdayFormButtonTextInput');
-        if (formBtnText) formBtnText.value = cfg.form_button_text || '🎂 Register Birthday';
+        const cardBanner = document.getElementById('birthdayCardBannerInput');
+        if (cardBanner) cardBanner.value = cfg.form_card_banner || '';
 
         if (typeof syncAllRichEmojiEditors === 'function') {
             syncAllRichEmojiEditors();
@@ -67559,7 +67596,7 @@ async function loadBirthdayData() {
 
 function renderBirthdayMembers() {
     const listEl = document.getElementById('birthdayMembersList');
-    const badgeEl = document.getElementById('birthdayTotalCountBadge');
+    const badgeEl = document.getElementById('birthdayCountBadge') || document.getElementById('birthdayTotalCountBadge');
     if (!listEl) return;
 
     const membersMap = window.birthdayData.members || {};
@@ -67681,24 +67718,24 @@ function renderBirthdayRestricted() {
 }
 
 function updateBirthdayPreview() {
+    // ── 1. Birthday Wish Simulator ──
     const mentionUser = document.getElementById('birthdayMentionUserToggle')?.checked !== false;
     const pingEveryone = document.getElementById('birthdayPingEveryoneToggle')?.checked || false;
     const rawWishMsg = document.getElementById('birthdayWishMsgInput')?.value || '';
     const rawTitle = document.getElementById('birthdayEmbedTitleInput')?.value || '';
     const rawDesc = document.getElementById('birthdayEmbedDescInput')?.value || '';
     const rawFooter = document.getElementById('birthdayEmbedFooterInput')?.value || '';
-    const embedColor = document.getElementById('birthdayEmbedColorInput')?.value || '#f43f5e';
-    const bannerUrl = (document.getElementById('birthdayBannerUrlInput')?.value || '').trim();
+    const embedColor = document.getElementById('birthdayEmbedColorInput')?.value || '#ff69b4';
+    const bannerUrl = (document.getElementById('birthdayEmbedImageInput')?.value || '').trim();
 
-    // 1. Header message preview
-    const headerEl = document.getElementById('birthdaySimHeader');
+    const headerEl = document.getElementById('previewBirthdayWishHeader');
     if (headerEl) {
         let parts = [];
         if (pingEveryone) parts.push('<span class="mention">@everyone</span>');
-        if (mentionUser) parts.push('<span class="mention">@Mayuresh.exe</span>');
+        if (mentionUser) parts.push('<span class="mention">@Member</span>');
         let processedMsg = rawWishMsg
-            .replace(/\{mention\}/g, '<span class="mention">@Mayuresh.exe</span>')
-            .replace(/\{user\}/g, 'Mayuresh.exe');
+            .replace(/\{mention\}/g, '<span class="mention">@Member</span>')
+            .replace(/\{user\}/g, 'Member');
         if (typeof renderDiscordMarkdown === 'function') {
             processedMsg = renderDiscordMarkdown(processedMsg);
         }
@@ -67706,40 +67743,59 @@ function updateBirthdayPreview() {
         headerEl.innerHTML = parts.join(' ');
     }
 
-    // 2. Embed border color
-    const cardEl = document.getElementById('birthdaySimCard');
+    const cardEl = document.getElementById('previewBirthdayEmbed');
     if (cardEl) {
         cardEl.style.borderLeftColor = embedColor;
     }
 
-    // 3. Title preview
-    const titleEl = document.getElementById('birthdaySimTitle');
+    const titleEl = document.getElementById('previewBirthdayEmbedTitle');
     if (titleEl) {
-        let t = rawTitle.replace(/\{user\}/g, 'Mayuresh.exe').replace(/\{mention\}/g, '@Mayuresh.exe');
+        let t = rawTitle.replace(/\{user\}/g, 'Member').replace(/\{mention\}/g, '@Member');
         titleEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(t) : escapeHtml(t);
     }
 
-    // 4. Description preview
-    const descEl = document.getElementById('birthdaySimDesc');
+    const descEl = document.getElementById('previewBirthdayEmbedDesc');
     if (descEl) {
-        let d = rawDesc.replace(/\{user\}/g, 'Mayuresh.exe').replace(/\{mention\}/g, '@Mayuresh.exe');
+        let d = rawDesc.replace(/\{user\}/g, 'Member').replace(/\{mention\}/g, '@Member');
         descEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(d) : escapeHtml(d);
     }
 
-    // 5. Footer preview
-    const footerEl = document.getElementById('birthdaySimFooterText');
+    const footerEl = document.getElementById('previewBirthdayFooter');
     if (footerEl) {
-        footerEl.textContent = rawFooter;
+        footerEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(rawFooter) : escapeHtml(rawFooter);
     }
 
-    // 6. Banner preview
-    const bannerEl = document.getElementById('birthdaySimBanner');
+    const bannerEl = document.getElementById('previewBirthdayBanner');
     if (bannerEl) {
         if (bannerUrl) {
             bannerEl.src = bannerUrl;
             bannerEl.style.display = 'block';
         } else {
             bannerEl.style.display = 'none';
+        }
+    }
+
+    // ── 2. Registration Card Simulator (Form Channel) ──
+    const cardTitleEl = document.getElementById('previewBirthdayCardTitle');
+    const rawCardTitle = document.getElementById('birthdayCardTitleInput')?.value || '🎂 Member Birthday Registration';
+    if (cardTitleEl) {
+        cardTitleEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(rawCardTitle) : escapeHtml(rawCardTitle);
+    }
+
+    const cardDescEl = document.getElementById('previewBirthdayCardDesc');
+    const rawCardDesc = document.getElementById('birthdayCardDescInput')?.value || '';
+    if (cardDescEl) {
+        cardDescEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(rawCardDesc) : escapeHtml(rawCardDesc);
+    }
+
+    const cardBannerEl = document.getElementById('previewBirthdayCardBanner');
+    const cardBannerUrl = (document.getElementById('birthdayCardBannerInput')?.value || '').trim();
+    if (cardBannerEl) {
+        if (cardBannerUrl) {
+            cardBannerEl.src = cardBannerUrl;
+            cardBannerEl.style.display = 'block';
+        } else {
+            cardBannerEl.style.display = 'none';
         }
     }
 }
@@ -67755,22 +67811,22 @@ async function saveBirthdaySettings() {
 
     const payload = {
         enabled: document.getElementById('birthdayMasterToggle')?.checked || false,
-        form_channel_id: document.getElementById('birthdayFormChannelSelect')?.value || null,
-        wish_channel_id: document.getElementById('birthdayWishChannelSelect')?.value || null,
-        role_id: document.getElementById('birthdayRoleSelect')?.value || null,
+        form_channel_id: document.getElementById('birthdayFormChannelSelect')?.value || '',
+        wish_channel_id: document.getElementById('birthdayWishChannelSelect')?.value || '',
+        role_id: document.getElementById('birthdayRoleSelect')?.value || '',
         wish_time: document.getElementById('birthdayWishTimeInput')?.value || '00:00',
         timezone: document.getElementById('birthdayTimezoneSelect')?.value || 'Asia/Kolkata',
         mention_user: document.getElementById('birthdayMentionUserToggle')?.checked !== false,
         ping_everyone: document.getElementById('birthdayPingEveryoneToggle')?.checked || false,
         wish_message: document.getElementById('birthdayWishMsgInput')?.value || '',
         embed_title: document.getElementById('birthdayEmbedTitleInput')?.value || '',
-        embed_desc: document.getElementById('birthdayEmbedDescInput')?.value || '',
+        embed_description: document.getElementById('birthdayEmbedDescInput')?.value || '',
         embed_footer: document.getElementById('birthdayEmbedFooterInput')?.value || '',
-        embed_color: document.getElementById('birthdayEmbedColorInput')?.value || '#f43f5e',
-        banner_url: document.getElementById('birthdayBannerUrlInput')?.value || '',
-        form_title: document.getElementById('birthdayFormTitleInput')?.value || '',
-        form_desc: document.getElementById('birthdayFormDescInput')?.value || '',
-        form_button_text: document.getElementById('birthdayFormButtonTextInput')?.value || ''
+        embed_color: document.getElementById('birthdayEmbedColorInput')?.value || '#ff69b4',
+        embed_image: document.getElementById('birthdayEmbedImageInput')?.value || '',
+        form_card_title: document.getElementById('birthdayCardTitleInput')?.value || '',
+        form_card_desc: document.getElementById('birthdayCardDescInput')?.value || '',
+        form_card_banner: document.getElementById('birthdayCardBannerInput')?.value || ''
     };
 
     try {
@@ -67780,11 +67836,11 @@ async function saveBirthdaySettings() {
             body: JSON.stringify(payload)
         });
         const data = await res.json();
-        if (data && data.status === 'success') {
+        if (data && (data.success || data.status === 'success')) {
             showNotification('Birthday Studio settings saved successfully!', 'success');
             window.birthdayData.config = data.config || payload;
         } else {
-            showNotification(data.message || 'Failed to save birthday settings.', 'error');
+            showNotification(data.error || data.message || 'Failed to save birthday settings.', 'error');
         }
     } catch (err) {
         console.error('Error saving birthday config:', err);
@@ -67812,10 +67868,10 @@ async function deployBirthdayForm() {
             headers: { 'Content-Type': 'application/json' }
         });
         const data = await res.json();
-        if (data && data.status === 'success') {
+        if (data && (data.success || data.status === 'success')) {
             showNotification(data.message || 'Birthday registration card posted successfully!', 'success');
         } else {
-            showNotification(data.message || 'Failed to deploy registration card.', 'error');
+            showNotification(data.error || data.message || 'Failed to deploy registration card.', 'error');
         }
     } catch (err) {
         console.error('Error deploying birthday form:', err);
@@ -67843,10 +67899,10 @@ async function testBirthdayWish() {
             headers: { 'Content-Type': 'application/json' }
         });
         const data = await res.json();
-        if (data && data.status === 'success') {
+        if (data && (data.success || data.status === 'success')) {
             showNotification(data.message || 'Test birthday wish sent successfully!', 'success');
         } else {
-            showNotification(data.message || 'Failed to send test birthday wish.', 'error');
+            showNotification(data.error || data.message || 'Failed to send test birthday wish.', 'error');
         }
     } catch (err) {
         console.error('Error testing birthday wish:', err);
@@ -67887,7 +67943,7 @@ async function saveBirthdayModal() {
             body: JSON.stringify({ user_id: userId, month: month, day: day })
         });
         const data = await res.json();
-        if (data && data.status === 'success') {
+        if (data && (data.success || data.status === 'success')) {
             showNotification('Member birthday updated successfully!', 'success');
             if (window.birthdayData.members[userId]) {
                 window.birthdayData.members[userId].month = month;
@@ -67897,7 +67953,7 @@ async function saveBirthdayModal() {
             const modal = document.getElementById('birthdayEditModal');
             if (modal) modal.style.display = 'none';
         } else {
-            showNotification(data.message || 'Failed to update member birthday.', 'error');
+            showNotification(data.error || data.message || 'Failed to update member birthday.', 'error');
         }
     } catch (err) {
         console.error('Error editing member birthday:', err);
@@ -67918,7 +67974,7 @@ async function deleteBirthdayMember(userId, userName) {
             body: JSON.stringify({ user_id: userId })
         });
         const data = await res.json();
-        if (data && data.status === 'success') {
+        if (data && (data.success || data.status === 'success')) {
             showNotification('Member birthday removed and locked from self-registration.', 'success');
             delete window.birthdayData.members[userId];
             if (!window.birthdayData.restricted.includes(userId)) {
@@ -67927,7 +67983,7 @@ async function deleteBirthdayMember(userId, userName) {
             renderBirthdayMembers();
             renderBirthdayRestricted();
         } else {
-            showNotification(data.message || 'Failed to remove member birthday.', 'error');
+            showNotification(data.error || data.message || 'Failed to remove member birthday.', 'error');
         }
     } catch (err) {
         console.error('Error deleting member birthday:', err);
@@ -67944,12 +68000,12 @@ async function unlockBirthdayMember(userId) {
             body: JSON.stringify({ user_id: userId })
         });
         const data = await res.json();
-        if (data && data.status === 'success') {
+        if (data && (data.success || data.status === 'success')) {
             showNotification('Member unlocked! They can now register their birthday again.', 'success');
             window.birthdayData.restricted = window.birthdayData.restricted.filter(id => id !== userId);
             renderBirthdayRestricted();
         } else {
-            showNotification(data.message || 'Failed to unlock member.', 'error');
+            showNotification(data.error || data.message || 'Failed to unlock member.', 'error');
         }
     } catch (err) {
         console.error('Error unlocking member:', err);
@@ -67957,64 +68013,24 @@ async function unlockBirthdayMember(userId) {
     }
 }
 
-function setupBirthdayBannerDropzone() {
-    const inputEl = document.getElementById('birthdayBannerUrlInput');
-    const fileInputEl = document.getElementById('birthdayBannerFileInput');
-    const uploadBtn = document.getElementById('birthdayBannerUploadBtn');
-    const clearBtn = document.getElementById('birthdayBannerClearBtn');
-    const dropzone = document.getElementById('birthdayBannerDropzone');
-
-    if (!inputEl || !fileInputEl || !uploadBtn || !clearBtn || !dropzone) return;
-
-    uploadBtn.onclick = () => fileInputEl.click();
-    dropzone.onclick = (e) => {
-        if (e.target !== clearBtn && !clearBtn.contains(e.target)) {
-            fileInputEl.click();
-        }
-    };
-
-    dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = '#ec4899'; };
-    dropzone.ondragleave = () => { dropzone.style.borderColor = 'rgba(255,255,255,0.15)'; };
-    dropzone.ondrop = (e) => {
-        e.preventDefault();
-        dropzone.style.borderColor = 'rgba(255,255,255,0.15)';
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            handleBirthdayBannerUpload(e.dataTransfer.files[0]);
-        }
-    };
-
-    fileInputEl.onchange = () => {
-        if (fileInputEl.files && fileInputEl.files[0]) {
-            handleBirthdayBannerUpload(fileInputEl.files[0]);
-        }
-    };
-
-    clearBtn.onclick = (e) => {
-        e.stopPropagation();
-        inputEl.value = '';
-        updateBirthdayPreview();
-        showNotification('Birthday banner image removed.', 'info');
-    };
-}
-
-async function handleBirthdayBannerUpload(file) {
-    if (!currentGuildId) return;
+async function handleBirthdayUploadGeneric(file, targetInputId) {
+    if (!currentGuildId || !file) return;
     const formData = new FormData();
-    formData.append('banner', file);
+    formData.append('banner_file', file);
     try {
-        showNotification('Uploading birthday banner...', 'info');
+        showNotification('Uploading image/GIF banner...', 'info');
         const res = await fetch(`/api/guild/${currentGuildId}/birthdays/upload-banner`, {
             method: 'POST',
             body: formData
         });
         const data = await res.json();
-        if (data && data.status === 'success') {
-            const inputEl = document.getElementById('birthdayBannerUrlInput');
-            if (inputEl) inputEl.value = data.banner_url;
+        if (data && (data.success || data.status === 'success')) {
+            const inputEl = document.getElementById(targetInputId);
+            if (inputEl) inputEl.value = data.url || data.banner_url;
             updateBirthdayPreview();
-            showNotification('Birthday banner uploaded successfully!', 'success');
+            showNotification('Banner uploaded successfully!', 'success');
         } else {
-            showNotification(data.message || 'Failed to upload banner.', 'error');
+            showNotification(data.error || data.message || 'Failed to upload banner.', 'error');
         }
     } catch (err) {
         console.error('Banner upload error:', err);
@@ -68023,14 +68039,6 @@ async function handleBirthdayBannerUpload(file) {
 }
 
 function setupBirthdayEvents() {
-    const masterSlider = document.getElementById('birthdayToggleSlider');
-    const masterToggle = document.getElementById('birthdayMasterToggle');
-    if (masterSlider && masterToggle) {
-        masterSlider.onclick = () => {
-            masterToggle.checked = !masterToggle.checked;
-        };
-    }
-
     const saveBtn = document.getElementById('saveBirthdayConfigBtn');
     if (saveBtn) saveBtn.onclick = saveBirthdaySettings;
 
@@ -68040,6 +68048,7 @@ function setupBirthdayEvents() {
     const testBtn = document.getElementById('testBirthdayWishBtn');
     if (testBtn) testBtn.onclick = testBirthdayWish;
 
+    // Month filter tabs
     document.querySelectorAll('.birthday-month-tab').forEach(tab => {
         tab.onclick = () => {
             document.querySelectorAll('.birthday-month-tab').forEach(t => t.classList.remove('active'));
@@ -68071,12 +68080,16 @@ function setupBirthdayEvents() {
         };
     }
 
+    // Live preview sync for Wish inputs
     const previewInputs = [
         'birthdayWishMsgInput',
         'birthdayEmbedTitleInput',
         'birthdayEmbedDescInput',
         'birthdayEmbedFooterInput',
-        'birthdayBannerUrlInput'
+        'birthdayEmbedImageInput',
+        'birthdayCardTitleInput',
+        'birthdayCardDescInput',
+        'birthdayCardBannerInput'
     ];
     previewInputs.forEach(id => {
         const el = document.getElementById(id);
@@ -68096,17 +68109,46 @@ function setupBirthdayEvents() {
         }
     });
 
-    setupBirthdayBannerDropzone();
+    // Wish Banner local file upload
+    const wishFileEl = document.getElementById('birthdayBannerFileInput');
+    if (wishFileEl) {
+        wishFileEl.onchange = () => {
+            if (wishFileEl.files && wishFileEl.files[0]) {
+                handleBirthdayUploadGeneric(wishFileEl.files[0], 'birthdayEmbedImageInput');
+            }
+        };
+    }
 
+    // Card Banner local file upload
+    const cardFileEl = document.getElementById('birthdayCardBannerFileInput');
+    if (cardFileEl) {
+        cardFileEl.onchange = () => {
+            if (cardFileEl.files && cardFileEl.files[0]) {
+                handleBirthdayUploadGeneric(cardFileEl.files[0], 'birthdayCardBannerInput');
+            }
+        };
+    }
+
+    const cardClearBtn = document.getElementById('birthdayCardBannerClearBtn');
+    if (cardClearBtn) {
+        cardClearBtn.onclick = () => {
+            const input = document.getElementById('birthdayCardBannerInput');
+            if (input) input.value = '';
+            updateBirthdayPreview();
+        };
+    }
+
+    // Attach rich emoji editors
     if (typeof attachRichEmojiEditor === 'function') {
         attachRichEmojiEditor('birthdayWishMsgInput', true);
         attachRichEmojiEditor('birthdayEmbedTitleInput', true);
         attachRichEmojiEditor('birthdayEmbedDescInput', true);
         attachRichEmojiEditor('birthdayEmbedFooterInput', true);
-        attachRichEmojiEditor('birthdayFormTitleInput', true);
-        attachRichEmojiEditor('birthdayFormDescInput', true);
+        attachRichEmojiEditor('birthdayCardTitleInput', true);
+        attachRichEmojiEditor('birthdayCardDescInput', true);
     }
 
+    // Modal buttons
     const closeMBtn = document.getElementById('closeBirthdayModalBtn');
     if (closeMBtn) {
         closeMBtn.onclick = () => {
@@ -68116,4 +68158,114 @@ function setupBirthdayEvents() {
     }
     const saveMBtn = document.getElementById('saveBirthdayModalBtn');
     if (saveMBtn) saveMBtn.onclick = saveBirthdayModal;
+}
+
+// ==========================================
+// ANNOUNCEMENTS: SCHEDULING & QUEUE
+// ==========================================
+
+function setupAnnouncementScheduling() {
+    const scheduleToggle = document.getElementById('annScheduleToggle');
+    const scheduleOptionsWrap = document.getElementById('annScheduleOptionsWrap');
+    const broadcastBtnText = document.getElementById('annBroadcastBtnText');
+
+    if (scheduleToggle) {
+        scheduleToggle.onchange = () => {
+            if (scheduleToggle.checked) {
+                if (scheduleOptionsWrap) scheduleOptionsWrap.style.display = 'block';
+                if (broadcastBtnText) broadcastBtnText.textContent = 'Schedule Announcement';
+                // Set default datetime to 1 hour from now if empty
+                const dtInput = document.getElementById('annScheduleDateTimeInput');
+                if (dtInput && !dtInput.value) {
+                    const d = new Date(Date.now() + 3600 * 1000);
+                    const pad = (n) => String(n).padStart(2, '0');
+                    dtInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                }
+            } else {
+                if (scheduleOptionsWrap) scheduleOptionsWrap.style.display = 'none';
+                if (broadcastBtnText) broadcastBtnText.textContent = 'Broadcast Now';
+            }
+        };
+    }
+
+    const refreshBtn = document.getElementById('refreshScheduledAnnouncementsBtn');
+    if (refreshBtn) {
+        refreshBtn.onclick = loadScheduledAnnouncements;
+    }
+}
+
+async function loadScheduledAnnouncements() {
+    if (!currentGuildId) return;
+    const listEl = document.getElementById('scheduledAnnouncementsList');
+    if (!listEl) return;
+
+    try {
+        const res = await fetch(`/api/guild/${currentGuildId}/announcements/scheduled?t=${Date.now()}`);
+        const data = await res.json();
+        const queue = (data && data.scheduled) || [];
+
+        if (queue.length === 0) {
+            listEl.innerHTML = `
+                <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px;">
+                    No announcements currently scheduled.
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        queue.forEach(item => {
+            const id = escapeHtml(item.id);
+            const title = escapeHtml(item.title || '(No Title)');
+            const snippet = escapeHtml((item.content || '').slice(0, 140)) + (item.content?.length > 140 ? '...' : '');
+            const chName = escapeHtml(item.channel_name || item.channel_id || 'announcements');
+            const schedDate = item.scheduled_ts ? new Date(item.scheduled_ts * 1000).toLocaleString() : item.scheduled_iso;
+            const fmtBadge = item.format === 'embed' ? '<span style="background: rgba(45, 212, 191, 0.15); color: #2dd4bf; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">📦 Embed</span>' : '<span style="background: rgba(255,255,255,0.06); color: #94a3b8; padding: 2px 8px; border-radius: 4px; font-size: 11px;">💬 Normal</span>';
+            const pingBadge = item.ping && item.ping !== 'none' ? `<span style="background: rgba(248, 113, 113, 0.15); color: #f87171; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">@${escapeHtml(item.ping)}</span>` : '';
+
+            html += `
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px; display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 240px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                            <span style="font-weight: 700; color: #fff; font-size: 13.5px;">${title}</span>
+                            ${fmtBadge}
+                            ${pingBadge}
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 6px;">${snippet}</div>
+                        <div style="font-size: 11px; color: #94a3b8; display: flex; align-items: center; gap: 10px;">
+                            <span>📢 Target: <strong>#${chName}</strong></span>
+                            <span>⏰ Scheduled: <strong style="color: #2dd4bf;">${schedDate}</strong></span>
+                            <span>👤 By: ${escapeHtml(item.author_name || 'Staff')}</span>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary" onclick="cancelScheduledAnnouncement('${id}')" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3); height: 32px; padding: 0 12px; font-size: 12px; border-radius: 6px; cursor: pointer;">
+                        ✖ Cancel
+                    </button>
+                </div>
+            `;
+        });
+        listEl.innerHTML = html;
+    } catch (e) {
+        console.error('Failed to load scheduled announcements:', e);
+    }
+}
+
+async function cancelScheduledAnnouncement(annId) {
+    if (!currentGuildId || !annId) return;
+    if (!confirm('Are you sure you want to cancel this scheduled announcement?')) return;
+    try {
+        const res = await fetch(`/api/guild/${currentGuildId}/announcements/scheduled/${annId}/cancel`, {
+            method: 'POST'
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            showNotification('Scheduled announcement cancelled.', 'info');
+            loadScheduledAnnouncements();
+        } else {
+            showNotification(data.error || 'Failed to cancel announcement.', 'error');
+        }
+    } catch (e) {
+        console.error('Error cancelling scheduled announcement:', e);
+        showNotification('Network error cancelling announcement.', 'error');
+    }
 }

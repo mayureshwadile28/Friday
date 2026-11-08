@@ -1,8 +1,12 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import re
 import io
+import datetime
+import pytz
+import uuid
+import aiohttp
 from database import db
 from emoji_utils import replace_plain_emojis
 
@@ -204,6 +208,173 @@ class CategoryChannelDropdown(discord.ui.Select):
 
         embed = self.parent_view.generate_embed()
         await interaction.response.edit_message(embed=embed, view=self.parent_view)
+
+def parse_future_datetime(input_str: str, tz_name: str = "Asia/Kolkata"):
+    """Parse relative time (e.g. in 2 hours, 30 mins) or absolute datetime (YYYY-MM-DD HH:MM). Returns (utc_datetime, error_message)."""
+    if not input_str or not input_str.strip():
+        return None, "Please provide a valid date and time or relative duration."
+
+    clean = input_str.strip().lower()
+
+    # Timezone resolution
+    try:
+        loc_tz = pytz.timezone(tz_name.strip() if tz_name else "Asia/Kolkata")
+    except Exception:
+        loc_tz = pytz.timezone("Asia/Kolkata")
+
+    now_local = datetime.datetime.now(loc_tz)
+
+    # 1. Relative duration checks: "in 15m", "in 2 hours", "30 mins", "1d"
+    rel_match = re.match(r'^(?:in\s+)?(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$', clean)
+    if rel_match:
+        val = int(rel_match.group(1))
+        unit = rel_match.group(2)
+        if unit.startswith('m'):
+            target_local = now_local + datetime.timedelta(minutes=val)
+        elif unit.startswith('h'):
+            target_local = now_local + datetime.timedelta(hours=val)
+        elif unit.startswith('d'):
+            target_local = now_local + datetime.timedelta(days=val)
+        else:
+            target_local = now_local + datetime.timedelta(minutes=val)
+
+        target_utc = target_local.astimezone(datetime.timezone.utc)
+        return target_utc, None
+
+    # 2. Absolute formats
+    date_formats = [
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d %H:%M:%S",
+        "%d-%m-%Y %H:%M",
+        "%d/%m/%Y %H:%M",
+        "%Y/%m/%d %H:%M",
+        "%d.%m.%Y %H:%M",
+        "%b %d %Y %H:%M",
+        "%B %d %Y %H:%M",
+        "%H:%M"
+    ]
+
+    parsed_dt = None
+    for fmt in date_formats:
+        try:
+            parsed_dt = datetime.datetime.strptime(clean, fmt.lower())
+            break
+        except ValueError:
+            pass
+
+    if not parsed_dt:
+        return None, "Unrecognized date format. Please use 'YYYY-MM-DD HH:MM' (e.g. 2026-11-10 18:30) or 'in 2 hours'."
+
+    if fmt == "%H:%M":
+        # Time specified for today, or tomorrow if already past
+        target_local = now_local.replace(hour=parsed_dt.hour, minute=parsed_dt.minute, second=0, microsecond=0)
+        if target_local <= now_local:
+            target_local += datetime.timedelta(days=1)
+    else:
+        target_local = loc_tz.localize(parsed_dt)
+
+    target_utc = target_local.astimezone(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+
+    if target_utc <= now_utc + datetime.timedelta(seconds=15):
+        return None, "The scheduled time is in the past! Please choose a future date and time."
+
+    return target_utc, None
+
+
+class ScheduleAnnouncementModal(discord.ui.Modal, title="🗓️ Schedule Announcement"):
+    datetime_input = discord.ui.TextInput(
+        label="Date & Time (or Relative Duration)",
+        placeholder="e.g. 2026-11-10 18:30  OR  in 2 hours  OR  in 45 mins",
+        required=True,
+        max_length=60
+    )
+    timezone_input = discord.ui.TextInput(
+        label="Timezone (leave empty for Asia/Kolkata)",
+        placeholder="e.g. Asia/Kolkata, UTC, America/New_York",
+        required=False,
+        max_length=40,
+        default="Asia/Kolkata"
+    )
+
+    def __init__(self, parent_view):
+        super().__init__()
+        self.parent_view = parent_view
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if interaction.user != self.parent_view.initiator:
+            await interaction.response.send_message(
+                embed=make_box_embed("Unauthorized", "Only the staff member who initiated this announcement can schedule.", status="warning"),
+                ephemeral=True
+            )
+            return
+
+        target_dt, err = parse_future_datetime(self.datetime_input.value, self.timezone_input.value or "Asia/Kolkata")
+        if err:
+            await interaction.response.send_message(
+                embed=make_box_embed("Invalid Schedule Time", f"{err}", status="error"),
+                ephemeral=True
+            )
+            return
+
+        target = self.parent_view.target_channel
+        if not target:
+            await interaction.response.send_message(
+                embed=make_box_embed("Missing Destination", "Please select an announcement destination channel first.", status="warning"),
+                ephemeral=True
+            )
+            return
+
+        target_ts = target_dt.timestamp()
+        gid = str(interaction.guild.id) if interaction.guild else ""
+
+        # Collect attachments
+        attachment_urls = []
+        for att in self.parent_view.source_msg.attachments:
+            attachment_urls.append({
+                "url": att.url,
+                "filename": att.filename,
+                "content_type": att.content_type
+            })
+
+        item_id = uuid.uuid4().hex[:10]
+        scheduled_item = {
+            "id": item_id,
+            "guild_id": gid,
+            "channel_id": str(target.id),
+            "channel_name": target.name if hasattr(target, "name") else str(target.id),
+            "source_msg_id": str(self.parent_view.source_msg.id),
+            "source_jump_url": self.parent_view.source_msg.jump_url,
+            "author_id": str(self.parent_view.initiator.id),
+            "author_name": self.parent_view.initiator.display_name,
+            "content": self.parent_view.source_msg.content or "",
+            "format_mode": self.parent_view.format_mode,
+            "scheduled_ts": target_ts,
+            "scheduled_iso": target_dt.isoformat(),
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "attachments": attachment_urls
+        }
+
+        queue = db.scheduled_announcements.setdefault(gid, [])
+        queue.append(scheduled_item)
+        db.save_data()
+
+        fmt_desc = "📦 Rich Embed Box" if self.parent_view.format_mode == "embed" else "💬 Normal Message"
+
+        confirm_embed = make_box_embed(
+            "Announcement Scheduled",
+            f"Official announcement successfully scheduled for future delivery!\n\n"
+            f"• **Destination Channel:** {target.mention}\n"
+            f"• **Scheduled Delivery:** <t:{int(target_ts)}:F> (<t:{int(target_ts)}:R>)\n"
+            f"• **Format:** {fmt_desc}\n"
+            f"• **Initiated By:** {self.parent_view.initiator.mention}\n\n"
+            f"Friday will automatically broadcast this announcement to {target.mention} when the time arrives.",
+            status="success"
+        )
+
+        await interaction.response.edit_message(content=None, embed=confirm_embed, view=None)
+        self.parent_view.stop()
+
 
 class AnnouncementConfirmView(discord.ui.View):
     def __init__(self, initiator: discord.Member, source_msg: discord.Message, target_channel: discord.TextChannel | None, bot: commands.Bot):
@@ -480,6 +651,25 @@ class AnnouncementConfirmView(discord.ui.View):
 
         self.stop()
 
+    @discord.ui.button(label="🗓️ Schedule Broadcast", style=discord.ButtonStyle.primary, row=2)
+    async def schedule_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user != self.initiator:
+            await interaction.response.send_message(
+                embed=make_box_embed("Unauthorized", "Only the staff member who initiated this announcement can schedule.", status="warning"),
+                ephemeral=True
+            )
+            return
+
+        if not self.target_channel:
+            await interaction.response.send_message(
+                embed=make_box_embed("Missing Destination", "Please select an announcement destination channel from the dropdown first.", status="warning"),
+                ephemeral=True
+            )
+            return
+
+        modal = ScheduleAnnouncementModal(self)
+        await interaction.response.send_modal(modal)
+
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=2)
     async def deny_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user != self.initiator:
@@ -507,9 +697,121 @@ class Announcements(commands.Cog):
         )
         self.ctx_menu.default_permissions = discord.Permissions(manage_messages=True)
         self.bot.tree.add_command(self.ctx_menu)
+        self.announcement_scheduler_task.start()
 
     async def cog_unload(self):
+        self.announcement_scheduler_task.cancel()
         self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
+
+    @tasks.loop(seconds=15)
+    async def announcement_scheduler_task(self):
+        await self.bot.wait_until_ready()
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        now_ts = now_utc.timestamp()
+
+        for gid, queue in list(db.scheduled_announcements.items()):
+            if not isinstance(queue, list) or not queue:
+                continue
+
+            remaining = []
+            for item in queue:
+                sched_ts = float(item.get("scheduled_ts", 0))
+                if now_ts >= sched_ts:
+                    try:
+                        await self._dispatch_scheduled_item(gid, item)
+                    except Exception as e:
+                        print(f"[Announcement Dispatch Error for {gid}] {e}")
+                else:
+                    remaining.append(item)
+
+            if len(remaining) != len(queue):
+                db.scheduled_announcements[gid] = remaining
+                db.save_data()
+
+    async def _dispatch_scheduled_item(self, gid: str, item: dict):
+        guild = self.bot.get_guild(int(gid))
+        if not guild:
+            return
+
+        channel = guild.get_channel(int(item["channel_id"]))
+        if not channel:
+            return
+
+        content = item.get("content", "")
+        formatted_content = format_announcement_broadcast_text(content, guild, self.bot)
+        format_mode = item.get("format_mode") or item.get("format") or "normal"
+        author_name = item.get("author_name", "Staff")
+
+        # Download attachments if any
+        files = []
+        for att in item.get("attachments", []):
+            try:
+                url = att.get("url")
+                filename = att.get("filename", "attachment")
+                if url:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url) as resp:
+                            if resp.status == 200:
+                                data = await resp.read()
+                                files.append(discord.File(io.BytesIO(data), filename=filename))
+            except Exception as e:
+                print(f"[Scheduled Attachment Fetch Error] {e}")
+
+        ping = item.get("ping", "none")
+        mention_str = ""
+        if ping == "everyone" or ping == "@everyone":
+            mention_str = "@everyone"
+        elif ping == "here" or ping == "@here":
+            mention_str = "@here"
+
+        if format_mode == "embed":
+            lines = [l for l in formatted_content.split('\n')]
+            embed_title = item.get("title")
+            embed_desc = formatted_content
+            if not embed_title and lines and lines[0].startswith('# '):
+                embed_title = lines[0].replace('# ', '').strip()
+                embed_desc = '\n'.join(lines[1:]).strip()
+
+            color_hex = item.get("color", "#2dd4bf")
+            try:
+                color_int = int(color_hex.lstrip('#'), 16)
+            except Exception:
+                color_int = 0x2dd4bf
+
+            embed = discord.Embed(
+                title=embed_title if embed_title else None,
+                description=embed_desc if embed_desc else None,
+                color=discord.Color(color_int)
+            )
+            if guild.icon:
+                embed.set_author(name=guild.name, icon_url=guild.icon.url)
+            if self.bot.user and self.bot.user.display_avatar:
+                embed.set_thumbnail(url=self.bot.user.display_avatar.url)
+            footer_text = item.get("footer") or f"Official Server Announcement • Scheduled by {author_name}"
+            embed.set_footer(text=footer_text)
+
+            await channel.send(
+                content=mention_str if mention_str else ("@everyone" if "@everyone" in formatted_content and embed_title else None),
+                embed=embed,
+                files=files if files else [],
+                allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
+            )
+        else:
+            msg_parts = []
+            if mention_str:
+                msg_parts.append(mention_str)
+            title = item.get("title")
+            if title and f"# {title}" not in formatted_content:
+                msg_parts.append(f"# {title}")
+            if formatted_content:
+                msg_parts.append(formatted_content)
+
+            full_msg = "\n\n".join(msg_parts) if msg_parts else formatted_content
+            await channel.send(
+                content=full_msg if full_msg else None,
+                files=files if files else [],
+                allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
+            )
 
     @app_commands.default_permissions(manage_messages=True)
     async def initiate_announcement_context(self, interaction: discord.Interaction, message: discord.Message):
