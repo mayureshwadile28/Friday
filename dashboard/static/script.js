@@ -46909,22 +46909,17 @@ async function saveFirstWelcomeSettings() {
 
 
         if (data.success) {
-
-
-
-
-
-
-
             showToast("✅ First Welcome settings saved successfully!");
-
-
-
-
-
-
-
             if (tgl) updateFirstWelcomeStatusBadge(tgl.checked);
+            if (payload.enabled) {
+                const sJoinTgl = document.getElementById('welcomeToggle');
+                if (sJoinTgl && sJoinTgl.checked) {
+                    sJoinTgl.checked = false;
+                    if (typeof updateWelcomeStatusBadge === 'function') {
+                        updateWelcomeStatusBadge(false);
+                    }
+                }
+            }
 
 
 
@@ -47469,6 +47464,15 @@ async function saveWelcomeSettings() {
         if (data.success) {
             showToast("✅ Welcome settings saved successfully!");
             if (tgl) updateWelcomeStatusBadge(tgl.checked);
+            if (payload.enabled) {
+                const fwTgl = document.getElementById('firstWelcomeToggle');
+                if (fwTgl && fwTgl.checked) {
+                    fwTgl.checked = false;
+                    if (typeof updateFirstWelcomeStatusBadge === 'function') {
+                        updateFirstWelcomeStatusBadge(false);
+                    }
+                }
+            }
         } else {
             showToast(`❌ Save failed: ${data.error || 'Unknown error'}`);
         }
@@ -47494,6 +47498,27 @@ async function sendTestWelcome() {
         }
     } catch (e) {
         showToast("❌ Network error sending test card");
+    }
+}
+
+async function resetFirstWelcomeHistory() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+    if (!confirm("Are you sure you want to reset the first-chat welcome history for this server? All previously greeted members will be eligible to be greeted again upon their next message.")) {
+        return;
+    }
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/first_welcome/reset-history`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("🔄 First chat welcome history cleared! You can now re-test greetings in chat.");
+        } else {
+            showToast(`❌ Failed to reset: ${data.error || 'Unknown error'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error resetting welcome history");
     }
 }
 
@@ -47979,6 +48004,15 @@ function setupWelcomeAndFarewellEvents() {
         welcomeTgl.addEventListener('change', async (e) => {
             const isChecked = e.target.checked;
             updateWelcomeStatusBadge(isChecked);
+            if (isChecked) {
+                const fwTgl = document.getElementById('firstWelcomeToggle');
+                if (fwTgl && fwTgl.checked) {
+                    fwTgl.checked = false;
+                    if (typeof updateFirstWelcomeStatusBadge === 'function') {
+                        updateFirstWelcomeStatusBadge(false);
+                    }
+                }
+            }
             if (!currentGuildId) return showToast("⚠️ Select a server first!");
             try {
                 const resp = await fetch(`/api/guild/${currentGuildId}/welcome/toggle`, {
@@ -48970,14 +49004,16 @@ function setupFirstWelcomeAndAfkEvents() {
 
 
             const isChecked = e.target.checked;
-
-
-
-
-
-
-
             updateFirstWelcomeStatusBadge(isChecked);
+            if (isChecked) {
+                const sJoinTgl = document.getElementById('welcomeToggle');
+                if (sJoinTgl && sJoinTgl.checked) {
+                    sJoinTgl.checked = false;
+                    if (typeof updateWelcomeStatusBadge === 'function') {
+                        updateWelcomeStatusBadge(false);
+                    }
+                }
+            }
 
 
 
@@ -50282,14 +50318,10 @@ function setupFirstWelcomeAndAfkEvents() {
 
 
     const testFwBtn = document.getElementById('testFirstWelcomeBtn');
-
-
-
-
-
-
-
     if (testFwBtn) testFwBtn.addEventListener('click', sendTestFirstWelcome);
+
+    const resetFwBtn = document.getElementById('resetFirstWelcomeHistoryBtn');
+    if (resetFwBtn) resetFwBtn.addEventListener('click', resetFirstWelcomeHistory);
 
 
 

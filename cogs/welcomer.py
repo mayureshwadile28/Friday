@@ -51,8 +51,25 @@ def get_welcome_config(gid: str) -> dict:
     cfg = db.welcome.get(gid_str) or db.welcome.get(gid_int) or {}
     if not isinstance(cfg, dict):
         cfg = {}
+
+    enabled = bool(cfg.get("enabled", False))
+
+    # Auto-resolve conflict: If First Chat Greeting is active for this server,
+    # server-join welcome MUST be suppressed to ensure newcomer is greeted on first message reply, NOT upon joining.
+    fw_cfg = db.first_welcome.get(gid_str) or db.first_welcome.get(gid_int) or {}
+    is_fw_active = bool(fw_cfg.get("enabled", False)) if isinstance(fw_cfg, dict) else False
+
+    if enabled and is_fw_active:
+        enabled = False
+        if gid_str in db.welcome and isinstance(db.welcome[gid_str], dict):
+            db.welcome[gid_str]["enabled"] = False
+            try:
+                db.save_data()
+            except Exception:
+                pass
+
     return {
-        "enabled": bool(cfg.get("enabled", False)),
+        "enabled": enabled,
         "channel_id": cfg.get("channel_id", None),
         "header_text": cfg.get("header_text", "👋 Welcome {user} !"),
         "title": cfg.get("title", DEFAULT_WELCOME_TITLE),
@@ -107,8 +124,10 @@ def get_first_welcome_config(gid: str) -> dict:
         "title": cfg.get("title", DEFAULT_FIRST_WELCOME_TITLE),
         "message": cfg.get("message", DEFAULT_FIRST_WELCOME_MSG),
         "show_avatar": bool(cfg.get("show_avatar", True)),
+        "image_url": str(cfg.get("image_url", "")).strip(),
         "status_color": cfg.get("status_color", "success"),
-        "custom_hex": cfg.get("custom_hex", "#10b981")
+        "custom_hex": cfg.get("custom_hex", "#10b981"),
+        "is_first_welcome": True
     }
 
 def get_channel_markdown_link(channel: discord.abc.GuildChannel) -> str:
@@ -322,12 +341,14 @@ def build_welcome_embed(member: discord.Member, guild: discord.Guild, cfg: dict,
         timestamp=datetime.now(timezone.utc)
     )
 
+    is_first = bool(cfg.get("is_first_welcome", False))
+    author_text = f"Welcome {member.display_name}!" if is_first else f"{member.display_name} joined!"
     if hasattr(member, "display_avatar") and member.display_avatar:
-        embed.set_author(name=f"{member.display_name} joined!", icon_url=member.display_avatar.url)
+        embed.set_author(name=author_text, icon_url=member.display_avatar.url)
         if show_avatar:
             embed.set_thumbnail(url=member.display_avatar.url)
     else:
-        embed.set_author(name=f"{getattr(member, 'display_name', 'Member')} joined!")
+        embed.set_author(name=author_text)
 
     # Embedded Image, GIF, or file banner
     if image_url and (image_url.startswith("http://") or image_url.startswith("https://")):
@@ -518,6 +539,8 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         db.welcome[gid]["channel_id"] = str(target_channel.id)
         db.welcome[gid]["enabled"] = True
+        if gid in db.first_welcome and isinstance(db.first_welcome[gid], dict):
+            db.first_welcome[gid]["enabled"] = False
         db.welcome[gid]["is_embed"] = embed
         db.welcome[gid]["ping_user"] = ping
         if message is not None:
@@ -555,6 +578,8 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         db.welcome[gid]["channel_id"] = str(target_channel.id)
         db.welcome[gid]["enabled"] = True
+        if gid in db.first_welcome and isinstance(db.first_welcome[gid], dict):
+            db.first_welcome[gid]["enabled"] = False
         db.save_data()
 
         await reply_box(
@@ -1013,13 +1038,16 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         db.first_welcome[gid]["channel_id"] = str(target_channel.id)
         db.first_welcome[gid]["enabled"] = True
+        # Suppress server join greeting to ensure members are only greeted on their first message
+        if gid in db.welcome and isinstance(db.welcome[gid], dict):
+            db.welcome[gid]["enabled"] = False
         db.save_data()
 
         await reply_box(
             interaction,
             f"• **First Chat Channel Set:** {target_channel.mention}\n"
-            f"• **Status:** Active\n"
-            f"• Friday will now greet new members with their avatar on their very first message in {target_channel.mention}!",
+            f"• **Status:** Active (Server Join Greeting paused)\n"
+            f"• Friday will reply directly to new members on their very first message in {target_channel.mention}!",
             title="FIRST WELCOME ACTIVATED",
             status="success",
             ephemeral=True
@@ -1149,18 +1177,18 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         description="Set THIS channel (or chosen channel) for welcome greetings. No channel name required!"
     )
     @app_commands.describe(
-        mode="Welcome mode (server join or first chat)",
+        mode="Welcome mode (first chat reply or server join arrival)",
         channel="Channel to use (Leave empty to use THIS channel automatically!)"
     )
     @app_commands.choices(mode=[
+        app_commands.Choice(name="First Message Greeting (Reply when newcomer speaks in chat)", value="first"),
         app_commands.Choice(name="Server Join Greeting (New Member Arrival)", value="join"),
-        app_commands.Choice(name="First Message Greeting (First Chat in Channel)", value="first"),
     ])
     @app_commands.default_permissions(administrator=True)
     async def set_welcomer_command(
         self,
         interaction: discord.Interaction,
-        mode: str = "join",
+        mode: str = "first",
         channel: discord.TextChannel = None
     ):
         if not interaction.user.guild_permissions.administrator:
@@ -1203,6 +1231,13 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
             return
 
         gid = str(member.guild.id)
+
+        # Check First Chat Greeting priority
+        fw_cfg = get_first_welcome_config(gid)
+        if fw_cfg.get("enabled"):
+            print(f"ℹ️ [Welcomer] Skipping server-join welcome for {member.name} in '{member.guild.name}' ({gid}) because First Chat Greeting is active. Friday will reply when newcomer sends their first message in chat.")
+            return
+
         cfg = get_welcome_config(gid)
         if not cfg.get("enabled"):
             print(f"ℹ️ [Welcomer] Welcome is currently PAUSED / DISABLED for '{member.guild.name}' ({gid}).")
@@ -1401,18 +1436,12 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         if not cfg.get("enabled"):
             return
 
-        # 2. Check if member is an old/established member
-        if await is_established_member(message.author, message, cfg):
+        # 2. Ignore bot command prefixes to avoid welcoming members when they run verification/bot commands
+        content_str = message.content.strip()
+        if content_str and re.match(r'^[!?.$\/;]\w+', content_str):
             return
 
-        # 3. Mark user as greeted in database
-        guild_history = db.first_chat_welcomes.setdefault(gid, [])
-        if uid in guild_history:
-            return
-        guild_history.append(uid)
-        db.save_data()
-
-        # 4. Determine destination channel
+        # 3. Determine destination channel
         target_channel_id = cfg.get("channel_id")
         destination_channel = None
         if target_channel_id:
@@ -1427,39 +1456,61 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
             except (ValueError, TypeError):
                 destination_channel = None
 
+        # If a dedicated target channel is designated, ONLY greet when newcomer speaks in THAT channel!
+        if destination_channel and message.channel.id != destination_channel.id:
+            return
+
+        # 4. Check if member is an old/established member
+        if await is_established_member(message.author, message, cfg):
+            return
+
+        # 5. Mark user as greeted in database
+        guild_history = db.first_chat_welcomes.setdefault(gid, [])
+        if uid in guild_history:
+            return
+        guild_history.append(uid)
+        db.save_data()
+
         embed = build_welcome_embed(
             message.author,
             message.guild,
             cfg,
-            destination_channel or message.channel
+            message.channel
         )
 
-        # Case A: Same channel (or no specific target channel set) -> Reply directly in chat
-        if not destination_channel or destination_channel.id == message.channel.id:
-            try:
-                await message.reply(embed=embed, mention_author=True)
-                return
-            except Exception:
-                try:
-                    await message.channel.send(content=f"🎉 Welcome {message.author.mention}!", embed=embed)
-                    return
-                except Exception as e:
-                    print(f"[FirstWelcome] Error sending in current channel: {e}")
+        discord_file = None
+        img_url = str(cfg.get("image_url", "")).strip()
+        fpath = None
+        fname = None
+        if "/static/uploads/welcome_banners/" in img_url:
+            fname = os.path.basename(img_url)
+            fpath = os.path.join("dashboard", "static", "uploads", "welcome_banners", fname)
+            if not os.path.exists(fpath):
+                fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "welcome_banners", fname)
+            if os.path.exists(fpath):
+                discord_file = discord.File(fpath, filename=fname)
+                embed.set_image(url=f"attachment://{fname}")
+        elif img_url and (img_url.startswith("http://") or img_url.startswith("https://")):
+            embed.set_image(url=img_url)
 
-        # Case B: Dedicated target channel configured
-        if destination_channel:
+        reply_kwargs = {"embed": embed, "mention_author": True}
+        if discord_file:
+            reply_kwargs["file"] = discord_file
+
+        try:
+            await message.reply(**reply_kwargs)
+            print(f"✅ [FirstWelcome] Successfully replied to {message.author.name} with welcome card in #{message.channel.name} ({message.guild.name})")
+            return
+        except Exception as rep_err:
+            print(f"⚠️ [FirstWelcome] message.reply failed ({rep_err}), falling back to channel.send...")
             try:
-                await destination_channel.send(
-                    content=f"🎉 Welcome {message.author.mention} to **{message.guild.name}**! Glad to see your first message!",
-                    embed=embed
-                )
+                send_kwargs = {"content": f"🎉 Welcome {message.author.mention}!", "embed": embed}
+                if discord_file and fpath and os.path.exists(fpath):
+                    send_kwargs["file"] = discord.File(fpath, filename=fname)
+                await message.channel.send(**send_kwargs)
                 return
-            except Exception as dest_err:
-                print(f"[FirstWelcome] Failed sending to dedicated channel {destination_channel.id}: {dest_err}")
-                try:
-                    await message.reply(embed=embed, mention_author=True)
-                except Exception:
-                    await message.channel.send(content=f"🎉 Welcome {message.author.mention}!", embed=embed)
+            except Exception as e:
+                print(f"❌ [FirstWelcome] Error delivering first chat welcome in #{message.channel.name} ({message.guild.name}): {e}")
 
 async def setup(bot):
     await bot.add_cog(WelcomerCog(bot))
