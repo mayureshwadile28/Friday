@@ -56,6 +56,8 @@ class Database:
         self.birthdays_config = bd_cfg if isinstance(bd_cfg, dict) else {}
         sa = self.data.get("scheduled_announcements")
         self.scheduled_announcements = sa if isinstance(sa, dict) else {}
+        apps = self.data.get("applications")
+        self.applications = apps if isinstance(apps, dict) else {}
 
     def load_data(self):
         try:
@@ -103,7 +105,8 @@ class Database:
                 "birthdays": {},
                 "birthdays_restricted": {},
                 "birthdays_config": {},
-                "scheduled_announcements": {}
+                "scheduled_announcements": {},
+                "applications": {}
             }
 
     def __getattr__(self, name):

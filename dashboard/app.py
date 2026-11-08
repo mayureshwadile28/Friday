@@ -3997,6 +3997,207 @@ def unlock_birthday_member(gid):
     return jsonify({"success": True, "message": "Member was not in restricted list."})
 
 
+# ───────────────────── API: Birthday System Quick Toggle ─────────────────────
+
+@app.route('/api/guild/<gid>/birthdays/toggle', methods=['POST'])
+def toggle_birthday_system(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    cfg = db.birthdays_config.setdefault(gid_str, {})
+    new_state = bool(data.get("enabled", not cfg.get("enabled", False)))
+    cfg["enabled"] = new_state
+    db.save_data()
+    return jsonify({"success": True, "enabled": new_state, "message": f"Birthday system {'enabled' if new_state else 'disabled'}."})
+
+
+# ───────────────────── API: Staff Applications Studio ─────────────────────
+
+@app.route('/api/guild/<gid>/applications', methods=['GET'])
+def get_guild_applications(gid):
+    gid_str = str(gid)
+    gdata = db.applications.get(gid_str, {})
+    
+    try:
+        from cogs.applications import get_app_config
+        cfg = get_app_config(gid_str)
+    except Exception:
+        cfg = gdata.get("config", {})
+
+    submissions = gdata.get("submissions", {})
+    sub_list = list(submissions.values())
+    sub_list.sort(key=lambda s: s.get("number", 0), reverse=True)
+
+    return jsonify({
+        "success": True,
+        "config": cfg,
+        "panels": gdata.get("panels", {}),
+        "submissions": sub_list,
+        "submission_counter": gdata.get("submission_counter", 0)
+    })
+
+@app.route('/api/guild/<gid>/applications/config', methods=['POST'])
+def save_applications_config(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    gdata = db.applications.setdefault(gid_str, {})
+    
+    try:
+        from cogs.applications import get_app_config
+        cfg = get_app_config(gid_str)
+    except Exception:
+        cfg = gdata.setdefault("config", {})
+
+    if "panel_channel_id" in data:
+        cfg["panel_channel_id"] = str(data["panel_channel_id"]).strip() if data["panel_channel_id"] else None
+    if "review_channel_id" in data:
+        cfg["review_channel_id"] = str(data["review_channel_id"]).strip() if data["review_channel_id"] else None
+    if "approved_role_id" in data:
+        cfg["approved_role_id"] = str(data["approved_role_id"]).strip() if data["approved_role_id"] else None
+    if "delivery_mode" in data:
+        cfg["delivery_mode"] = str(data["delivery_mode"]).strip() or "server"
+
+    if "panel" in data and isinstance(data["panel"], dict):
+        p = data["panel"]
+        cfg["panel"] = {
+            "title": str(p.get("title") or "📋 Staff Application").strip(),
+            "description": str(p.get("description") or "Click below to apply!").strip(),
+            "color": str(p.get("color") or "#5865f2").strip(),
+            "footer": str(p.get("footer") or "Friday Applications • Click below to apply").strip(),
+            "button_label": str(p.get("button_label") or "Apply Now").strip(),
+            "button_emoji": str(p.get("button_emoji") or "📝").strip(),
+            "button_style": str(p.get("button_style") or "primary").strip()
+        }
+
+    if "questions" in data and isinstance(data["questions"], list):
+        clean_qs = [str(q).strip() for q in data["questions"] if str(q).strip()]
+        if clean_qs:
+            cfg["questions"] = clean_qs
+
+    if "dm_flow" in data and isinstance(data["dm_flow"], dict):
+        d = data["dm_flow"]
+        cfg["dm_flow"] = {
+            "intro_title": str(d.get("intro_title") or "📝 Staff Application • {server}").strip(),
+            "intro_description": str(d.get("intro_description") or "").strip(),
+            "intro_color": str(d.get("intro_color") or "#5865f2").strip(),
+            "start_btn_label": str(d.get("start_btn_label") or "Let's Start").strip(),
+            "start_btn_emoji": str(d.get("start_btn_emoji") or "🚀").strip(),
+            "cancel_btn_label": str(d.get("cancel_btn_label") or "Cancel").strip(),
+            "cancel_btn_emoji": str(d.get("cancel_btn_emoji") or "✖️").strip()
+        }
+
+    if "approved_msg" in data and isinstance(data["approved_msg"], dict):
+        a = data["approved_msg"]
+        cfg["approved_msg"] = {
+            "title": str(a.get("title") or "🎉 Application Approved • {server}").strip(),
+            "description": str(a.get("description") or "").strip(),
+            "color": str(a.get("color") or "#10b981").strip()
+        }
+
+    if "rejected_msg" in data and isinstance(data["rejected_msg"], dict):
+        r = data["rejected_msg"]
+        cfg["rejected_msg"] = {
+            "title": str(r.get("title") or "Application Update • {server}").strip(),
+            "description": str(r.get("description") or "").strip(),
+            "color": str(r.get("color") or "#ef4444").strip()
+        }
+
+    gdata["config"] = cfg
+    db.save_data()
+    return jsonify({"success": True, "message": "Application configuration saved successfully.", "config": cfg})
+
+@app.route('/api/guild/<gid>/applications/panel', methods=['POST'])
+def deploy_application_panel(gid):
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Bot not connected."}), 503
+
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    channel_id = data.get("channel_id")
+    if not channel_id:
+        return jsonify({"success": False, "error": "Panel destination channel is required."}), 400
+
+    async def do_deploy():
+        guild = bot_instance.get_guild(int(gid))
+        if not guild:
+            raise Exception("Guild not found or Friday is not connected to it.")
+        channel = guild.get_channel(int(channel_id))
+        if not channel:
+            raise Exception("Target text channel not found.")
+
+        from cogs.applications import get_app_config, get_button_style, hex_to_int, ApplicationPanelView
+        from emoji_utils import replace_plain_emojis, resolve_single_emoji
+
+        cfg = get_app_config(gid_str)
+        p_cfg = cfg.get("panel", {})
+
+        title_raw = str(data.get("title") or p_cfg.get("title") or "📋 Staff Application")
+        desc_raw = str(data.get("description") or p_cfg.get("description") or "Click below to submit your application!")
+        color_val = str(data.get("color") or p_cfg.get("color") or "#5865f2")
+        footer_val = str(data.get("footer") or p_cfg.get("footer") or "Friday Applications • Click below to apply")
+        btn_label = str(data.get("button_label") or p_cfg.get("button_label") or "Apply Now")
+        btn_emoji_raw = str(data.get("button_emoji") or p_cfg.get("button_emoji") or "📝")
+        btn_style_str = str(data.get("button_style") or p_cfg.get("button_style") or "primary")
+
+        embed_title = replace_plain_emojis(title_raw, bot=bot_instance, guild=guild, guild_id=gid_str)
+        embed_desc = replace_plain_emojis(desc_raw, bot=bot_instance, guild=guild, guild_id=gid_str)
+        embed_color = hex_to_int(color_val)
+
+        embed = discord.Embed(title=embed_title, description=embed_desc, color=embed_color)
+        embed.set_footer(text=footer_val, icon_url=guild.icon.url if guild.icon else None)
+        embed.timestamp = discord.utils.utcnow()
+
+        btn_style = get_button_style(btn_style_str)
+        btn_emoji = resolve_single_emoji(btn_emoji_raw, bot=bot_instance, guild=guild, guild_id=gid_str)
+
+        temp_view = discord.ui.View()
+        temp_btn = discord.ui.Button(label=btn_label, style=btn_style, emoji=btn_emoji)
+        temp_view.add_item(temp_btn)
+        msg = await channel.send(embed=embed, view=temp_view)
+
+        gdata = db.applications.setdefault(gid_str, {})
+        panels = gdata.setdefault("panels", {})
+        panel_record = {
+            "channel_id": int(channel_id),
+            "title": title_raw,
+            "description": desc_raw,
+            "color": color_val,
+            "footer": footer_val,
+            "button_label": btn_label,
+            "button_emoji": btn_emoji_raw,
+            "button_style": btn_style_str
+        }
+        panels[str(msg.id)] = panel_record
+        cfg["panel_channel_id"] = str(channel_id)
+        p_cfg.update(panel_record)
+        cfg["panel"] = p_cfg
+        gdata["config"] = cfg
+        db.save_data()
+
+        app_cog = bot_instance.get_cog("Applications")
+        if app_cog:
+            actual_view = ApplicationPanelView(app_cog, msg.id)
+            actual_view.clear_items()
+            real_btn = discord.ui.Button(
+                label=btn_label,
+                style=btn_style,
+                emoji=btn_emoji,
+                custom_id=f"app_apply_btn_{msg.id}"
+            )
+            real_btn.callback = actual_view.apply_button.callback
+            actual_view.add_item(real_btn)
+            await msg.edit(view=actual_view)
+            bot_instance.add_view(actual_view, message_id=msg.id)
+
+        return msg.id
+
+    try:
+        fut = asyncio.run_coroutine_threadsafe(do_deploy(), bot_instance.loop)
+        msg_id = fut.result(timeout=10)
+        return jsonify({"success": True, "message": "Application panel deployed successfully!", "message_id": str(msg_id)})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ───────────────────── Bot Lifecycle ─────────────────────
 
 @app.route('/api/bot/stop', methods=['POST'])

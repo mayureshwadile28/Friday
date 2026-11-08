@@ -537,6 +537,22 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         description="Track and celebrate member birthdays with automated wishes and roles."
     )
 
+    @birthday_group.command(name="toggle", description="Quickly enable or disable the birthday celebration engine in this server.")
+    @app_commands.default_permissions(administrator=True)
+    async def birthday_toggle(self, interaction: discord.Interaction):
+        gid = str(interaction.guild.id)
+        cfg = db.birthdays_config.setdefault(gid, {})
+        new_state = not cfg.get("enabled", False)
+        cfg["enabled"] = new_state
+        db.save_data()
+        status_text = "✅ **ENABLED**" if new_state else "⏸️ **DISABLED**"
+        embed = make_box_embed(
+            title="Birthday System Toggle",
+            description=f"The Birthday Celebration Engine is now {status_text} in **{interaction.guild.name}**.",
+            status="success" if new_state else "neutral"
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @birthday_group.command(name="setup", description="Configure birthday form channel, wish announcement channel, and optional role.")
     @app_commands.describe(
         form_channel="Channel where Friday posts the permanent 'Register Birthday' card",

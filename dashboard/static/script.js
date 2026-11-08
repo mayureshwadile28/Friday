@@ -1736,6 +1736,7 @@ const tabTitles = {
 
 
     'ticketsSection': 'Ticket System Setup',
+    'applicationsSection': 'Staff Applications Studio',
 
 
 
@@ -11908,6 +11909,7 @@ async function loadDataForActiveTab() {
 
 
     else if (activeTab === 'ticketsSection') await loadTicketsSettings();
+    else if (activeTab === 'applicationsSection') await loadApplicationsSettings();
 
 
 
@@ -67902,7 +67904,7 @@ function updateBirthdayPreview() {
             .replace(/&gt;/g, '>')
             .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
             .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1')
-            .replace(/<[^>]*>/g, '');
+            .replace(/<(?!a?:[a-zA-Z0-9_]+:[0-9]+>|#[0-9]+>|@!?[0-9]+>)[^>]+>/g, '');
 
         if (mentionUser && !msg.includes('{mention}') && !msg.includes('@Member')) {
             lines.push('@Member');
@@ -67942,7 +67944,7 @@ function updateBirthdayPreview() {
             .replace(/&gt;/g, '>')
             .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
             .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1')
-            .replace(/<[^>]*>/g, '')
+            .replace(/<(?!a?:[a-zA-Z0-9_]+:[0-9]+>|#[0-9]+>|@!?[0-9]+>)[^>]+>/g, '')
             .replace(/\{mention\}/g, '@Member')
             .replace(/\{user\}/g, 'Member')
             .replace(/\{server\}/g, 'Server');
@@ -68261,6 +68263,34 @@ async function handleBirthdayUploadGeneric(file, targetInputId) {
 }
 
 function setupBirthdayEvents() {
+    const masterToggle = document.getElementById('birthdayMasterToggle');
+    if (masterToggle) {
+        masterToggle.onchange = async () => {
+            if (!currentGuildId) return;
+            const isEnabled = masterToggle.checked;
+            try {
+                const res = await fetch(`/api/guild/${currentGuildId}/birthdays/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ enabled: isEnabled })
+                });
+                const data = await res.json();
+                if (data && data.success) {
+                    if (window.birthdayData && window.birthdayData.config) {
+                        window.birthdayData.config.enabled = isEnabled;
+                    }
+                    showToast(isEnabled ? "🎂 Birthday system enabled!" : "⏸️ Birthday system paused.");
+                } else {
+                    masterToggle.checked = !isEnabled;
+                    showToast(data.error || "Failed to toggle birthday system.", "error");
+                }
+            } catch (err) {
+                masterToggle.checked = !isEnabled;
+                showToast("Network error while toggling birthday system.", "error");
+            }
+        };
+    }
+
     const saveBtn = document.getElementById('saveBirthdayConfigBtn');
     if (saveBtn) saveBtn.onclick = saveBirthdaySettings;
 
@@ -68608,3 +68638,759 @@ async function cancelScheduledAnnouncement(annId) {
         showNotification('Network error cancelling announcement.', 'error');
     }
 }
+
+/* =========================================================================
+   APPLICATIONS STUDIO JAVASCRIPT MODULE
+   ========================================================================= */
+
+window.applicationData = {
+    config: {},
+    questions: [],
+    simTab: 'panel',
+    currentEmbedColor: '#5865f2'
+};
+
+function insertAppVar(text) {
+    const descEl = document.getElementById('appPanelDescInput');
+    if (!descEl) return;
+    const richEl = document.getElementById('appPanelDescInput_rich');
+    if (richEl && richEl.style.display !== 'none') {
+        richEl.focus();
+        document.execCommand('insertText', false, text);
+        const raw = richHtmlToRawMarkdown(richEl);
+        descEl.value = raw;
+        descEl.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+        const start = descEl.selectionStart || 0;
+        const end = descEl.selectionEnd || 0;
+        const val = descEl.value;
+        descEl.value = val.substring(0, start) + text + val.substring(end);
+        descEl.selectionStart = descEl.selectionEnd = start + text.length;
+        descEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+
+function insertAppApprovedVar(v) {
+    insertEmojiIntoInputOrRich('appApprovedDescInput', ' ' + v);
+}
+
+function insertAppRejectedVar(v) {
+    insertEmojiIntoInputOrRich('appRejectedDescInput', ' ' + v);
+}
+
+function insertEmojiIntoInputOrRich(targetId, emojiVal) {
+    const targetEl = document.getElementById(targetId);
+    if (!targetEl) return;
+    const richEl = document.getElementById(targetId + '_rich');
+    if (richEl && richEl.style.display !== 'none') {
+        richEl.focus();
+        document.execCommand('insertText', false, emojiVal);
+        const raw = richHtmlToRawMarkdown(richEl);
+        targetEl.value = raw;
+        targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+    } else {
+        const start = targetEl.selectionStart || targetEl.value.length;
+        const end = targetEl.selectionEnd || targetEl.value.length;
+        const val = targetEl.value || '';
+        targetEl.value = val.substring(0, start) + emojiVal + val.substring(end);
+        targetEl.selectionStart = targetEl.selectionEnd = start + emojiVal.length;
+        targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+}
+
+function updateAppModeUI(mode) {
+    const sLabel = document.getElementById('appModeServerLabel');
+    const dLabel = document.getElementById('appModeDmLabel');
+    if (mode === 'server') {
+        if (sLabel) {
+            sLabel.style.border = '2px solid #5865f2';
+            sLabel.style.background = 'rgba(88, 101, 242, 0.1)';
+        }
+        if (dLabel) {
+            dLabel.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+            dLabel.style.background = 'rgba(255, 255, 255, 0.02)';
+        }
+    } else {
+        if (dLabel) {
+            dLabel.style.border = '2px solid #5865f2';
+            dLabel.style.background = 'rgba(88, 101, 242, 0.1)';
+        }
+        if (sLabel) {
+            sLabel.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+            sLabel.style.background = 'rgba(255, 255, 255, 0.02)';
+        }
+    }
+}
+
+function populateAppSelects(panelCid, reviewCid, roleId) {
+    const panelSelect = document.getElementById('appPanelChannelSelect');
+    const reviewSelect = document.getElementById('appReviewChannelSelect');
+    const roleSelect = document.getElementById('appApprovedRoleSelect');
+
+    const chans = (typeof currentGuildChannels !== 'undefined' && Array.isArray(currentGuildChannels)) ? currentGuildChannels : [];
+    const roles = (typeof currentGuildRoles !== 'undefined' && Array.isArray(currentGuildRoles)) ? currentGuildRoles : [];
+
+    if (panelSelect) {
+        panelSelect.innerHTML = '<option value="">Select a Text Channel...</option>';
+        chans.forEach(c => {
+            if (c.type === 0 || c.type === 'text') {
+                const opt = document.createElement('option');
+                opt.value = String(c.id);
+                opt.textContent = '#' + c.name;
+                if (String(c.id) === String(panelCid)) opt.selected = true;
+                panelSelect.appendChild(opt);
+            }
+        });
+    }
+
+    if (reviewSelect) {
+        reviewSelect.innerHTML = '<option value="">Select a Private Staff Channel...</option>';
+        chans.forEach(c => {
+            if (c.type === 0 || c.type === 'text') {
+                const opt = document.createElement('option');
+                opt.value = String(c.id);
+                opt.textContent = '#' + c.name;
+                if (String(c.id) === String(reviewCid)) opt.selected = true;
+                reviewSelect.appendChild(opt);
+            }
+        });
+    }
+
+    if (roleSelect) {
+        roleSelect.innerHTML = '<option value="">No automatic role (review only)</option>';
+        roles.forEach(r => {
+            if (r.name !== '@everyone') {
+                const opt = document.createElement('option');
+                opt.value = String(r.id);
+                opt.textContent = '@' + r.name;
+                if (String(r.id) === String(roleId)) opt.selected = true;
+                roleSelect.appendChild(opt);
+            }
+        });
+    }
+}
+
+function renderAppQuestionsList() {
+    const container = document.getElementById('appQuestionsContainer');
+    const badge = document.getElementById('appQuestionsCountBadge');
+    if (!container) return;
+
+    const questions = window.applicationData.questions || [];
+    if (badge) badge.textContent = `${questions.length} Question${questions.length === 1 ? '' : 's'}`;
+
+    if (questions.length === 0) {
+        container.innerHTML = `
+            <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 13px; background: rgba(255,255,255,0.01); border: 1px dashed rgba(255,255,255,0.08); border-radius: 8px;">
+                No questions added yet. Use the input below to add your first question!
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    questions.forEach((q, idx) => {
+        html += `
+            <div class="app-question-row" data-index="${idx}" style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; transition: border-color 0.2s ease;">
+                <span style="font-weight: 700; font-size: 12px; color: #818cf8; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.3); border-radius: 6px; padding: 4px 8px; min-width: 32px; text-align: center;">#${idx + 1}</span>
+                <input type="text" class="text-input app-question-input" value="${escapeHtml(q)}" oninput="updateAppQuestionText(${idx}, this.value)" style="flex: 1; height: 36px; font-size: 13px;" placeholder="Question text...">
+                <button type="button" class="btn btn-secondary" onclick="moveAppQuestion(${idx}, -1)" ${idx === 0 ? 'disabled style="opacity: 0.3; cursor: not-allowed;"' : ''} title="Move Up" style="padding: 0 8px; height: 36px;">▲</button>
+                <button type="button" class="btn btn-secondary" onclick="moveAppQuestion(${idx}, 1)" ${idx === questions.length - 1 ? 'disabled style="opacity: 0.3; cursor: not-allowed;"' : ''} title="Move Down" style="padding: 0 8px; height: 36px;">▼</button>
+                <button type="button" class="btn btn-secondary" onclick="deleteAppQuestion(${idx})" title="Delete Question" style="padding: 0 10px; height: 36px; background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3);">✖</button>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+}
+
+function updateAppQuestionText(idx, val) {
+    if (window.applicationData.questions && window.applicationData.questions[idx] !== undefined) {
+        window.applicationData.questions[idx] = val;
+    }
+}
+
+function moveAppQuestion(idx, direction) {
+    const qs = window.applicationData.questions;
+    const targetIdx = idx + direction;
+    if (targetIdx < 0 || targetIdx >= qs.length) return;
+    const temp = qs[idx];
+    qs[idx] = qs[targetIdx];
+    qs[targetIdx] = temp;
+    renderAppQuestionsList();
+    updateApplicationPreview();
+}
+
+function deleteAppQuestion(idx) {
+    const qs = window.applicationData.questions;
+    if (idx >= 0 && idx < qs.length) {
+        qs.splice(idx, 1);
+        renderAppQuestionsList();
+        updateApplicationPreview();
+    }
+}
+
+function addAppQuestion() {
+    const input = document.getElementById('appNewQuestionInput');
+    if (!input) return;
+    const text = input.value.trim();
+    if (!text) {
+        showToast('Please type a question before adding.', 'warning');
+        return;
+    }
+    window.applicationData.questions.push(text);
+    input.value = '';
+    renderAppQuestionsList();
+    updateApplicationPreview();
+    showToast(`Added Question #${window.applicationData.questions.length}!`, 'success');
+}
+
+function updateApplicationPreview() {
+    const simTab = window.applicationData.simTab || 'panel';
+    const embedEl = document.getElementById('appSimEmbed');
+    const titleEl = document.getElementById('appSimTitle');
+    const descEl = document.getElementById('appSimDesc');
+    const footerEl = document.getElementById('appSimFooter');
+    const btnRow = document.getElementById('appSimButtonsRow');
+    const reviewFields = document.getElementById('appSimReviewFields');
+    const simAvatar = document.getElementById('appSimAvatar');
+    const simThumbImg = document.getElementById('appSimThumbnailImg');
+    const simThumb = document.getElementById('appSimThumbnail');
+
+    if (!embedEl || !titleEl || !descEl) return;
+
+    if (simAvatar && currentBotAvatar) {
+        simAvatar.innerHTML = `<img src="${currentBotAvatar}" alt="Friday" style="width: 100%; height: 100%; border-radius: 50%;">`;
+    }
+    if (simThumb && simThumbImg) {
+        if (currentBotAvatar) {
+            simThumb.style.display = 'block';
+            simThumbImg.src = currentBotAvatar;
+        } else {
+            simThumb.style.display = 'none';
+        }
+    }
+
+    if (simTab === 'panel') {
+        const rawTitle = document.getElementById('appPanelTitleInput')?.value || '📋 Staff Application';
+        const rawDesc = document.getElementById('appPanelDescInput')?.value || '';
+        const rawFooter = document.getElementById('appPanelFooterInput')?.value || 'Friday Applications • Click below to apply';
+        const color = window.applicationData.currentEmbedColor || '#5865f2';
+
+        embedEl.style.borderLeftColor = color;
+        titleEl.innerHTML = renderDiscordMarkdown(rawTitle);
+        descEl.innerHTML = renderDiscordMarkdown(rawDesc);
+        if (footerEl) footerEl.innerHTML = `<span>${renderDiscordMarkdown(rawFooter)}</span>`;
+        if (reviewFields) reviewFields.style.display = 'none';
+
+        // Rounded Apply Button with authentic styling and visual emoji
+        if (btnRow) {
+            btnRow.innerHTML = '';
+            const btnLabel = (document.getElementById('appButtonLabelInput')?.value || 'Apply Now').trim();
+            const btnEmoji = document.getElementById('appButtonEmojiInput')?.value || '📝';
+            const btnStyle = document.getElementById('appButtonStyleSelect')?.value || 'primary';
+
+            let bgStyle = 'background: #5865f2; color: #fff;';
+            if (btnStyle === 'success') bgStyle = 'background: #248046; color: #fff;';
+            else if (btnStyle === 'danger') bgStyle = 'background: #da373c; color: #fff;';
+            else if (btnStyle === 'secondary') bgStyle = 'background: #4e5058; color: #fff;';
+
+            const buttonEl = document.createElement('button');
+            buttonEl.type = 'button';
+            buttonEl.style.cssText = `${bgStyle} border: none; border-radius: 8px; padding: 8px 16px; font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.25);`;
+            buttonEl.innerHTML = `${renderEmojiHtmlOrChar(btnEmoji, 18)}<span>${escapeHtml(btnLabel)}</span>`;
+            btnRow.appendChild(buttonEl);
+        }
+    } else if (simTab === 'intro') {
+        const rawTitle = document.getElementById('appIntroTitleInput')?.value || '📝 Staff Application • Server';
+        const rawDesc = document.getElementById('appIntroDescInput')?.value || '';
+        const startLabel = document.getElementById('appStartBtnLabel')?.value || "Let's Start";
+        const startEmoji = document.getElementById('appStartBtnEmoji')?.value || '🚀';
+        const cancelLabel = document.getElementById('appCancelBtnLabel')?.value || 'Cancel';
+        const cancelEmoji = document.getElementById('appCancelBtnEmoji')?.value || '✖️';
+
+        embedEl.style.borderLeftColor = '#5865f2';
+        titleEl.innerHTML = renderDiscordMarkdown(rawTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+        descEl.innerHTML = renderDiscordMarkdown(rawDesc.replace('{server}', 'Server').replace('{user}', '@Alex'));
+        if (footerEl) footerEl.innerHTML = `<span>Server • Application Form</span>`;
+        if (reviewFields) reviewFields.style.display = 'none';
+
+        if (btnRow) {
+            btnRow.innerHTML = '';
+            // Start button
+            const btn1 = document.createElement('button');
+            btn1.style.cssText = 'background: #248046; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;';
+            btn1.innerHTML = `${renderEmojiHtmlOrChar(startEmoji, 18)}<span>${escapeHtml(startLabel)}</span>`;
+
+            // Cancel button
+            const btn2 = document.createElement('button');
+            btn2.style.cssText = 'background: #da373c; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;';
+            btn2.innerHTML = `${renderEmojiHtmlOrChar(cancelEmoji, 18)}<span>${escapeHtml(cancelLabel)}</span>`;
+
+            btnRow.appendChild(btn1);
+            btnRow.appendChild(btn2);
+        }
+    } else if (simTab === 'review') {
+        embedEl.style.borderLeftColor = '#f59e0b';
+        titleEl.innerHTML = `<span>📋 New Staff Application • #0001</span>`;
+        descEl.innerHTML = `
+            <strong>Applicant:</strong> <span class="discord-mention">@Alex</span> (<code>alex_dev</code> • ID: <code>1029384756</code>)<br>
+            <strong>Account Created:</strong> 2 months ago<br>
+            <strong>Status:</strong> ⏳ <span style="background: rgba(245,158,11,0.2); color:#f59e0b; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight:700;">Pending Review</span>
+        `;
+        if (reviewFields) {
+            reviewFields.style.display = 'block';
+            const qs = window.applicationData.questions || [];
+            let fieldsHtml = '';
+            const sampleAnswers = [
+                'Moderator position. I have 2 years of experience handling active gaming servers.',
+                'Age 20, UTC+5:30 (India Standard Time).',
+                '20-25 hours per week during peak community hours.',
+                'Yes, former senior mod at Apex Legends Community (50k members).',
+                'De-escalate politely in chat, issue temporary timeout if guidelines violated, and review logs.'
+            ];
+            (qs.length ? qs.slice(0, 3) : ['Why do you want to apply?']).forEach((q, idx) => {
+                fieldsHtml += `
+                    <div style="margin-bottom: 8px;">
+                        <div style="font-size: 12px; font-weight: 700; color: #cbd5e1;">${idx + 1}. ${escapeHtml(q)}</div>
+                        <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">${sampleAnswers[idx] || 'Sample applicant answer goes here.'}</div>
+                    </div>
+                `;
+            });
+            reviewFields.innerHTML = fieldsHtml;
+        }
+        if (footerEl) footerEl.innerHTML = `<span>Submission ID: a1b2c3d4 • Reviewed by Server Administrators</span>`;
+
+        if (btnRow) {
+            btnRow.innerHTML = '';
+            // Approve button
+            const btnApp = document.createElement('button');
+            btnApp.style.cssText = 'background: #248046; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;';
+            btnApp.innerHTML = `<span>✅</span><span>Approve</span>`;
+
+            // Reject button
+            const btnRej = document.createElement('button');
+            btnRej.style.cssText = 'background: #da373c; color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 8px;';
+            btnRej.innerHTML = `<span>❌</span><span>Reject</span>`;
+
+            btnRow.appendChild(btnApp);
+            btnRow.appendChild(btnRej);
+        }
+    }
+}
+
+let appEventsInitialized = false;
+function setupAppListenersOnce() {
+    if (appEventsInitialized) return;
+    appEventsInitialized = true;
+
+    // Delivery mode radio toggle
+    const serverRadio = document.getElementById('appModeServerRadio');
+    const dmRadio = document.getElementById('appModeDmRadio');
+    if (serverRadio) {
+        serverRadio.addEventListener('change', () => {
+            if (serverRadio.checked) updateAppModeUI('server');
+        });
+    }
+    if (dmRadio) {
+        dmRadio.addEventListener('change', () => {
+            if (dmRadio.checked) updateAppModeUI('dm');
+        });
+    }
+
+    // Color pickers & theme chips
+    const colorInput = document.getElementById('appPanelColorInput');
+    const colorHex = document.getElementById('appPanelColorHex');
+    if (colorInput) {
+        colorInput.addEventListener('input', () => {
+            const hex = colorInput.value;
+            if (colorHex) colorHex.textContent = hex;
+            window.applicationData.currentEmbedColor = hex;
+            updateApplicationPreview();
+        });
+    }
+
+    document.querySelectorAll('#applicationsSection .ticket-theme-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.querySelectorAll('#applicationsSection .ticket-theme-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            const col = chip.getAttribute('data-color');
+            if (colorInput) colorInput.value = col;
+            if (colorHex) colorHex.textContent = col;
+            window.applicationData.currentEmbedColor = col;
+            updateApplicationPreview();
+        });
+    });
+
+    // Inputs real-time preview updates
+    ['appPanelTitleInput', 'appPanelDescInput', 'appPanelFooterInput', 'appButtonLabelInput', 'appButtonStyleSelect', 'appIntroTitleInput', 'appIntroDescInput', 'appStartBtnLabel', 'appCancelBtnLabel'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateApplicationPreview);
+    });
+
+    // Add question button
+    const addQBtn = document.getElementById('appAddQuestionBtn');
+    if (addQBtn) addQBtn.onclick = addAppQuestion;
+    const newQInput = document.getElementById('appNewQuestionInput');
+    if (newQInput) {
+        newQInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addAppQuestion();
+            }
+        });
+    }
+
+    // Simulator Tab Switching
+    const tabPan = document.getElementById('appSimTabPanel');
+    const tabIntro = document.getElementById('appSimTabIntro');
+    const tabRev = document.getElementById('appSimTabReview');
+    const tabs = [tabPan, tabIntro, tabRev];
+
+    function setSimTab(mode, activeBtn) {
+        window.applicationData.simTab = mode;
+        tabs.forEach(t => {
+            if (t) {
+                t.style.background = '';
+                t.style.borderColor = '';
+            }
+        });
+        if (activeBtn) {
+            activeBtn.style.background = 'rgba(88,101,242,0.3)';
+            activeBtn.style.borderColor = '#5865f2';
+        }
+        updateApplicationPreview();
+    }
+
+    if (tabPan) tabPan.onclick = () => setSimTab('panel', tabPan);
+    if (tabIntro) tabIntro.onclick = () => setSimTab('intro', tabIntro);
+    if (tabRev) tabRev.onclick = () => setSimTab('review', tabRev);
+
+    // Single-emoji picker for Button Emoji
+    const btnEmojiBtn = document.getElementById('appButtonEmojiBtn');
+    if (btnEmojiBtn) {
+        btnEmojiBtn.onclick = () => {
+            openEmojiPicker(btnEmojiBtn, (chosenEmoji) => {
+                const hidden = document.getElementById('appButtonEmojiInput');
+                const visual = document.getElementById('appButtonEmojiVisual');
+                if (hidden) hidden.value = chosenEmoji;
+                if (visual) visual.innerHTML = renderEmojiHtmlOrChar(chosenEmoji, 20);
+                updateApplicationPreview();
+            });
+        };
+    }
+
+    // Single-emoji picker for Start & Cancel buttons
+    const startEmojiBtn = document.getElementById('appStartBtnEmojiBtn');
+    if (startEmojiBtn) {
+        startEmojiBtn.onclick = () => {
+            openEmojiPicker(startEmojiBtn, (emojiVal) => {
+                document.getElementById('appStartBtnEmoji').value = emojiVal;
+                startEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
+                updateApplicationPreview();
+            });
+        };
+    }
+    const cancelEmojiBtn = document.getElementById('appCancelBtnEmojiBtn');
+    if (cancelEmojiBtn) {
+        cancelEmojiBtn.onclick = () => {
+            openEmojiPicker(cancelEmojiBtn, (emojiVal) => {
+                document.getElementById('appCancelBtnEmoji').value = emojiVal;
+                cancelEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
+                updateApplicationPreview();
+            });
+        };
+    }
+
+    // Universal Emoji picker buttons
+    const emojiBindings = [
+        { btnId: 'appPanelTitleEmojiBtn', targetId: 'appPanelTitleInput' },
+        { btnId: 'appPanelDescEmojiBtn', targetId: 'appPanelDescInput' },
+        { btnId: 'appNewQuestionEmojiBtn', targetId: 'appNewQuestionInput' },
+        { btnId: 'appIntroTitleEmojiBtn', targetId: 'appIntroTitleInput' },
+        { btnId: 'appIntroDescEmojiBtn', targetId: 'appIntroDescInput' },
+        { btnId: 'appApprovedTitleEmojiBtn', targetId: 'appApprovedTitleInput' },
+        { btnId: 'appApprovedDescEmojiBtn', targetId: 'appApprovedDescInput' },
+        { btnId: 'appRejectedTitleEmojiBtn', targetId: 'appRejectedTitleInput' },
+        { btnId: 'appRejectedDescEmojiBtn', targetId: 'appRejectedDescInput' }
+    ];
+
+    emojiBindings.forEach(b => {
+        const btn = document.getElementById(b.btnId);
+        if (btn) {
+            btn.onclick = () => {
+                openEmojiPicker(btn, (emojiVal) => {
+                    insertEmojiIntoInputOrRich(b.targetId, emojiVal);
+                    updateApplicationPreview();
+                });
+            };
+        }
+    });
+
+    // Save & Deploy Buttons
+    const saveBtn = document.getElementById('saveAppConfigBtn');
+    if (saveBtn) saveBtn.onclick = saveApplicationsConfig;
+
+    const deployBtn = document.getElementById('deployAppPanelBtn');
+    if (deployBtn) deployBtn.onclick = deployApplicationPanel;
+}
+
+async function saveApplicationsConfig() {
+    if (!currentGuildId) return;
+    const saveBtn = document.getElementById('saveAppConfigBtn');
+    const origHtml = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = 'Saving...';
+    }
+
+    const mode = document.getElementById('appModeDmRadio')?.checked ? 'dm' : 'server';
+
+    const payload = {
+        delivery_mode: mode,
+        panel_channel_id: document.getElementById('appPanelChannelSelect')?.value || null,
+        review_channel_id: document.getElementById('appReviewChannelSelect')?.value || null,
+        approved_role_id: document.getElementById('appApprovedRoleSelect')?.value || null,
+        panel: {
+            title: document.getElementById('appPanelTitleInput')?.value || '📋 Staff Application',
+            description: document.getElementById('appPanelDescInput')?.value || '',
+            color: window.applicationData.currentEmbedColor || '#5865f2',
+            footer: document.getElementById('appPanelFooterInput')?.value || 'Friday Applications • Click below to apply',
+            button_label: document.getElementById('appButtonLabelInput')?.value || 'Apply Now',
+            button_emoji: document.getElementById('appButtonEmojiInput')?.value || '📝',
+            button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary'
+        },
+        questions: window.applicationData.questions || [],
+        dm_flow: {
+            intro_title: document.getElementById('appIntroTitleInput')?.value || '📝 Staff Application • {server}',
+            intro_description: document.getElementById('appIntroDescInput')?.value || '',
+            intro_color: window.applicationData.currentEmbedColor || '#5865f2',
+            start_btn_label: document.getElementById('appStartBtnLabel')?.value || "Let's Start",
+            start_btn_emoji: document.getElementById('appStartBtnEmoji')?.value || '🚀',
+            cancel_btn_label: document.getElementById('appCancelBtnLabel')?.value || 'Cancel',
+            cancel_btn_emoji: document.getElementById('appCancelBtnEmoji')?.value || '✖️'
+        },
+        approved_msg: {
+            title: document.getElementById('appApprovedTitleInput')?.value || '🎉 Application Approved • {server}',
+            description: document.getElementById('appApprovedDescInput')?.value || '',
+            color: '#10b981'
+        },
+        rejected_msg: {
+            title: document.getElementById('appRejectedTitleInput')?.value || 'Application Update • {server}',
+            description: document.getElementById('appRejectedDescInput')?.value || '',
+            color: '#ef4444'
+        }
+    };
+
+    try {
+        const res = await fetch(`/api/guild/${currentGuildId}/applications/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            showToast('✅ Application settings saved successfully!', 'success');
+            window.applicationData.config = data.config || payload;
+        } else {
+            showToast(data.error || 'Failed to save application settings.', 'error');
+        }
+    } catch (err) {
+        console.error('Error saving application config:', err);
+        showToast('Network error while saving settings.', 'error');
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = origHtml;
+        }
+    }
+}
+
+async function deployApplicationPanel() {
+    if (!currentGuildId) return;
+    const channelSelect = document.getElementById('appPanelChannelSelect');
+    const channelId = channelSelect ? channelSelect.value : null;
+
+    if (!channelId) {
+        showToast('⚠️ Please select a Destination Channel first!', 'warning');
+        if (channelSelect) channelSelect.focus();
+        return;
+    }
+
+    const deployBtn = document.getElementById('deployAppPanelBtn');
+    const origHtml = deployBtn ? deployBtn.innerHTML : '';
+    if (deployBtn) {
+        deployBtn.disabled = true;
+        deployBtn.innerHTML = 'Deploying...';
+    }
+
+    const payload = {
+        channel_id: channelId,
+        title: document.getElementById('appPanelTitleInput')?.value || '📋 Staff Application',
+        description: document.getElementById('appPanelDescInput')?.value || '',
+        color: window.applicationData.currentEmbedColor || '#5865f2',
+        footer: document.getElementById('appPanelFooterInput')?.value || 'Friday Applications • Click below to apply',
+        button_label: document.getElementById('appButtonLabelInput')?.value || 'Apply Now',
+        button_emoji: document.getElementById('appButtonEmojiInput')?.value || '📝',
+        button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary'
+    };
+
+    try {
+        const res = await fetch(`/api/guild/${currentGuildId}/applications/panel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            showToast('🚀 Application Panel successfully deployed to Discord!', 'success');
+        } else {
+            showToast(data.error || 'Failed to deploy application panel.', 'error');
+        }
+    } catch (err) {
+        console.error('Error deploying application panel:', err);
+        showToast('Network error while deploying panel.', 'error');
+    } finally {
+        if (deployBtn) {
+            deployBtn.disabled = false;
+            deployBtn.innerHTML = origHtml;
+        }
+    }
+}
+
+async function loadApplicationsSettings() {
+    if (!currentGuildId) return;
+    try {
+        const res = await fetch(`/api/guild/${currentGuildId}/applications`);
+        const data = await res.json();
+        if (!data || !data.success) {
+            console.error('Failed to load applications data:', data);
+            return;
+        }
+
+        const cfg = data.config || {};
+        window.applicationData.config = cfg;
+        window.applicationData.questions = Array.isArray(cfg.questions) && cfg.questions.length ? [...cfg.questions] : [
+            "What position are you applying for and why?",
+            "What is your age and timezone?",
+            "How many hours per week can you dedicate to the server?",
+            "Do you have previous staff or moderation experience? Please describe.",
+            "How would you handle a conflict between two heated members in chat?"
+        ];
+
+        // 1. Populate Channel and Role Selects
+        populateAppSelects(cfg.panel_channel_id, cfg.review_channel_id, cfg.approved_role_id);
+
+        // 2. Delivery Mode (Server vs DM)
+        const mode = cfg.delivery_mode || 'server';
+        const serverRadio = document.getElementById('appModeServerRadio');
+        const dmRadio = document.getElementById('appModeDmRadio');
+        if (serverRadio && dmRadio) {
+            if (mode === 'dm') {
+                dmRadio.checked = true;
+                updateAppModeUI('dm');
+            } else {
+                serverRadio.checked = true;
+                updateAppModeUI('server');
+            }
+        }
+
+        // 3. Panel Form Controls
+        const p = cfg.panel || {};
+        const titleInput = document.getElementById('appPanelTitleInput');
+        if (titleInput) titleInput.value = p.title || '📋 Staff Application';
+
+        const descInput = document.getElementById('appPanelDescInput');
+        if (descInput) descInput.value = p.description || 'Click below to submit your application!';
+
+        const footerInput = document.getElementById('appPanelFooterInput');
+        if (footerInput) footerInput.value = p.footer || 'Friday Applications • Click below to apply';
+
+        const colorInput = document.getElementById('appPanelColorInput');
+        const colorHex = document.getElementById('appPanelColorHex');
+        const panelColor = p.color || '#5865f2';
+        if (colorInput) colorInput.value = panelColor;
+        if (colorHex) colorHex.textContent = panelColor;
+        window.applicationData.currentEmbedColor = panelColor;
+
+        // Theme chips active state
+        document.querySelectorAll('#applicationsSection .ticket-theme-chip').forEach(c => {
+            if (c.getAttribute('data-color') === panelColor) c.classList.add('active');
+            else c.classList.remove('active');
+        });
+
+        // Button Customization
+        const btnLabel = document.getElementById('appButtonLabelInput');
+        if (btnLabel) btnLabel.value = p.button_label || 'Apply Now';
+
+        const btnEmoji = document.getElementById('appButtonEmojiInput');
+        if (btnEmoji) btnEmoji.value = p.button_emoji || '📝';
+
+        const btnEmojiVisual = document.getElementById('appButtonEmojiVisual');
+        if (btnEmojiVisual) btnEmojiVisual.innerHTML = renderEmojiHtmlOrChar(p.button_emoji || '📝', 20);
+
+        const btnStyle = document.getElementById('appButtonStyleSelect');
+        if (btnStyle) btnStyle.value = p.button_style || 'primary';
+
+        // 4. Questions List
+        renderAppQuestionsList();
+
+        // 5. Intro Customization
+        const d = cfg.dm_flow || {};
+        const introTitle = document.getElementById('appIntroTitleInput');
+        if (introTitle) introTitle.value = d.intro_title || '📝 Staff Application • {server}';
+
+        const introDesc = document.getElementById('appIntroDescInput');
+        if (introDesc) introDesc.value = d.intro_description || 'Hello {user}! Thank you for your interest in joining the staff team in **{server}**...';
+
+        const startLabel = document.getElementById('appStartBtnLabel');
+        if (startLabel) startLabel.value = d.start_btn_label || "Let's Start";
+
+        const startEmoji = document.getElementById('appStartBtnEmoji');
+        if (startEmoji) startEmoji.value = d.start_btn_emoji || '🚀';
+        const startEmojiBtn = document.getElementById('appStartBtnEmojiBtn');
+        if (startEmojiBtn) startEmojiBtn.innerHTML = renderEmojiHtmlOrChar(d.start_btn_emoji || '🚀', 18);
+
+        const cancelLabel = document.getElementById('appCancelBtnLabel');
+        if (cancelLabel) cancelLabel.value = d.cancel_btn_label || 'Cancel';
+
+        const cancelEmoji = document.getElementById('appCancelBtnEmoji');
+        if (cancelEmoji) cancelEmoji.value = d.cancel_btn_emoji || '✖️';
+        const cancelEmojiBtn = document.getElementById('appCancelBtnEmojiBtn');
+        if (cancelEmojiBtn) cancelEmojiBtn.innerHTML = renderEmojiHtmlOrChar(d.cancel_btn_emoji || '✖️', 18);
+
+        // 6. Decision DMs
+        const appMsg = cfg.approved_msg || {};
+        const appTitle = document.getElementById('appApprovedTitleInput');
+        if (appTitle) appTitle.value = appMsg.title || '🎉 Application Approved • {server}';
+        const appDesc = document.getElementById('appApprovedDescInput');
+        if (appDesc) appDesc.value = appMsg.description || 'Congratulations {user}! Your staff application has been APPROVED!';
+
+        const rejMsg = cfg.rejected_msg || {};
+        const rejTitle = document.getElementById('appRejectedTitleInput');
+        if (rejTitle) rejTitle.value = rejMsg.title || 'Application Update • {server}';
+        const rejDesc = document.getElementById('appRejectedDescInput');
+        if (rejDesc) rejDesc.value = rejMsg.description || 'Hello {user}, your application was not accepted at this time.';
+
+        // Attach Rich Emoji Editors
+        attachRichEmojiEditor('appPanelTitleInput', true);
+        attachRichEmojiEditor('appPanelDescInput');
+        attachRichEmojiEditor('appPanelFooterInput', true);
+        attachRichEmojiEditor('appButtonLabelInput', true);
+        attachRichEmojiEditor('appIntroTitleInput', true);
+        attachRichEmojiEditor('appIntroDescInput');
+        attachRichEmojiEditor('appApprovedTitleInput', true);
+        attachRichEmojiEditor('appApprovedDescInput');
+        attachRichEmojiEditor('appRejectedTitleInput', true);
+        attachRichEmojiEditor('appRejectedDescInput');
+
+        if (typeof syncAllRichEmojiEditors === 'function') {
+            syncAllRichEmojiEditors();
+        }
+
+        setupAppListenersOnce();
+        updateApplicationPreview();
+    } catch (err) {
+        console.error('Error loading applications data:', err);
+    }
+}
+

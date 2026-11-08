@@ -9278,3 +9278,15 @@ textarea,
     background: rgba(239, 68, 68, 0.08);
     border-color: rgba(239, 68, 68, 0.28);
 }
+
+/* ───────────────────── Applications Studio Styles ───────────────────── */
+.app-question-row:hover {
+    border-color: rgba(88, 101, 242, 0.35) !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.app-question-input:focus {
+    border-color: #5865f2 !important;
+    box-shadow: 0 0 0 2px rgba(88, 101, 242, 0.25) !important;
+}
+
