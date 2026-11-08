@@ -1820,12 +1820,8 @@ def toggle_welcome(gid):
     if gid_str not in db.welcome or not isinstance(db.welcome[gid_str], dict):
         db.welcome[gid_str] = {}
     db.welcome[gid_str]["enabled"] = active
-    if active:
-        # Pause first chat greeting to prevent duplicate/conflicting greetings
-        if gid_str in db.first_welcome and isinstance(db.first_welcome[gid_str], dict):
-            db.first_welcome[gid_str]["enabled"] = False
     db.save_data()
-    return jsonify({"success": True, "enabled": active, "first_welcome_disabled": active})
+    return jsonify({"success": True, "enabled": active})
 
 @app.route('/api/guild/<gid>/welcome/upload-banner', methods=['POST'])
 def upload_welcome_banner(gid):
@@ -1874,9 +1870,6 @@ def update_welcome(gid):
                 db.welcome[gid_str][key] = str(val).strip() if val else None
             else:
                 db.welcome[gid_str][key] = str(val).strip() if val is not None else ""
-    if db.welcome[gid_str].get("enabled"):
-        if gid_str in db.first_welcome and isinstance(db.first_welcome[gid_str], dict):
-            db.first_welcome[gid_str]["enabled"] = False
     db.save_data()
     from cogs.welcomer import get_welcome_config
     return jsonify({"success": True, "config": get_welcome_config(gid_str)})
@@ -2146,12 +2139,8 @@ def toggle_first_welcome(gid):
         db.first_welcome[gid_str] = {}
         
     db.first_welcome[gid_str]["enabled"] = active
-    if active:
-        # Pause server-join greeting to prevent duplicate or premature on-join greeting
-        if gid_str in db.welcome and isinstance(db.welcome[gid_str], dict):
-            db.welcome[gid_str]["enabled"] = False
     db.save_data()
-    return jsonify({"success": True, "enabled": active, "welcome_disabled": active})
+    return jsonify({"success": True, "enabled": active})
 
 @app.route('/api/guild/<gid>/first_welcome/update', methods=['POST'])
 def update_first_welcome(gid):
@@ -2167,10 +2156,6 @@ def update_first_welcome(gid):
 
     if "enabled" in data:
         db.first_welcome[gid_str]["enabled"] = bool(data.get("enabled", False))
-        is_en = bool(data.get("enabled", False))
-        db.first_welcome[gid_str]["enabled"] = is_en
-        if is_en and gid_str in db.welcome and isinstance(db.welcome[gid_str], dict):
-            db.welcome[gid_str]["enabled"] = False
     if "channel_id" in data:
         db.first_welcome[gid_str]["channel_id"] = str(data.get("channel_id")).strip() if data.get("channel_id") else None
     if "title" in data:

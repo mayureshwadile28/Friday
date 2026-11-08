@@ -14,6 +14,7 @@ Friday Bot - Complete Command List
 /role remove @member @role - Remove a role from a member with hierarchy protection
 /role info @role - Inspect role details, creation date, members count, and color
 /role list @member - List all roles currently assigned to a member
+/role emoji @role <emoji> - Set, update, or remove the emoji / icon for a server role (requires Server Boost Level 2 for role icons; type 'none' to remove)
 @Friday @member <new nickname> (or @Friday nick @member <new nickname>) - Changes a user's nickname (requires Manage Nicknames perm; strictly checks Discord role hierarchy, cannot rename server owner or equal/higher roles; conversational queries are automatically passed to AI without false errors)
 
 ⚙️ Security (Anti-Nuke, Anti-Raid & Command Center)

@@ -54,20 +54,6 @@ def get_welcome_config(gid: str) -> dict:
 
     enabled = bool(cfg.get("enabled", False))
 
-    # Auto-resolve conflict: If First Chat Greeting is active for this server,
-    # server-join welcome MUST be suppressed to ensure newcomer is greeted on first message reply, NOT upon joining.
-    fw_cfg = db.first_welcome.get(gid_str) or db.first_welcome.get(gid_int) or {}
-    is_fw_active = bool(fw_cfg.get("enabled", False)) if isinstance(fw_cfg, dict) else False
-
-    if enabled and is_fw_active:
-        enabled = False
-        if gid_str in db.welcome and isinstance(db.welcome[gid_str], dict):
-            db.welcome[gid_str]["enabled"] = False
-            try:
-                db.save_data()
-            except Exception:
-                pass
-
     return {
         "enabled": enabled,
         "channel_id": cfg.get("channel_id", None),
@@ -412,6 +398,9 @@ async def count_member_past_messages(member: discord.Member, message: discord.Me
     try:
         async for past_msg in message.channel.history(limit=50, before=message):
             if past_msg.author.id == member.id:
+                # If member joined recently (or rejoined), ignore messages sent before their current join timestamp!
+                if member.joined_at and past_msg.created_at < member.joined_at:
+                    continue
                 prior_msgs += 1
                 if prior_msgs >= 2:
                     return prior_msgs
@@ -440,6 +429,8 @@ async def count_member_past_messages(member: discord.Member, message: discord.Me
         try:
             async for past_msg in ch.history(limit=50):
                 if past_msg.id != message.id and past_msg.author.id == member.id:
+                    if member.joined_at and past_msg.created_at < member.joined_at:
+                        continue
                     prior_msgs += 1
                     if prior_msgs >= 2:
                         return prior_msgs
@@ -522,8 +513,6 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         db.welcome[gid]["channel_id"] = str(target_channel.id)
         db.welcome[gid]["enabled"] = True
-        if gid in db.first_welcome and isinstance(db.first_welcome[gid], dict):
-            db.first_welcome[gid]["enabled"] = False
         db.welcome[gid]["is_embed"] = embed
         db.welcome[gid]["ping_user"] = ping
         if message is not None:
@@ -561,8 +550,6 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         db.welcome[gid]["channel_id"] = str(target_channel.id)
         db.welcome[gid]["enabled"] = True
-        if gid in db.first_welcome and isinstance(db.first_welcome[gid], dict):
-            db.first_welcome[gid]["enabled"] = False
         db.save_data()
 
         await reply_box(
@@ -1021,15 +1008,12 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         db.first_welcome[gid]["channel_id"] = str(target_channel.id)
         db.first_welcome[gid]["enabled"] = True
-        # Suppress server join greeting to ensure members are only greeted on their first message
-        if gid in db.welcome and isinstance(db.welcome[gid], dict):
-            db.welcome[gid]["enabled"] = False
         db.save_data()
 
         await reply_box(
             interaction,
             f"• **First Chat Channel Set:** {target_channel.mention}\n"
-            f"• **Status:** Active (Server Join Greeting paused)\n"
+            f"• **Status:** Active\n"
             f"• Friday will reply directly to new members on their very first message in {target_channel.mention}!",
             title="FIRST WELCOME ACTIVATED",
             status="success",
@@ -1048,8 +1032,6 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         db.first_welcome[gid]["channel_id"] = None
         db.first_welcome[gid]["enabled"] = True
-        if gid in db.welcome and isinstance(db.welcome[gid], dict):
-            db.welcome[gid]["enabled"] = False
         db.save_data()
 
         await reply_box(
@@ -1244,12 +1226,6 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         gid = str(member.guild.id)
 
-        # Check First Chat Greeting priority
-        fw_cfg = get_first_welcome_config(gid)
-        if fw_cfg.get("enabled"):
-            print(f"ℹ️ [Welcomer] Skipping server-join welcome for {member.name} in '{member.guild.name}' ({gid}) because First Chat Greeting is active. Friday will reply when newcomer sends their first message in chat.")
-            return
-
         cfg = get_welcome_config(gid)
         if not cfg.get("enabled"):
             print(f"ℹ️ [Welcomer] Welcome is currently PAUSED / DISABLED for '{member.guild.name}' ({gid}).")
@@ -1346,6 +1322,13 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
             return
 
         gid = str(member.guild.id)
+        uid = str(member.id)
+
+        # Clear member from first_chat_welcomes so if they rejoin later, they can be greeted anew
+        if gid in db.first_chat_welcomes and isinstance(db.first_chat_welcomes[gid], list) and uid in db.first_chat_welcomes[gid]:
+            db.first_chat_welcomes[gid].remove(uid)
+            db.save_data()
+
         cfg = get_farewell_config(gid)
         if not cfg.get("enabled"):
             print(f"ℹ️ [Welcomer] Farewell is currently PAUSED / DISABLED for '{member.guild.name}' ({gid}).")

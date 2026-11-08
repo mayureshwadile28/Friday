@@ -1,4 +1,6 @@
 import discord
+import re
+import aiohttp
 from discord.ext import commands
 from discord import app_commands
 import datetime
@@ -1297,6 +1299,115 @@ class Moderation(commands.Cog):
         else:
             desc = f"**Total Roles ({count}):**\n" + ", ".join(roles)
         await reply_box(interaction, desc, title=f"ROLES: {member.display_name}", status="info")
+
+    @role_group.command(name="emoji", description="Set, update, or remove the emoji / icon for a server role.")
+    @app_commands.describe(role="The role to update", emoji="The emoji or custom emoji to assign (type 'none' to remove)")
+    @app_commands.default_permissions(manage_roles=True)
+    async def role_emoji(self, interaction: discord.Interaction, role: discord.Role, emoji: str):
+        # 1. Invalid / default / managed role checks
+        if role.is_default():
+            await reply_box(interaction, "Cannot modify the default @everyone role.", title="INVALID ROLE", status="error", ephemeral=True)
+            return
+        if role.managed:
+            await reply_box(interaction, f"The role {role.mention} is managed by an integration or bot and cannot be modified manually.", title="INTEGRATION ROLE", status="error", ephemeral=True)
+            return
+
+        # 2. Hierarchy check: executor vs target role
+        if interaction.user.id != interaction.guild.owner_id and role >= interaction.user.top_role:
+            await reply_box(
+                interaction,
+                f"You cannot modify {role.mention} because it is higher than or equal to your highest role ({interaction.user.top_role.mention}).",
+                title="HIERARCHY ERROR",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        # 3. Hierarchy check: bot vs target role
+        if role >= interaction.guild.me.top_role:
+            await reply_box(
+                interaction,
+                f"Friday cannot modify {role.mention} because it is higher than or equal to Friday's highest role ({interaction.guild.me.top_role.mention}).\n"
+                "Please drag Friday's role higher in Server Settings > Roles.",
+                title="BOT HIERARCHY LIMIT",
+                status="error",
+                ephemeral=True
+            )
+            return
+
+        clean = emoji.strip()
+        # Removal case
+        if clean.lower() in ("none", "remove", "clear", "0", "delete", "off"):
+            try:
+                await role.edit(display_icon=None, reason=f"Role icon removed by {interaction.user} ({interaction.user.id})")
+                await reply_box(interaction, f"Successfully removed the emoji / icon from {role.mention}.", title="ROLE EMOJI REMOVED", status="success")
+                return
+            except discord.Forbidden:
+                await reply_box(interaction, f"Friday lacks permission to edit {role.mention}.", title="PERMISSION DENIED", status="error", ephemeral=True)
+                return
+            except Exception as e:
+                await reply_box(interaction, f"Failed to clear role icon: {e}", title="EXECUTION ERROR", status="error", ephemeral=True)
+                return
+
+        # Custom Discord emoji: <:name:id> or <a:name:id>
+        custom_m = re.match(r'<a?:([a-zA-Z0-9_]+):([0-9]+)>', clean)
+        icon_val = None
+        if custom_m:
+            emoji_id = int(custom_m.group(2))
+            custom_emoji = interaction.guild.get_emoji(emoji_id) or self.bot.get_emoji(emoji_id)
+            if not custom_emoji:
+                try:
+                    custom_emoji = await self.bot.fetch_emoji(emoji_id)
+                except Exception:
+                    custom_emoji = None
+            if custom_emoji:
+                try:
+                    icon_val = await custom_emoji.read()
+                except Exception as e:
+                    await reply_box(interaction, f"Failed to load custom emoji bytes: {e}", title="EMOJI FETCH ERROR", status="error", ephemeral=True)
+                    return
+            else:
+                # Fallback: fetch asset directly from Discord CDN
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        url = f"https://cdn.discordapp.com/emojis/{emoji_id}.png"
+                        async with session.get(url) as resp:
+                            if resp.status == 200:
+                                icon_val = await resp.read()
+                except Exception:
+                    pass
+
+            if not icon_val:
+                await reply_box(interaction, f"Could not find or load custom emoji `{clean}`.", title="EMOJI NOT FOUND", status="error", ephemeral=True)
+                return
+        else:
+            # Standard unicode emoji (e.g. 👑, 🔥, 🛡️)
+            icon_val = clean
+
+        try:
+            await role.edit(display_icon=icon_val, reason=f"Role icon updated by {interaction.user} ({interaction.user.id})")
+            await reply_box(
+                interaction,
+                f"Successfully set the emoji for {role.mention} to {clean}!",
+                title="ROLE EMOJI UPDATED",
+                status="success"
+            )
+        except discord.Forbidden:
+            await reply_box(interaction, f"Friday lacks permission to update {role.mention}.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        except discord.HTTPException as e:
+            if "ROLE_ICONS" in str(e) or "feature" in str(e).lower():
+                await reply_box(
+                    interaction,
+                    f"⚠️ This server has not unlocked the **Role Icons** perk yet (Discord requires Server Boost Level 2).\n\n"
+                    f"Once your server reaches Level 2 Boost, Friday will be able to display role emojis!",
+                    title="SERVER BOOST REQUIRED",
+                    status="warning",
+                    ephemeral=True
+                )
+            else:
+                await reply_box(interaction, f"Discord error while setting role emoji: {e}", title="DISCORD API ERROR", status="error", ephemeral=True)
+        except Exception as e:
+            await reply_box(interaction, f"Failed to set role emoji: {e}", title="EXECUTION ERROR", status="error", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
