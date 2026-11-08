@@ -931,9 +931,6 @@ class Moderation(commands.Cog):
         )
         await interaction.followup.send(embed=embed)
 
-async def setup(bot):
-    await bot.add_cog(Moderation(bot))
-
     @commands.command(name="move")
     async def prefix_move(self, ctx: commands.Context, *args):
         """
