@@ -10810,6 +10810,10 @@ async function loadCoreData() {
 
         }
 
+        if (typeof populateAppSelects === 'function') {
+            try { populateAppSelects(); } catch (e) {}
+        }
+
 
 
 
@@ -15370,15 +15374,22 @@ function richHtmlToRawMarkdown(el) {
             result += node.nodeValue;
         } else if (node.nodeType === 1) { // Node.ELEMENT_NODE
             if (node.tagName === 'IMG') {
-                const dataEmoji = node.getAttribute('data-emoji');
+                const dataEmoji = node.getAttribute('data-emoji') || node.getAttribute('data-char');
                 if (dataEmoji) {
                     result += dataEmoji;
+                } else if (node.getAttribute('alt')) {
+                    result += node.getAttribute('alt');
                 } else {
                     const src = node.getAttribute('src') || '';
                     const m = src.match(/cdn\.discordapp\.com\/emojis\/([0-9]+)\.(png|gif)/);
                     if (m) {
                         result += `<:emoji:${m[1]}>`;
                     }
+                }
+            } else if (node.tagName === 'SVG' || (node.classList && (node.classList.contains('discord-custom-emoji') || node.classList.contains('editor-inline-emoji')))) {
+                const emojiVal = node.getAttribute('data-emoji') || node.getAttribute('data-char') || node.getAttribute('alt') || node.getAttribute('title');
+                if (emojiVal) {
+                    result += emojiVal;
                 }
             } else if (node.tagName === 'BR') {
                 result += '\n';
@@ -18379,6 +18390,18 @@ function initAllRichEmojiEditors() {
     attachRichEmojiEditor('gwReqApprovalMessage');
     attachRichEmojiEditor('gwReqApprovedMessage', true);
     attachRichEmojiEditor('gwReqRejectedMessage', true);
+
+    // Applications Studio Rich Emoji Editors
+    attachRichEmojiEditor('appPanelTitleInput', true);
+    attachRichEmojiEditor('appPanelDescInput');
+    attachRichEmojiEditor('appPanelFooterInput', true);
+    attachRichEmojiEditor('appButtonLabelInput', true);
+    attachRichEmojiEditor('appIntroTitleInput', true);
+    attachRichEmojiEditor('appIntroDescInput');
+    attachRichEmojiEditor('appApprovedTitleInput', true);
+    attachRichEmojiEditor('appApprovedDescInput');
+    attachRichEmojiEditor('appRejectedTitleInput', true);
+    attachRichEmojiEditor('appRejectedDescInput');
 
 
 
@@ -67631,7 +67654,7 @@ async function loadBirthdayData() {
 
         // 2. Populate form fields
         const masterToggle = document.getElementById('birthdayMasterToggle');
-        if (masterToggle) masterToggle.checked = !!cfg.enabled;
+        if (masterToggle) masterToggle.checked = (cfg.enabled === true || cfg.enabled === 'true' || cfg.enabled === 1 || cfg.enabled === '1');
 
         const wishTime = document.getElementById('birthdayWishTimeInput');
         if (wishTime) {
@@ -67900,6 +67923,9 @@ function updateBirthdayPreview() {
         if (pingEveryone) lines.push('@everyone');
         
         let msg = (rawWishMsg || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉")
+            .replace(/<img[^>]*data-emoji=["']([^"']+)["'][^>]*>/gi, '$1')
+            .replace(/<img[^>]*alt=["']([^"']+)["'][^>]*>/gi, '$1')
+            .replace(/<img[^>]*src=["']https:\/\/cdn\.discordapp\.com\/emojis\/([0-9]+)\.(png|gif)[^"']*["'][^>]*>/gi, '<:emoji:$1>')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
@@ -67940,6 +67966,9 @@ function updateBirthdayPreview() {
     const descEl = document.getElementById('previewBirthdayEmbedDesc');
     if (descEl) {
         let d = (rawDesc || 'Wishing a very Happy Birthday to {mention}! May your special day be filled with happiness, success, and endless joy! 🎈✨')
+            .replace(/<img[^>]*data-emoji=["']([^"']+)["'][^>]*>/gi, '$1')
+            .replace(/<img[^>]*alt=["']([^"']+)["'][^>]*>/gi, '$1')
+            .replace(/<img[^>]*src=["']https:\/\/cdn\.discordapp\.com\/emojis\/([0-9]+)\.(png|gif)[^"']*["'][^>]*>/gi, '<:emoji:$1>')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
             .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
@@ -68264,8 +68293,9 @@ async function handleBirthdayUploadGeneric(file, targetInputId) {
 
 function setupBirthdayEvents() {
     const masterToggle = document.getElementById('birthdayMasterToggle');
-    if (masterToggle) {
-        masterToggle.onchange = async () => {
+    if (masterToggle && !masterToggle.dataset.eventsBound) {
+        masterToggle.dataset.eventsBound = "true";
+        masterToggle.addEventListener('change', async () => {
             if (!currentGuildId) return;
             const isEnabled = masterToggle.checked;
             try {
@@ -68288,7 +68318,7 @@ function setupBirthdayEvents() {
                 masterToggle.checked = !isEnabled;
                 showToast("Network error while toggling birthday system.", "error");
             }
-        };
+        });
     }
 
     const saveBtn = document.getElementById('saveBirthdayConfigBtn');
@@ -68655,11 +68685,7 @@ function insertAppVar(text) {
     if (!descEl) return;
     const richEl = document.getElementById('appPanelDescInput_rich');
     if (richEl && richEl.style.display !== 'none') {
-        richEl.focus();
-        document.execCommand('insertText', false, text);
-        const raw = richHtmlToRawMarkdown(richEl);
-        descEl.value = raw;
-        descEl.dispatchEvent(new Event('input', { bubbles: true }));
+        insertEmojiOrTextIntoRichEditor(richEl, text);
     } else {
         const start = descEl.selectionStart || 0;
         const end = descEl.selectionEnd || 0;
@@ -68668,6 +68694,10 @@ function insertAppVar(text) {
         descEl.selectionStart = descEl.selectionEnd = start + text.length;
         descEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
+}
+
+function insertAppIntroVar(v) {
+    insertEmojiIntoInputOrRich('appIntroDescInput', ' ' + v);
 }
 
 function insertAppApprovedVar(v) {
@@ -68683,14 +68713,10 @@ function insertEmojiIntoInputOrRich(targetId, emojiVal) {
     if (!targetEl) return;
     const richEl = document.getElementById(targetId + '_rich');
     if (richEl && richEl.style.display !== 'none') {
-        richEl.focus();
-        document.execCommand('insertText', false, emojiVal);
-        const raw = richHtmlToRawMarkdown(richEl);
-        targetEl.value = raw;
-        targetEl.dispatchEvent(new Event('input', { bubbles: true }));
+        insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
     } else {
-        const start = targetEl.selectionStart || targetEl.value.length;
-        const end = targetEl.selectionEnd || targetEl.value.length;
+        const start = targetEl.selectionStart ?? targetEl.value.length;
+        const end = targetEl.selectionEnd ?? targetEl.value.length;
         const val = targetEl.value || '';
         targetEl.value = val.substring(0, start) + emojiVal + val.substring(end);
         targetEl.selectionStart = targetEl.selectionEnd = start + emojiVal.length;
@@ -68730,43 +68756,63 @@ function populateAppSelects(panelCid, reviewCid, roleId) {
     const chans = (typeof currentGuildChannels !== 'undefined' && Array.isArray(currentGuildChannels)) ? currentGuildChannels : [];
     const roles = (typeof currentGuildRoles !== 'undefined' && Array.isArray(currentGuildRoles)) ? currentGuildRoles : [];
 
-    if (panelSelect) {
-        panelSelect.innerHTML = '<option value="">Select a Text Channel...</option>';
+    const buildChanOpts = (placeholder, selectedVal) => {
+        let html = `<option value="">${placeholder}</option>`;
+        const categories = {};
         chans.forEach(c => {
-            if (c.type === 0 || c.type === 'text') {
-                const opt = document.createElement('option');
-                opt.value = String(c.id);
-                opt.textContent = '#' + c.name;
-                if (String(c.id) === String(panelCid)) opt.selected = true;
-                panelSelect.appendChild(opt);
-            }
+            const cat = c.category || 'General / Uncategorized';
+            if (!categories[cat]) categories[cat] = [];
+            categories[cat].push(c);
         });
+        for (const [catName, chList] of Object.entries(categories)) {
+            html += `<optgroup label="📁 ${escapeHtml(catName)}">`;
+            chList.forEach(c => {
+                const isSel = String(c.id) === String(selectedVal) ? 'selected' : '';
+                html += `<option value="${c.id}" ${isSel}># ${escapeHtml(c.name)}</option>`;
+            });
+            html += '</optgroup>';
+        }
+        return html;
+    };
+
+    if (panelSelect) {
+        const cur = panelCid !== undefined ? panelCid : panelSelect.value;
+        panelSelect.innerHTML = buildChanOpts('Select Panel Channel...', cur);
     }
 
     if (reviewSelect) {
-        reviewSelect.innerHTML = '<option value="">Select a Private Staff Channel...</option>';
-        chans.forEach(c => {
-            if (c.type === 0 || c.type === 'text') {
-                const opt = document.createElement('option');
-                opt.value = String(c.id);
-                opt.textContent = '#' + c.name;
-                if (String(c.id) === String(reviewCid)) opt.selected = true;
-                reviewSelect.appendChild(opt);
-            }
-        });
+        const cur = reviewCid !== undefined ? reviewCid : reviewSelect.value;
+        reviewSelect.innerHTML = buildChanOpts('Select Staff Review Channel...', cur);
     }
 
     if (roleSelect) {
-        roleSelect.innerHTML = '<option value="">No automatic role (review only)</option>';
+        const cur = roleId !== undefined ? roleId : roleSelect.value;
+        let rHtml = '<option value="">No automatic role (review only)</option>';
         roles.forEach(r => {
             if (r.name !== '@everyone') {
-                const opt = document.createElement('option');
-                opt.value = String(r.id);
-                opt.textContent = '@' + r.name;
-                if (String(r.id) === String(roleId)) opt.selected = true;
-                roleSelect.appendChild(opt);
+                const isSel = String(r.id) === String(cur) ? 'selected' : '';
+                rHtml += `<option value="${r.id}" ${isSel}>@${escapeHtml(r.name)}</option>`;
             }
         });
+        roleSelect.innerHTML = rHtml;
+    }
+
+    // Auto-fetch if channels aren't populated in memory yet
+    if (chans.length === 0 && currentGuildId) {
+        fetch(`/api/guild/${currentGuildId}/channels`).then(r => r.json()).then(data => {
+            if (Array.isArray(data) && data.length) {
+                currentGuildChannels = data;
+                populateAppSelects(panelCid, reviewCid, roleId);
+            }
+        }).catch(() => {});
+    }
+    if (roles.length === 0 && currentGuildId) {
+        fetch(`/api/guild/${currentGuildId}/roles`).then(r => r.json()).then(data => {
+            if (Array.isArray(data) && data.length) {
+                currentGuildRoles = data;
+                populateAppSelects(panelCid, reviewCid, roleId);
+            }
+        }).catch(() => {});
     }
 }
 
@@ -68856,8 +68902,6 @@ function updateApplicationPreview() {
     const simThumbImg = document.getElementById('appSimThumbnailImg');
     const simThumb = document.getElementById('appSimThumbnail');
 
-    if (!embedEl || !titleEl || !descEl) return;
-
     if (simAvatar && currentBotAvatar) {
         simAvatar.innerHTML = `<img src="${currentBotAvatar}" alt="Friday" style="width: 100%; height: 100%; border-radius: 50%;">`;
     }
@@ -68870,25 +68914,90 @@ function updateApplicationPreview() {
         }
     }
 
-    if (simTab === 'panel') {
-        const rawTitle = document.getElementById('appPanelTitleInput')?.value || '📋 Staff Application';
-        const rawDesc = document.getElementById('appPanelDescInput')?.value || '';
-        const rawFooter = document.getElementById('appPanelFooterInput')?.value || 'Friday Applications • Click below to apply';
-        const color = window.applicationData.currentEmbedColor || '#5865f2';
+    // Shared Form Values
+    const rawPanelTitle = document.getElementById('appPanelTitleInput')?.value || '📋 Staff Application';
+    const rawPanelDesc = document.getElementById('appPanelDescInput')?.value || '';
+    const rawPanelFooter = document.getElementById('appPanelFooterInput')?.value || 'Friday Applications • Click below to apply';
+    const panelColor = window.applicationData.currentEmbedColor || '#5865f2';
+    const btnLabel = (document.getElementById('appButtonLabelInput')?.value || 'Apply Now').trim();
+    const btnEmoji = document.getElementById('appButtonEmojiInput')?.value || '📝';
+    const btnStyle = document.getElementById('appButtonStyleSelect')?.value || 'primary';
 
-        embedEl.style.borderLeftColor = color;
-        titleEl.innerHTML = renderDiscordMarkdown(rawTitle);
-        descEl.innerHTML = renderDiscordMarkdown(rawDesc);
-        if (footerEl) footerEl.innerHTML = `<span>${renderDiscordMarkdown(rawFooter)}</span>`;
+    const rawIntroTitle = document.getElementById('appIntroTitleInput')?.value || '📝 Staff Application • {server}';
+    const rawIntroDesc = document.getElementById('appIntroDescInput')?.value || '';
+    const startLabel = document.getElementById('appStartBtnLabel')?.value || "Let's Start";
+    const startEmoji = document.getElementById('appStartBtnEmoji')?.value || '🚀';
+    const cancelLabel = document.getElementById('appCancelBtnLabel')?.value || 'Cancel';
+    const cancelEmoji = document.getElementById('appCancelBtnEmoji')?.value || '✖️';
+
+    const rawAppTitle = document.getElementById('appApprovedTitleInput')?.value || '🎉 Application Approved • {server}';
+    const rawAppDesc = document.getElementById('appApprovedDescInput')?.value || '';
+
+    const rawRejTitle = document.getElementById('appRejectedTitleInput')?.value || 'Application Update • {server}';
+    const rawRejDesc = document.getElementById('appRejectedDescInput')?.value || '';
+
+    // 1. Update In-Card Intro Live Preview (Directly in Card 4)
+    const cardIntroTitle = document.getElementById('cardIntroPreviewTitle');
+    const cardIntroDesc = document.getElementById('cardIntroPreviewDesc');
+    const cardIntroStart = document.getElementById('cardIntroPreviewStartBtn');
+    const cardIntroCancel = document.getElementById('cardIntroPreviewCancelBtn');
+    if (cardIntroTitle) {
+        cardIntroTitle.innerHTML = renderDiscordMarkdown(rawIntroTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+    }
+    if (cardIntroDesc) {
+        cardIntroDesc.innerHTML = renderDiscordMarkdown(rawIntroDesc.replace('{server}', 'Server').replace('{user}', '@Alex').replace('{username}', 'Alex'));
+    }
+    if (cardIntroStart) {
+        cardIntroStart.innerHTML = `${renderEmojiHtmlOrChar(startEmoji, 16)}<span>${escapeHtml(startLabel)}</span>`;
+    }
+    if (cardIntroCancel) {
+        cardIntroCancel.innerHTML = `${renderEmojiHtmlOrChar(cancelEmoji, 16)}<span>${escapeHtml(cancelLabel)}</span>`;
+    }
+
+    // 2. Update In-Card Approval Live Preview (Directly in Card 5)
+    const cardAppTitle = document.getElementById('cardApprovedPreviewTitle');
+    const cardAppDesc = document.getElementById('cardApprovedPreviewDesc');
+    if (cardAppTitle) {
+        cardAppTitle.innerHTML = renderDiscordMarkdown(rawAppTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+    }
+    if (cardAppDesc) {
+        cardAppDesc.innerHTML = renderDiscordMarkdown(
+            rawAppDesc.replace('{server}', 'Server')
+                      .replace('{user}', '@Alex')
+                      .replace('{username}', 'Alex')
+                      .replace('{role}', '@Moderator')
+                      .replace('{role_name}', 'Moderator')
+        );
+    }
+
+    // 3. Update In-Card Rejection Live Preview (Directly in Card 5)
+    const cardRejTitle = document.getElementById('cardRejectedPreviewTitle');
+    const cardRejDesc = document.getElementById('cardRejectedPreviewDesc');
+    if (cardRejTitle) {
+        cardRejTitle.innerHTML = renderDiscordMarkdown(rawRejTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+    }
+    if (cardRejDesc) {
+        cardRejDesc.innerHTML = renderDiscordMarkdown(
+            rawRejDesc.replace('{server}', 'Server')
+                      .replace('{user}', '@Alex')
+                      .replace('{username}', 'Alex')
+                      .replace('{reason}', 'Insufficient moderation experience')
+        );
+    }
+
+    // 4. Update Main Simulator Tab (Right Column)
+    if (!embedEl || !titleEl || !descEl) return;
+
+    if (simTab === 'panel') {
+        embedEl.style.borderLeftColor = panelColor;
+        titleEl.innerHTML = renderDiscordMarkdown(rawPanelTitle);
+        descEl.innerHTML = renderDiscordMarkdown(rawPanelDesc);
+        if (footerEl) footerEl.innerHTML = `<span>${renderDiscordMarkdown(rawPanelFooter)}</span>`;
         if (reviewFields) reviewFields.style.display = 'none';
 
         // Rounded Apply Button with authentic styling and visual emoji
         if (btnRow) {
             btnRow.innerHTML = '';
-            const btnLabel = (document.getElementById('appButtonLabelInput')?.value || 'Apply Now').trim();
-            const btnEmoji = document.getElementById('appButtonEmojiInput')?.value || '📝';
-            const btnStyle = document.getElementById('appButtonStyleSelect')?.value || 'primary';
-
             let bgStyle = 'background: #5865f2; color: #fff;';
             if (btnStyle === 'success') bgStyle = 'background: #248046; color: #fff;';
             else if (btnStyle === 'danger') bgStyle = 'background: #da373c; color: #fff;';
@@ -68901,16 +69010,9 @@ function updateApplicationPreview() {
             btnRow.appendChild(buttonEl);
         }
     } else if (simTab === 'intro') {
-        const rawTitle = document.getElementById('appIntroTitleInput')?.value || '📝 Staff Application • Server';
-        const rawDesc = document.getElementById('appIntroDescInput')?.value || '';
-        const startLabel = document.getElementById('appStartBtnLabel')?.value || "Let's Start";
-        const startEmoji = document.getElementById('appStartBtnEmoji')?.value || '🚀';
-        const cancelLabel = document.getElementById('appCancelBtnLabel')?.value || 'Cancel';
-        const cancelEmoji = document.getElementById('appCancelBtnEmoji')?.value || '✖️';
-
         embedEl.style.borderLeftColor = '#5865f2';
-        titleEl.innerHTML = renderDiscordMarkdown(rawTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
-        descEl.innerHTML = renderDiscordMarkdown(rawDesc.replace('{server}', 'Server').replace('{user}', '@Alex'));
+        titleEl.innerHTML = renderDiscordMarkdown(rawIntroTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+        descEl.innerHTML = renderDiscordMarkdown(rawIntroDesc.replace('{server}', 'Server').replace('{user}', '@Alex'));
         if (footerEl) footerEl.innerHTML = `<span>Server • Application Form</span>`;
         if (reviewFields) reviewFields.style.display = 'none';
 
@@ -69022,9 +69124,18 @@ function setupAppListenersOnce() {
     });
 
     // Inputs real-time preview updates
-    ['appPanelTitleInput', 'appPanelDescInput', 'appPanelFooterInput', 'appButtonLabelInput', 'appButtonStyleSelect', 'appIntroTitleInput', 'appIntroDescInput', 'appStartBtnLabel', 'appCancelBtnLabel'].forEach(id => {
+    [
+        'appPanelTitleInput', 'appPanelDescInput', 'appPanelFooterInput',
+        'appButtonLabelInput', 'appButtonEmojiInput', 'appButtonStyleSelect',
+        'appIntroTitleInput', 'appIntroDescInput', 'appStartBtnLabel', 'appCancelBtnLabel',
+        'appApprovedTitleInput', 'appApprovedDescInput',
+        'appRejectedTitleInput', 'appRejectedDescInput'
+    ].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.addEventListener('input', updateApplicationPreview);
+        if (el) {
+            el.addEventListener('input', updateApplicationPreview);
+            el.addEventListener('change', updateApplicationPreview);
+        }
     });
 
     // Add question button
@@ -69067,35 +69178,46 @@ function setupAppListenersOnce() {
 
     // Single-emoji picker for Button Emoji
     const btnEmojiBtn = document.getElementById('appButtonEmojiBtn');
+    const btnEmojiInput = document.getElementById('appButtonEmojiInput');
+    const btnEmojiVisual = document.getElementById('appButtonEmojiVisual');
     if (btnEmojiBtn) {
         btnEmojiBtn.onclick = () => {
             openEmojiPicker(btnEmojiBtn, (chosenEmoji) => {
-                const hidden = document.getElementById('appButtonEmojiInput');
-                const visual = document.getElementById('appButtonEmojiVisual');
-                if (hidden) hidden.value = chosenEmoji;
-                if (visual) visual.innerHTML = renderEmojiHtmlOrChar(chosenEmoji, 20);
+                if (btnEmojiInput) btnEmojiInput.value = chosenEmoji;
+                if (btnEmojiVisual) btnEmojiVisual.innerHTML = renderEmojiHtmlOrChar(chosenEmoji, 20);
+                updateApplicationPreview();
+            });
+        };
+    }
+    if (btnEmojiInput) {
+        btnEmojiInput.addEventListener('input', () => {
+            if (btnEmojiVisual) btnEmojiVisual.innerHTML = renderEmojiHtmlOrChar(btnEmojiInput.value, 20);
+            updateApplicationPreview();
+        });
+    }
+
+    // Single-emoji picker for Start & Cancel buttons
+    const startEmojiBtn = document.getElementById('appStartBtnEmojiBtn');
+    const startEmojiInput = document.getElementById('appStartBtnEmoji');
+    const startEmojiVisual = document.getElementById('appStartBtnEmojiVisual');
+    if (startEmojiBtn) {
+        startEmojiBtn.onclick = () => {
+            openEmojiPicker(startEmojiBtn, (emojiVal) => {
+                if (startEmojiInput) startEmojiInput.value = emojiVal;
+                if (startEmojiVisual) startEmojiVisual.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
                 updateApplicationPreview();
             });
         };
     }
 
-    // Single-emoji picker for Start & Cancel buttons
-    const startEmojiBtn = document.getElementById('appStartBtnEmojiBtn');
-    if (startEmojiBtn) {
-        startEmojiBtn.onclick = () => {
-            openEmojiPicker(startEmojiBtn, (emojiVal) => {
-                document.getElementById('appStartBtnEmoji').value = emojiVal;
-                startEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
-                updateApplicationPreview();
-            });
-        };
-    }
     const cancelEmojiBtn = document.getElementById('appCancelBtnEmojiBtn');
+    const cancelEmojiInput = document.getElementById('appCancelBtnEmoji');
+    const cancelEmojiVisual = document.getElementById('appCancelBtnEmojiVisual');
     if (cancelEmojiBtn) {
         cancelEmojiBtn.onclick = () => {
             openEmojiPicker(cancelEmojiBtn, (emojiVal) => {
-                document.getElementById('appCancelBtnEmoji').value = emojiVal;
-                cancelEmojiBtn.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
+                if (cancelEmojiInput) cancelEmojiInput.value = emojiVal;
+                if (cancelEmojiVisual) cancelEmojiVisual.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
                 updateApplicationPreview();
             });
         };
@@ -69117,6 +69239,15 @@ function setupAppListenersOnce() {
     emojiBindings.forEach(b => {
         const btn = document.getElementById(b.btnId);
         if (btn) {
+            btn.addEventListener('mousedown', () => {
+                const richEl = document.getElementById(b.targetId + '_rich');
+                if (richEl) {
+                    const sel = window.getSelection();
+                    if (sel && sel.rangeCount > 0 && richEl.contains(sel.anchorNode)) {
+                        richEl._savedRange = sel.getRangeAt(0).cloneRange();
+                    }
+                }
+            });
             btn.onclick = () => {
                 openEmojiPicker(btn, (emojiVal) => {
                     insertEmojiIntoInputOrRich(b.targetId, emojiVal);
@@ -69294,16 +69425,22 @@ async function loadApplicationsSettings() {
             }
         }
 
+        // Helper to sync raw input and rich emoji editor
+        const syncField = (id, val, isSingleLine = false) => {
+            const el = document.getElementById(id);
+            if (el) el.value = val;
+            const rich = document.getElementById(id + '_rich') || (typeof attachRichEmojiEditor === 'function' ? attachRichEmojiEditor(id, isSingleLine) : null);
+            if (rich && typeof rawMarkdownToRichHtml === 'function') {
+                rich.innerHTML = rawMarkdownToRichHtml(val);
+            }
+        };
+
         // 3. Panel Form Controls
         const p = cfg.panel || {};
-        const titleInput = document.getElementById('appPanelTitleInput');
-        if (titleInput) titleInput.value = p.title || '📋 Staff Application';
-
-        const descInput = document.getElementById('appPanelDescInput');
-        if (descInput) descInput.value = p.description || 'Click below to submit your application!';
-
-        const footerInput = document.getElementById('appPanelFooterInput');
-        if (footerInput) footerInput.value = p.footer || 'Friday Applications • Click below to apply';
+        syncField('appPanelTitleInput', p.title || '📋 Staff Application', true);
+        syncField('appPanelDescInput', p.description || 'Interested in joining our staff team? Click the button below to submit your application!', false);
+        syncField('appPanelFooterInput', p.footer || 'Friday Applications • Click below to apply', true);
+        syncField('appButtonLabelInput', p.button_label || 'Apply Now', true);
 
         const colorInput = document.getElementById('appPanelColorInput');
         const colorHex = document.getElementById('appPanelColorHex');
@@ -69319,9 +69456,6 @@ async function loadApplicationsSettings() {
         });
 
         // Button Customization
-        const btnLabel = document.getElementById('appButtonLabelInput');
-        if (btnLabel) btnLabel.value = p.button_label || 'Apply Now';
-
         const btnEmoji = document.getElementById('appButtonEmojiInput');
         if (btnEmoji) btnEmoji.value = p.button_emoji || '📝';
 
@@ -69336,42 +69470,35 @@ async function loadApplicationsSettings() {
 
         // 5. Intro Customization
         const d = cfg.dm_flow || {};
-        const introTitle = document.getElementById('appIntroTitleInput');
-        if (introTitle) introTitle.value = d.intro_title || '📝 Staff Application • {server}';
-
-        const introDesc = document.getElementById('appIntroDescInput');
-        if (introDesc) introDesc.value = d.intro_description || 'Hello {user}! Thank you for your interest in joining the staff team in **{server}**...';
+        syncField('appIntroTitleInput', d.intro_title || '📝 Staff Application • {server}', true);
+        syncField('appIntroDescInput', d.intro_description || 'Hello {user}! Thank you for your interest in joining the staff team in **{server}**.\n\nYou are about to begin the application form. Please make sure you have enough time to answer all questions thoughtfully.', false);
 
         const startLabel = document.getElementById('appStartBtnLabel');
         if (startLabel) startLabel.value = d.start_btn_label || "Let's Start";
 
         const startEmoji = document.getElementById('appStartBtnEmoji');
         if (startEmoji) startEmoji.value = d.start_btn_emoji || '🚀';
-        const startEmojiBtn = document.getElementById('appStartBtnEmojiBtn');
-        if (startEmojiBtn) startEmojiBtn.innerHTML = renderEmojiHtmlOrChar(d.start_btn_emoji || '🚀', 18);
+        const startEmojiVisual = document.getElementById('appStartBtnEmojiVisual');
+        if (startEmojiVisual) startEmojiVisual.innerHTML = renderEmojiHtmlOrChar(d.start_btn_emoji || '🚀', 18);
 
         const cancelLabel = document.getElementById('appCancelBtnLabel');
         if (cancelLabel) cancelLabel.value = d.cancel_btn_label || 'Cancel';
 
         const cancelEmoji = document.getElementById('appCancelBtnEmoji');
         if (cancelEmoji) cancelEmoji.value = d.cancel_btn_emoji || '✖️';
-        const cancelEmojiBtn = document.getElementById('appCancelBtnEmojiBtn');
-        if (cancelEmojiBtn) cancelEmojiBtn.innerHTML = renderEmojiHtmlOrChar(d.cancel_btn_emoji || '✖️', 18);
+        const cancelEmojiVisual = document.getElementById('appCancelBtnEmojiVisual');
+        if (cancelEmojiVisual) cancelEmojiVisual.innerHTML = renderEmojiHtmlOrChar(d.cancel_btn_emoji || '✖️', 18);
 
         // 6. Decision DMs
         const appMsg = cfg.approved_msg || {};
-        const appTitle = document.getElementById('appApprovedTitleInput');
-        if (appTitle) appTitle.value = appMsg.title || '🎉 Application Approved • {server}';
-        const appDesc = document.getElementById('appApprovedDescInput');
-        if (appDesc) appDesc.value = appMsg.description || 'Congratulations {user}! Your staff application has been APPROVED!';
+        syncField('appApprovedTitleInput', appMsg.title || '🎉 Application Approved • {server}', true);
+        syncField('appApprovedDescInput', appMsg.description || 'Congratulations {user}!\n\nYour staff application for **{server}** has been **APPROVED**! 🎉\nYou have been granted the {role} role. Welcome to the team!', false);
 
         const rejMsg = cfg.rejected_msg || {};
-        const rejTitle = document.getElementById('appRejectedTitleInput');
-        if (rejTitle) rejTitle.value = rejMsg.title || 'Application Update • {server}';
-        const rejDesc = document.getElementById('appRejectedDescInput');
-        if (rejDesc) rejDesc.value = rejMsg.description || 'Hello {user}, your application was not accepted at this time.';
+        syncField('appRejectedTitleInput', rejMsg.title || 'Application Update • {server}', true);
+        syncField('appRejectedDescInput', rejMsg.description || 'Hello {user},\n\nThank you for taking the time to apply for a staff position in **{server}**.\nAfter careful review, we regret to inform you that your application was not accepted at this time.\n\n**Reason:** {reason}\n\nYou are welcome to re-apply in the future.', false);
 
-        // Attach Rich Emoji Editors
+        // Attach Rich Emoji Editors to ensure DOM readiness
         attachRichEmojiEditor('appPanelTitleInput', true);
         attachRichEmojiEditor('appPanelDescInput');
         attachRichEmojiEditor('appPanelFooterInput', true);

@@ -3788,7 +3788,11 @@ def update_birthday_config(gid):
     data = flask_request.json or {}
 
     cfg = db.birthdays_config.setdefault(gid_str, {})
-    cfg["enabled"] = bool(data.get("enabled", False))
+    raw_enabled = data.get("enabled", False)
+    if isinstance(raw_enabled, str):
+        cfg["enabled"] = raw_enabled.strip().lower() in ("true", "1", "yes", "on")
+    else:
+        cfg["enabled"] = bool(raw_enabled)
     cfg["form_channel_id"] = str(data.get("form_channel_id") or "").strip()
     cfg["wish_channel_id"] = str(data.get("wish_channel_id") or "").strip()
     cfg["role_id"] = str(data.get("role_id") or "").strip()
@@ -4004,7 +4008,14 @@ def toggle_birthday_system(gid):
     gid_str = str(gid)
     data = flask_request.json or {}
     cfg = db.birthdays_config.setdefault(gid_str, {})
-    new_state = bool(data.get("enabled", not cfg.get("enabled", False)))
+    if "enabled" in data:
+        raw_val = data["enabled"]
+        if isinstance(raw_val, str):
+            new_state = raw_val.strip().lower() in ("true", "1", "yes", "on")
+        else:
+            new_state = bool(raw_val)
+    else:
+        new_state = not cfg.get("enabled", False)
     cfg["enabled"] = new_state
     db.save_data()
     return jsonify({"success": True, "enabled": new_state, "message": f"Birthday system {'enabled' if new_state else 'disabled'}."})
