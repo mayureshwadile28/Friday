@@ -455,36 +455,19 @@ async def is_established_member(member: discord.Member, message: discord.Message
 
     gid = str(message.guild.id)
     uid = str(member.id)
-    guild_history = db.first_chat_welcomes.setdefault(gid, [])
 
+    # 1. Test / Reset Bypass Check (Explicitly allows testing or greeted re-test)
+    allow_list = db.first_welcome_allow_test.get(gid, [])
+    if isinstance(allow_list, list) and (uid in allow_list or "*" in allow_list):
+        return False
+
+    guild_history = db.first_chat_welcomes.setdefault(gid, [])
     if uid in guild_history:
         return True
 
+    # 2. Check chat history: if user already has 2+ past messages in server channels, they have already been chatting
     prior_msgs = await count_member_past_messages(member, message, cfg)
     if prior_msgs >= 2:
-        guild_history.append(uid)
-        db.save_data()
-        return True
-
-    if member.joined_at:
-        days_in_guild = (datetime.now(timezone.utc) - member.joined_at).total_seconds() / 86400.0
-        if days_in_guild > 7:
-            guild_history.append(uid)
-            db.save_data()
-            return True
-
-    custom_roles = [
-        r for r in member.roles
-        if hasattr(r, 'is_default') and not r.is_default() and not (hasattr(r, 'is_premium_subscriber') and r.is_premium_subscriber()) and not (hasattr(r, 'is_integration') and r.is_integration()) and not (hasattr(r, 'is_bot_managed') and r.is_bot_managed())
-    ]
-    has_staff_perms = False
-    for r in member.roles:
-        perms = getattr(r, 'permissions', None)
-        if perms and isinstance(perms, discord.Permissions):
-            if perms.administrator or perms.manage_messages or perms.kick_members or perms.ban_members:
-                has_staff_perms = True
-                break
-    if len(custom_roles) >= 2 or has_staff_perms:
         guild_history.append(uid)
         db.save_data()
         return True
@@ -1053,6 +1036,30 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
             ephemeral=True
         )
 
+    @first_welcome_group.command(name="any_channel", description="Allow first-chat greetings in ANY chat channel where newcomer speaks.")
+    async def fw_any_channel(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.administrator:
+            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+            return
+
+        gid = str(interaction.guild.id)
+        if gid not in db.first_welcome:
+            db.first_welcome[gid] = {}
+
+        db.first_welcome[gid]["channel_id"] = None
+        db.first_welcome[gid]["enabled"] = True
+        if gid in db.welcome and isinstance(db.welcome[gid], dict):
+            db.welcome[gid]["enabled"] = False
+        db.save_data()
+
+        await reply_box(
+            interaction,
+            "• **First Chat Channel:** `Any Chat Channel`\n• **Status:** Active\n• Friday will greet newcomers wherever they send their first message in this server!",
+            title="FIRST WELCOME SET TO ANY CHANNEL",
+            status="success",
+            ephemeral=True
+        )
+
     @first_welcome_group.command(name="disable", description="Disable first-chat welcome greetings.")
     async def fw_disable(self, interaction: discord.Interaction):
         if not interaction.user.guild_permissions.administrator:
@@ -1151,20 +1158,25 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
             uid = str(member.id)
             if gid in db.first_chat_welcomes and uid in db.first_chat_welcomes[gid]:
                 db.first_chat_welcomes[gid].remove(uid)
-                db.save_data()
+            # Add to test allow list so their next message WILL trigger the greeting regardless of staff or tenure
+            allow_list = db.first_welcome_allow_test.setdefault(gid, [])
+            if uid not in allow_list:
+                allow_list.append(uid)
+            db.save_data()
             await reply_box(
                 interaction,
-                f"• First-chat welcome status has been **reset** for {member.mention}! Their next message will trigger the welcome greeting.",
+                f"• First-chat welcome status has been **reset** for {member.mention}!\n• Friday will greet them on their **very next message** in chat.",
                 title="MEMBER WELCOME RESET",
                 status="success",
                 ephemeral=True
             )
         else:
             db.first_chat_welcomes[gid] = []
+            db.first_welcome_allow_test[gid] = ["*"]
             db.save_data()
             await reply_box(
                 interaction,
-                "• First-chat welcome history for this server has been **cleared**! Recent new members will be greeted on their next message.",
+                "• First-chat welcome history for this server has been **cleared**!\n• The next message from any newcomer or tester in chat will trigger the greeting.",
                 title="ALL WELCOMES RESET",
                 status="warning",
                 ephemeral=True
@@ -1436,10 +1448,11 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         if not cfg.get("enabled"):
             return
 
-        # 2. Ignore bot command prefixes to avoid welcoming members when they run verification/bot commands
+        # 2. Ignore bot commands starting with the bot prefix '!' or slash commands
         content_str = message.content.strip()
-        if content_str and re.match(r'^[!?.$\/;]\w+', content_str):
-            return
+        if content_str:
+            if content_str.startswith('!') or (content_str.startswith('/') and not content_str.startswith('/ ')):
+                return
 
         # 3. Determine destination channel
         target_channel_id = cfg.get("channel_id")
@@ -1458,18 +1471,30 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         # If a dedicated target channel is designated, ONLY greet when newcomer speaks in THAT channel!
         if destination_channel and message.channel.id != destination_channel.id:
+            print(f"ℹ️ [FirstWelcome] Skipped message from {message.author.name} in #{message.channel.name} (First Chat Greeting is restricted to #{destination_channel.name}).")
             return
 
         # 4. Check if member is an old/established member
         if await is_established_member(message.author, message, cfg):
             return
 
-        # 5. Mark user as greeted in database
+        # 5. Mark user as greeted in database and consume from test allow list if present
         guild_history = db.first_chat_welcomes.setdefault(gid, [])
         if uid in guild_history:
             return
         guild_history.append(uid)
+
+        allow_list = db.first_welcome_allow_test.get(gid, [])
+        if isinstance(allow_list, list):
+            if uid in allow_list:
+                allow_list.remove(uid)
+                db.first_welcome_allow_test[gid] = allow_list
+            elif "*" in allow_list:
+                db.first_welcome_allow_test[gid] = [x for x in allow_list if x != "*"]
+
         db.save_data()
+
+        print(f"🎉 [FirstWelcome] Delivering welcome card for {message.author.name} in #{message.channel.name} ({message.guild.name})...")
 
         embed = build_welcome_embed(
             message.author,

@@ -63,6 +63,7 @@ HELP_MODULES = [
         "desc": "Member Moderation & Infraction System",
         "sections": [
             ("Member Moderation", ["ban", "unban", "timeout", "untimeout", "purge"]),
+            ("Role Management", ["role add", "role remove", "role info", "role list"]),
             ("Infractions", ["warn", "warnings", "clearwarns"])
         ]
     },

@@ -2166,6 +2166,7 @@ def update_first_welcome(gid):
         db.first_welcome[gid_str] = {}
 
     if "enabled" in data:
+        db.first_welcome[gid_str]["enabled"] = bool(data.get("enabled", False))
         is_en = bool(data.get("enabled", False))
         db.first_welcome[gid_str]["enabled"] = is_en
         if is_en and gid_str in db.welcome and isinstance(db.welcome[gid_str], dict):
@@ -2196,8 +2197,9 @@ def reset_first_welcome_history(gid):
     except Exception:
         pass
     db.first_chat_welcomes[gid_str] = []
+    db.first_welcome_allow_test[gid_str] = ["*"]
     db.save_data()
-    return jsonify({"success": True, "message": "First chat welcome history reset."})
+    return jsonify({"success": True, "message": "First chat welcome history reset. The next message sent in chat will trigger the greeting."})
 
 @app.route('/api/guild/<gid>/first_welcome/test', methods=['POST'])
 def test_first_welcome(gid):
