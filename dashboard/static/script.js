@@ -67894,10 +67894,19 @@ function updateBirthdayPreview() {
     // ── 1. Birthday Wish Simulator ──
     const mentionUser = document.getElementById('birthdayMentionUserToggle')?.checked !== false;
     const pingEveryone = document.getElementById('birthdayPingEveryoneToggle')?.checked || false;
-    const rawWishMsg = document.getElementById('birthdayWishMsgInput')?.value || '';
-    const rawTitle = document.getElementById('birthdayEmbedTitleInput')?.value || '';
-    const rawDesc = document.getElementById('birthdayEmbedDescInput')?.value || '';
-    const rawFooter = document.getElementById('birthdayEmbedFooterInput')?.value || '';
+
+    const wishRich = document.getElementById('birthdayWishMsgInput_rich');
+    const rawWishMsg = (wishRich ? richHtmlToRawMarkdown(wishRich) : document.getElementById('birthdayWishMsgInput')?.value) || '';
+
+    const titleRich = document.getElementById('birthdayEmbedTitleInput_rich');
+    const rawTitle = (titleRich ? richHtmlToRawMarkdown(titleRich) : document.getElementById('birthdayEmbedTitleInput')?.value) || '';
+
+    const descRich = document.getElementById('birthdayEmbedDescInput_rich');
+    const rawDesc = (descRich ? richHtmlToRawMarkdown(descRich) : document.getElementById('birthdayEmbedDescInput')?.value) || '';
+
+    const footerRich = document.getElementById('birthdayEmbedFooterInput_rich');
+    const rawFooter = (footerRich ? richHtmlToRawMarkdown(footerRich) : document.getElementById('birthdayEmbedFooterInput')?.value) || '';
+
     const embedColor = document.getElementById('birthdayEmbedColorInput')?.value || '#ff69b4';
     const bannerUrl = (document.getElementById('birthdayEmbedImageInput')?.value || '').trim();
 
@@ -67923,33 +67932,17 @@ function updateBirthdayPreview() {
         if (pingEveryone) lines.push('@everyone');
         
         let msg = (rawWishMsg || "🎂 Happy Birthday {mention}! Let's celebrate! 🎉")
-            .replace(/<img[^>]*data-emoji=["']([^"']+)["'][^>]*>/gi, '$1')
-            .replace(/<img[^>]*alt=["']([^"']+)["'][^>]*>/gi, '$1')
-            .replace(/<img[^>]*src=["']https:\/\/cdn\.discordapp\.com\/emojis\/([0-9]+)\.(png|gif)[^"']*["'][^>]*>/gi, '<:emoji:$1>')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
-            .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1')
-            .replace(/<(?!a?:[a-zA-Z0-9_]+:[0-9]+>|#[0-9]+>|@!?[0-9]+>)[^>]+>/g, '');
-
-        if (mentionUser && !msg.includes('{mention}') && !msg.includes('@Member')) {
-            lines.push('@Member');
-        }
-
-        // Clean template substitution with plain text tokens before markdown parsing
-        let cleanText = msg
             .replace(/\{mention\}/g, '@Member')
             .replace(/\{user\}/g, 'Member')
             .replace(/\{server\}/g, 'Server');
 
-        lines.push(cleanText);
-        const fullMarkdown = lines.join('\n');
-
-        if (typeof renderDiscordMarkdown === 'function') {
-            headerEl.innerHTML = renderDiscordMarkdown(fullMarkdown);
-        } else {
-            headerEl.textContent = fullMarkdown;
+        if (mentionUser && !msg.includes('@Member')) {
+            lines.push('@Member');
         }
+
+        lines.push(msg);
+        const fullMarkdown = lines.join('\n');
+        headerEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(fullMarkdown) : escapeHtml(fullMarkdown);
     }
 
     const cardEl = document.getElementById('previewBirthdayEmbed');
@@ -67966,14 +67959,6 @@ function updateBirthdayPreview() {
     const descEl = document.getElementById('previewBirthdayEmbedDesc');
     if (descEl) {
         let d = (rawDesc || 'Wishing a very Happy Birthday to {mention}! May your special day be filled with happiness, success, and endless joy! 🎈✨')
-            .replace(/<img[^>]*data-emoji=["']([^"']+)["'][^>]*>/gi, '$1')
-            .replace(/<img[^>]*alt=["']([^"']+)["'][^>]*>/gi, '$1')
-            .replace(/<img[^>]*src=["']https:\/\/cdn\.discordapp\.com\/emojis\/([0-9]+)\.(png|gif)[^"']*["'][^>]*>/gi, '<:emoji:$1>')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/<span[^>]*>(.*?)<\/span>/gi, '$1')
-            .replace(/<div[^>]*>(.*?)<\/div>/gi, '$1')
-            .replace(/<(?!a?:[a-zA-Z0-9_]+:[0-9]+>|#[0-9]+>|@!?[0-9]+>)[^>]+>/g, '')
             .replace(/\{mention\}/g, '@Member')
             .replace(/\{user\}/g, 'Member')
             .replace(/\{server\}/g, 'Server');
@@ -68001,13 +67986,15 @@ function updateBirthdayPreview() {
 
     // ── 2. Registration Card Simulator (Form Channel) ──
     const cardTitleEl = document.getElementById('previewBirthdayCardTitle');
-    const rawCardTitle = document.getElementById('birthdayCardTitleInput')?.value || '🎂 Member Birthday Registration';
+    const cardTitleRich = document.getElementById('birthdayCardTitleInput_rich');
+    const rawCardTitle = (cardTitleRich ? richHtmlToRawMarkdown(cardTitleRich) : document.getElementById('birthdayCardTitleInput')?.value) || '🎂 Member Birthday Registration';
     if (cardTitleEl) {
         cardTitleEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(rawCardTitle) : escapeHtml(rawCardTitle);
     }
 
     const cardDescEl = document.getElementById('previewBirthdayCardDesc');
-    const rawCardDesc = document.getElementById('birthdayCardDescInput')?.value || '';
+    const cardDescRich = document.getElementById('birthdayCardDescInput_rich');
+    const rawCardDesc = (cardDescRich ? richHtmlToRawMarkdown(cardDescRich) : document.getElementById('birthdayCardDescInput')?.value) || '';
     if (cardDescEl) {
         cardDescEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(rawCardDesc) : escapeHtml(rawCardDesc);
     }
@@ -69019,6 +69006,23 @@ function updateApplicationPreview() {
         if (footerEl) footerEl.innerHTML = `<span>${renderDiscordMarkdown(rawPanelFooter)}</span>`;
         if (reviewFields) reviewFields.style.display = 'none';
 
+        // Update Panel Thumbnail / Icon based on selected mode
+        const thumbMode = document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday';
+        const thumbBox = document.getElementById('appSimThumbnail');
+        const thumbImg = document.getElementById('appSimThumbnailImg');
+        if (thumbBox && thumbImg) {
+            if (thumbMode === 'none') {
+                thumbBox.style.display = 'none';
+            } else if (thumbMode === 'server') {
+                thumbBox.style.display = 'block';
+                const gIcon = currentGuildIcon || (currentGuild ? currentGuild.icon_url : null);
+                thumbImg.src = gIcon || '/static/friday_avatar.png';
+            } else {
+                thumbBox.style.display = 'block';
+                thumbImg.src = currentBotAvatar || '/static/friday_avatar.png';
+            }
+        }
+
         // Rounded Apply Button with authentic styling and visual emoji
         if (btnRow) {
             btnRow.innerHTML = '';
@@ -69129,7 +69133,10 @@ function updateAppButtonEmoji(emojiVal) {
     }
     if (visual) visual.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
     if (icon) icon.innerHTML = renderEmojiHtmlOrChar(emojiVal, 22);
-    if (name) name.textContent = getAppEmojiCleanName(emojiVal);
+    if (name) {
+        const isCustom = emojiVal.includes(':') || /^[0-9]{15,22}$/.test(emojiVal);
+        name.innerHTML = isCustom ? '<span style="color:#a1a1aa; font-size:12px;">Server Custom Emoji</span>' : '<span style="color:#cbd5e1; font-size:12px;">Standard Emoji</span>';
+    }
 
     updateApplicationPreview();
 }
@@ -69152,6 +69159,26 @@ function setupAppListenersOnce() {
             if (dmRadio.checked) updateAppModeUI('dm');
         });
     }
+
+    // Panel Thumbnail / Avatar Mode toggle
+    document.querySelectorAll('input[name="appThumbnailMode"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+            const val = document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday';
+            ['friday', 'server', 'none'].forEach(m => {
+                const lbl = document.getElementById('appThumbnailMode' + m.charAt(0).toUpperCase() + m.slice(1) + 'Label');
+                if (lbl) {
+                    if (m === val) {
+                        lbl.style.border = '2px solid #5865f2';
+                        lbl.style.background = 'rgba(88, 101, 242, 0.12)';
+                    } else {
+                        lbl.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                        lbl.style.background = 'rgba(255, 255, 255, 0.02)';
+                    }
+                }
+            });
+            updateApplicationPreview();
+        });
+    });
 
     // Color pickers & theme chips
     const colorInput = document.getElementById('appPanelColorInput');
@@ -69334,7 +69361,8 @@ async function saveApplicationsConfig() {
             footer: document.getElementById('appPanelFooterInput')?.value || 'Friday Applications • Click below to apply',
             button_label: document.getElementById('appButtonLabelInput')?.value || 'Apply Now',
             button_emoji: document.getElementById('appButtonEmojiInput')?.value || '📝',
-            button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary'
+            button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary',
+            thumbnail_mode: document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday'
         },
         questions: window.applicationData.questions || [],
         dm_flow: {
@@ -69408,7 +69436,8 @@ async function deployApplicationPanel() {
         footer: document.getElementById('appPanelFooterInput')?.value || 'Friday Applications • Click below to apply',
         button_label: document.getElementById('appButtonLabelInput')?.value || 'Apply Now',
         button_emoji: document.getElementById('appButtonEmojiInput')?.value || '📝',
-        button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary'
+        button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary',
+        thumbnail_mode: document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday'
     };
 
     try {
@@ -69536,6 +69565,23 @@ async function loadApplicationsSettings() {
 
         const btnStyle = document.getElementById('appButtonStyleSelect');
         if (btnStyle) btnStyle.value = p.button_style || 'primary';
+
+        // Thumbnail Mode
+        const thumbMode = p.thumbnail_mode || 'friday';
+        const targetRadio = document.querySelector(`input[name="appThumbnailMode"][value="${thumbMode}"]`);
+        if (targetRadio) targetRadio.checked = true;
+        ['friday', 'server', 'none'].forEach(m => {
+            const lbl = document.getElementById('appThumbnailMode' + m.charAt(0).toUpperCase() + m.slice(1) + 'Label');
+            if (lbl) {
+                if (m === thumbMode) {
+                    lbl.style.border = '2px solid #5865f2';
+                    lbl.style.background = 'rgba(88, 101, 242, 0.12)';
+                } else {
+                    lbl.style.border = '1px solid rgba(255, 255, 255, 0.1)';
+                    lbl.style.background = 'rgba(255, 255, 255, 0.02)';
+                }
+            }
+        });
 
         // 4. Questions List
         renderAppQuestionsList();

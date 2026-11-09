@@ -87,7 +87,8 @@ class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         uid = str(interaction.user.id)
 
         # 1. Anti-abuse / Lockout Check
@@ -268,7 +269,8 @@ class BirthdayRegisterView(discord.ui.View):
         custom_id="friday_birthday_remove_btn"
     )
     async def remove_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         uid = str(interaction.user.id)
         guild_bds = db.birthdays.get(gid, {})
 
@@ -544,7 +546,8 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
     @birthday_group.command(name="toggle", description="Quickly enable or disable the birthday celebration engine in this server.")
     @app_commands.default_permissions(administrator=True)
     async def birthday_toggle(self, interaction: discord.Interaction):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         cfg = db.birthdays_config.setdefault(gid, {})
         new_state = not cfg.get("enabled", False)
         cfg["enabled"] = new_state
@@ -571,7 +574,8 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         wish_channel: discord.TextChannel,
         birthday_role: Optional[discord.Role] = None
     ):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         cfg = db.birthdays_config.setdefault(gid, {})
         cfg["enabled"] = True
         cfg["form_channel_id"] = str(form_channel.id)
@@ -636,7 +640,8 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         day="Your birth day (1-31)"
     )
     async def birthday_set(self, interaction: discord.Interaction, month: str, day: int):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         uid = str(interaction.user.id)
 
         # Lockout check
@@ -698,7 +703,8 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
 
     @birthday_group.command(name="remove", description="Remove your registered birthday.")
     async def birthday_remove(self, interaction: discord.Interaction):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         uid = str(interaction.user.id)
         guild_bds = db.birthdays.get(gid, {})
 
@@ -721,7 +727,8 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
     @birthday_group.command(name="list", description="View upcoming birthdays in the server (Supports 1000+ members with pagination).")
     @app_commands.describe(month="Optional month filter (e.g. May or 5)")
     async def birthday_list(self, interaction: discord.Interaction, month: Optional[str] = None):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         guild_bds = db.birthdays.get(gid, {})
 
         if not guild_bds:
@@ -776,7 +783,8 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
     @birthday_group.command(name="test", description="Send a sample birthday wish embed to the wish channel to verify formatting.")
     @app_commands.default_permissions(manage_guild=True)
     async def birthday_test(self, interaction: discord.Interaction):
-        gid = str(interaction.guild.id)
+        guild = interaction.guild
+        gid = str(guild.id)
         cfg = db.birthdays_config.get(gid, {})
         wish_chan_id = cfg.get("wish_channel_id")
 

@@ -4756,6 +4756,34 @@ Click the button below to submit your confidential application.
                 <input class="text-input" id="appPanelFooterInput" placeholder="Friday Applications • Click below to apply" type="text" value="Friday Applications • Click below to apply"/>
             </div>
 
+            <!-- Panel Thumbnail / Avatar Mode -->
+            <div style="padding: 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 16px;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Panel Embed Thumbnail / Icon</label>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <label id="appThumbnailModeFridayLabel" style="cursor: pointer; padding: 10px 14px; border: 2px solid #5865f2; background: rgba(88, 101, 242, 0.12); border-radius: 8px; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease;">
+                        <input type="radio" name="appThumbnailMode" id="appThumbFridayRadio" value="friday" checked style="accent-color: #5865f2; cursor: pointer;">
+                        <div>
+                            <div style="font-size: 13px; font-weight: 700; color: #ffffff;">🤖 Friday's Avatar</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">Display Friday bot icon</div>
+                        </div>
+                    </label>
+                    <label id="appThumbnailModeServerLabel" style="cursor: pointer; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.02); border-radius: 8px; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease;">
+                        <input type="radio" name="appThumbnailMode" id="appThumbServerRadio" value="server" style="accent-color: #5865f2; cursor: pointer;">
+                        <div>
+                            <div style="font-size: 13px; font-weight: 700; color: #ffffff;">🏰 Server Icon</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">Display server avatar</div>
+                        </div>
+                    </label>
+                    <label id="appThumbnailModeNoneLabel" style="cursor: pointer; padding: 10px 14px; border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.02); border-radius: 8px; display: flex; align-items: center; gap: 10px; transition: all 0.2s ease;">
+                        <input type="radio" name="appThumbnailMode" id="appThumbNoneRadio" value="none" style="accent-color: #5865f2; cursor: pointer;">
+                        <div>
+                            <div style="font-size: 13px; font-weight: 700; color: #ffffff;">🚫 Nothing</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">No thumbnail image</div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
             <!-- Interactive Button Customization (Full Width, Clear Server Emojis Option) -->
             <div style="padding: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
@@ -4763,7 +4791,7 @@ Click the button below to submit your confidential application.
                     <span class="ticket-switch-badge blurple">Rounded Discord Button</span>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1.2fr 1.6fr 1fr; gap: 14px; align-items: end;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; align-items: end;">
                     <div>
                         <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Button Label</label>
                         <input class="text-input" id="appButtonLabelInput" placeholder="Apply Now" type="text" value="Apply Now" style="height: 40px;"/>
@@ -4777,7 +4805,7 @@ Click the button below to submit your confidential application.
                             </button>
                             <div id="appButtonEmojiDisplayTile" style="height: 40px; border-radius: 8px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.12); display: flex; align-items: center; gap: 10px; padding: 0 12px; flex: 1; min-width: 0; cursor: pointer;" title="Click to change button emoji">
                                 <span id="appButtonEmojiDisplayIcon" style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; font-size: 20px;">📝</span>
-                                <span id="appButtonEmojiDisplayName" style="font-size: 12.5px; color: #cbd5e1; font-weight: 500; font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">:memo:</span>
+                                <span id="appButtonEmojiDisplayName" style="font-size: 12px; color: #a1a1aa; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">Server Custom Emoji</span>
                             </div>
                             <input type="hidden" id="appButtonEmojiInput" value="📝">
                         </div>

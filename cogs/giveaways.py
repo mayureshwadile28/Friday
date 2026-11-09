@@ -1387,8 +1387,7 @@ class Giveaways(commands.Cog):
         duration="Duration of the giveaway (e.g. 10m, 1h, 2d, 1w)",
         winners="Number of winners to pick (default: 1)",
         description="Optional detailed description or rules",
-        image="Optional image or GIF banner URL for the embed",
-        channel="Optional channel to post in (defaults to configured giveaway channel)"
+        image="Optional image or GIF banner URL for the embed"
     )
     async def gcreate(
         self,
@@ -1397,9 +1396,7 @@ class Giveaways(commands.Cog):
         duration: str,
         winners: Optional[int] = 1,
         description: Optional[str] = None,
-        image: Optional[str] = None,
-        channel: Optional[discord.TextChannel] = None,
-        header_emoji: Optional[str] = None
+        image: Optional[str] = None
     ):
         """Creates a giveaway. Admins launch instantly; regular members submit for staff approval."""
         guild = interaction.guild
@@ -1441,10 +1438,19 @@ class Giveaways(commands.Cog):
 
         winners_count = max(1, min(winners or 1, 25))
         cfg = get_giveaway_config(guild.id)
-        target_channel = channel or guild.get_channel(cfg.get("giveaway_channel"))
+        gw_cid = cfg.get("giveaway_channel")
+        target_channel = guild.get_channel(int(gw_cid)) if gw_cid else None
+        if not target_channel:
+            for ch in guild.text_channels:
+                if ch.name.lower() in ("giveaways", "giveaway", "gw"):
+                    target_channel = ch
+                    break
 
         if not target_channel:
-            await interaction.response.send_message("❌ Giveaway broadcast channel could not be found. Please check `/gsetup`.", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ Giveaway broadcast channel is not configured or not found. An administrator must run `/gsetup` or configure it in the dashboard!",
+                ephemeral=True
+            )
             return
 
         is_admin_or_owner = (
@@ -1488,7 +1494,7 @@ class Giveaways(commands.Cog):
                 "winners_count": winners_count,
                 "description": description or "",
                 "image_url": banner_url,
-                "header_emoji": header_emoji or cfg.get("emoji_header") or "🎉",
+                "header_emoji": cfg.get("emoji_header") or "🎉",
                 "status": "pending",
                 "submitted_at": time.time()
             }
@@ -1590,7 +1596,7 @@ class Giveaways(commands.Cog):
         emoji_parts = cfg.get("emoji_participants", "👥")
         view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts) if entry_method == "button" else None
 
-        emoji_header = resolve_safe_emoji(self.bot, header_emoji or cfg.get("emoji_header"), fallback="🎉")
+        emoji_header = resolve_safe_emoji(self.bot, cfg.get("emoji_header"), fallback="🎉")
         send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
         if view:
             send_kwargs["view"] = view
@@ -1694,8 +1700,7 @@ class Giveaways(commands.Cog):
         prize="The item, role, or gift to give away",
         duration="Duration of the giveaway (e.g. 10m, 1h, 2d, 1w)",
         winners="Number of winners to pick (default: 1)",
-        description="Optional detailed description or rules",
-        channel="Optional channel to post in"
+        description="Optional detailed description or rules"
     )
     async def gstart(
         self,
@@ -1703,11 +1708,10 @@ class Giveaways(commands.Cog):
         prize: str,
         duration: str,
         winners: Optional[int] = 1,
-        description: Optional[str] = None,
-        channel: Optional[discord.TextChannel] = None
+        description: Optional[str] = None
     ):
         """Direct alias invoking /gcreate logic."""
-        await self.gcreate.callback(self, interaction, prize, duration, winners, description, channel)
+        await self.gcreate.callback(self, interaction, prize, duration, winners, description)
 
     @app_commands.command(name="gend", description="End an active giveaway early and pick winners immediately")
     @app_commands.describe(message_id="The Discord Message ID of the giveaway")

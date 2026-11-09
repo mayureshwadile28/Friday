@@ -109,6 +109,19 @@ class Database:
                 "applications": {}
             }
 
+    def reload(self):
+        """Reload data from disk into memory."""
+        try:
+            if os.path.exists(DATA_FILE):
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    disk = json.load(f)
+                if isinstance(disk, dict):
+                    self.data = disk
+                    for k, v in disk.items():
+                        self.__dict__[k] = v
+        except Exception as e:
+            print(f"Error reloading database: {e}")
+
     def __getattr__(self, name):
         """Dynamic fallback to ensure no missing attribute ever raises AttributeError."""
         if "data" in self.__dict__ and isinstance(self.data, dict) and name in self.data:

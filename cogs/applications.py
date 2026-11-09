@@ -901,6 +901,14 @@ class Applications(commands.Cog):
                 bot=self.bot, guild=guild, guild_id=gid_str
             )
 
+            # Strip/convert any residual <@&id> role mentions to role names so Discord DM never shows @unknown-role
+            def _clean_dm_role_mention(m):
+                r_id = int(m.group(1))
+                r = guild.get_role(r_id)
+                return f"**@{r.name}**" if r else "**Staff**"
+            dm_desc = re.sub(r"<@&(\d+)>", _clean_dm_role_mention, dm_desc)
+            dm_title = re.sub(r"<@&(\d+)>", _clean_dm_role_mention, dm_title)
+
             dm_embed = discord.Embed(title=dm_title, description=dm_desc, color=color_int)
             dm_embed.set_footer(text=f"{guild.name} • Applications", icon_url=guild.icon.url if guild.icon else None)
             dm_embed.timestamp = discord.utils.utcnow()
@@ -1022,6 +1030,12 @@ class Applications(commands.Cog):
         embed = discord.Embed(title=title, description=desc, color=color)
         embed.set_footer(text=footer, icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
         embed.timestamp = discord.utils.utcnow()
+
+        thumbnail_mode = str(p_cfg.get("thumbnail_mode", "friday")).lower()
+        if thumbnail_mode == "server" and interaction.guild.icon:
+            embed.set_thumbnail(url=interaction.guild.icon.url)
+        elif thumbnail_mode == "friday" and self.bot.user and self.bot.user.display_avatar:
+            embed.set_thumbnail(url=self.bot.user.display_avatar.url)
 
         btn_label = p_cfg.get("button_label", "Apply Now")
         btn_emoji_raw = p_cfg.get("button_emoji", "📝")

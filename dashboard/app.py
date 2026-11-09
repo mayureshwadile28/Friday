@@ -3814,6 +3814,8 @@ def update_birthday_config(gid):
     cfg["embed_image"] = str(data.get("embed_image") or "").strip()
     cfg["embed_footer"] = str(data.get("embed_footer") or "Friday Birthday Engine • Wish them in chat!").strip()
 
+    if hasattr(db, "data") and isinstance(db.data, dict):
+        db.data.setdefault("birthdays_config", {})[gid_str] = cfg
     db.save_data()
     return jsonify({"success": True, "message": "Birthday settings saved successfully.", "config": cfg})
 
@@ -4023,6 +4025,8 @@ def toggle_birthday_system(gid):
     else:
         new_state = not cfg.get("enabled", False)
     cfg["enabled"] = new_state
+    if hasattr(db, "data") and isinstance(db.data, dict):
+        db.data.setdefault("birthdays_config", {})[gid_str] = cfg
     db.save_data()
     return jsonify({"success": True, "enabled": new_state, "message": f"Birthday system {'enabled' if new_state else 'disabled'}."})
 
@@ -4163,6 +4167,12 @@ def deploy_application_panel(gid):
         embed.set_footer(text=footer_val, icon_url=guild.icon.url if guild.icon else None)
         embed.timestamp = discord.utils.utcnow()
 
+        thumbnail_mode = str(data.get("thumbnail_mode") or p_cfg.get("thumbnail_mode") or "friday").lower()
+        if thumbnail_mode == "server" and guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        elif thumbnail_mode == "friday" and bot_instance and bot_instance.user and bot_instance.user.display_avatar:
+            embed.set_thumbnail(url=bot_instance.user.display_avatar.url)
+
         btn_style = get_button_style(btn_style_str)
         btn_emoji = resolve_single_emoji(btn_emoji_raw, bot=bot_instance, guild=guild, guild_id=gid_str)
 
@@ -4181,7 +4191,8 @@ def deploy_application_panel(gid):
             "footer": footer_val,
             "button_label": btn_label,
             "button_emoji": btn_emoji_raw,
-            "button_style": btn_style_str
+            "button_style": btn_style_str,
+            "thumbnail_mode": thumbnail_mode
         }
         panels[str(msg.id)] = panel_record
         cfg["panel_channel_id"] = str(channel_id)
