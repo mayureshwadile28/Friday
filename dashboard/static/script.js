@@ -69104,6 +69104,36 @@ function updateApplicationPreview() {
     }
 }
 
+function getAppEmojiCleanName(val) {
+    if (!val) return ':memo:';
+    val = String(val).trim();
+    const animMatch = val.match(/<?a:([a-zA-Z0-9_]+):([0-9]{15,22})>?/);
+    if (animMatch) return `:${animMatch[1]}:`;
+    const staticMatch = val.match(/<?:?([a-zA-Z0-9_]+):([0-9]{15,22})>?/);
+    if (staticMatch) return `:${staticMatch[1]}:`;
+    const colonMatch = val.match(/^:([a-zA-Z0-9_]+):$/);
+    if (colonMatch) return `:${colonMatch[1]}:`;
+    return val;
+}
+
+function updateAppButtonEmoji(emojiVal) {
+    if (!emojiVal) emojiVal = '📝';
+    const input = document.getElementById('appButtonEmojiInput');
+    const visual = document.getElementById('appButtonEmojiVisual');
+    const icon = document.getElementById('appButtonEmojiDisplayIcon');
+    const name = document.getElementById('appButtonEmojiDisplayName');
+
+    if (input) {
+        input.value = emojiVal;
+        input.dataset.rawEmoji = emojiVal;
+    }
+    if (visual) visual.innerHTML = renderEmojiHtmlOrChar(emojiVal, 18);
+    if (icon) icon.innerHTML = renderEmojiHtmlOrChar(emojiVal, 22);
+    if (name) name.textContent = getAppEmojiCleanName(emojiVal);
+
+    updateApplicationPreview();
+}
+
 let appEventsInitialized = false;
 function setupAppListenersOnce() {
     if (appEventsInitialized) return;
@@ -69202,23 +69232,15 @@ function setupAppListenersOnce() {
 
     // Single-emoji picker for Button Emoji
     const btnEmojiBtn = document.getElementById('appButtonEmojiBtn');
-    const btnEmojiInput = document.getElementById('appButtonEmojiInput');
-    const btnEmojiVisual = document.getElementById('appButtonEmojiVisual');
-    if (btnEmojiBtn) {
-        btnEmojiBtn.onclick = () => {
-            openEmojiPicker(btnEmojiBtn, (chosenEmoji) => {
-                if (btnEmojiInput) btnEmojiInput.value = chosenEmoji;
-                if (btnEmojiVisual) btnEmojiVisual.innerHTML = renderEmojiHtmlOrChar(chosenEmoji, 20);
-                updateApplicationPreview();
-            });
-        };
-    }
-    if (btnEmojiInput) {
-        btnEmojiInput.addEventListener('input', () => {
-            if (btnEmojiVisual) btnEmojiVisual.innerHTML = renderEmojiHtmlOrChar(btnEmojiInput.value, 20);
-            updateApplicationPreview();
+    const btnEmojiTile = document.getElementById('appButtonEmojiDisplayTile');
+    const triggerBtnEmojiPicker = () => {
+        openEmojiPicker(btnEmojiBtn || btnEmojiTile, (chosenEmoji) => {
+            if (!chosenEmoji) return;
+            updateAppButtonEmoji(chosenEmoji);
         });
-    }
+    };
+    if (btnEmojiBtn) btnEmojiBtn.onclick = triggerBtnEmojiPicker;
+    if (btnEmojiTile) btnEmojiTile.onclick = triggerBtnEmojiPicker;
 
     // Single-emoji picker for Start & Cancel buttons
     const startEmojiBtn = document.getElementById('appStartBtnEmojiBtn');
@@ -69510,11 +69532,7 @@ async function loadApplicationsSettings() {
         });
 
         // Button Customization
-        const btnEmoji = document.getElementById('appButtonEmojiInput');
-        if (btnEmoji) btnEmoji.value = p.button_emoji || '📝';
-
-        const btnEmojiVisual = document.getElementById('appButtonEmojiVisual');
-        if (btnEmojiVisual) btnEmojiVisual.innerHTML = renderEmojiHtmlOrChar(p.button_emoji || '📝', 20);
+        updateAppButtonEmoji(p.button_emoji || '📝');
 
         const btnStyle = document.getElementById('appButtonStyleSelect');
         if (btnStyle) btnStyle.value = p.button_style || 'primary';

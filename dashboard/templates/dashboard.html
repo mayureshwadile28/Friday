@@ -4775,7 +4775,11 @@ Click the button below to submit your confidential application.
                                 <span id="appButtonEmojiVisual" style="font-size: 18px; display: inline-flex; align-items: center;">📝</span>
                                 <span style="font-size: 12px; font-weight: 600;">😊 Server Emojis</span>
                             </button>
-                            <input type="text" class="text-input" id="appButtonEmojiInput" value="📝" placeholder="<:name:id>" style="height: 40px; font-size: 12px; font-family: monospace; flex: 1; min-width: 0;" title="Custom emoji syntax or emoji character">
+                            <div id="appButtonEmojiDisplayTile" style="height: 40px; border-radius: 8px; background: rgba(0, 0, 0, 0.35); border: 1px solid rgba(255, 255, 255, 0.12); display: flex; align-items: center; gap: 10px; padding: 0 12px; flex: 1; min-width: 0; cursor: pointer;" title="Click to change button emoji">
+                                <span id="appButtonEmojiDisplayIcon" style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; font-size: 20px;">📝</span>
+                                <span id="appButtonEmojiDisplayName" style="font-size: 12.5px; color: #cbd5e1; font-weight: 500; font-family: 'JetBrains Mono', monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">:memo:</span>
+                            </div>
+                            <input type="hidden" id="appButtonEmojiInput" value="📝">
                         </div>
                     </div>
                     <div>
