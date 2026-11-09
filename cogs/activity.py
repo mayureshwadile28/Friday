@@ -8,36 +8,89 @@ import os
 import io
 import math
 import time
+import unicodedata
+import asyncio
 import aiohttp
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from easy_pil import Font
-from database import db
 
 # SQLite Database path inside data/ directory
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_FILE = os.path.join(DATA_DIR, "activity.db")
 
-def create_smooth_spline_points(points, num_subdivisions=12):
-    """Generates smooth Catmull-Rom spline points through the given control points."""
-    if len(points) < 2:
+def clean_display_name(name: str, max_len: int = 22) -> str:
+    """Sanitizes user display names and titles, normalizing decorative unicode so no tofu boxes appear."""
+    if not name:
+        return "Unknown"
+    norm = unicodedata.normalize('NFKD', str(name))
+    cleaned = "".join(ch for ch in norm if 32 <= ord(ch) <= 126 and ch not in "`*~_<>|\\")
+    cleaned = cleaned.strip(" -_#|•·~+=[]{}()<>")
+    if not cleaned:
+        cleaned = "".join(ch for ch in name if ch.isalnum() or ch in " -_")
+    if not cleaned:
+        cleaned = "User"
+    return cleaned[:max_len]
+
+def clean_channel_name(name: str, max_len: int = 20) -> str:
+    """Sanitizes channel names, removing unrenderable emoji prefixes and symbols."""
+    if not name:
+        return "channel"
+    norm = unicodedata.normalize('NFKD', str(name))
+    cleaned = "".join(ch for ch in norm if 32 <= ord(ch) <= 126 and ch not in "`*~_<>|\\")
+    cleaned = cleaned.strip(" -_#|•·~+=[]{}()<>")
+    if not cleaned:
+        cleaned = "".join(ch for ch in name if ch.isalnum() or ch in "-_")
+    if not cleaned:
+        cleaned = "channel"
+    return cleaned[:max_len]
+
+def monotone_cubic_spline(points, num_subdivisions=16):
+    """
+    Computes a monotone cubic Hermite spline (Fritsch-Carlson algorithm).
+    Guarantees monotonicity: flat values remain strictly flat, never dips below 0 / baseline,
+    and prevents overshoot / undershoot artifacts.
+    """
+    n = len(points)
+    if n < 2:
         return points
-    pts = [points[0]] + list(points) + [points[-1]]
+    if n == 2:
+        return [points[0], points[1]]
+
+    x = [p[0] for p in points]
+    y = [p[1] for p in points]
+
+    # 1. Secant slopes
+    dx = [x[i+1] - x[i] for i in range(n - 1)]
+    dy = [y[i+1] - y[i] for i in range(n - 1)]
+    m = [dy[i] / dx[i] if dx[i] != 0 else 0.0 for i in range(n - 1)]
+
+    # 2. Tangents (Fritsch-Carlson condition)
+    tangents = [0.0] * n
+    tangents[0] = m[0]
+    for i in range(1, n - 1):
+        if m[i-1] * m[i] <= 0:
+            tangents[i] = 0.0
+        else:
+            tangents[i] = 2.0 / (1.0 / m[i-1] + 1.0 / m[i])
+    tangents[-1] = m[-1]
+
+    # 3. Interpolate Hermite cubic spline
     curve = []
-    for i in range(1, len(pts) - 2):
-        p0, p1, p2, p3 = pts[i-1], pts[i], pts[i+1], pts[i+2]
-        for t_step in range(num_subdivisions):
-            t = t_step / num_subdivisions
+    for i in range(n - 1):
+        h = dx[i]
+        for step in range(num_subdivisions):
+            t = step / num_subdivisions
             t2 = t * t
             t3 = t2 * t
-            x = 0.5 * ((2 * p1[0]) +
-                       (-p0[0] + p2[0]) * t +
-                       (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 +
-                       (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3)
-            y = 0.5 * ((2 * p1[1]) +
-                       (-p0[1] + p2[1]) * t +
-                       (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 +
-                       (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)
-            curve.append((x, y))
+
+            h00 = 2 * t3 - 3 * t2 + 1
+            h10 = t3 - 2 * t2 + t
+            h01 = -2 * t3 + 3 * t2
+            h11 = t3 - t2
+
+            px = x[i] + t * h
+            py = h00 * y[i] + h10 * h * tangents[i] + h01 * y[i+1] + h11 * h * tangents[i+1]
+            curve.append((px, py))
     curve.append(points[-1])
     return curve
 
@@ -48,7 +101,7 @@ class Activity(commands.Cog):
     """
     Tracks and displays member and server chat & voice statistics across:
     Today, This Week (7 days), This Month (30 days), This Year (365 days), and Lifetime.
-    Generates high-resolution dashboard cards for both Server and Member activity.
+    Generates high-resolution dashboard cards for Server, Member, and Leaderboard activity.
     """
     def __init__(self, bot):
         self.bot = bot
@@ -229,21 +282,21 @@ class Activity(commands.Cog):
 
                 cursor.execute("""
                     SELECT
-                        COALESCE(SUM(CASE WHEN date = ? THEN seconds ELSE 0 END), 0) AS today_voice,
-                        COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS week_voice,
-                        COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS month_voice,
-                        COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS year_voice,
-                        COALESCE(SUM(seconds), 0) AS lifetime_voice
+                        COALESCE(SUM(CASE WHEN date = ? THEN seconds ELSE 0 END), 0) AS voice_today,
+                        COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS voice_week,
+                        COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS voice_month,
+                        COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS voice_year,
+                        COALESCE(SUM(seconds), 0) AS voice_lifetime
                     FROM member_voice
                     WHERE guild_id = ? AND user_id = ?
                 """, (today_str, week_str, month_str, year_str, gid_str, uid_str))
                 v_row = cursor.fetchone()
                 if v_row:
-                    stats["voice_today"] = v_row["today_voice"]
-                    stats["voice_week"] = v_row["week_voice"]
-                    stats["voice_month"] = v_row["month_voice"]
-                    stats["voice_year"] = v_row["year_voice"]
-                    stats["voice_lifetime"] = v_row["lifetime_voice"]
+                    stats["voice_today"] = v_row["voice_today"]
+                    stats["voice_week"] = v_row["voice_week"]
+                    stats["voice_month"] = v_row["voice_month"]
+                    stats["voice_year"] = v_row["voice_year"]
+                    stats["voice_lifetime"] = v_row["voice_lifetime"]
 
                 # Rank in server
                 cursor.execute("""
@@ -380,7 +433,7 @@ class Activity(commands.Cog):
             print(f"⚠️ Activity DB get_top_channels_list error: {e}")
             return []
 
-    def get_leaderboard(self, guild_id: int, timeframe: str = "lifetime", limit: int = 10):
+    def get_leaderboard(self, guild_id: int, timeframe: str = "lifetime", limit: int = 10, offset: int = 0):
         gid_str = str(guild_id)
         now = datetime.datetime.now(datetime.timezone.utc)
         today_str = now.strftime("%Y-%m-%d")
@@ -404,8 +457,8 @@ class Activity(commands.Cog):
             query += " AND date >= ?"
             params.append(year_str)
 
-        query += " GROUP BY user_id ORDER BY total DESC LIMIT ?"
-        params.append(limit)
+        query += " GROUP BY user_id ORDER BY total DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
 
         try:
             with self.get_connection() as conn:
@@ -415,6 +468,39 @@ class Activity(commands.Cog):
         except Exception as e:
             print(f"⚠️ Activity DB get_leaderboard error: {e}")
             return []
+
+    def get_leaderboard_total_count(self, guild_id: int, timeframe: str = "lifetime") -> int:
+        gid_str = str(guild_id)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        today_str = now.strftime("%Y-%m-%d")
+        week_str = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        month_str = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+        year_str = (now - datetime.timedelta(days=365)).strftime("%Y-%m-%d")
+
+        query = "SELECT COUNT(DISTINCT user_id) FROM member_messages WHERE guild_id = ?"
+        params = [gid_str]
+
+        if timeframe == "today":
+            query += " AND date = ?"
+            params.append(today_str)
+        elif timeframe == "week":
+            query += " AND date >= ?"
+            params.append(week_str)
+        elif timeframe == "month":
+            query += " AND date >= ?"
+            params.append(month_str)
+        elif timeframe == "year":
+            query += " AND date >= ?"
+            params.append(year_str)
+
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(query, tuple(params))
+                row = cursor.fetchone()
+                return row[0] if row else 0
+        except Exception:
+            return 0
 
     # ────────────────────────── Event Listeners ──────────────────────────
 
@@ -455,7 +541,7 @@ class Activity(commands.Cog):
     # ────────────────────────── High-Res Image Rendering ──────────────────────────
 
     async def fetch_avatar_image(self, target) -> Image.Image:
-        """Fetch member avatar or guild icon with clean fallback."""
+        """Fetch member avatar or guild icon with clean monogram fallback."""
         url = None
         if hasattr(target, 'icon') and target.icon:
             url = str(target.icon.url)
@@ -474,7 +560,8 @@ class Activity(commands.Cog):
 
         # Fallback monogram circle
         name = getattr(target, 'name', 'F') or 'F'
-        letter = name[0].upper()
+        clean = clean_display_name(name)
+        letter = clean[0].upper() if clean else 'F'
         fb = Image.new("RGBA", (100, 100), (88, 101, 242, 255))
         d = ImageDraw.Draw(fb)
         try:
@@ -536,21 +623,22 @@ class Activity(commands.Cog):
             except Exception:
                 pass
 
-        # Header texts
+        # Header texts (clean unicode)
         text_x = header_x + 74
-        draw.text((text_x, header_y + 6), title[:30], font=font_title, fill=(255, 255, 255, 255))
-        draw.text((text_x, header_y + 34), subtitle[:45], font=font_sub, fill=(142, 146, 155, 255))
+        draw.text((text_x, header_y + 6), clean_display_name(title, max_len=28), font=font_title, fill=(255, 255, 255, 255))
+        draw.text((text_x, header_y + 34), clean_display_name(subtitle, max_len=45), font=font_sub, fill=(142, 146, 155, 255))
 
         # Top-right pills
         pill_right = W - 38
         for p_text in reversed(pills):
-            p_bbox = font_pill.getbbox(p_text)
+            p_clean = clean_display_name(p_text, max_len=18)
+            p_bbox = font_pill.getbbox(p_clean)
             pw = (p_bbox[2] - p_bbox[0]) + 26
             ph = 32
             px = pill_right - pw
             py = header_y + 14
             draw_rounded_rect(draw, (px, py, px + pw, py + ph), radius=16, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
-            draw.text((px + 13, py + 8), p_text, font=font_pill, fill=(240, 242, 245, 255))
+            draw.text((px + 13, py + 8), p_clean, font=font_pill, fill=(240, 242, 245, 255))
             pill_right = px - 12
 
         # 3. KPI Cards Row (3 Cards)
@@ -601,6 +689,7 @@ class Activity(commands.Cog):
         plot_y = body_y + 70
         plot_w = left_w - 82
         plot_h = 195
+        baseline_y = plot_y + plot_h
 
         max_val = max(chart_values) if chart_values and max(chart_values) > 0 else 10
         if max_val <= 10: max_y = 10
@@ -621,24 +710,26 @@ class Activity(commands.Cog):
         num_pts = len(chart_values)
         for i, v in enumerate(chart_values):
             cx = plot_x + int(i * (plot_w / max(1, num_pts - 1)))
-            cy = plot_y + plot_h - int((v / max_y) * plot_h)
+            cy = baseline_y - int((v / max_y) * plot_h)
             raw_points.append((cx, cy))
 
-        spline_points = create_smooth_spline_points(raw_points, num_subdivisions=12)
+        # Fritsch-Carlson monotone cubic spline interpolation (NEVER dips below baseline)
+        raw_spline = monotone_cubic_spline(raw_points, num_subdivisions=16)
+        spline_points = [(p[0], min(baseline_y, max(plot_y, p[1]))) for p in raw_spline]
 
-        # Gradient fill
+        # Area Gradient fill under curve
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
-        poly_points = [(plot_x, plot_y + plot_h)] + spline_points + [(plot_x + plot_w, plot_y + plot_h)]
+        poly_points = [(plot_x, baseline_y)] + spline_points + [(plot_x + plot_w, baseline_y)]
         overlay_draw.polygon(poly_points, fill=accent_color + (38,))
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # Spline line
+        # Spline stroke line
         for i in range(len(spline_points) - 1):
             draw.line([spline_points[i], spline_points[i+1]], fill=accent_color + (255,), width=3)
 
-        # Point markers & X labels
+        # Point markers & X date labels
         for i, (px, py) in enumerate(raw_points):
             draw.ellipse((px - 5, py - 5, px + 5, py + 5), fill=(28, 30, 36, 255), outline=accent_color + (255,), width=2)
             draw.ellipse((px - 2, py - 2, px + 2, py + 2), fill=(255, 255, 255, 255))
@@ -646,37 +737,200 @@ class Activity(commands.Cog):
                 lbl = chart_labels[i]
                 l_bbox = font_axis.getbbox(lbl)
                 lw = l_bbox[2] - l_bbox[0]
-                draw.text((px - lw // 2, plot_y + plot_h + 14), lbl, font=font_axis, fill=(130, 135, 146, 255))
+                draw.text((px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=(130, 135, 146, 255))
 
-        # Right Container
+        # Right Container: Top Channels
         draw_rounded_rect(draw, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
         draw.text((right_x + 22, body_y + 18), right_panel_title, font=font_box_title, fill=(255, 255, 255, 255))
         draw.text((right_x + right_w - 32, body_y + 18), "#", font=font_box_title, fill=(110, 115, 126, 255))
 
-        # 5 items list
+        # Balanced 5 slots list (fills empty slots cleanly so panel is never blank)
         row_y = body_y + 58
         row_h = 44
-        for idx, (name_str, count_val) in enumerate(right_panel_items[:5], start=1):
-            ry = row_y + (idx - 1) * row_h
+        for slot in range(1, 6):
+            ry = row_y + (slot - 1) * row_h
             draw_rounded_rect(draw, (right_x + 12, ry, right_x + right_w - 12, ry + 36), radius=10, fill=(29, 31, 38, 255))
-            draw.text((right_x + 26, ry + 9), str(idx), font=font_list_badge, fill=(255, 255, 255, 255) if idx <= 3 else (140, 145, 155, 255))
-            c_name = name_str if name_str.startswith("#") else f"# {name_str}"
-            draw.text((right_x + 56, ry + 9), c_name[:18], font=font_list, fill=(235, 238, 242, 255))
-            c_str = f"{count_val:,}"
-            c_bbox = font_list_badge.getbbox(c_str)
-            cw = (c_bbox[2] - c_bbox[0]) + 18
-            cx = right_x + right_w - 22 - cw
-            draw_rounded_rect(draw, (cx, ry + 4, cx + cw, ry + 32), radius=8, fill=(38, 41, 50, 255))
-            draw.text((cx + 9, ry + 9), c_str, font=font_list_badge, fill=(255, 255, 255, 255))
-
-        if not right_panel_items:
-            draw.text((right_x + 24, body_y + 80), "No recorded activity yet", font=font_sub, fill=(120, 125, 136, 255))
+            if slot <= len(right_panel_items):
+                name_str, count_val = right_panel_items[slot - 1]
+                draw.text((right_x + 26, ry + 9), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot <= 3 else (140, 145, 155, 255))
+                clean_name = clean_channel_name(name_str, max_len=18)
+                c_name = clean_name if clean_name.startswith("#") else f"# {clean_name}"
+                draw.text((right_x + 56, ry + 9), c_name, font=font_list, fill=(235, 238, 242, 255))
+                c_str = f"{count_val:,}"
+                c_bbox = font_list_badge.getbbox(c_str)
+                cw = (c_bbox[2] - c_bbox[0]) + 18
+                cx = right_x + right_w - 22 - cw
+                draw_rounded_rect(draw, (cx, ry + 4, cx + cw, ry + 32), radius=8, fill=(38, 41, 50, 255))
+                draw.text((cx + 9, ry + 9), c_str, font=font_list_badge, fill=(255, 255, 255, 255))
+            else:
+                # Dimmed placeholder slot
+                draw.text((right_x + 26, ry + 9), str(slot), font=font_list_badge, fill=(70, 75, 86, 255))
+                draw.text((right_x + 56, ry + 9), "# —", font=font_list, fill=(75, 80, 92, 255))
+                draw.text((right_x + right_w - 38, ry + 9), "—", font=font_list_badge, fill=(70, 75, 86, 255))
 
         # 5. Footer
         footer_y = H - 38
-        draw.text((38, footer_y), footer_left, font=font_footer, fill=(115, 120, 130, 255))
+        draw.text((38, footer_y), clean_display_name(footer_left, max_len=80), font=font_footer, fill=(115, 120, 130, 255))
         f_bbox = font_footer_bold.getbbox(footer_right)
         draw.text((W - 38 - (f_bbox[2] - f_bbox[0]), footer_y), footer_right, font=font_footer_bold, fill=(150, 155, 166, 255))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        return buf
+
+    def render_leaderboard_card(
+        self,
+        guild_name: str,
+        guild_icon: Image.Image,
+        timeframe_name: str,
+        page: int,
+        total_pages: int,
+        total_chatters: int,
+        members_data: list, # [(rank, name, username, avatar_img, count), ...]
+        max_msgs: int = 1
+    ) -> io.BytesIO:
+        """Renders high-resolution 1020x640 graphic leaderboard card with 10 members per page in a 2-column grid."""
+        W, H = 1020, 640
+        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        draw = ImageDraw.Draw(img)
+
+        # 1. Main Outer Container
+        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+
+        font_title = Font.poppins(variant="bold", size=22)
+        font_sub = Font.poppins(variant="regular", size=13)
+        font_pill = Font.poppins(variant="bold", size=12)
+        font_name = Font.poppins(variant="bold", size=14)
+        font_user = Font.poppins(variant="regular", size=11)
+        font_rank = Font.poppins(variant="bold", size=13)
+        font_cnt = Font.poppins(variant="bold", size=13)
+        font_footer = Font.poppins(variant="regular", size=11)
+        font_footer_bold = Font.poppins(variant="bold", size=11)
+
+        # 2. Header
+        header_x, header_y = 38, 34
+        if guild_icon:
+            try:
+                icon_resized = guild_icon.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (60, 60), 0)
+                mask_draw = ImageDraw.Draw(mask)
+                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                img.paste(icon_resized, (header_x, header_y), mask)
+                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+            except Exception:
+                pass
+
+        text_x = header_x + 74
+        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255))
+        draw.text((text_x, header_y + 34), f"Top Chatters Leaderboard • {timeframe_name}", font=font_sub, fill=(142, 146, 155, 255))
+
+        # Top-right status pills
+        pills = [
+            f"PAGE {page} OF {total_pages}",
+            f"{total_chatters:,} Chatters",
+            "RANKINGS"
+        ]
+        pill_right = W - 38
+        for p in reversed(pills):
+            bbox = font_pill.getbbox(p)
+            pw = (bbox[2] - bbox[0]) + 24
+            px = pill_right - pw
+            py = header_y + 14
+            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
+            draw.text((px + 12, py + 8), p, font=font_pill, fill=(240, 242, 245, 255))
+            pill_right = px - 10
+
+        # 3. Two-Column Grid: 5 Rows on Left, 5 Rows on Right
+        col_w = 460
+        col1_x = 38
+        col2_x = 522
+        start_y = 114
+        row_h = 80
+        spacing = 14
+
+        m_dict = {m[0]: m for m in members_data}
+        start_rank = (page - 1) * 10 + 1
+
+        for slot_idx in range(10):
+            current_rank = start_rank + slot_idx
+            col = 0 if slot_idx < 5 else 1
+            row = slot_idx % 5
+            cx = col1_x if col == 0 else col2_x
+            cy = start_y + row * (row_h + spacing)
+
+            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+
+            if current_rank in m_dict:
+                _, name_str, user_str, av_img, cnt = m_dict[current_rank]
+
+                # Progress bar underlay
+                ratio = cnt / max(1, max_msgs)
+                fill_w = int(col_w * min(1.0, max(0.02, ratio)))
+                if fill_w > 0:
+                    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                    od = ImageDraw.Draw(overlay)
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=(56, 189, 248, 22))
+                    img = Image.alpha_composite(img, overlay)
+                    draw = ImageDraw.Draw(img)
+
+                # Rank badge styling
+                if current_rank == 1:
+                    r_fill, r_out, r_txt = (60, 45, 15, 255), (217, 119, 6, 255), (245, 158, 11, 255)
+                elif current_rank == 2:
+                    r_fill, r_out, r_txt = (40, 45, 55, 255), (148, 163, 184, 255), (203, 213, 225, 255)
+                elif current_rank == 3:
+                    r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
+                else:
+                    r_fill, r_out, r_txt = (28, 30, 36, 255), (46, 50, 60, 255), (150, 155, 166, 255)
+
+                draw_rounded_rect(draw, (cx + 12, cy + 24, cx + 48, cy + 56), radius=10, fill=r_fill, outline=r_out, width=1)
+                r_str = f"#{current_rank}"
+                rb = font_rank.getbbox(r_str)
+                rw = rb[2] - rb[0]
+                draw.text((cx + 12 + (36 - rw) // 2, cy + 32), r_str, font=font_rank, fill=r_txt)
+
+                # Avatar (44x44 circular crop)
+                av_x = cx + 60
+                av_y = cy + 18
+                if av_img:
+                    try:
+                        av_resized = av_img.convert("RGBA").resize((44, 44), Image.Resampling.LANCZOS)
+                        mask = Image.new("L", (44, 44), 0)
+                        mask_draw = ImageDraw.Draw(mask)
+                        mask_draw.ellipse((0, 0, 44, 44), fill=255)
+                        img.paste(av_resized, (av_x, av_y), mask)
+                        draw.ellipse((av_x, av_y, av_x + 44, av_y + 44), outline=(55, 60, 72, 255), width=1)
+                    except Exception:
+                        pass
+                else:
+                    # Monogram circle
+                    draw.ellipse((av_x, av_y, av_x + 44, av_y + 44), fill=(88, 101, 242, 255))
+                    c_letter = clean_display_name(name_str)[0].upper() if name_str else '?'
+                    ab = font_pill.getbbox(c_letter)
+                    draw.text((av_x + (44 - (ab[2] - ab[0])) // 2, av_y + 14), c_letter, font=font_pill, fill=(255, 255, 255, 255))
+
+                # Name & Tag
+                tx = av_x + 54
+                draw.text((tx, cy + 20), clean_display_name(name_str, max_len=16), font=font_name, fill=(255, 255, 255, 255))
+                draw.text((tx, cy + 44), f"@{clean_display_name(user_str, max_len=18)}", font=font_user, fill=(130, 135, 146, 255))
+
+                # Count pill
+                cnt_str = f"{cnt:,} msgs"
+                cb = font_cnt.getbbox(cnt_str)
+                cw = (cb[2] - cb[0]) + 20
+                cpx = cx + col_w - 14 - cw
+                draw_rounded_rect(draw, (cpx, cy + 24, cpx + cw, cy + 56), radius=10, fill=(28, 30, 37, 255), outline=(48, 52, 63, 255), width=1)
+                draw.text((cpx + 10, cy + 32), cnt_str, font=font_cnt, fill=(255, 255, 255, 255))
+            else:
+                # Dimmed available slot
+                draw.text((cx + 18, cy + 30), f"#{current_rank}  — No more recorded chatters —", font=font_sub, fill=(75, 80, 92, 255))
+
+        # 4. Footer
+        footer_y = H - 36
+        draw.text((38, footer_y), "Use the Previous and Next buttons below to navigate pages • Timezone: UTC", font=font_footer, fill=(115, 120, 130, 255))
+        fb = font_footer_bold.getbbox("Powered by Friday")
+        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(150, 155, 166, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -698,7 +952,7 @@ class Activity(commands.Cog):
         for cid, total in top_raw:
             ch = guild.get_channel(int(cid))
             c_name = ch.name if ch else f"channel-{cid}"
-            top_channels.append((c_name, total))
+            top_channels.append((clean_channel_name(c_name), total))
 
         created_str = f"Created {guild.created_at.strftime('%B %d, %Y')}" if guild.created_at else "Created Unknown"
         members_count = guild.member_count or len(guild.members)
@@ -741,14 +995,14 @@ class Activity(commands.Cog):
         for cid, total in top_raw:
             ch = guild.get_channel(int(cid))
             c_name = ch.name if ch else f"channel-{cid}"
-            top_channels.append((c_name, total))
+            top_channels.append((clean_channel_name(c_name), total))
 
-        joined_str = f"Joined {member.joined_at.strftime('%B %d, %Y')}" if member.joined_at else f"Tag: @{member.name}"
+        joined_str = f"Joined {member.joined_at.strftime('%B %d, %Y')}" if member.joined_at else f"Tag: @{clean_display_name(member.name)}"
         pills = ["MESSAGES"]
         if m_stats["rank"] > 0:
             pills.append(f"Rank #{m_stats['rank']}")
         if member.top_role and member.top_role.name != "@everyone":
-            pills.append(member.top_role.name[:16])
+            pills.append(clean_display_name(member.top_role.name, max_len=14))
 
         voice_str = self.format_duration(m_stats["voice_lifetime"])
 
@@ -775,9 +1029,14 @@ class Activity(commands.Cog):
         )
         return discord.File(fp=buf, filename=f"member_activity_{member.id}.png")
 
-    # ────────────────────────── Leaderboard Embed ──────────────────────────
-
-    def build_leaderboard_embed(self, guild: discord.Guild, timeframe: str) -> discord.Embed:
+    async def generate_leaderboard_card_file(
+        self,
+        guild: discord.Guild,
+        timeframe: str = "lifetime",
+        page: int = 1,
+        per_page: int = 10
+    ) -> discord.File:
+        """Generates graphic leaderboard image file for a given page and timeframe."""
         timeframe_names = {
             "today": "Today's",
             "week": "This Week's (7 Days)",
@@ -785,30 +1044,41 @@ class Activity(commands.Cog):
             "year": "This Year's (365 Days)",
             "lifetime": "Lifetime"
         }
-        title_time = timeframe_names.get(timeframe, "Lifetime")
-        top_list = self.get_leaderboard(guild.id, timeframe=timeframe, limit=10)
+        tf_name = timeframe_names.get(timeframe, "Lifetime")
+        total_chatters = self.get_leaderboard_total_count(guild.id, timeframe)
+        total_pages = max(1, math.ceil(total_chatters / per_page))
+        current_page = max(1, min(page, total_pages))
+        offset = (current_page - 1) * per_page
 
-        embed = discord.Embed(
-            title=f"Top Chatters Leaderboard · {title_time}",
-            description=f"Showing the top {len(top_list)} most active members in **{guild.name}** for **{title_time}**:",
-            color=discord.Color.brand_green(),
-            timestamp=discord.utils.utcnow()
+        raw_list = self.get_leaderboard(guild.id, timeframe, limit=per_page, offset=offset)
+
+        # Concurrently fetch avatar images for members on this page
+        async def fetch_item(rank_num, uid, count):
+            mem = guild.get_member(int(uid))
+            name = mem.display_name if mem else f"User {uid[-4:]}"
+            username = mem.name if mem else f"id_{uid}"
+            av = await self.fetch_avatar_image(mem or uid)
+            return (rank_num, name, username, av, count)
+
+        tasks_list = [fetch_item(offset + i, uid, count) for i, (uid, count) in enumerate(raw_list, start=1)]
+        members_data = await asyncio.gather(*tasks_list) if tasks_list else []
+
+        # Find max message count on page 1 for proportional relative bar
+        top_one = self.get_leaderboard(guild.id, timeframe, limit=1, offset=0)
+        max_msgs = top_one[0][1] if top_one else 1
+
+        guild_icon = await self.fetch_avatar_image(guild)
+        buf = self.render_leaderboard_card(
+            guild_name=guild.name,
+            guild_icon=guild_icon,
+            timeframe_name=tf_name,
+            page=current_page,
+            total_pages=total_pages,
+            total_chatters=total_chatters,
+            members_data=members_data,
+            max_msgs=max_msgs
         )
-        if guild.icon:
-            embed.set_thumbnail(url=guild.icon.url)
-
-        if not top_list:
-            embed.description = f"No activity recorded yet for **{title_time}**. Send a message to start charting!"
-        else:
-            lines = []
-            for idx, (uid, count) in enumerate(top_list, start=1):
-                mem = guild.get_member(int(uid))
-                user_label = mem.mention if mem else f"`<@{uid}>`"
-                lines.append(f"`#{idx:02d}` **{user_label}** — `{count:,}` messages")
-            embed.add_field(name="Member Rankings", value="\n".join(lines), inline=False)
-
-        embed.set_footer(text="Friday Activity Matrix • Click buttons below to switch timeframe!")
-        return embed
+        return discord.File(fp=buf, filename=f"leaderboard_{guild.id}_{timeframe}_p{current_page}.png")
 
     # ────────────────────────── Slash Commands ──────────────────────────
 
@@ -829,7 +1099,7 @@ class Activity(commands.Cog):
         file = await self.generate_server_card_file(interaction.guild)
         await interaction.followup.send(file=file)
 
-    @activity_group.command(name="leaderboard", description="View the top chatters for Today, This Week, This Month, This Year, or Lifetime.")
+    @activity_group.command(name="leaderboard", description="View custom graphic leaderboard for Today, Week, Month, Year, or Lifetime.")
     @app_commands.choices(timeframe=[
         app_commands.Choice(name="Today", value="today"),
         app_commands.Choice(name="This Week (7 Days)", value="week"),
@@ -838,10 +1108,11 @@ class Activity(commands.Cog):
         app_commands.Choice(name="Lifetime", value="lifetime")
     ])
     async def activity_leaderboard(self, interaction: discord.Interaction, timeframe: app_commands.Choice[str] = None):
+        await interaction.response.defer()
         tf = timeframe.value if timeframe else "lifetime"
-        embed = self.build_leaderboard_embed(interaction.guild, tf)
-        view = ActivityLeaderboardView(self, interaction.guild, tf)
-        await interaction.response.send_message(embed=embed, view=view)
+        view = ActivityLeaderboardView(self, interaction.guild, current_tf=tf, current_page=1)
+        file = await self.generate_leaderboard_card_file(interaction.guild, tf, page=1)
+        await interaction.followup.send(file=file, view=view)
 
     # ─── User shortcut: /my msg and /my stats ───
     @my_group.command(name="msg", description="View your personal chat activity and message stats graphic card.")
@@ -857,35 +1128,93 @@ class Activity(commands.Cog):
         await interaction.followup.send(file=file)
 
 class ActivityLeaderboardView(discord.ui.View):
-    def __init__(self, cog: Activity, guild: discord.Guild, current_tf: str):
-        super().__init__(timeout=180)
+    """
+    Interactive pagination view for Leaderboard Image Cards.
+    Provides clean 'Previous' and 'Next' buttons and timeframe switcher with zero emojis.
+    """
+    def __init__(self, cog: Activity, guild: discord.Guild, current_tf: str = "lifetime", current_page: int = 1):
+        super().__init__(timeout=300)
         self.cog = cog
         self.guild = guild
         self.current_tf = current_tf
+        self.current_page = current_page
         self.update_buttons()
+
+    def get_total_pages(self) -> int:
+        total = self.cog.get_leaderboard_total_count(self.guild.id, self.current_tf)
+        return max(1, math.ceil(total / 10))
 
     def update_buttons(self):
         self.clear_items()
-        buttons = [
+        total_pages = self.get_total_pages()
+        self.current_page = max(1, min(self.current_page, total_pages))
+
+        # Row 0: Pagination Buttons (Clean text labels, no mobile emojis)
+        prev_btn = discord.ui.Button(
+            label="Previous",
+            style=discord.ButtonStyle.secondary,
+            disabled=(self.current_page <= 1),
+            row=0
+        )
+        prev_btn.callback = self.on_prev_clicked
+        self.add_item(prev_btn)
+
+        page_btn = discord.ui.Button(
+            label=f"Page {self.current_page} / {total_pages}",
+            style=discord.ButtonStyle.primary,
+            disabled=True,
+            row=0
+        )
+        self.add_item(page_btn)
+
+        next_btn = discord.ui.Button(
+            label="Next",
+            style=discord.ButtonStyle.secondary,
+            disabled=(self.current_page >= total_pages),
+            row=0
+        )
+        next_btn.callback = self.on_next_clicked
+        self.add_item(next_btn)
+
+        # Row 1: Timeframe selectors
+        tf_options = [
             ("Today", "today"),
             ("Week", "week"),
             ("Month", "month"),
             ("Year", "year"),
             ("Lifetime", "lifetime")
         ]
-        for label, val in buttons:
-            style = discord.ButtonStyle.primary if val == self.current_tf else discord.ButtonStyle.secondary
-            btn = discord.ui.Button(label=label, custom_id=f"act_lb_{val}", style=style)
-            btn.callback = self.make_callback(val)
+        for label, tf in tf_options:
+            style = discord.ButtonStyle.success if tf == self.current_tf else discord.ButtonStyle.secondary
+            btn = discord.ui.Button(label=label, style=style, row=1)
+            btn.callback = self.make_tf_callback(tf)
             self.add_item(btn)
 
-    def make_callback(self, tf: str):
+    async def on_prev_clicked(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        if self.current_page > 1:
+            self.current_page -= 1
+        await self.refresh_view(interaction)
+
+    async def on_next_clicked(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        total_pages = self.get_total_pages()
+        if self.current_page < total_pages:
+            self.current_page += 1
+        await self.refresh_view(interaction)
+
+    def make_tf_callback(self, tf: str):
         async def callback(interaction: discord.Interaction):
+            await interaction.response.defer()
             self.current_tf = tf
-            self.update_buttons()
-            embed = self.cog.build_leaderboard_embed(self.guild, tf)
-            await interaction.response.edit_message(embed=embed, view=self)
+            self.current_page = 1
+            await self.refresh_view(interaction)
         return callback
+
+    async def refresh_view(self, interaction: discord.Interaction):
+        self.update_buttons()
+        file = await self.cog.generate_leaderboard_card_file(self.guild, self.current_tf, self.current_page)
+        await interaction.edit_original_response(attachments=[file], view=self)
 
 async def setup(bot):
     await bot.add_cog(Activity(bot))
