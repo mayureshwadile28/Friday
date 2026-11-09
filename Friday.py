@@ -101,7 +101,7 @@ def get_xp_requirement(level):
 @bot.event
 async def on_ready():
     for cmd in bot.tree.get_commands():
-        if cmd.name in ("avatar", "avtar"):
+        if cmd.name in ("avatar", "vip"):
             cmd.guild_only = False
         else:
             try:
@@ -868,7 +868,7 @@ async def sync(interaction: discord.Interaction):
     bot.tree.clear_commands(guild=interaction.guild)
     await bot.tree.sync(guild=interaction.guild)
     for cmd in bot.tree.get_commands():
-        if cmd.name in ("avatar", "avtar"):
+        if cmd.name in ("avatar", "vip"):
             cmd.guild_only = False
         else:
             try:

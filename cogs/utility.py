@@ -378,17 +378,20 @@ class Utility(commands.Cog):
     async def sync(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         for cmd in self.bot.tree.get_commands():
-            if cmd.name in ("avatar", "avtar"):
+            if cmd.name in ("avatar", "vip"):
                 cmd.guild_only = False
             else:
                 try:
                     cmd.guild_only = True
                 except Exception:
                     pass
+        if interaction.guild:
+            self.bot.tree.copy_global_to(guild=interaction.guild)
+            await self.bot.tree.sync(guild=interaction.guild)
         synced = await self.bot.tree.sync()
         await reply_box(
             interaction,
-            f"Command tree synced across **{len(synced)}** slash commands (DM restrictions applied: only /avatar in DMs).\nPress **Ctrl+R** in your Discord client to reload the command cache.",
+            f"Command tree synced across **{len(synced)}** slash commands (instantly updated in **{interaction.guild.name if interaction.guild else 'this guild'}**).\nPress **Ctrl+R** in your Discord client to reload the command cache.",
             title="SYNC COMPLETE",
             status="success",
             ephemeral=True
@@ -598,11 +601,6 @@ class Utility(commands.Cog):
     @app_commands.command(name="avatar", description="View a member's avatar in full resolution with an avatar-matching color line.")
     @app_commands.describe(user="The member or user whose avatar you want to view (defaults to you)")
     async def avatar_cmd(self, interaction: discord.Interaction, user: Optional[Union[discord.Member, discord.User]] = None):
-        await self._handle_avatar(interaction, user)
-
-    @app_commands.command(name="avtar", description="View a member's avatar in full resolution with an avatar-matching color line.")
-    @app_commands.describe(user="The member or user whose avatar you want to view (defaults to you)")
-    async def avtar_cmd(self, interaction: discord.Interaction, user: Optional[Union[discord.Member, discord.User]] = None):
         await self._handle_avatar(interaction, user)
 
 async def setup(bot):

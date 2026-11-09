@@ -52,12 +52,12 @@ bot.remove_command('help')
 
 def configure_command_dm_restrictions(tree):
     """
-    Restricts all commands to guilds except /avatar and /avtar.
+    Restricts all commands to guilds except /avatar and /vip.
     Setting guild_only=True sends dm_permission: False in Discord's API sync payload,
     which instructs Discord clients to completely hide them in Direct Messages.
     """
     for cmd in tree.get_commands():
-        if cmd.name in ("avatar", "avtar", "vip"):
+        if cmd.name in ("avatar", "vip"):
             cmd.guild_only = False
         else:
             try:
@@ -67,10 +67,10 @@ def configure_command_dm_restrictions(tree):
 
 @bot.tree.interaction_check
 async def dm_interaction_guard(interaction: discord.Interaction) -> bool:
-    """Blocks any server commands from executing in Direct Messages (only avatar/avtar/vip allowed)."""
+    """Blocks any server commands from executing in Direct Messages (only avatar/vip allowed)."""
     if interaction.guild is None:
         cmd_name = interaction.command.name if interaction.command else ""
-        if cmd_name not in ("avatar", "avtar", "vip"):
+        if cmd_name not in ("avatar", "vip"):
             if not interaction.response.is_done():
                 await interaction.response.send_message(
                     "🔒 This command is only available inside servers, not in Direct Messages.",
@@ -142,18 +142,18 @@ async def on_ready():
             except Exception as e:
                 print(f"⚠️ Security sync warning for '{g.name}': {e}")
 
-    # 1. Clean up guild-level duplicates so commands appear only ONCE
+    # 1. Sync commands directly to guilds for INSTANT (0-second) visibility in servers
+    configure_command_dm_restrictions(bot.tree)
     for g in bot.guilds:
         try:
-            bot.tree.clear_commands(guild=g)
-            await bot.tree.sync(guild=g)
-            print(f"🧹 Cleaned guild command duplicates in '{g.name}'")
+            bot.tree.copy_global_to(guild=g)
+            synced_guild = await bot.tree.sync(guild=g)
+            print(f"⚡ Instantly synced {len(synced_guild)} slash commands to guild '{g.name}'")
         except Exception as e:
-            print(f"Duplicate cleanup note for '{g.name}': {e}")
+            print(f"Guild sync note for '{g.name}': {e}")
 
     # 2. Register one clean global command list with DM restrictions applied
     try:
-        configure_command_dm_restrictions(bot.tree)
         synced_global = await bot.tree.sync()
         print(f"✅ One clean list: {len(synced_global)} global slash commands registered (DM restrictions active: only /avatar visible in DMs).")
     except Exception as e:

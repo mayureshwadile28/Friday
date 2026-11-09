@@ -843,61 +843,18 @@ class Activity(commands.Cog):
         view = ActivityLeaderboardView(self, interaction.guild, tf)
         await interaction.response.send_message(embed=embed, view=view)
 
-    # ─── User shortcut: /my msg ───
+    # ─── User shortcut: /my msg and /my stats ───
     @my_group.command(name="msg", description="View your personal chat activity and message stats graphic card.")
     async def my_msg(self, interaction: discord.Interaction):
         await interaction.response.defer()
         file = await self.generate_member_card_file(interaction.guild, interaction.user)
         await interaction.followup.send(file=file)
 
-    # Standalone convenience aliases
-    @app_commands.command(name="mymsg", description="View your personal message stats and activity card.")
-    async def mymsg_command(self, interaction: discord.Interaction):
+    @my_group.command(name="stats", description="View your personal chat activity and message stats graphic card.")
+    async def my_stats(self, interaction: discord.Interaction):
         await interaction.response.defer()
         file = await self.generate_member_card_file(interaction.guild, interaction.user)
         await interaction.followup.send(file=file)
-
-    @app_commands.command(name="my_msg", description="View your personal message stats and activity card.")
-    async def my_msg_command(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        file = await self.generate_member_card_file(interaction.guild, interaction.user)
-        await interaction.followup.send(file=file)
-
-    @app_commands.command(name="chatstats", description="Check message activity graphic card for a member.")
-    @app_commands.describe(member="Member to view chat stats for (defaults to yourself)")
-    async def chatstats_command(self, interaction: discord.Interaction, member: discord.Member = None):
-        await interaction.response.defer()
-        target = member or interaction.user
-        file = await self.generate_member_card_file(interaction.guild, target)
-        await interaction.followup.send(file=file)
-
-    @app_commands.command(name="messages", description="View how many messages a member has sent today, this week, month, year, and lifetime.")
-    @app_commands.describe(member="Member to view message counts for (defaults to yourself)")
-    async def messages_command(self, interaction: discord.Interaction, member: discord.Member = None):
-        await interaction.response.defer()
-        target = member or interaction.user
-        file = await self.generate_member_card_file(interaction.guild, target)
-        await interaction.followup.send(file=file)
-
-    @app_commands.command(name="serverstats", description="View server message volume and activity graphic dashboard.")
-    async def serverstats_command(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        file = await self.generate_server_card_file(interaction.guild)
-        await interaction.followup.send(file=file)
-
-    @app_commands.command(name="topchatters", description="View the top chatters in the server across various timeframes.")
-    @app_commands.choices(timeframe=[
-        app_commands.Choice(name="Today", value="today"),
-        app_commands.Choice(name="This Week (7 Days)", value="week"),
-        app_commands.Choice(name="This Month (30 Days)", value="month"),
-        app_commands.Choice(name="This Year (365 Days)", value="year"),
-        app_commands.Choice(name="Lifetime", value="lifetime")
-    ])
-    async def topchatters_command(self, interaction: discord.Interaction, timeframe: app_commands.Choice[str] = None):
-        tf = timeframe.value if timeframe else "lifetime"
-        embed = self.build_leaderboard_embed(interaction.guild, tf)
-        view = ActivityLeaderboardView(self, interaction.guild, tf)
-        await interaction.response.send_message(embed=embed, view=view)
 
 class ActivityLeaderboardView(discord.ui.View):
     def __init__(self, cog: Activity, guild: discord.Guild, current_tf: str):
