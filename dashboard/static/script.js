@@ -67952,7 +67952,7 @@ function updateBirthdayPreview() {
 
     const titleEl = document.getElementById('previewBirthdayEmbedTitle');
     if (titleEl) {
-        let t = (rawTitle || '🎉 HAPPY BIRTHDAY, {user}! 🎂').replace(/\{user\}/g, 'Member').replace(/\{mention\}/g, '@Member');
+        let t = cleanTitleMarkdown((rawTitle || '🎉 HAPPY BIRTHDAY, {user}! 🎂').replace(/\{user\}/g, 'Member').replace(/\{mention\}/g, '@Member'));
         titleEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(t) : escapeHtml(t);
     }
 
@@ -67989,7 +67989,8 @@ function updateBirthdayPreview() {
     const cardTitleRich = document.getElementById('birthdayCardTitleInput_rich');
     const rawCardTitle = (cardTitleRich ? richHtmlToRawMarkdown(cardTitleRich) : document.getElementById('birthdayCardTitleInput')?.value) || '🎂 Member Birthday Registration';
     if (cardTitleEl) {
-        cardTitleEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(rawCardTitle) : escapeHtml(rawCardTitle);
+        let t = cleanTitleMarkdown(rawCardTitle);
+        cardTitleEl.innerHTML = typeof renderDiscordMarkdown === 'function' ? renderDiscordMarkdown(t) : escapeHtml(t);
     }
 
     const cardDescEl = document.getElementById('previewBirthdayCardDesc');
@@ -68667,6 +68668,49 @@ window.applicationData = {
     currentEmbedColor: '#5865f2'
 };
 
+function cleanTitleMarkdown(title) {
+    if (!title) return '';
+    return String(title).replace(/^\s*(?:#+|-#)\s*/, '').trim();
+}
+
+async function handleApplicationBannerUpload(file) {
+    if (!currentGuildId) {
+        showToast('Please select a server first.', 'error');
+        return;
+    }
+    if (!file) return;
+
+    if (file.size > 25 * 1024 * 1024) {
+        showToast('File is too large. Maximum size is 25MB.', 'error');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('banner', file);
+    try {
+        showToast('Uploading application panel banner/GIF...', 'info');
+        const res = await fetch(`/api/guild/${currentGuildId}/applications/upload-banner`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data && (data.success || data.status === 'success')) {
+            const inputEl = document.getElementById('appPanelBannerInput');
+            if (inputEl) {
+                inputEl.value = data.url || data.banner_url;
+                inputEl.dispatchEvent(new Event('input'));
+            }
+            updateApplicationPreview();
+            showToast('Application banner uploaded successfully!', 'success');
+        } else {
+            showToast(data.error || 'Failed to upload banner.', 'error');
+        }
+    } catch (err) {
+        console.error('Error uploading application banner:', err);
+        showToast('Network error while uploading banner.', 'error');
+    }
+}
+
 function insertAppVar(text) {
     const descEl = document.getElementById('appPanelDescInput');
     if (!descEl) return;
@@ -68953,7 +68997,7 @@ function updateApplicationPreview() {
     const cardIntroStart = document.getElementById('cardIntroPreviewStartBtn');
     const cardIntroCancel = document.getElementById('cardIntroPreviewCancelBtn');
     if (cardIntroTitle) {
-        cardIntroTitle.innerHTML = renderDiscordMarkdown(rawIntroTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+        cardIntroTitle.innerHTML = renderDiscordMarkdown(cleanTitleMarkdown(rawIntroTitle.replace('{server}', 'Server').replace('{user}', 'Alex')));
     }
     if (cardIntroDesc) {
         cardIntroDesc.innerHTML = renderDiscordMarkdown(rawIntroDesc.replace('{server}', 'Server').replace('{user}', '@Alex').replace('{username}', 'Alex'));
@@ -68969,7 +69013,7 @@ function updateApplicationPreview() {
     const cardAppTitle = document.getElementById('cardApprovedPreviewTitle');
     const cardAppDesc = document.getElementById('cardApprovedPreviewDesc');
     if (cardAppTitle) {
-        cardAppTitle.innerHTML = renderDiscordMarkdown(rawAppTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+        cardAppTitle.innerHTML = renderDiscordMarkdown(cleanTitleMarkdown(rawAppTitle.replace('{server}', 'Server').replace('{user}', 'Alex')));
     }
     if (cardAppDesc) {
         cardAppDesc.innerHTML = renderDiscordMarkdown(
@@ -68985,7 +69029,7 @@ function updateApplicationPreview() {
     const cardRejTitle = document.getElementById('cardRejectedPreviewTitle');
     const cardRejDesc = document.getElementById('cardRejectedPreviewDesc');
     if (cardRejTitle) {
-        cardRejTitle.innerHTML = renderDiscordMarkdown(rawRejTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+        cardRejTitle.innerHTML = renderDiscordMarkdown(cleanTitleMarkdown(rawRejTitle.replace('{server}', 'Server').replace('{user}', 'Alex')));
     }
     if (cardRejDesc) {
         cardRejDesc.innerHTML = renderDiscordMarkdown(
@@ -69001,7 +69045,7 @@ function updateApplicationPreview() {
 
     if (simTab === 'panel') {
         embedEl.style.borderLeftColor = panelColor;
-        titleEl.innerHTML = renderDiscordMarkdown(rawPanelTitle);
+        titleEl.innerHTML = renderDiscordMarkdown(cleanTitleMarkdown(rawPanelTitle));
         descEl.innerHTML = renderDiscordMarkdown(rawPanelDesc);
         if (footerEl) footerEl.innerHTML = `<span>${renderDiscordMarkdown(rawPanelFooter)}</span>`;
         if (reviewFields) reviewFields.style.display = 'none';
@@ -69023,6 +69067,22 @@ function updateApplicationPreview() {
             }
         }
 
+        // Update Panel Banner Image / GIF
+        const bannerUrl = (document.getElementById('appPanelBannerInput')?.value || '').trim();
+        const bannerContainer = document.getElementById('appSimBannerContainer');
+        const bannerImg = document.getElementById('appSimBanner');
+        if (bannerContainer && bannerImg) {
+            if (bannerUrl) {
+                bannerImg.onerror = () => { bannerContainer.style.display = 'none'; };
+                bannerImg.onload = () => { bannerContainer.style.display = 'block'; };
+                bannerImg.src = bannerUrl;
+                bannerContainer.style.display = 'block';
+            } else {
+                bannerImg.src = '';
+                bannerContainer.style.display = 'none';
+            }
+        }
+
         // Rounded Apply Button with authentic styling and visual emoji
         if (btnRow) {
             btnRow.innerHTML = '';
@@ -69039,7 +69099,7 @@ function updateApplicationPreview() {
         }
     } else if (simTab === 'intro') {
         embedEl.style.borderLeftColor = '#5865f2';
-        titleEl.innerHTML = renderDiscordMarkdown(rawIntroTitle.replace('{server}', 'Server').replace('{user}', 'Alex'));
+        titleEl.innerHTML = renderDiscordMarkdown(cleanTitleMarkdown(rawIntroTitle.replace('{server}', 'Server').replace('{user}', 'Alex')));
         descEl.innerHTML = renderDiscordMarkdown(rawIntroDesc.replace('{server}', 'Server').replace('{user}', '@Alex'));
         if (footerEl) footerEl.innerHTML = `<span>Server • Application Form</span>`;
         if (reviewFields) reviewFields.style.display = 'none';
@@ -69206,7 +69266,7 @@ function setupAppListenersOnce() {
 
     // Inputs real-time preview updates
     [
-        'appPanelTitleInput', 'appPanelDescInput', 'appPanelFooterInput',
+        'appPanelTitleInput', 'appPanelDescInput', 'appPanelFooterInput', 'appPanelBannerInput',
         'appButtonLabelInput', 'appButtonEmojiInput', 'appButtonStyleSelect',
         'appIntroTitleInput', 'appIntroDescInput', 'appStartBtnLabel', 'appCancelBtnLabel',
         'appApprovedTitleInput', 'appApprovedDescInput',
@@ -69218,6 +69278,29 @@ function setupAppListenersOnce() {
             el.addEventListener('change', updateApplicationPreview);
         }
     });
+
+    // Panel Banner / GIF local file upload
+    const appBannerUploadBtn = document.getElementById('appPanelBannerUploadBtn');
+    const appBannerFileInput = document.getElementById('appPanelBannerFileInput');
+    if (appBannerUploadBtn && appBannerFileInput) {
+        appBannerUploadBtn.onclick = () => appBannerFileInput.click();
+    }
+    if (appBannerFileInput) {
+        appBannerFileInput.onchange = () => {
+            if (appBannerFileInput.files && appBannerFileInput.files[0]) {
+                handleApplicationBannerUpload(appBannerFileInput.files[0]);
+                appBannerFileInput.value = '';
+            }
+        };
+    }
+    const appBannerClearBtn = document.getElementById('appPanelBannerClearBtn');
+    if (appBannerClearBtn) {
+        appBannerClearBtn.onclick = () => {
+            const input = document.getElementById('appPanelBannerInput');
+            if (input) input.value = '';
+            updateApplicationPreview();
+        };
+    }
 
     // Add question button
     const addQBtn = document.getElementById('appAddQuestionBtn');
@@ -69362,7 +69445,8 @@ async function saveApplicationsConfig() {
             button_label: document.getElementById('appButtonLabelInput')?.value || 'Apply Now',
             button_emoji: document.getElementById('appButtonEmojiInput')?.value || '📝',
             button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary',
-            thumbnail_mode: document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday'
+            thumbnail_mode: document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday',
+            image_url: (document.getElementById('appPanelBannerInput')?.value || '').trim()
         },
         questions: window.applicationData.questions || [],
         dm_flow: {
@@ -69437,7 +69521,8 @@ async function deployApplicationPanel() {
         button_label: document.getElementById('appButtonLabelInput')?.value || 'Apply Now',
         button_emoji: document.getElementById('appButtonEmojiInput')?.value || '📝',
         button_style: document.getElementById('appButtonStyleSelect')?.value || 'primary',
-        thumbnail_mode: document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday'
+        thumbnail_mode: document.querySelector('input[name="appThumbnailMode"]:checked')?.value || 'friday',
+        image_url: (document.getElementById('appPanelBannerInput')?.value || '').trim()
     };
 
     try {
@@ -69565,6 +69650,11 @@ async function loadApplicationsSettings() {
 
         const btnStyle = document.getElementById('appButtonStyleSelect');
         if (btnStyle) btnStyle.value = p.button_style || 'primary';
+
+        const bannerInput = document.getElementById('appPanelBannerInput');
+        if (bannerInput) {
+            bannerInput.value = p.image_url || p.banner || '';
+        }
 
         // Thumbnail Mode
         const thumbMode = p.thumbnail_mode || 'friday';

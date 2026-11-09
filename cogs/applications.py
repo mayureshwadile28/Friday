@@ -7,7 +7,7 @@ import re
 import uuid
 from typing import Optional, List, Dict
 from database import db
-from emoji_utils import replace_plain_emojis, parse_btn, resolve_single_emoji
+from emoji_utils import replace_plain_emojis, parse_btn, resolve_single_emoji, clean_embed_title, normalize_discord_markdown
 from response_utils import make_box_embed, reply_box
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -448,14 +448,14 @@ class Applications(commands.Cog):
             start_emoji = resolve_single_emoji(start_emoji_raw, bot=self.bot, guild=guild, guild_id=gid_str) or "🚀"
             cancel_emoji = resolve_single_emoji(cancel_emoji_raw, bot=self.bot, guild=guild, guild_id=gid_str) or "✖️"
 
-            parsed_title = replace_plain_emojis(
+            parsed_title = clean_embed_title(replace_plain_emojis(
                 raw_intro_title.replace("{server}", guild.name).replace("{user}", user.name),
                 bot=self.bot, guild=guild, guild_id=gid_str
-            )
-            parsed_desc = replace_plain_emojis(
+            ))
+            parsed_desc = normalize_discord_markdown(replace_plain_emojis(
                 raw_intro_desc.replace("{server}", guild.name).replace("{user}", user.mention).replace("{username}", user.name),
                 bot=self.bot, guild=guild, guild_id=gid_str
-            )
+            ))
 
             intro_embed = discord.Embed(
                 title=parsed_title,
@@ -888,18 +888,18 @@ class Applications(commands.Cog):
             role_dm_str = f"**@{granted_role.name}**" if granted_role else "**Staff**"
             role_name_str = granted_role.name if granted_role else "Staff"
 
-            dm_title = replace_plain_emojis(
+            dm_title = clean_embed_title(replace_plain_emojis(
                 raw_title.replace("{server}", guild.name).replace("{user}", applicant.name if applicant else "Applicant"),
                 bot=self.bot, guild=guild, guild_id=gid_str
-            )
-            dm_desc = replace_plain_emojis(
+            ))
+            dm_desc = normalize_discord_markdown(replace_plain_emojis(
                 raw_desc.replace("{server}", guild.name)
                         .replace("{user}", applicant.mention if applicant else f"<@{applicant_id}>")
                         .replace("{username}", applicant.name if applicant else "Applicant")
                         .replace("{role}", role_dm_str)
                         .replace("{role_name}", role_name_str),
                 bot=self.bot, guild=guild, guild_id=gid_str
-            )
+            ))
 
             # Strip/convert any residual <@&id> role mentions to role names so Discord DM never shows @unknown-role
             def _clean_dm_role_mention(m):
@@ -978,17 +978,17 @@ class Applications(commands.Cog):
             )
             color_int = hex_to_int(rej_cfg.get("color", "#ef4444"), 0xef4444)
 
-            dm_title = replace_plain_emojis(
+            dm_title = clean_embed_title(replace_plain_emojis(
                 raw_title.replace("{server}", guild.name).replace("{user}", applicant.name if applicant else "Applicant"),
                 bot=self.bot, guild=guild, guild_id=gid_str
-            )
-            dm_desc = replace_plain_emojis(
+            ))
+            dm_desc = normalize_discord_markdown(replace_plain_emojis(
                 raw_desc.replace("{server}", guild.name)
                         .replace("{user}", applicant.mention if applicant else f"<@{applicant_id}>")
                         .replace("{username}", applicant.name if applicant else "Applicant")
                         .replace("{reason}", reason),
                 bot=self.bot, guild=guild, guild_id=gid_str
-            )
+            ))
 
             dm_embed = discord.Embed(title=dm_title, description=dm_desc, color=color_int)
             dm_embed.set_footer(text=f"{guild.name} • Applications", icon_url=guild.icon.url if guild.icon else None)
@@ -1022,8 +1022,8 @@ class Applications(commands.Cog):
         cfg = get_app_config(gid_str)
         p_cfg = cfg.get("panel", {})
 
-        title = replace_plain_emojis(p_cfg.get("title", "📋 Staff Application"), bot=self.bot, guild=interaction.guild)
-        desc = replace_plain_emojis(p_cfg.get("description", "Click below to apply!"), bot=self.bot, guild=interaction.guild)
+        title = clean_embed_title(replace_plain_emojis(p_cfg.get("title", "📋 Staff Application"), bot=self.bot, guild=interaction.guild))
+        desc = normalize_discord_markdown(replace_plain_emojis(p_cfg.get("description", "Click below to apply!"), bot=self.bot, guild=interaction.guild))
         color = hex_to_int(p_cfg.get("color", "#5865f2"))
         footer = p_cfg.get("footer", "Friday Applications • Click below to apply")
 
@@ -1037,6 +1037,22 @@ class Applications(commands.Cog):
         elif thumbnail_mode == "friday" and self.bot.user and self.bot.user.display_avatar:
             embed.set_thumbnail(url=self.bot.user.display_avatar.url)
 
+        # Support large banner image / GIF from URL or local upload
+        banner_url = str(p_cfg.get("image_url") or p_cfg.get("banner") or "").strip()
+        discord_file = None
+        if banner_url:
+            if banner_url.startswith("/static/"):
+                fname = os.path.basename(banner_url)
+                import os
+                fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "application_banners", fname)
+                if not os.path.exists(fpath):
+                    fpath = os.path.join("dashboard", "static", "uploads", "application_banners", fname)
+                if os.path.exists(fpath):
+                    discord_file = discord.File(fpath, filename=fname)
+                    embed.set_image(url=f"attachment://{fname}")
+            elif banner_url.startswith(("http://", "https://")):
+                embed.set_image(url=banner_url)
+
         btn_label = p_cfg.get("button_label", "Apply Now")
         btn_emoji_raw = p_cfg.get("button_emoji", "📝")
         btn_style = get_button_style(p_cfg.get("button_style", "primary"))
@@ -1046,7 +1062,10 @@ class Applications(commands.Cog):
             temp_view = discord.ui.View()
             temp_btn = discord.ui.Button(label=btn_label, style=btn_style, emoji=btn_emoji)
             temp_view.add_item(temp_btn)
-            msg = await channel.send(embed=embed, view=temp_view)
+            if discord_file:
+                msg = await channel.send(embed=embed, file=discord_file, view=temp_view)
+            else:
+                msg = await channel.send(embed=embed, view=temp_view)
 
             # Store panel record
             gdata = db.applications.setdefault(gid_str, {})
@@ -1055,7 +1074,8 @@ class Applications(commands.Cog):
                 "channel_id": channel.id,
                 "button_label": btn_label,
                 "button_emoji": btn_emoji_raw,
-                "button_style": p_cfg.get("button_style", "primary")
+                "button_style": p_cfg.get("button_style", "primary"),
+                "image_url": banner_url
             }
             cfg["panel_channel_id"] = str(channel.id)
             db.save_data()

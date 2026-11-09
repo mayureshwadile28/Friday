@@ -2797,6 +2797,8 @@ FAREWELL_UPLOAD_DIR = os.path.join(app.root_path, "static", "uploads", "farewell
 os.makedirs(FAREWELL_UPLOAD_DIR, exist_ok=True)
 BIRTHDAY_BANNER_DIR = os.path.join(app.root_path, "static", "uploads", "birthday_banners")
 os.makedirs(BIRTHDAY_BANNER_DIR, exist_ok=True)
+APPLICATION_BANNER_DIR = os.path.join(app.root_path, "static", "uploads", "application_banners")
+os.makedirs(APPLICATION_BANNER_DIR, exist_ok=True)
 
 def validate_image_url(url):
     if not url:
@@ -3867,15 +3869,16 @@ def post_birthday_form_card(gid):
         if not channel:
             raise Exception("Form channel could not be found.")
 
+        from emoji_utils import clean_embed_title, normalize_discord_markdown
         raw_card_title = cfg.get("form_card_title", "🎂 Member Birthday Registration")
-        card_title = replace_plain_emojis(raw_card_title, bot=bot_instance, guild=guild, guild_id=gid_str)
+        card_title = clean_embed_title(replace_plain_emojis(raw_card_title, bot=bot_instance, guild=guild, guild_id=gid_str))
         raw_card_desc = cfg.get(
             "form_card_desc",
             "Click the button below to register your birthday!\n\n"
             "🎉 Friday will deliver celebratory wishes on your special day.\n"
             "🔒 **Strict Privacy:** Only Month & Day are saved. Zero birth year or age is stored."
         )
-        card_desc = replace_plain_emojis(raw_card_desc, bot=bot_instance, guild=guild, guild_id=gid_str)
+        card_desc = normalize_discord_markdown(replace_plain_emojis(raw_card_desc, bot=bot_instance, guild=guild, guild_id=gid_str))
         embed = discord.Embed(
             title=card_title,
             description=card_desc,
@@ -4086,7 +4089,9 @@ def save_applications_config(gid):
             "footer": str(p.get("footer") or "Friday Applications • Click below to apply").strip(),
             "button_label": str(p.get("button_label") or "Apply Now").strip(),
             "button_emoji": str(p.get("button_emoji") or "📝").strip(),
-            "button_style": str(p.get("button_style") or "primary").strip()
+            "button_style": str(p.get("button_style") or "primary").strip(),
+            "thumbnail_mode": str(p.get("thumbnail_mode") or "friday").strip(),
+            "image_url": str(p.get("image_url") or p.get("banner") or "").strip()
         }
 
     if "questions" in data and isinstance(data["questions"], list):
@@ -4126,6 +4131,28 @@ def save_applications_config(gid):
     db.save_data()
     return jsonify({"success": True, "message": "Application configuration saved successfully.", "config": cfg})
 
+@app.route('/api/guild/<gid>/applications/upload-banner', methods=['POST'])
+def upload_application_banner(gid):
+    if 'banner' not in flask_request.files:
+        return jsonify({"success": False, "error": "No file uploaded."}), 400
+    file = flask_request.files['banner']
+    if file.filename == '':
+        return jsonify({"success": False, "error": "Empty filename."}), 400
+
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+        return jsonify({"success": False, "error": "Invalid format. Supported: PNG, JPG, GIF, WebP."}), 400
+
+    from werkzeug.utils import secure_filename
+    import time
+    clean_name = secure_filename(file.filename)
+    safe_filename = f"app_banner_{gid}_{int(time.time())}_{clean_name}"
+    filepath = os.path.join(APPLICATION_BANNER_DIR, safe_filename)
+    file.save(filepath)
+
+    rel_url = f"/static/uploads/application_banners/{safe_filename}"
+    return jsonify({"success": True, "url": rel_url})
+
 @app.route('/api/guild/<gid>/applications/panel', methods=['POST'])
 def deploy_application_panel(gid):
     if not bot_instance:
@@ -4146,7 +4173,7 @@ def deploy_application_panel(gid):
             raise Exception("Target text channel not found.")
 
         from cogs.applications import get_app_config, get_button_style, hex_to_int, ApplicationPanelView
-        from emoji_utils import replace_plain_emojis, resolve_single_emoji
+        from emoji_utils import replace_plain_emojis, resolve_single_emoji, clean_embed_title, normalize_discord_markdown
 
         cfg = get_app_config(gid_str)
         p_cfg = cfg.get("panel", {})
@@ -4159,8 +4186,8 @@ def deploy_application_panel(gid):
         btn_emoji_raw = str(data.get("button_emoji") or p_cfg.get("button_emoji") or "📝")
         btn_style_str = str(data.get("button_style") or p_cfg.get("button_style") or "primary")
 
-        embed_title = replace_plain_emojis(title_raw, bot=bot_instance, guild=guild, guild_id=gid_str)
-        embed_desc = replace_plain_emojis(desc_raw, bot=bot_instance, guild=guild, guild_id=gid_str)
+        embed_title = clean_embed_title(replace_plain_emojis(title_raw, bot=bot_instance, guild=guild, guild_id=gid_str))
+        embed_desc = normalize_discord_markdown(replace_plain_emojis(desc_raw, bot=bot_instance, guild=guild, guild_id=gid_str))
         embed_color = hex_to_int(color_val)
 
         embed = discord.Embed(title=embed_title, description=embed_desc, color=embed_color)
@@ -4173,13 +4200,31 @@ def deploy_application_panel(gid):
         elif thumbnail_mode == "friday" and bot_instance and bot_instance.user and bot_instance.user.display_avatar:
             embed.set_thumbnail(url=bot_instance.user.display_avatar.url)
 
+        # Support large banner image / GIF from URL or local upload
+        raw_image_url = str(data.get("image_url") or data.get("banner") or p_cfg.get("image_url") or p_cfg.get("banner") or "").strip()
+        discord_file = None
+        if raw_image_url:
+            if raw_image_url.startswith("/static/"):
+                fname = os.path.basename(raw_image_url)
+                fpath = os.path.join(APPLICATION_BANNER_DIR, fname)
+                if not os.path.exists(fpath):
+                    fpath = os.path.join(app.root_path, raw_image_url.lstrip("/").replace("/", os.sep))
+                if os.path.exists(fpath):
+                    discord_file = discord.File(fpath, filename=fname)
+                    embed.set_image(url=f"attachment://{fname}")
+            elif raw_image_url.startswith(("http://", "https://")):
+                embed.set_image(url=raw_image_url)
+
         btn_style = get_button_style(btn_style_str)
         btn_emoji = resolve_single_emoji(btn_emoji_raw, bot=bot_instance, guild=guild, guild_id=gid_str)
 
         temp_view = discord.ui.View()
         temp_btn = discord.ui.Button(label=btn_label, style=btn_style, emoji=btn_emoji)
         temp_view.add_item(temp_btn)
-        msg = await channel.send(embed=embed, view=temp_view)
+        if discord_file:
+            msg = await channel.send(embed=embed, file=discord_file, view=temp_view)
+        else:
+            msg = await channel.send(embed=embed, view=temp_view)
 
         gdata = db.applications.setdefault(gid_str, {})
         panels = gdata.setdefault("panels", {})
@@ -4192,7 +4237,8 @@ def deploy_application_panel(gid):
             "button_label": btn_label,
             "button_emoji": btn_emoji_raw,
             "button_style": btn_style_str,
-            "thumbnail_mode": thumbnail_mode
+            "thumbnail_mode": thumbnail_mode,
+            "image_url": raw_image_url
         }
         panels[str(msg.id)] = panel_record
         cfg["panel_channel_id"] = str(channel_id)

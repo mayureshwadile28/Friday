@@ -145,3 +145,33 @@ def parse_btn(text: str, bot=None, guild_id=None, guild=None):
     resolved_emoji = resolve_single_emoji(emoji_raw, bot=bot, guild_id=guild_id, guild=guild)
 
     return label, resolved_emoji
+
+
+def clean_embed_title(title: str) -> str:
+    """
+    Strips leading markdown heading indicators (#, ##, ###, -#) from embed titles
+    since Discord's embed title field does not support markdown headers and displays
+    the literal character instead. Also normalizes whitespace.
+    """
+    if not title:
+        return ""
+    cleaned = re.sub(r'^\s*(?:#+|-#)\s*', '', str(title)).strip()
+    return cleaned
+
+
+def normalize_discord_markdown(text: str) -> str:
+    """
+    Ensures markdown headings and subtext have a space after the symbol
+    so Discord's client parses them as actual headers/subtext rather than literal text.
+    E.g. '#Heading' -> '# Heading', '-#Subtext' -> '-# Subtext'.
+    """
+    if not text:
+        return text
+    lines = str(text).replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    out = []
+    for line in lines:
+        line = re.sub(r'^(#{1,3})([^\s#].*)$', r'\1 \2', line)
+        line = re.sub(r'^(-#)([^\s].*)$', r'\1 \2', line)
+        out.append(line)
+    return '\n'.join(out)
+
