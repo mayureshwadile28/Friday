@@ -11,15 +11,7 @@ import asyncio
 from PIL import Image, ImageDraw
 from easy_pil import Font
 from database import db
-
-def clean_display_name(name: str, max_len: int = 22) -> str:
-    """Sanitizes user display names into guaranteed printable ASCII characters (eliminates tofu boxes)."""
-    if not name:
-        return "Unknown"
-    norm = unicodedata.normalize('NFKD', str(name))
-    cleaned = "".join(ch for ch in norm if 32 <= ord(ch) <= 126 and ch not in "`*~_<>|\\")
-    cleaned = cleaned.strip(" -_#|•·~+=[]{}()<>/")
-    return cleaned[:max_len] if cleaned else "User"
+from font_utils import get_unicode_font, clean_display_name, safe_channel_label
 
 def draw_rounded_rect(draw, bbox, radius, fill, outline=None, width=1):
     draw.rounded_rectangle(bbox, radius=radius, fill=fill, outline=outline, width=width)
@@ -60,8 +52,16 @@ class Leveling(commands.Cog):
             return
 
         user_stats = db.xp_data[gid][uid]
-        sorted_users = sorted(db.xp_data[gid].items(), key=lambda item: (item[1]['level'], item[1]['xp']), reverse=True)
-        rank_pos = [i[0] for i in sorted_users].index(uid) + 1
+        # Only rank current active members
+        active_users = []
+        for u_id, s in db.xp_data[gid].items():
+            if interaction.guild.get_member(int(u_id)):
+                active_users.append((u_id, s))
+        sorted_users = sorted(active_users, key=lambda item: (item[1].get('level', 0), item[1].get('xp', 0)), reverse=True)
+        try:
+            rank_pos = [i[0] for i in sorted_users].index(uid) + 1
+        except ValueError:
+            rank_pos = len(sorted_users)
         
         current_xp = user_stats["xp"]
         current_level = user_stats["level"]
@@ -94,12 +94,24 @@ class Leveling(commands.Cog):
         await interaction.followup.send(file=card_file)
 
     async def fetch_avatar(self, target, size: int = 110) -> Image.Image:
-        """Helper to fetch and circle-mask an avatar or return a default colored circle."""
+        """Helper to fetch and circle-mask an avatar or server icon, or return a default colored circle."""
+        icon_url = None
         if hasattr(target, "display_avatar") and target.display_avatar:
+            try:
+                icon_url = str(target.display_avatar.with_format("png").with_size(128).url)
+            except Exception:
+                icon_url = str(target.display_avatar.url)
+        elif hasattr(target, "icon") and target.icon:
+            try:
+                icon_url = str(target.icon.with_format("png").with_size(128).url)
+            except Exception:
+                icon_url = str(target.icon.url)
+
+        if icon_url:
             try:
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(str(target.display_avatar.url), timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                    async with session.get(icon_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                         if resp.status == 200:
                             data = await resp.read()
                             av_raw = Image.open(io.BytesIO(data)).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
@@ -114,8 +126,10 @@ class Leveling(commands.Cog):
 
         fallback = Image.new("RGBA", (size, size), (88, 101, 242, 255))
         f_draw = ImageDraw.Draw(fallback)
-        name_letter = (getattr(target, "display_name", "") or getattr(target, "name", "U"))[0].upper()
-        f_draw.text((size // 2 - 12, size // 2 - 20), name_letter, font=Font.poppins(variant="bold", size=size // 3), fill=(255, 255, 255, 255))
+        raw_name = getattr(target, "display_name", "") or getattr(target, "name", "U")
+        clean_name = clean_display_name(raw_name)
+        name_letter = clean_name[0].upper() if clean_name else "U"
+        f_draw.text((size // 2 - 10, size // 2 - 16), name_letter, font=get_unicode_font(size // 3, bold=True), fill=(255, 255, 255, 255))
         return fallback
 
     async def generate_rank_card(
@@ -176,9 +190,9 @@ class Leveling(commands.Cog):
         draw = ImageDraw.Draw(img)
 
         # Fonts
-        font_title = Font.poppins(variant="bold", size=24)
+        font_title = get_unicode_font(24, bold=True)
         font_sub = Font.poppins(variant="regular", size=12)
-        font_badge = Font.poppins(variant="bold", size=11)
+        font_badge = get_unicode_font(11, bold=True)
         font_xp_num = Font.poppins(variant="bold", size=14)
         font_stat_val = Font.poppins(variant="bold", size=15)
         font_stat_lbl = Font.poppins(variant="bold", size=10)
@@ -273,7 +287,7 @@ class Leveling(commands.Cog):
         text_x = av_x + av_size + 24
         font_header = Font.poppins(variant="bold", size=32)
         font_level = Font.poppins(variant="bold", size=24)
-        font_sub = Font.poppins(variant="regular", size=13)
+        font_sub = get_unicode_font(13)
 
         # "Level-up!" in bold
         draw.text((text_x, 28), "Level-up!", font=font_header, fill=(255, 255, 255, 255))
@@ -314,12 +328,12 @@ class Leveling(commands.Cog):
         # Outer Container
         draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
 
-        font_title = Font.poppins(variant="bold", size=22)
+        font_title = get_unicode_font(22, bold=True)
         font_sub = Font.poppins(variant="regular", size=13)
         font_pill = Font.poppins(variant="bold", size=12)
-        font_name = Font.poppins(variant="bold", size=14)
+        font_name = get_unicode_font(14, bold=True)
         font_user = Font.poppins(variant="regular", size=11)
-        font_rank = Font.poppins(variant="bold", size=13)
+        font_rank = get_unicode_font(13, bold=True)
         font_cnt = Font.poppins(variant="bold", size=13)
         font_lvl = Font.poppins(variant="bold", size=11)
         font_footer = Font.poppins(variant="regular", size=11)
@@ -345,7 +359,7 @@ class Leveling(commands.Cog):
         # Status pills
         pills = [
             f"PAGE {page} OF {total_pages}",
-            f"{total_members:,} Ranked",
+            f"{total_members:,} Active Members",
             "XP RANKINGS"
         ]
         pill_right = W - 38
@@ -440,24 +454,40 @@ class Leveling(commands.Cog):
     async def generate_xp_leaderboard_file(self, guild: discord.Guild, page: int = 1, per_page: int = 10) -> discord.File:
         gid = str(guild.id)
         raw_xp = db.xp_data.get(gid, {})
-        sorted_users = sorted(raw_xp.items(), key=lambda item: (item[1].get('level', 0), item[1].get('xp', 0)), reverse=True)
+        
+        # Only include active members currently in the server (eliminates left/deleted accounts)
+        active_users = []
+        for uid, data in raw_xp.items():
+            try:
+                uid_int = int(uid)
+            except (ValueError, TypeError):
+                continue
+            mem = guild.get_member(uid_int)
+            if not mem:
+                try:
+                    mem = await guild.fetch_member(uid_int)
+                except Exception:
+                    mem = None
+            if mem and not getattr(mem, "bot", False):
+                active_users.append((uid, data, mem))
+
+        sorted_users = sorted(active_users, key=lambda item: (item[1].get('level', 0), item[1].get('xp', 0)), reverse=True)
         total_members = len(sorted_users)
         total_pages = max(1, math.ceil(total_members / per_page))
         current_page = max(1, min(page, total_pages))
         offset = (current_page - 1) * per_page
         page_users = sorted_users[offset:offset + per_page]
 
-        async def fetch_item(rank_num, uid, data):
-            mem = guild.get_member(int(uid))
-            name = mem.display_name if mem else f"User {uid[-4:]}"
-            username = mem.name if mem else f"id_{uid}"
-            av = await self.fetch_avatar(mem or uid, size=52)
+        async def fetch_item(rank_num, uid, data, mem):
+            name = mem.display_name
+            username = mem.name
+            av = await self.fetch_avatar(mem, size=52)
             lvl = data.get("level", 0)
             xp = data.get("xp", 0)
             req = self.get_xp_requirement(lvl)
             return (rank_num, name, username, av, lvl, xp, req)
 
-        tasks = [fetch_item(offset + i, uid, d) for i, (uid, d) in enumerate(page_users, start=1)]
+        tasks = [fetch_item(offset + i, uid, d, m) for i, (uid, d, m) in enumerate(page_users, start=1)]
         members_data = await asyncio.gather(*tasks) if tasks else []
         max_xp = sorted_users[0][1].get("xp", 1) if sorted_users else 1
 
@@ -568,7 +598,15 @@ class XPLeaderboardView(discord.ui.View):
     def get_total_pages(self) -> int:
         gid = str(self.guild.id)
         raw_xp = db.xp_data.get(gid, {})
-        return max(1, math.ceil(len(raw_xp) / 10))
+        active_count = 0
+        for uid in raw_xp.keys():
+            try:
+                mem = self.guild.get_member(int(uid))
+                if mem and not getattr(mem, "bot", False):
+                    active_count += 1
+            except Exception:
+                pass
+        return max(1, math.ceil(active_count / 10))
 
     def update_buttons(self):
         total_pages = self.get_total_pages()

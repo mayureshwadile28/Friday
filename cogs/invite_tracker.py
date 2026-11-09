@@ -6,15 +6,7 @@ import math
 import unicodedata
 from database import db
 from emoji_utils import replace_plain_emojis
-
-def clean_display_name(name: str, max_len: int = 22) -> str:
-    """Sanitizes user display names into guaranteed printable ASCII characters (eliminates tofu boxes)."""
-    if not name:
-        return "Unknown"
-    norm = unicodedata.normalize('NFKD', str(name))
-    cleaned = "".join(ch for ch in norm if 32 <= ord(ch) <= 126 and ch not in "`*~_<>|\\")
-    cleaned = cleaned.strip(" -_#|•·~+=[]{}()<>/")
-    return cleaned[:max_len] if cleaned else "User"
+from font_utils import clean_display_name
 
 class InviteTracker(commands.Cog):
     """
@@ -491,3 +483,4 @@ class InviteLeaderboardView(discord.ui.View):
 
 async def setup(bot):
     await bot.add_cog(InviteTracker(bot))
+

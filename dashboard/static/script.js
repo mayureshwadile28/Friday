@@ -10346,6 +10346,7 @@ async function loadCoreData() {
 
 
         document.getElementById('levelChannelSelect').innerHTML = chanHtml2;
+        populateInviteChannelsDropdown();
 
 
 
@@ -69797,10 +69798,15 @@ let currentInvitersList = [];
 async function loadInviteTrackerSettings() {
     if (!currentGuildId) return;
     try {
-        const chanSelect = document.getElementById('inviteChannelSelect');
-        if (chanSelect && chanSelect.options.length <= 1) {
-            populateInviteChannelsDropdown();
+        if (!currentGuildChannels || currentGuildChannels.length === 0) {
+            try {
+                const cResp = await fetch(`/api/guild/${currentGuildId}/channels`);
+                currentGuildChannels = await cResp.json();
+            } catch (ce) {
+                console.error("Failed to fetch channels for invite tracker:", ce);
+            }
         }
+        populateInviteChannelsDropdown();
 
         const resp = await fetch(`/api/guild/${currentGuildId}/invite-tracker`);
         const data = await resp.json();
@@ -69810,6 +69816,7 @@ async function loadInviteTrackerSettings() {
         const toggle = document.getElementById('inviteTrackerToggle');
         if (toggle) toggle.checked = (cfg.enabled !== false);
 
+        const chanSelect = document.getElementById('inviteChannelSelect');
         if (chanSelect && cfg.log_channel) {
             chanSelect.value = String(cfg.log_channel);
         }
@@ -69849,18 +69856,18 @@ async function loadInviteTrackerSettings() {
 
 function populateInviteChannelsDropdown() {
     const select = document.getElementById('inviteChannelSelect');
-    if (!select || !currentGuildChannels) return;
+    if (!select) return;
     const currentVal = select.value;
     select.innerHTML = '<option value="">Disabled (No Announcements)</option>';
     
-    currentGuildChannels.forEach(c => {
-        if (c.type === 0 || c.type === 5) {
+    if (Array.isArray(currentGuildChannels)) {
+        currentGuildChannels.forEach(c => {
             const opt = document.createElement('option');
-            opt.value = c.id;
-            opt.textContent = '#' + c.name;
+            opt.value = String(c.id);
+            opt.textContent = '#' + (c.name || c.id);
             select.appendChild(opt);
-        }
-    });
+        });
+    }
     if (currentVal) select.value = currentVal;
 }
 

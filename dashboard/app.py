@@ -656,8 +656,29 @@ def test_leveling_message(gid):
         formatted_msg = message_text.replace("{user}", bot_instance.user.mention).replace("{level}", "5")
         formatted_msg = replace_plain_emojis(formatted_msg, bot_instance, guild_id=gid)
 
+        mode = db.level_modes.get(gid, "both")
+        card_file = None
+        if mode in ("image", "both"):
+            leveling_cog = bot_instance.get_cog("Leveling")
+            if leveling_cog:
+                try:
+                    target_user = channel.guild.me if channel.guild and channel.guild.me else bot_instance.user
+                    card_fut = asyncio.run_coroutine_threadsafe(
+                        leveling_cog.generate_levelup_card(target_user, 4, 5),
+                        bot_instance.loop
+                    )
+                    card_file = card_fut.result(timeout=6)
+                except Exception as card_err:
+                    print(f"⚠️ Level test card generation error: {card_err}")
+
         # Safely run channel.send on bot's asyncio event loop from Flask thread
-        coro = channel.send(formatted_msg)
+        if mode == "image" and card_file:
+            coro = channel.send(file=card_file)
+        elif mode == "both" and card_file:
+            coro = channel.send(content=formatted_msg, file=card_file)
+        else:
+            coro = channel.send(formatted_msg)
+
         future = asyncio.run_coroutine_threadsafe(coro, bot_instance.loop)
         future.result(timeout=6)
 

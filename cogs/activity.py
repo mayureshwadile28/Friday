@@ -12,35 +12,12 @@ import unicodedata
 import asyncio
 import aiohttp
 from PIL import Image, ImageDraw
-from easy_pil import Font
 from database import db
+from font_utils import get_unicode_font, clean_display_name, safe_channel_label
 
 # SQLite Database path inside data/ directory
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_FILE = os.path.join(DATA_DIR, "activity.db")
-
-def clean_display_name(name: str, max_len: int = 22) -> str:
-    """Sanitizes user display names and titles into guaranteed printable ASCII characters (eliminates tofu boxes)."""
-    if not name:
-        return "Unknown"
-    norm = unicodedata.normalize('NFKD', str(name))
-    cleaned = "".join(ch for ch in norm if 32 <= ord(ch) <= 126 and ch not in "`*~_<>|\\")
-    cleaned = cleaned.strip(" -_#|•·~+=[]{}()<>/")
-    return cleaned[:max_len] if cleaned else "User"
-
-def safe_channel_label(raw_name: str, cid: str = None, max_len: int = 18) -> str:
-    """Sanitizes channel names into guaranteed clean printable text (eliminates tofu boxes and raw IDs)."""
-    if not raw_name:
-        return "deleted-channel" if cid else "channel"
-    norm = unicodedata.normalize('NFKD', str(raw_name))
-    cleaned = "".join(ch for ch in norm if 32 <= ord(ch) <= 126 and ch not in "`*~_<>|\\")
-    cleaned = cleaned.strip(" -_#|•·~+=[]{}()<>/")
-    if cleaned and len(cleaned) >= 1:
-        return cleaned[:max_len]
-    fallback_chars = "".join(ch for ch in str(raw_name) if unicodedata.category(ch)[0] in ('L', 'N'))
-    if fallback_chars:
-        return fallback_chars[:max_len]
-    return "deleted-channel" if cid else "channel"
 
 def monotone_cubic_spline(points, num_subdivisions=16):
     """
@@ -209,8 +186,8 @@ class Activity(commands.Cog):
         except Exception as e:
             print(f"⚠️ Activity DB record_message error: {e}")
 
-    def get_channel_display_name(self, guild, channel_id) -> str:
-        """Resolves the best human-readable channel name from guild cache, bot cache, or SQLite database."""
+    async def get_channel_display_name(self, guild, channel_id) -> str:
+        """Resolves the best human-readable channel name from guild cache, bot cache, Discord API, or SQLite database."""
         cid_int = int(channel_id) if str(channel_id).isdigit() else 0
         cid_str = str(channel_id)
         if guild:
@@ -236,6 +213,27 @@ class Activity(commands.Cog):
                     return row["name"]
         except Exception:
             pass
+
+        # Attempt to fetch directly from Discord API if not in cache
+        if guild and cid_int > 0:
+            try:
+                ch = await guild.fetch_channel(cid_int)
+                if ch and getattr(ch, "name", None):
+                    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+                    try:
+                        with self.get_connection() as conn:
+                            cursor = conn.cursor()
+                            cursor.execute("""
+                                INSERT INTO channel_names (channel_id, guild_id, name, updated_at)
+                                VALUES (?, ?, ?, ?)
+                                ON CONFLICT(channel_id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at
+                            """, (cid_str, str(guild.id), ch.name, today))
+                            conn.commit()
+                    except Exception:
+                        pass
+                    return ch.name
+            except Exception:
+                pass
         return "deleted-channel"
 
     def add_voice_seconds(self, guild_id: int, user_id: int, seconds: int):
@@ -585,9 +583,15 @@ class Activity(commands.Cog):
         """Fetch member avatar or guild icon with clean monogram fallback."""
         url = None
         if hasattr(target, 'icon') and target.icon:
-            url = str(target.icon.url)
+            try:
+                url = str(target.icon.with_format("png").with_size(128).url)
+            except Exception:
+                url = str(target.icon.url)
         elif hasattr(target, 'display_avatar') and target.display_avatar:
-            url = str(target.display_avatar.url)
+            try:
+                url = str(target.display_avatar.with_format("png").with_size(128).url)
+            except Exception:
+                url = str(target.display_avatar.url)
 
         if url:
             try:
@@ -606,7 +610,7 @@ class Activity(commands.Cog):
         fb = Image.new("RGBA", (100, 100), (88, 101, 242, 255))
         d = ImageDraw.Draw(fb)
         try:
-            f = Font.poppins(variant="bold", size=50)
+            f = get_unicode_font(50, bold=True)
             bbox = f.getbbox(letter)
             w = bbox[2] - bbox[0]
             h = bbox[3] - bbox[1]
@@ -647,20 +651,20 @@ class Activity(commands.Cog):
         # Outer rounded container
         draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
 
-        font_title = Font.poppins(variant="bold", size=22)
-        font_sub = Font.poppins(variant="regular", size=13)
-        font_pill = Font.poppins(variant="bold", size=11)
-        font_kpi_lbl = Font.poppins(variant="bold", size=11)
-        font_kpi_val = Font.poppins(variant="bold", size=26)
-        font_box_title = Font.poppins(variant="bold", size=15)
-        font_axis = Font.poppins(variant="regular", size=11)
-        font_list = Font.poppins(variant="regular", size=13)
-        font_list_badge = Font.poppins(variant="bold", size=12)
-        font_ribbon_lbl = Font.poppins(variant="bold", size=10)
-        font_ribbon_val = Font.poppins(variant="bold", size=16)
-        font_ribbon_sub = Font.poppins(variant="regular", size=11)
-        font_footer = Font.poppins(variant="regular", size=11)
-        font_footer_bold = Font.poppins(variant="bold", size=11)
+        font_title = get_unicode_font(22, bold=True)
+        font_sub = get_unicode_font(13)
+        font_pill = get_unicode_font(11, bold=True)
+        font_kpi_lbl = get_unicode_font(11, bold=True)
+        font_kpi_val = get_unicode_font(26, bold=True)
+        font_box_title = get_unicode_font(15, bold=True)
+        font_axis = get_unicode_font(11)
+        font_list = get_unicode_font(13)
+        font_list_badge = get_unicode_font(12, bold=True)
+        font_ribbon_lbl = get_unicode_font(10, bold=True)
+        font_ribbon_val = get_unicode_font(16, bold=True)
+        font_ribbon_sub = get_unicode_font(11)
+        font_footer = get_unicode_font(11)
+        font_footer_bold = get_unicode_font(11, bold=True)
 
         accent_color = (56, 189, 248) # Cyan
 
@@ -903,20 +907,20 @@ class Activity(commands.Cog):
         # Outer rounded container
         draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
 
-        font_title = Font.poppins(variant="bold", size=22)
-        font_sub = Font.poppins(variant="regular", size=13)
-        font_pill = Font.poppins(variant="bold", size=11)
-        font_kpi_lbl = Font.poppins(variant="bold", size=11)
-        font_kpi_val = Font.poppins(variant="bold", size=26)
-        font_box_title = Font.poppins(variant="bold", size=15)
-        font_axis = Font.poppins(variant="regular", size=11)
-        font_list = Font.poppins(variant="regular", size=13)
-        font_list_badge = Font.poppins(variant="bold", size=12)
-        font_ribbon_lbl = Font.poppins(variant="bold", size=10)
-        font_ribbon_val = Font.poppins(variant="bold", size=15)
-        font_ribbon_sub = Font.poppins(variant="regular", size=11)
-        font_footer = Font.poppins(variant="regular", size=11)
-        font_footer_bold = Font.poppins(variant="bold", size=11)
+        font_title = get_unicode_font(22, bold=True)
+        font_sub = get_unicode_font(13)
+        font_pill = get_unicode_font(11, bold=True)
+        font_kpi_lbl = get_unicode_font(11, bold=True)
+        font_kpi_val = get_unicode_font(26, bold=True)
+        font_box_title = get_unicode_font(15, bold=True)
+        font_axis = get_unicode_font(11)
+        font_list = get_unicode_font(13)
+        font_list_badge = get_unicode_font(12, bold=True)
+        font_ribbon_lbl = get_unicode_font(10, bold=True)
+        font_ribbon_val = get_unicode_font(15, bold=True)
+        font_ribbon_sub = get_unicode_font(11)
+        font_footer = get_unicode_font(11)
+        font_footer_bold = get_unicode_font(11, bold=True)
 
         accent_color = (129, 140, 248) # Indigo / Blurple
 
@@ -1127,15 +1131,15 @@ class Activity(commands.Cog):
         # Outer Container
         draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
 
-        font_title = Font.poppins(variant="bold", size=22)
-        font_sub = Font.poppins(variant="regular", size=13)
-        font_pill = Font.poppins(variant="bold", size=12)
-        font_name = Font.poppins(variant="bold", size=14)
-        font_user = Font.poppins(variant="regular", size=11)
-        font_rank = Font.poppins(variant="bold", size=13)
-        font_cnt = Font.poppins(variant="bold", size=13)
-        font_footer = Font.poppins(variant="regular", size=11)
-        font_footer_bold = Font.poppins(variant="bold", size=11)
+        font_title = get_unicode_font(22, bold=True)
+        font_sub = get_unicode_font(13)
+        font_pill = get_unicode_font(12, bold=True)
+        font_name = get_unicode_font(14, bold=True)
+        font_user = get_unicode_font(11)
+        font_rank = get_unicode_font(13, bold=True)
+        font_cnt = get_unicode_font(13, bold=True)
+        font_footer = get_unicode_font(11)
+        font_footer_bold = get_unicode_font(11, bold=True)
 
         # Header
         header_x, header_y = 38, 34
@@ -1279,7 +1283,7 @@ class Activity(commands.Cog):
         top_raw_channels = self.get_top_channels_list(gid, limit=3)
         top_channels = []
         for cid, total in top_raw_channels:
-            raw_c_name = self.get_channel_display_name(guild, cid)
+            raw_c_name = await self.get_channel_display_name(guild, cid)
             top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
 
         # Top 3 Chatters
@@ -1287,7 +1291,7 @@ class Activity(commands.Cog):
         top_chatters = []
         for uid, total in top_raw_chatters:
             m = guild.get_member(int(uid))
-            name = m.display_name if m else f"User {uid[-4:]}"
+            name = clean_display_name(m.display_name if m else f"User {uid[-4:]}", max_len=18)
             top_chatters.append((name, total))
 
         kpi_metrics = [
@@ -1334,7 +1338,7 @@ class Activity(commands.Cog):
         top_raw = self.get_top_channels_list(gid, user_id=uid, limit=5)
         top_channels = []
         for cid, total in top_raw:
-            raw_c_name = self.get_channel_display_name(guild, cid)
+            raw_c_name = await self.get_channel_display_name(guild, cid)
             top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
 
         joined_str = member.joined_at.strftime("%B %d, %Y") if member.joined_at else "Unknown"
