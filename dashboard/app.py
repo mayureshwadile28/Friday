@@ -364,9 +364,9 @@ def refresh_antinuke_channels(gid):
             guild.me: discord.PermissionOverwrite(read_messages=True)
         }
         channels_to_check = [
-            "audit-deleted", "audit-banned", "audit-timeouts", "audit-whitelisted", 
+            "audit-deleted", "audit-edits", "audit-banned", "audit-timeouts", "audit-whitelisted", 
             "audit-antinuke", "audit-abuse", "audit-antiraid", "audit-antispam", 
-            "audit-roles", "audit-channels"
+            "audit-roles", "audit-channels", "audit-voice", "audit-members", "audit-server"
         ]
         created = []
         gid_str = str(guild.id)

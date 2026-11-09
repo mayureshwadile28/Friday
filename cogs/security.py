@@ -9,6 +9,7 @@ from database import db
 
 CHANNELS_TO_CHECK = [
     "audit-deleted",
+    "audit-edits",
     "audit-banned",
     "audit-timeouts",
     "audit-whitelisted",
@@ -17,7 +18,10 @@ CHANNELS_TO_CHECK = [
     "audit-antiraid",
     "audit-antispam",
     "audit-roles",
-    "audit-channels"
+    "audit-channels",
+    "audit-voice",
+    "audit-members",
+    "audit-server"
 ]
 
 DEFAULT_SECURITY_CONFIG = {
@@ -286,12 +290,29 @@ class Security(commands.Cog):
 
     async def log_security_event(self, guild: discord.Guild, channel_name: str, embed: discord.Embed):
         """Send embed log to specified security channel in 'Friday Security Logs'."""
+        if not guild:
+            return
         gid = str(guild.id)
         chan_id = db.server_logs.get(gid, {}).get(channel_name)
         if not chan_id:
-            chan_id = db.server_logs.get(gid, {}).get("audit-antinuke")
+            # Smart fallbacks to existing channels if specific channel not created yet
+            if channel_name == "audit-edits":
+                chan_id = db.server_logs.get(gid, {}).get("audit-deleted")
+            elif channel_name == "audit-voice":
+                chan_id = db.server_logs.get(gid, {}).get("audit-channels")
+            elif channel_name == "audit-members":
+                chan_id = db.server_logs.get(gid, {}).get("audit-roles")
+            elif channel_name == "audit-server":
+                chan_id = db.server_logs.get(gid, {}).get("audit-antinuke")
+            if not chan_id:
+                chan_id = db.server_logs.get(gid, {}).get("audit-antinuke")
         if chan_id:
             ch = guild.get_channel(chan_id)
+            if not ch:
+                try:
+                    ch = self.bot.get_channel(chan_id)
+                except Exception:
+                    ch = None
             if ch:
                 try:
                     await ch.send(embed=embed)
@@ -598,7 +619,7 @@ class Security(commands.Cog):
             
         db.save_data()
         if created_list: await interaction.followup.send(f"✅ Infrastructure built! Created: {', '.join(created_list)}")
-        else: await interaction.followup.send("✅ All 10 security log channels already exist and are fully linked to Friday's systems.")
+        else: await interaction.followup.send(f"✅ All {len(CHANNELS_TO_CHECK)} security log channels already exist and are fully linked to Friday's systems.")
 
     @app_commands.command(name="antinuke_limit", description="Set limits for anti-nuke protection (within a 60s window).")
     @app_commands.choices(action_type=[
@@ -805,26 +826,126 @@ class Security(commands.Cog):
         guild = after.guild
         gid = str(guild.id)
         if not db.antinuke_active.get(gid, True): return
+
+        # 1. Channel Rename
         if before.name != after.name:
             entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.channel_update, target_id=after.id)
             culprit = entry.user if entry else None
-            if culprit and self.is_whitelisted(guild, culprit, feature="channel_rename"): return
-            
+            if culprit and self.is_whitelisted(guild, culprit, feature="channel_rename"): pass
+            else:
+                mod_str = culprit.mention if culprit else "Unknown / Unverified"
+                embed = discord.Embed(
+                    title="📝 Channel Renamed",
+                    description=f"**Old Name:** `#{before.name}`\n**New Name:** {after.mention}\n**Updated By:** {mod_str}",
+                    color=discord.Color.blue(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-channels", embed)
+                
+                if culprit:
+                    cfg = self.get_security_config(gid)
+                    rule = cfg.get("instant", {}).get("channel_rename", {})
+                    if rule.get("enabled", False):
+                        tm = rule.get("timeout_mins", 10)
+                        await self.execute_punishment(guild, culprit, rule.get("punishment", "kick"), "Instant Punishment: Channel rename violation.", log_channel="audit-antinuke", timeout_mins=tm, feature="channel_rename")
+
+        # 2. Channel Topic Change
+        old_topic = getattr(before, 'topic', None)
+        new_topic = getattr(after, 'topic', None)
+        if old_topic != new_topic:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.channel_update, target_id=after.id)
+            culprit = entry.user if entry else None
             mod_str = culprit.mention if culprit else "Unknown / Unverified"
             embed = discord.Embed(
-                title="📝 Channel Renamed",
-                description=f"**Old Name:** `#{before.name}`\n**New Name:** {after.mention}\n**Updated By:** {mod_str}",
+                title="📝 Channel Topic Modified",
+                description=f"**Channel:** {after.mention}\n**Updated By:** {mod_str}",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(name="Old Topic", value=f"`{old_topic[:1000]}`" if old_topic else "*None*", inline=False)
+            embed.add_field(name="New Topic", value=f"`{new_topic[:1000]}`" if new_topic else "*None*", inline=False)
+            await self.log_security_event(guild, "audit-channels", embed)
+
+        # 3. Slowmode (Rate Limit) Change
+        old_slow = getattr(before, 'slowmode_delay', 0)
+        new_slow = getattr(after, 'slowmode_delay', 0)
+        if old_slow != new_slow:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.channel_update, target_id=after.id)
+            culprit = entry.user if entry else None
+            mod_str = culprit.mention if culprit else "Unknown / Unverified"
+            embed = discord.Embed(
+                title="⏱️ Channel Slowmode Modified",
+                description=f"**Channel:** {after.mention}\n**Old Slowmode:** `{old_slow}s`\n**New Slowmode:** `{new_slow}s`\n**Updated By:** {mod_str}",
                 color=discord.Color.blue(),
                 timestamp=discord.utils.utcnow()
             )
             await self.log_security_event(guild, "audit-channels", embed)
+
+        # 4. NSFW Age-Restriction Toggled
+        if hasattr(before, 'is_nsfw') and hasattr(after, 'is_nsfw') and before.is_nsfw() != after.is_nsfw():
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.channel_update, target_id=after.id)
+            culprit = entry.user if entry else None
+            mod_str = culprit.mention if culprit else "Unknown / Unverified"
+            embed = discord.Embed(
+                title="🔞 Age-Restriction (NSFW) Toggled",
+                description=f"**Channel:** {after.mention}\n**Status:** **{'Enabled' if after.is_nsfw() else 'Disabled'}**\n**Updated By:** {mod_str}",
+                color=discord.Color.orange(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-channels", embed)
+
+        # 5. Permission Overwrites Changes
+        if hasattr(before, 'overwrites') and hasattr(after, 'overwrites') and before.overwrites != after.overwrites:
+            before_targets = set(before.overwrites.keys())
+            after_targets = set(after.overwrites.keys())
             
-            if culprit:
-                cfg = self.get_security_config(gid)
-                rule = cfg.get("instant", {}).get("channel_rename", {})
-                if rule.get("enabled", False):
-                    tm = rule.get("timeout_mins", 10)
-                    await self.execute_punishment(guild, culprit, rule.get("punishment", "kick"), "Instant Punishment: Channel rename violation.", log_channel="audit-antinuke", timeout_mins=tm, feature="channel_rename")
+            created_targets = after_targets - before_targets
+            deleted_targets = before_targets - after_targets
+            common_targets = before_targets & after_targets
+
+            entry = (
+                await self.get_recent_audit_entry(guild, discord.AuditLogAction.overwrite_create, target_id=after.id) or
+                await self.get_recent_audit_entry(guild, discord.AuditLogAction.overwrite_update, target_id=after.id) or
+                await self.get_recent_audit_entry(guild, discord.AuditLogAction.overwrite_delete, target_id=after.id) or
+                await self.get_recent_audit_entry(guild, discord.AuditLogAction.channel_update, target_id=after.id)
+            )
+            mod_str = entry.user.mention if entry and entry.user else "Unknown / Unverified"
+
+            changes_desc = []
+            for t in created_targets:
+                changes_desc.append(f"➕ Added overwrites for {t.mention}")
+            for t in deleted_targets:
+                changes_desc.append(f"➖ Deleted overwrites for {t.mention}")
+            for t in common_targets:
+                b_ov = before.overwrites[t]
+                a_ov = after.overwrites[t]
+                if b_ov != a_ov:
+                    b_allow, b_deny = b_ov.pair()
+                    a_allow, a_deny = a_ov.pair()
+                    diffs = []
+                    for perm, val in a_allow:
+                        if val and not getattr(b_allow, perm):
+                            diffs.append(f"✅ `{perm.replace('_', ' ').title()}`")
+                    for perm, val in a_deny:
+                        if val and not getattr(b_deny, perm):
+                            diffs.append(f"❌ `{perm.replace('_', ' ').title()}`")
+                    for perm, val in b_allow:
+                        if val and not getattr(a_allow, perm) and not getattr(a_deny, perm):
+                            diffs.append(f"⚪ Reset `{perm.replace('_', ' ').title()}`")
+                    for perm, val in b_deny:
+                        if val and not getattr(a_deny, perm) and not getattr(a_allow, perm):
+                            diffs.append(f"⚪ Reset `{perm.replace('_', ' ').title()}`")
+                    if diffs:
+                        changes_desc.append(f"✏️ **{t.mention}:** {', '.join(diffs[:6])}")
+
+            if changes_desc:
+                embed = discord.Embed(
+                    title="🔒 Channel Permissions Modified",
+                    description=f"**Channel:** {after.mention} (`#{after.name}`)\n**Modified By:** {mod_str}\n\n" + "\n".join(changes_desc[:8]),
+                    color=discord.Color.dark_teal(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-channels", embed)
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role):
@@ -920,7 +1041,7 @@ class Security(commands.Cog):
         gid = str(guild.id)
         if not db.antinuke_active.get(gid, True): return
         
-        # Check dangerous permissions added
+        # 1. Anti-Nuke: Check dangerous permissions added
         had_dangerous = before.permissions.administrator or before.permissions.manage_guild or before.permissions.ban_members or before.permissions.manage_roles
         has_dangerous = after.permissions.administrator or after.permissions.manage_guild or after.permissions.ban_members or after.permissions.manage_roles
         
@@ -928,29 +1049,74 @@ class Security(commands.Cog):
             entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.role_update, target_id=after.id)
             culprit = entry.user if entry else None
 
-            # 1. Immediately revert unauthorized permission escalation back to safe permissions!
+            # Revert unauthorized permission escalation back to safe permissions
             try:
                 await after.edit(permissions=before.permissions, reason="Anti-Nuke: Reverting unauthorized dangerous role permission escalation.")
             except Exception:
                 pass
 
-            if culprit and self.is_whitelisted(guild, culprit, feature="dangerous_perms"): return
+            if culprit and self.is_whitelisted(guild, culprit, feature="dangerous_perms"): pass
+            else:
+                mod_str = culprit.mention if culprit else "Unknown / Unverified"
+                embed = discord.Embed(
+                    title="⚠️ Dangerous Role Permission Escalation",
+                    description=f"**Role:** {after.mention}\n**Escalated By:** {mod_str}\n**Added:** Administrator/Management Permissions (Reverted)",
+                    color=discord.Color.red(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-roles", embed)
+                
+                if culprit:
+                    cfg = self.get_security_config(gid)
+                    rule = cfg.get("instant", {}).get("dangerous_perms", {})
+                    if rule.get("enabled", True):
+                        tm = rule.get("timeout_mins", 10)
+                        await self.execute_punishment(guild, culprit, rule.get("punishment", "strip_roles"), "Instant Punishment: Dangerous role permission update.", log_channel="audit-antinuke", timeout_mins=tm, feature="dangerous_perms")
+            return
 
+        # 2. General Role Permission Updates Log
+        if before.permissions.value != after.permissions.value:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.role_update, target_id=after.id)
+            culprit = entry.user if entry else None
+            mod_str = culprit.mention if culprit else "Unknown / Unverified"
+
+            added_perms = [p.replace('_', ' ').title() for p, val in after.permissions if val and not getattr(before.permissions, p)]
+            revoked_perms = [p.replace('_', ' ').title() for p, val in before.permissions if val and not getattr(after.permissions, p)]
+
+            embed = discord.Embed(
+                title="🛡️ Role Permissions Modified",
+                description=f"**Role:** {after.mention} (`@{after.name}`)\n**Updated By:** {mod_str}",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            if added_perms:
+                embed.add_field(name="➕ Granted Permissions", value=", ".join([f"`{p}`" for p in added_perms[:10]]), inline=False)
+            if revoked_perms:
+                embed.add_field(name="➖ Revoked Permissions", value=", ".join([f"`{p}`" for p in revoked_perms[:10]]), inline=False)
+            await self.log_security_event(guild, "audit-roles", embed)
+
+        # 3. Role Settings (Name, Color, Hoist, Mentionable)
+        settings_diff = []
+        if before.name != after.name:
+            settings_diff.append(f"• **Name:** `@{before.name}` ➔ `@{after.name}`")
+        if before.color != after.color:
+            settings_diff.append(f"• **Color:** `{before.color}` ➔ `{after.color}`")
+        if before.hoist != after.hoist:
+            settings_diff.append(f"• **Display Separately:** `{'Yes' if after.hoist else 'No'}`")
+        if before.mentionable != after.mentionable:
+            settings_diff.append(f"• **Mentionable:** `{'Yes' if after.mentionable else 'No'}`")
+
+        if settings_diff:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.role_update, target_id=after.id)
+            culprit = entry.user if entry else None
             mod_str = culprit.mention if culprit else "Unknown / Unverified"
             embed = discord.Embed(
-                title="⚠️ Dangerous Role Permission Escalation",
-                description=f"**Role:** {after.mention}\n**Escalated By:** {mod_str}\n**Added:** Administrator/Management Permissions (Reverted)",
-                color=discord.Color.red(),
+                title="🛡️ Role Settings Updated",
+                description=f"**Role:** {after.mention}\n**Updated By:** {mod_str}\n\n" + "\n".join(settings_diff),
+                color=discord.Color.blurple(),
                 timestamp=discord.utils.utcnow()
             )
             await self.log_security_event(guild, "audit-roles", embed)
-            
-            if culprit:
-                cfg = self.get_security_config(gid)
-                rule = cfg.get("instant", {}).get("dangerous_perms", {})
-                if rule.get("enabled", True):
-                    tm = rule.get("timeout_mins", 10)
-                    await self.execute_punishment(guild, culprit, rule.get("punishment", "strip_roles"), "Instant Punishment: Dangerous role permission update.", log_channel="audit-antinuke", timeout_mins=tm, feature="dangerous_perms")
 
     @commands.Cog.listener()
     async def on_member_update(self, before, after):
@@ -958,61 +1124,122 @@ class Security(commands.Cog):
         gid = str(guild.id)
         if not db.antinuke_active.get(gid, True): return
 
-        # Check if dangerous roles were added to the member
-        added_roles = [
-            r for r in after.roles 
-            if r not in before.roles and (
-                r.permissions.administrator or 
-                r.permissions.manage_guild or 
-                r.permissions.manage_roles or 
-                r.permissions.ban_members or 
-                r.permissions.manage_channels
+        # 1. Member Role Changes
+        added_roles = [r for r in after.roles if r not in before.roles]
+        removed_roles = [r for r in before.roles if r not in after.roles]
+
+        if added_roles or removed_roles:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.member_role_update, target_id=after.id)
+            culprit = entry.user if entry else None
+
+            # Check if dangerous roles were added to the member
+            dangerous_added = [
+                r for r in added_roles if (
+                    r.permissions.administrator or 
+                    r.permissions.manage_guild or 
+                    r.permissions.manage_roles or 
+                    r.permissions.ban_members or 
+                    r.permissions.manage_channels
+                )
+            ]
+
+            if dangerous_added and culprit and not self.is_whitelisted(guild, culprit, feature="dangerous_role_add"):
+                # Revert unauthorized dangerous role assignments
+                revert_roles = [r for r in dangerous_added if r < guild.me.top_role]
+                if revert_roles:
+                    try:
+                        await after.remove_roles(*revert_roles, reason="Anti-Nuke: Unauthorized dangerous role assignment revoked.")
+                    except Exception:
+                        pass
+
+                embed = discord.Embed(
+                    title="👑 Unauthorized Dangerous Role Added",
+                    description=f"**Target:** {after.mention} (`{after.id}`)\n**Role(s):** {', '.join([r.mention for r in dangerous_added])} (Revoked)\n**Assigned By:** {culprit.mention} (`{culprit.id}`)",
+                    color=discord.Color.red(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-roles", embed)
+
+                cfg = self.get_security_config(gid)
+                rule = cfg.get("instant", {}).get("dangerous_role_add", {})
+                if rule.get("enabled", True):
+                    tm = rule.get("timeout_mins", 10)
+                    await self.execute_punishment(guild, culprit, rule.get("punishment", "strip_roles"), "Instant Punishment: Unauthorized dangerous role assignment.", log_channel="audit-antinuke", timeout_mins=tm, feature="dangerous_role_add")
+                return
+
+            # Standard Member Roles Log
+            mod_str = culprit.mention if culprit else "Unknown / Integration"
+            embed = discord.Embed(
+                title="👤 Member Roles Updated",
+                description=f"**Member:** {after.mention} (`{after.name}`)\n**Updated By:** {mod_str}",
+                color=discord.Color.blurple(),
+                timestamp=discord.utils.utcnow()
             )
-        ]
-        if not added_roles: return
+            if added_roles:
+                embed.add_field(name="➕ Roles Added", value=", ".join([r.mention for r in added_roles]), inline=False)
+            if removed_roles:
+                embed.add_field(name="➖ Roles Removed", value=", ".join([r.mention for r in removed_roles]), inline=False)
+            await self.log_security_event(guild, "audit-roles", embed)
 
-        entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.member_role_update, target_id=after.id)
-        if not entry or not entry.user: return
-        culprit = entry.user
-        if self.is_whitelisted(guild, culprit, feature="dangerous_role_add"): return
-        
-        # Revert unauthorized dangerous role assignments
-        revert_roles = [r for r in added_roles if r < guild.me.top_role]
-        if revert_roles:
-            try:
-                await after.remove_roles(*revert_roles, reason="Anti-Nuke: Unauthorized dangerous role assignment revoked.")
-            except Exception:
-                pass
+        # 2. Nickname Changes
+        if before.nick != after.nick:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.member_update, target_id=after.id)
+            culprit = entry.user if entry else after
+            old_nick = before.nick or before.name
+            new_nick = after.nick or after.name
+            embed = discord.Embed(
+                title="✏️ Member Nickname Changed",
+                description=f"**Member:** {after.mention}\n**Old Nickname:** `{old_nick}`\n**New Nickname:** `{new_nick}`\n**Changed By:** {culprit.mention}",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-members", embed)
 
-        embed = discord.Embed(
-            title="👑 Unauthorized Dangerous Role Added",
-            description=f"**Target:** {after.mention} (`{after.id}`)\n**Role(s):** {', '.join([r.mention for r in added_roles])} (Revoked)\n**Assigned By:** {culprit.mention} (`{culprit.id}`)",
-            color=discord.Color.red(),
-            timestamp=discord.utils.utcnow()
-        )
-        await self.log_security_event(guild, "audit-roles", embed)
-
-        cfg = self.get_security_config(gid)
-        rule = cfg.get("instant", {}).get("dangerous_role_add", {})
-        if rule.get("enabled", True):
-            tm = rule.get("timeout_mins", 10)
-            await self.execute_punishment(guild, culprit, rule.get("punishment", "strip_roles"), "Instant Punishment: Unauthorized dangerous role assignment.", log_channel="audit-antinuke", timeout_mins=tm, feature="dangerous_role_add")
+        # 3. Timeout Applied or Cleared
+        if before.timed_out_until != after.timed_out_until:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.member_update, target_id=after.id)
+            culprit = entry.user if entry else None
+            mod_str = culprit.mention if culprit else "Unknown / System"
+            now = discord.utils.utcnow()
+            if after.timed_out_until and after.timed_out_until > now:
+                expires_ts = int(after.timed_out_until.timestamp())
+                reason = entry.reason if entry and entry.reason else "No reason specified."
+                embed = discord.Embed(
+                    title="⏳ Member Timed Out",
+                    description=f"**Member:** {after.mention} (`{after.name}`)\n**Timed Out By:** {mod_str}\n**Expires:** <t:{expires_ts}:R> (<t:{expires_ts}:F>)\n**Reason:** {reason}",
+                    color=discord.Color.orange(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-timeouts", embed)
+            elif before.timed_out_until and (not after.timed_out_until or after.timed_out_until <= now):
+                embed = discord.Embed(
+                    title="⌛ Member Timeout Cleared",
+                    description=f"**Member:** {after.mention} (`{after.name}`)\n**Cleared By:** {mod_str}",
+                    color=discord.Color.green(),
+                    timestamp=discord.utils.utcnow()
+                )
+                await self.log_security_event(guild, "audit-timeouts", embed)
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
         gid = str(guild.id)
+        entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.ban, target_id=user.id)
+        culprit = entry.user if entry else None
+        reason = entry.reason if entry and entry.reason else "No reason specified."
+        mod_str = culprit.mention if culprit else "Unknown / Integration"
+
         embed = discord.Embed(
             title="🔨 Member Banned",
-            description=f"**User:** {user.mention} (`{user.id}`)\n**Tag:** `{user.name}`",
+            description=f"**User:** {user.mention} (`{user.name}` - `{user.id}`)\n**Banned By:** {mod_str}\n**Reason:** {reason}",
             color=discord.Color.red(),
             timestamp=discord.utils.utcnow()
         )
+        if hasattr(user, 'display_avatar'):
+            embed.set_thumbnail(url=user.display_avatar.url)
         await self.log_security_event(guild, "audit-banned", embed)
 
         if not db.antinuke_active.get(gid, True): return
-        entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.ban, target_id=user.id)
-        if not entry or not entry.user: return
-        culprit = entry.user
+        if not culprit: return
         if self.is_whitelisted(guild, culprit, feature="ban"): return
         should_punish = self.record_action_and_check(guild.id, culprit.id, 'ban')
         if should_punish:
@@ -1023,22 +1250,62 @@ class Security(commands.Cog):
             await self.execute_punishment(guild, culprit, punishment, "Anti-Nuke: Triggered mass-ban limit.", log_channel="audit-antinuke", timeout_mins=tm, feature="ban")
 
     @commands.Cog.listener()
+    async def on_member_unban(self, guild: discord.Guild, user: discord.User):
+        gid = str(guild.id)
+        entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.unban, target_id=user.id)
+        culprit = entry.user if entry else None
+        mod_str = culprit.mention if culprit else "Unknown / Integration"
+        embed = discord.Embed(
+            title="🔓 Member Unbanned",
+            description=f"**User:** {user.mention} (`{user.name}` - `{user.id}`)\n**Unbanned By:** {mod_str}",
+            color=discord.Color.green(),
+            timestamp=discord.utils.utcnow()
+        )
+        if hasattr(user, 'display_avatar'):
+            embed.set_thumbnail(url=user.display_avatar.url)
+        await self.log_security_event(guild, "audit-banned", embed)
+
+    @commands.Cog.listener()
     async def on_member_remove(self, member):
         guild = member.guild
         gid = str(guild.id)
-        if not db.antinuke_active.get(gid, True): return
         
-        entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.kick, target_id=member.id)
-        if not entry or not entry.user: return
-        culprit = entry.user
-        if self.is_whitelisted(guild, culprit, feature="kick"): return
-        should_punish = self.record_action_and_check(guild.id, culprit.id, 'kick')
-        if should_punish:
-            cfg = self.get_security_config(gid)
-            rule = cfg.get("limits", {}).get("kick", {})
-            punishment = rule.get("punishment", "kick")
-            tm = rule.get("timeout_mins", 10)
-            await self.execute_punishment(guild, culprit, punishment, "Anti-Nuke: Triggered mass-kick limit.", log_channel="audit-antinuke", timeout_mins=tm, feature="kick")
+        # Check if this removal was a kick
+        entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.kick, target_id=member.id, max_age_seconds=10)
+        culprit = entry.user if entry else None
+
+        if culprit:
+            reason = entry.reason if entry.reason else "No reason provided."
+            embed = discord.Embed(
+                title="👢 Member Kicked",
+                description=f"**Member:** {member.mention} (`{member.name}` - `{member.id}`)\n**Kicked By:** {culprit.mention}\n**Reason:** {reason}",
+                color=discord.Color.orange(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            await self.log_security_event(guild, "audit-timeouts", embed)
+
+            if db.antinuke_active.get(gid, True) and not self.is_whitelisted(guild, culprit, feature="kick"):
+                should_punish = self.record_action_and_check(guild.id, culprit.id, 'kick')
+                if should_punish:
+                    cfg = self.get_security_config(gid)
+                    rule = cfg.get("limits", {}).get("kick", {})
+                    punishment = rule.get("punishment", "kick")
+                    tm = rule.get("timeout_mins", 10)
+                    await self.execute_punishment(guild, culprit, punishment, "Anti-Nuke: Triggered mass-kick limit.", log_channel="audit-antinuke", timeout_mins=tm, feature="kick")
+        else:
+            # Voluntary leave
+            joined_str = f"<t:{int(member.joined_at.timestamp())}:R>" if member.joined_at else "Unknown"
+            role_names = [r.name for r in member.roles if r.name != "@everyone"]
+            roles_str = ", ".join(role_names[:10]) if role_names else "None"
+            embed = discord.Embed(
+                title="📤 Member Left Server",
+                description=f"**Member:** {member.mention} (`{member.name}` - `{member.id}`)\n**Joined:** {joined_str}\n**Roles Held:** `{roles_str}`\n**Member Count:** **{guild.member_count}**",
+                color=discord.Color.dark_grey(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            await self.log_security_event(guild, "audit-members", embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
@@ -1069,7 +1336,18 @@ class Security(commands.Cog):
                         )
             return
 
-        # 2. Anti-Raid Join Flood Protection
+        # 2. Standard Member Join Log to audit-members
+        created_ts = int(member.created_at.timestamp())
+        embed = discord.Embed(
+            title="📥 Member Joined",
+            description=f"**Member:** {member.mention} (`{member.name}` - `{member.id}`)\n**Account Created:** <t:{created_ts}:R> (<t:{created_ts}:D>)\n**Member Count:** **{guild.member_count}**",
+            color=discord.Color.green(),
+            timestamp=discord.utils.utcnow()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await self.log_security_event(guild, "audit-members", embed)
+
+        # 3. Anti-Raid Join Flood Protection
         antiraid = cfg.get("antiraid", {})
         if antiraid.get("enabled", True):
             now = time.time()
@@ -1295,16 +1573,123 @@ class Security(commands.Cog):
     @commands.Cog.listener()
     async def on_message_edit(self, before, after):
         """Re-run security checks when a message is edited OR when Discord appends embed metadata.
-        Discord GIF picker GIFs (from Tenor/Giphy) start with NO embeds and NO text URL.
-        Discord servers then update the message with embed data ~1s later, firing on_message_edit.
-        We must re-check on BOTH content changes AND embed count changes."""
+        Also logs content edits to 'audit-edits'."""
         if not after.guild or after.author.bot:
             return
+
+        # 1. Log message text edits to audit-edits
+        if before.content != after.content and before.content:
+            embed = discord.Embed(
+                title="✏️ Message Edited",
+                description=f"**Author:** {after.author.mention} (`{after.author.name}`)\n**Channel:** {after.channel.mention} | [Jump to Message]({after.jump_url})",
+                color=discord.Color.gold(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.add_field(name="Before", value=before.content[:1024] or "*No text*", inline=False)
+            embed.add_field(name="After", value=after.content[:1024] or "*No text*", inline=False)
+            embed.set_footer(text=f"Author ID: {after.author.id} • Message ID: {after.id}")
+            await self.log_security_event(after.guild, "audit-edits", embed)
+
+        # 2. Re-run security checks (e.g. Tenor/Giphy GIF picker embed appended or links inserted)
         content_changed = before.content != after.content
         attachment_changed = len(before.attachments) != len(after.attachments)
         embed_added = len(after.embeds) > len(before.embeds)  # Discord appended a GIF embed
         if content_changed or attachment_changed or embed_added:
             await self.on_message(after)
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        """Comprehensive Voice Channel audit logger: joins, leaves, moves, server mute/deafen, streaming, camera."""
+        guild = member.guild
+        if not guild: return
+        gid = str(guild.id)
+        if not db.antinuke_active.get(gid, True): return
+
+        # 1. Joined VC
+        if before.channel is None and after.channel is not None:
+            embed = discord.Embed(
+                title="🔊 Voice Channel Joined",
+                description=f"**Member:** {member.mention} (`{member.name}`)\n**Channel:** {after.channel.mention} (`{after.channel.name}`)",
+                color=discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            await self.log_security_event(guild, "audit-voice", embed)
+
+        # 2. Left VC
+        elif before.channel is not None and after.channel is None:
+            embed = discord.Embed(
+                title="🔇 Voice Channel Left",
+                description=f"**Member:** {member.mention} (`{member.name}`)\n**Channel:** `#{before.channel.name}`",
+                color=discord.Color.dark_red(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            await self.log_security_event(guild, "audit-voice", embed)
+
+        # 3. Switched / Moved VC
+        elif before.channel is not None and after.channel is not None and before.channel.id != after.channel.id:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.member_move, max_age_seconds=5, wait_delay=0.5)
+            mover = entry.user if entry else None
+            moved_by_str = f"\n**Moved By:** {mover.mention}" if mover and mover.id != member.id else ""
+            embed = discord.Embed(
+                title="🔀 Voice Channel Switched",
+                description=f"**Member:** {member.mention} (`{member.name}`)\n**From:** `#{before.channel.name}`\n**To:** {after.channel.mention} (`{after.channel.name}`){moved_by_str}",
+                color=discord.Color.blurple(),
+                timestamp=discord.utils.utcnow()
+            )
+            embed.set_thumbnail(url=member.display_avatar.url)
+            await self.log_security_event(guild, "audit-voice", embed)
+
+        # 4. Server Mute
+        if before.mute != after.mute:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.member_update, target_id=member.id)
+            culprit = entry.user if entry else None
+            mod_str = culprit.mention if culprit else "Unknown / Unverified"
+            chan_name = f" in {after.channel.mention}" if after.channel else ""
+            embed = discord.Embed(
+                title="🎙️ Member Server Muted" if after.mute else "🎙️ Member Server Unmuted",
+                description=f"**Member:** {member.mention} (`{member.name}`){chan_name}\n**Action:** `{'Server Muted' if after.mute else 'Server Unmuted'}`\n**Moderator:** {mod_str}",
+                color=discord.Color.red() if after.mute else discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-voice", embed)
+
+        # 5. Server Deafen
+        if before.deaf != after.deaf:
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.member_update, target_id=member.id)
+            culprit = entry.user if entry else None
+            mod_str = culprit.mention if culprit else "Unknown / Unverified"
+            chan_name = f" in {after.channel.mention}" if after.channel else ""
+            embed = discord.Embed(
+                title="🎧 Member Server Deafened" if after.deaf else "🎧 Member Server Undeafened",
+                description=f"**Member:** {member.mention} (`{member.name}`){chan_name}\n**Action:** `{'Server Deafened' if after.deaf else 'Server Undeafened'}`\n**Moderator:** {mod_str}",
+                color=discord.Color.red() if after.deaf else discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-voice", embed)
+
+        # 6. Screen Share / Stream
+        if before.self_stream != after.self_stream:
+            curr_ch = after.channel or before.channel
+            embed = discord.Embed(
+                title="📺 Screen Share Started" if after.self_stream else "📺 Screen Share Stopped",
+                description=f"**Member:** {member.mention} (`{member.name}`)\n**Channel:** {curr_ch.mention if curr_ch else 'Voice'}",
+                color=discord.Color.purple(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-voice", embed)
+
+        # 7. Video Camera
+        if before.self_video != after.self_video:
+            curr_ch = after.channel or before.channel
+            embed = discord.Embed(
+                title="📷 Camera Turned On" if after.self_video else "📷 Camera Turned Off",
+                description=f"**Member:** {member.mention} (`{member.name}`)\n**Channel:** {curr_ch.mention if curr_ch else 'Voice'}",
+                color=discord.Color.teal(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-voice", embed)
 
     @commands.Cog.listener()
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
@@ -1405,6 +1790,46 @@ class Security(commands.Cog):
                         tm = rule.get("timeout_mins", 10)
                         await self.execute_punishment(after, culprit, rule.get("punishment", "kick"), "Instant Punishment: Server icon modification.", timeout_mins=tm, feature="server_icon")
 
+        # Server Banner Change
+        if before.banner != after.banner:
+            mod_str = culprit.mention if culprit else "Unknown / Unverified"
+            embed = discord.Embed(
+                title="🖼️ Server Banner Modified",
+                description=f"**Modified By:** {mod_str}",
+                color=discord.Color.blue(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(after, "audit-server", embed)
+
+        # Server Setting Changes (AFK, Verification, Notifications, System Channel)
+        server_diff = []
+        if before.afk_channel != after.afk_channel:
+            old_afk = before.afk_channel.mention if before.afk_channel else "None"
+            new_afk = after.afk_channel.mention if after.afk_channel else "None"
+            server_diff.append(f"• **AFK Channel:** {old_afk} ➔ {new_afk}")
+        if before.afk_timeout != after.afk_timeout:
+            server_diff.append(f"• **AFK Timeout:** `{before.afk_timeout}s` ➔ `{after.afk_timeout}s`")
+        if before.verification_level != after.verification_level:
+            server_diff.append(f"• **Verification Level:** `{str(before.verification_level).title()}` ➔ `{str(after.verification_level).title()}`")
+        if before.default_notifications != after.default_notifications:
+            server_diff.append(f"• **Default Notifications:** `{str(before.default_notifications).title()}` ➔ `{str(after.default_notifications).title()}`")
+        if before.system_channel != after.system_channel:
+            old_sys = before.system_channel.mention if before.system_channel else "None"
+            new_sys = after.system_channel.mention if after.system_channel else "None"
+            server_diff.append(f"• **System Channel:** {old_sys} ➔ {new_sys}")
+        if getattr(before, 'description', None) != getattr(after, 'description', None):
+            server_diff.append("• **Server Description Updated**")
+
+        if server_diff:
+            mod_str = culprit.mention if culprit else "Unknown / Unverified"
+            embed = discord.Embed(
+                title="⚙️ Server Settings Modified",
+                description=f"**Modified By:** {mod_str}\n\n" + "\n".join(server_diff),
+                color=discord.Color.blurple(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(after, "audit-server", embed)
+
     @commands.Cog.listener()
     async def on_guild_emojis_update(self, guild, before, after):
         gid = str(guild.id)
@@ -1426,14 +1851,29 @@ class Security(commands.Cog):
                 color=discord.Color.orange(),
                 timestamp=discord.utils.utcnow()
             )
-            await self.log_security_event(guild, "audit-antinuke", embed)
+            await self.log_security_event(guild, "audit-server", embed)
             if culprit:
                 rule = cfg.get("instant", {}).get("emoji_delete", {})
                 if rule.get("enabled", False):
                     tm = rule.get("timeout_mins", 10)
                     await self.execute_punishment(guild, culprit, rule.get("punishment", "kick"), "Instant Punishment: Emoji deletion violation.", log_channel="audit-antinuke", timeout_mins=tm, feature="emoji_delete")
 
-        # 2. Emoji Rename
+        # 2. Emoji Create
+        elif len(after) > len(before):
+            created = [e for e in after if e.id not in [b.id for b in before]]
+            c_names = ", ".join([f":{e.name}:" for e in created])
+            entry = await self.get_recent_audit_entry(guild, discord.AuditLogAction.emoji_create)
+            culprit = entry.user if entry else None
+            c_str = culprit.mention if culprit else "Unknown / Unverified"
+            embed = discord.Embed(
+                title="✨ Emoji Created",
+                description=f"**Emojis:** {c_names}\n**Created By:** {c_str}",
+                color=discord.Color.green(),
+                timestamp=discord.utils.utcnow()
+            )
+            await self.log_security_event(guild, "audit-server", embed)
+
+        # 3. Emoji Rename
         elif len(after) == len(before):
             before_map = {e.id: e.name for e in before}
             renamed = [a for a in after if a.id in before_map and before_map[a.id] != a.name]
@@ -1450,12 +1890,29 @@ class Security(commands.Cog):
                     color=discord.Color.blue(),
                     timestamp=discord.utils.utcnow()
                 )
-                await self.log_security_event(guild, "audit-antinuke", embed)
+                await self.log_security_event(guild, "audit-server", embed)
                 if culprit:
                     rule = cfg.get("instant", {}).get("emoji_rename", {})
                     if rule.get("enabled", False):
                         tm = rule.get("timeout_mins", 10)
                         await self.execute_punishment(guild, culprit, rule.get("punishment", "kick"), "Instant Punishment: Emoji rename violation.", log_channel="audit-antinuke", timeout_mins=tm, feature="emoji_rename")
+
+    @commands.Cog.listener()
+    async def on_invite_create(self, invite: discord.Invite):
+        guild = invite.guild
+        if not guild: return
+        gid = str(guild.id)
+        if not db.antinuke_active.get(gid, True): return
+        inviter = invite.inviter.mention if invite.inviter else "Unknown"
+        max_uses_str = str(invite.max_uses) if invite.max_uses else "Unlimited"
+        expires_str = f"<t:{int((discord.utils.utcnow() + datetime.timedelta(seconds=invite.max_age)).timestamp())}:R>" if invite.max_age else "Never"
+        embed = discord.Embed(
+            title="📨 Instant Invite Created",
+            description=f"**Code:** `{invite.code}`\n**Channel:** {invite.channel.mention if invite.channel else 'Unknown'}\n**Created By:** {inviter}\n**Max Uses:** `{max_uses_str}`\n**Expires:** {expires_str}",
+            color=discord.Color.blue(),
+            timestamp=discord.utils.utcnow()
+        )
+        await self.log_security_event(guild, "audit-server", embed)
 
     @commands.Cog.listener()
     async def on_invite_delete(self, invite):
@@ -1475,13 +1932,37 @@ class Security(commands.Cog):
             color=discord.Color.orange(),
             timestamp=discord.utils.utcnow()
         )
-        await self.log_security_event(guild, "audit-antinuke", embed)
+        await self.log_security_event(guild, "audit-server", embed)
         if culprit:
             cfg = self.get_security_config(gid)
             rule = cfg.get("instant", {}).get("invite_delete", {})
             if rule.get("enabled", False):
                 tm = rule.get("timeout_mins", 10)
                 await self.execute_punishment(guild, culprit, rule.get("punishment", "kick"), "Instant Punishment: Invite deletion violation.", log_channel="audit-antinuke", timeout_mins=tm, feature="invite_delete")
+
+    @commands.Cog.listener()
+    async def on_webhooks_update(self, channel: discord.abc.GuildChannel):
+        guild = channel.guild
+        if not guild: return
+        gid = str(guild.id)
+        if not db.antinuke_active.get(gid, True): return
+        entry = (
+            await self.get_recent_audit_entry(guild, discord.AuditLogAction.webhook_create, target_id=channel.id) or
+            await self.get_recent_audit_entry(guild, discord.AuditLogAction.webhook_update, target_id=channel.id) or
+            await self.get_recent_audit_entry(guild, discord.AuditLogAction.webhook_delete, target_id=channel.id)
+        )
+        action_name = "Modified"
+        if entry:
+            if entry.action == discord.AuditLogAction.webhook_create: action_name = "Created"
+            elif entry.action == discord.AuditLogAction.webhook_delete: action_name = "Deleted"
+        mod_str = entry.user.mention if entry and entry.user else "Unknown / Integration"
+        embed = discord.Embed(
+            title=f"🪝 Webhook {action_name}",
+            description=f"**Channel:** {channel.mention}\n**Action:** Webhook {action_name}\n**Updated By:** {mod_str}",
+            color=discord.Color.dark_purple(),
+            timestamp=discord.utils.utcnow()
+        )
+        await self.log_security_event(guild, "audit-server", embed)
 
 async def setup(bot):
     await bot.add_cog(Security(bot))

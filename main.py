@@ -45,6 +45,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True 
 intents.moderation = True
+intents.voice_states = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 bot.remove_command('help')
@@ -115,7 +116,8 @@ async def on_ready():
         "cogs.backup",
         "cogs.giveaways",
         "cogs.birthdays",
-        "cogs.applications"
+        "cogs.applications",
+        "cogs.activity"
     ]
     for cog in cogs_list:
         try:
