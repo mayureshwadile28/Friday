@@ -1802,7 +1802,8 @@ const tabTitles = {
 
 
     'giveawaysSection': 'Giveaways Studio & Hub',
-    'birthdaysSection': 'Birthday Studio & Tracker'
+    'birthdaysSection': 'Birthday Studio & Tracker',
+    'inviteTrackerSection': 'Invite Tracker & Analytics'
 
 
 
@@ -11983,6 +11984,7 @@ async function loadDataForActiveTab() {
 
     else if (activeTab === 'giveawaysSection') await loadGiveawaysData();
     else if (activeTab === 'birthdaysSection') await loadBirthdayData();
+    else if (activeTab === 'inviteTrackerSection') await loadInviteTrackerSettings();
     else if (activeTab === 'announcementsSection') await loadScheduledAnnouncements();
 
 
@@ -19075,11 +19077,19 @@ async function loadLevelingSettings() {
 
         syncAllRichEmojiEditors();
 
-
-
-
-
-
+        const bgStatus = document.getElementById('rankBgStatus');
+        const bgPreviewWrap = document.getElementById('rankBgPreviewWrap');
+        const bgPreviewImg = document.getElementById('rankBgPreviewImg');
+        if (data.background) {
+            if (bgStatus) bgStatus.textContent = "Custom Wallpaper Active";
+            if (bgPreviewWrap && bgPreviewImg) {
+                bgPreviewWrap.style.display = 'block';
+                bgPreviewImg.src = data.background.startsWith('/') || data.background.startsWith('http') ? data.background : `/static/uploads/rank_backgrounds/${data.background.split(/[\/\\]/).pop()}`;
+            }
+        } else {
+            if (bgStatus) bgStatus.textContent = "Default Theme Active";
+            if (bgPreviewWrap) bgPreviewWrap.style.display = 'none';
+        }
 
         updateLevelPreview();
 
@@ -69726,6 +69736,323 @@ async function loadApplicationsSettings() {
         updateApplicationPreview();
     } catch (err) {
         console.error('Error loading applications data:', err);
+    }
+}
+
+/* ────────────────────────── RANK CARD WALLPAPER MANAGER ────────────────────────── */
+async function uploadRankBackground(input) {
+    if (!input.files || !input.files[0]) return;
+    if (!currentGuildId) {
+        showToast("Please select a server first.");
+        return;
+    }
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('background_file', file);
+    try {
+        showToast("Uploading rank card background...");
+        const resp = await fetch(`/api/guild/${currentGuildId}/leveling/upload-background`, {
+            method: 'POST',
+            body: formData
+        });
+        const res = await resp.json();
+        if (res.success) {
+            showToast("Custom rank background saved successfully!");
+            const bgStatus = document.getElementById('rankBgStatus');
+            const bgPreviewWrap = document.getElementById('rankBgPreviewWrap');
+            const bgPreviewImg = document.getElementById('rankBgPreviewImg');
+            if (bgStatus) bgStatus.textContent = "Custom Wallpaper Active";
+            if (bgPreviewWrap && bgPreviewImg) {
+                bgPreviewWrap.style.display = 'block';
+                bgPreviewImg.src = res.url;
+            }
+        } else {
+            showToast("Upload failed: " + (res.error || "Unknown error"));
+        }
+    } catch (e) {
+        showToast("Upload error: " + e.message);
+    }
+}
+
+async function resetRankBackground() {
+    if (!currentGuildId) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/leveling/reset-background`, { method: 'POST' });
+        const res = await resp.json();
+        if (res.success) {
+            showToast("Restored default dark theme!");
+            const bgStatus = document.getElementById('rankBgStatus');
+            const bgPreviewWrap = document.getElementById('rankBgPreviewWrap');
+            if (bgStatus) bgStatus.textContent = "Default Theme Active";
+            if (bgPreviewWrap) bgPreviewWrap.style.display = 'none';
+        }
+    } catch (e) {
+        showToast("Reset error: " + e.message);
+    }
+}
+
+/* ────────────────────────── INVITE TRACKER DASHBOARD ENGINE ────────────────────────── */
+let currentInvitersList = [];
+
+async function loadInviteTrackerSettings() {
+    if (!currentGuildId) return;
+    try {
+        const chanSelect = document.getElementById('inviteChannelSelect');
+        if (chanSelect && chanSelect.options.length <= 1) {
+            populateInviteChannelsDropdown();
+        }
+
+        const resp = await fetch(`/api/guild/${currentGuildId}/invite-tracker`);
+        const data = await resp.json();
+        if (!data.success) return;
+
+        const cfg = data.config || {};
+        const toggle = document.getElementById('inviteTrackerToggle');
+        if (toggle) toggle.checked = (cfg.enabled !== false);
+
+        if (chanSelect && cfg.log_channel) {
+            chanSelect.value = String(cfg.log_channel);
+        }
+
+        const joinMsg = document.getElementById('inviteJoinMsg');
+        if (joinMsg) joinMsg.value = cfg.join_msg || "";
+
+        const leaveMsg = document.getElementById('inviteLeaveMsg');
+        if (leaveMsg) leaveMsg.value = cfg.leave_msg || "";
+
+        const embedToggle = document.getElementById('inviteEmbedToggle');
+        if (embedToggle) embedToggle.checked = (cfg.embed !== false);
+
+        const embedTitle = document.getElementById('inviteEmbedTitle');
+        if (embedTitle) embedTitle.value = cfg.embed_title || "📥 Member Joined";
+
+        const embedColor = document.getElementById('inviteEmbedColor');
+        if (embedColor) embedColor.value = cfg.embed_color || "#5865F2";
+
+        // Attach Rich Emoji Editors for universal visual emoji picker
+        if (typeof attachRichEmojiEditor === 'function') {
+            attachRichEmojiEditor('inviteJoinMsg');
+            attachRichEmojiEditor('inviteLeaveMsg');
+            attachRichEmojiEditor('inviteEmbedTitle', true);
+        }
+        if (typeof syncAllRichEmojiEditors === 'function') {
+            syncAllRichEmojiEditors();
+        }
+
+        currentInvitersList = data.inviters || [];
+        renderInvitersTable(currentInvitersList);
+        renderInviteLivePreview();
+    } catch (e) {
+        console.error("Failed to load invite tracker settings:", e);
+    }
+}
+
+function populateInviteChannelsDropdown() {
+    const select = document.getElementById('inviteChannelSelect');
+    if (!select || !currentGuildChannels) return;
+    const currentVal = select.value;
+    select.innerHTML = '<option value="">Disabled (No Announcements)</option>';
+    
+    currentGuildChannels.forEach(c => {
+        if (c.type === 0 || c.type === 5) {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = '#' + c.name;
+            select.appendChild(opt);
+        }
+    });
+    if (currentVal) select.value = currentVal;
+}
+
+function renderInviteLivePreview() {
+    const previewBody = document.getElementById('invitePreviewBody');
+    const previewEmbed = document.getElementById('invitePreviewEmbed');
+    const previewTitle = document.getElementById('invitePreviewTitle');
+    const previewDesc = document.getElementById('invitePreviewDesc');
+    const embedToggle = document.getElementById('inviteEmbedToggle');
+    const embedTitle = document.getElementById('inviteEmbedTitle');
+    const embedColor = document.getElementById('inviteEmbedColor');
+    const joinMsg = document.getElementById('inviteJoinMsg');
+
+    let rawText = (joinMsg ? joinMsg.value : "") || "👋 Welcome {user} to **{guild}**!\nInvited by {inviter} (Code: `{code}`).\n📈 {inviter_name} now has **{invites}** invites (**{regular}** regular, **{bonus}** bonus, **{left}** left, **{fake}** fake)!";
+    let formatted = rawText.replace(/{user}/g, "@NewMember")
+                           .replace(/{user\.name}/g, "NewMember")
+                           .replace(/{guild}/g, currentGuildName || "Community Server")
+                           .replace(/{inviter}/g, "@TopInviter")
+                           .replace(/{inviter\.name}/g, "TopInviter")
+                           .replace(/{code}/g, "friday-vip")
+                           .replace(/{invites}/g, "15")
+                           .replace(/{regular}/g, "12")
+                           .replace(/{bonus}/g, "5")
+                           .replace(/{left}/g, "2")
+                           .replace(/{fake}/g, "0")
+                           .replace(/{total_members}/g, "1,250");
+
+    let htmlContent = formatted;
+    if (typeof renderDiscordMarkdown === 'function') {
+        htmlContent = renderDiscordMarkdown(formatted);
+    }
+
+    const isEmbed = embedToggle ? embedToggle.checked : true;
+    if (previewEmbed) {
+        if (isEmbed) {
+            previewEmbed.style.display = 'flex';
+            if (previewTitle) previewTitle.textContent = (embedTitle && embedTitle.value.trim()) ? embedTitle.value : "📥 Member Joined";
+            if (previewDesc) previewDesc.innerHTML = htmlContent;
+            if (embedColor) previewEmbed.style.borderLeftColor = embedColor.value || "#5865F2";
+            if (previewBody) previewBody.innerHTML = "";
+        } else {
+            previewEmbed.style.display = 'none';
+            if (previewBody) previewBody.innerHTML = htmlContent;
+        }
+    }
+}
+
+function renderInvitersTable(inviters) {
+    const tbody = document.getElementById('invitersTableBody');
+    if (!tbody) return;
+
+    if (!inviters || inviters.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--text-muted);">No invite records found. Members will populate here as they invite others.</td></tr>`;
+        return;
+    }
+
+    let rows = '';
+    inviters.forEach((inv, idx) => {
+        const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+        const safeName = (typeof escapeHtml === 'function') ? escapeHtml(inv.name) : inv.name;
+        rows += `
+            <tr style="border-bottom: 1px solid var(--border-card); transition: background 0.2s;">
+                <td style="padding: 10px 12px; font-weight: 700; color: #fff;">${medal}</td>
+                <td style="padding: 10px 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <img src="${inv.avatar}" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover;" onerror="this.src='/static/avatar.png'">
+                        <div>
+                            <div style="font-weight: 600; color: #fff;">${safeName}</div>
+                            <div style="font-size: 11px; color: var(--text-muted);">ID: ${inv.user_id}</div>
+                        </div>
+                    </div>
+                </td>
+                <td style="padding: 10px 12px; font-weight: 700; color: #6366f1; font-size: 14px;">${inv.total}</td>
+                <td style="padding: 10px 12px; color: var(--text-secondary);">${inv.regular}</td>
+                <td style="padding: 10px 12px; color: #10b981; font-weight: 600;">+${inv.bonus}</td>
+                <td style="padding: 10px 12px; color: #ef4444;">-${inv.left}</td>
+                <td style="padding: 10px 12px; color: #f59e0b;">${inv.fake}</td>
+                <td style="padding: 10px 12px; text-align: right;">
+                    <button class="btn btn-secondary btn-action-secondary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;" onclick="adjustInviteBonus('${inv.user_id}', 1, 'add')">+1</button>
+                    <button class="btn btn-secondary btn-action-secondary" style="padding: 4px 8px; font-size: 11px; margin-right: 4px;" onclick="adjustInviteBonus('${inv.user_id}', 5, 'add')">+5</button>
+                    <button class="btn btn-secondary btn-action-secondary" style="padding: 4px 8px; font-size: 11px; color: #ef4444;" onclick="adjustInviteBonus('${inv.user_id}', 1, 'remove')">-1</button>
+                </td>
+            </tr>
+        `;
+    });
+    tbody.innerHTML = rows;
+}
+
+function filterInvitersTable(query) {
+    const q = (query || "").toLowerCase().trim();
+    if (!q) {
+        renderInvitersTable(currentInvitersList);
+        return;
+    }
+    const filtered = currentInvitersList.filter(inv => {
+        return inv.name.toLowerCase().includes(q) || inv.user_id.includes(q);
+    });
+    renderInvitersTable(filtered);
+}
+
+async function adjustInviteBonus(userId, amount, action) {
+    if (!currentGuildId) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/invite-tracker/bonus`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: userId, amount: amount, action: action })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            showToast(`${action === 'add' ? 'Added' : 'Removed'} ${amount} bonus invite(s)!`);
+            await loadInviteTrackerSettings();
+        } else {
+            showToast("Failed to adjust bonus: " + (res.error || "Unknown error"));
+        }
+    } catch (e) {
+        showToast("Error: " + e.message);
+    }
+}
+
+async function saveInviteTrackerSettings() {
+    if (!currentGuildId) return;
+    const toggle = document.getElementById('inviteTrackerToggle');
+    const chanSelect = document.getElementById('inviteChannelSelect');
+    const joinMsg = document.getElementById('inviteJoinMsg');
+    const leaveMsg = document.getElementById('inviteLeaveMsg');
+    const embedToggle = document.getElementById('inviteEmbedToggle');
+    const embedTitle = document.getElementById('inviteEmbedTitle');
+    const embedColor = document.getElementById('inviteEmbedColor');
+
+    const payload = {
+        enabled: toggle ? toggle.checked : true,
+        log_channel: chanSelect ? chanSelect.value : "",
+        join_msg: joinMsg ? joinMsg.value : "",
+        leave_msg: leaveMsg ? leaveMsg.value : "",
+        embed: embedToggle ? embedToggle.checked : true,
+        embed_title: embedTitle ? embedTitle.value : "📥 Member Joined",
+        embed_color: embedColor ? embedColor.value : "#5865F2"
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/invite-tracker/save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.success) {
+            showToast("Invite tracker settings saved successfully!");
+        } else {
+            showToast("Failed to save: " + (res.error || "Unknown error"));
+        }
+    } catch (e) {
+        showToast("Save error: " + e.message);
+    }
+}
+
+async function testInviteMessage(type) {
+    if (!currentGuildId) return;
+    const chanSelect = document.getElementById('inviteChannelSelect');
+    const channelId = chanSelect ? chanSelect.value : "";
+    if (!channelId) {
+        showToast("Please select an Announcement Channel first!");
+        return;
+    }
+
+    const statusEl = document.getElementById('inviteTestStatus');
+    if (statusEl) {
+        statusEl.textContent = "Dispatching...";
+        statusEl.style.opacity = "1";
+    }
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/invite-tracker/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel_id: channelId, type: type })
+        });
+        const res = await resp.json();
+        if (res.success) {
+            if (statusEl) {
+                statusEl.textContent = `Sent ${type} card to #${res.channel_name}!`;
+                setTimeout(() => { statusEl.style.opacity = "0"; }, 3500);
+            }
+            showToast(`Sent ${type} card to #${res.channel_name}!`);
+        } else {
+            if (statusEl) statusEl.style.opacity = "0";
+            showToast("Test failed: " + (res.error || "Unknown error"));
+        }
+    } catch (e) {
+        if (statusEl) statusEl.style.opacity = "0";
+        showToast("Dispatch error: " + e.message);
     }
 }
 

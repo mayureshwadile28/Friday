@@ -117,7 +117,8 @@ async def on_ready():
         "cogs.giveaways",
         "cogs.birthdays",
         "cogs.applications",
-        "cogs.activity"
+        "cogs.activity",
+        "cogs.invite_tracker"
     ]
     for cog in cogs_list:
         try:

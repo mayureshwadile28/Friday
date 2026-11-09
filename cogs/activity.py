@@ -29,17 +29,18 @@ def clean_display_name(name: str, max_len: int = 22) -> str:
     return cleaned[:max_len] if cleaned else "User"
 
 def safe_channel_label(raw_name: str, cid: str = None, max_len: int = 18) -> str:
-    """Sanitizes channel names into guaranteed printable ASCII characters (eliminates tofu boxes)."""
+    """Sanitizes channel names into guaranteed clean printable text (eliminates tofu boxes and raw IDs)."""
     if not raw_name:
-        return f"channel-{str(cid)[-4:]}" if cid else "channel"
+        return "deleted-channel" if cid else "channel"
     norm = unicodedata.normalize('NFKD', str(raw_name))
     cleaned = "".join(ch for ch in norm if 32 <= ord(ch) <= 126 and ch not in "`*~_<>|\\")
     cleaned = cleaned.strip(" -_#|•·~+=[]{}()<>/")
     if cleaned and len(cleaned) >= 1:
         return cleaned[:max_len]
-    if cid:
-        return f"channel-{str(cid)[-4:]}"
-    return "general"
+    fallback_chars = "".join(ch for ch in str(raw_name) if unicodedata.category(ch)[0] in ('L', 'N'))
+    if fallback_chars:
+        return fallback_chars[:max_len]
+    return "deleted-channel" if cid else "channel"
 
 def monotone_cubic_spline(points, num_subdivisions=16):
     """
@@ -167,12 +168,20 @@ class Activity(commands.Cog):
                     PRIMARY KEY (guild_id, channel_id, user_id, date)
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS channel_names (
+                    channel_id TEXT PRIMARY KEY,
+                    guild_id TEXT,
+                    name TEXT,
+                    updated_at TEXT
+                )
+            """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_member_msg_date ON member_messages(guild_id, user_id, date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_member_voice_date ON member_voice(guild_id, user_id, date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_channel_msg_date ON channel_messages(guild_id, channel_id, date)")
             conn.commit()
 
-    def record_message(self, guild_id: int, channel_id: int, user_id: int):
+    def record_message(self, guild_id: int, channel_id: int, user_id: int, channel_name: str = None):
         today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
         gid_str, cid_str, uid_str = str(guild_id), str(channel_id), str(user_id)
         try:
@@ -190,9 +199,44 @@ class Activity(commands.Cog):
                     ON CONFLICT(guild_id, channel_id, user_id, date)
                     DO UPDATE SET message_count = message_count + 1
                 """, (gid_str, cid_str, uid_str, today))
+                if channel_name:
+                    cursor.execute("""
+                        INSERT INTO channel_names (channel_id, guild_id, name, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(channel_id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at
+                    """, (cid_str, gid_str, channel_name, today))
                 conn.commit()
         except Exception as e:
             print(f"⚠️ Activity DB record_message error: {e}")
+
+    def get_channel_display_name(self, guild, channel_id) -> str:
+        """Resolves the best human-readable channel name from guild cache, bot cache, or SQLite database."""
+        cid_int = int(channel_id) if str(channel_id).isdigit() else 0
+        cid_str = str(channel_id)
+        if guild:
+            ch = None
+            if hasattr(guild, "get_channel_or_thread"):
+                ch = guild.get_channel_or_thread(cid_int)
+            if not ch:
+                ch = guild.get_channel(cid_int)
+            if not ch and hasattr(guild, "get_thread"):
+                ch = guild.get_thread(cid_int)
+            if ch and getattr(ch, "name", None):
+                return ch.name
+        if self.bot:
+            ch = self.bot.get_channel(cid_int)
+            if ch and getattr(ch, "name", None):
+                return ch.name
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM channel_names WHERE channel_id = ?", (cid_str,))
+                row = cursor.fetchone()
+                if row and row["name"]:
+                    return row["name"]
+        except Exception:
+            pass
+        return "deleted-channel"
 
     def add_voice_seconds(self, guild_id: int, user_id: int, seconds: int):
         if seconds <= 0:
@@ -505,7 +549,7 @@ class Activity(commands.Cog):
     async def on_message(self, message: discord.Message):
         if not message.guild or message.author.bot:
             return
-        self.record_message(message.guild.id, message.channel.id, message.author.id)
+        self.record_message(message.guild.id, message.channel.id, message.author.id, channel_name=getattr(message.channel, 'name', ''))
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -1235,9 +1279,8 @@ class Activity(commands.Cog):
         top_raw_channels = self.get_top_channels_list(gid, limit=3)
         top_channels = []
         for cid, total in top_raw_channels:
-            ch = guild.get_channel(int(cid))
-            c_name = ch.name if ch else ""
-            top_channels.append((safe_channel_label(c_name, cid=cid), total))
+            raw_c_name = self.get_channel_display_name(guild, cid)
+            top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
 
         # Top 3 Chatters
         top_raw_chatters = self.get_leaderboard(gid, timeframe="lifetime", limit=3, offset=0)
@@ -1291,9 +1334,8 @@ class Activity(commands.Cog):
         top_raw = self.get_top_channels_list(gid, user_id=uid, limit=5)
         top_channels = []
         for cid, total in top_raw:
-            ch = guild.get_channel(int(cid))
-            c_name = ch.name if ch else ""
-            top_channels.append((safe_channel_label(c_name, cid=cid), total))
+            raw_c_name = self.get_channel_display_name(guild, cid)
+            top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
 
         joined_str = member.joined_at.strftime("%B %d, %Y") if member.joined_at else "Unknown"
         created_str = member.created_at.strftime("%B %d, %Y") if member.created_at else "Unknown"

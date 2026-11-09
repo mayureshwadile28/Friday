@@ -58,6 +58,14 @@ class Database:
         self.scheduled_announcements = sa if isinstance(sa, dict) else {}
         apps = self.data.get("applications")
         self.applications = apps if isinstance(apps, dict) else {}
+        rc_bg = self.data.get("rank_card_backgrounds")
+        self.rank_card_backgrounds = rc_bg if isinstance(rc_bg, dict) else {}
+        inv_trk = self.data.get("invite_tracker")
+        self.invite_tracker = inv_trk if isinstance(inv_trk, dict) else {}
+        inv_cnt = self.data.get("invite_counts")
+        self.invite_counts = inv_cnt if isinstance(inv_cnt, dict) else {}
+        inv_hist = self.data.get("invite_history")
+        self.invite_history = inv_hist if isinstance(inv_hist, dict) else {}
 
     def load_data(self):
         try:
@@ -106,7 +114,11 @@ class Database:
                 "birthdays_restricted": {},
                 "birthdays_config": {},
                 "scheduled_announcements": {},
-                "applications": {}
+                "applications": {},
+                "rank_card_backgrounds": {},
+                "invite_tracker": {},
+                "invite_counts": {},
+                "invite_history": {}
             }
 
     def reload(self):

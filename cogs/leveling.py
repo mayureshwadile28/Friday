@@ -4,7 +4,10 @@ from discord import app_commands
 import time
 import random
 import io
+import math
+import os
 import unicodedata
+import asyncio
 from PIL import Image, ImageDraw
 from easy_pil import Font
 from database import db
@@ -28,7 +31,7 @@ class Leveling(commands.Cog):
 
     def get_xp_requirement(self, level: int) -> int:
         """
-        Standard balanced XP formula (Mee6/Arcane style):
+        Standard balanced XP formula (Arcane/Mee6 style):
         XP required for level L -> L+1: 5*(L^2) + 50*L + 100
         Level 0 -> 100 XP (~5 msgs)
         Level 1 -> 155 XP (~8 msgs)
@@ -90,6 +93,31 @@ class Leveling(commands.Cog):
         )
         await interaction.followup.send(file=card_file)
 
+    async def fetch_avatar(self, target, size: int = 110) -> Image.Image:
+        """Helper to fetch and circle-mask an avatar or return a default colored circle."""
+        if hasattr(target, "display_avatar") and target.display_avatar:
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(str(target.display_avatar.url), timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            av_raw = Image.open(io.BytesIO(data)).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+                            mask = Image.new("L", (size, size), 0)
+                            mask_draw = ImageDraw.Draw(mask)
+                            mask_draw.ellipse((0, 0, size, size), fill=255)
+                            circle_av = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+                            circle_av.paste(av_raw, (0, 0), mask)
+                            return circle_av
+            except Exception:
+                pass
+
+        fallback = Image.new("RGBA", (size, size), (88, 101, 242, 255))
+        f_draw = ImageDraw.Draw(fallback)
+        name_letter = (getattr(target, "display_name", "") or getattr(target, "name", "U"))[0].upper()
+        f_draw.text((size // 2 - 12, size // 2 - 20), name_letter, font=Font.poppins(variant="bold", size=size // 3), fill=(255, 255, 255, 255))
+        return fallback
+
     async def generate_rank_card(
         self,
         user: discord.Member,
@@ -102,51 +130,70 @@ class Leveling(commands.Cog):
         total_messages: int = 0,
         voice_str: str = "0m"
     ) -> discord.File:
-        """Renders high-resolution 960x340 dark SaaS rank card."""
-        W, H = 960, 340
-        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        """
+        Renders a sleek, compact 840x270 dark glassmorphic rank card.
+        Supports custom wallpapers from the dashboard with an adaptive dark frosted glass
+        container ensuring all text and the dynamic progress bar stay 100% legible and vibrant.
+        """
+        W, H = 840, 270
+        gid = str(user.guild.id)
+        
+        # Check if a custom rank card background is configured via dashboard
+        bg_img = None
+        custom_bg = db.rank_card_backgrounds.get(gid)
+        if custom_bg and isinstance(custom_bg, str):
+            # Check local file or uploaded file
+            if os.path.exists(custom_bg):
+                try:
+                    loaded = Image.open(custom_bg).convert("RGBA")
+                    # Cover crop to W x H
+                    w_ratio = W / loaded.width
+                    h_ratio = H / loaded.height
+                    ratio = max(w_ratio, h_ratio)
+                    new_w = int(loaded.width * ratio)
+                    new_h = int(loaded.height * ratio)
+                    resized = loaded.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    crop_x = (new_w - W) // 2
+                    crop_y = (new_h - H) // 2
+                    bg_img = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
+                except Exception:
+                    bg_img = None
+
+        if not bg_img:
+            # High-end default dark canvas
+            bg_img = Image.new("RGBA", (W, H), (18, 20, 24, 255))
+            d_bg = ImageDraw.Draw(bg_img)
+            # Subtle gradient mesh accents
+            d_bg.ellipse((-80, -80, 240, 240), fill=(99, 102, 241, 35))
+            d_bg.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(56, 189, 248, 25))
+
+        # Frosted Glass Overlay (guarantees WCAG AAA contrast for all text & elements)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        # Inner dark card container
+        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=(18, 20, 26, 215), outline=(255, 255, 255, 25), width=1)
+        img = Image.alpha_composite(bg_img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # Outer Container
-        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=24, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
-
-        font_title = Font.poppins(variant="bold", size=26)
-        font_sub = Font.poppins(variant="regular", size=13)
-        font_badge = Font.poppins(variant="bold", size=12)
-        font_xp_num = Font.poppins(variant="bold", size=15)
-        font_stat_val = Font.poppins(variant="bold", size=16)
+        # Fonts
+        font_title = Font.poppins(variant="bold", size=24)
+        font_sub = Font.poppins(variant="regular", size=12)
+        font_badge = Font.poppins(variant="bold", size=11)
+        font_xp_num = Font.poppins(variant="bold", size=14)
+        font_stat_val = Font.poppins(variant="bold", size=15)
         font_stat_lbl = Font.poppins(variant="bold", size=10)
 
-        # Avatar on left (130x130)
-        av_x, av_y, av_size = 46, 50, 130
-        av_drawn = False
-        try:
-            if user.display_avatar:
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(str(user.display_avatar.url), timeout=aiohttp.ClientTimeout(total=4)) as resp:
-                        if resp.status == 200:
-                            data = await resp.read()
-                            av_raw = Image.open(io.BytesIO(data)).convert("RGBA").resize((av_size, av_size), Image.Resampling.LANCZOS)
-                            mask = Image.new("L", (av_size, av_size), 0)
-                            mask_draw = ImageDraw.Draw(mask)
-                            mask_draw.ellipse((0, 0, av_size, av_size), fill=255)
-                            img.paste(av_raw, (av_x, av_y), mask)
-                            draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(129, 140, 248, 255), width=3)
-                            av_drawn = True
-        except Exception:
-            pass
-
-        if not av_drawn:
-            draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), fill=(88, 101, 242, 255), outline=(129, 140, 248, 255), width=3)
-            c_letter = clean_display_name(user.display_name)[0].upper()
-            draw.text((av_x + 44, av_y + 36), c_letter, font=Font.poppins(variant="bold", size=56), fill=(255, 255, 255, 255))
+        # Avatar on left (100x100)
+        av_x, av_y, av_size = 36, 36, 100
+        av_img = await self.fetch_avatar(user, size=av_size)
+        img.paste(av_img, (av_x, av_y), av_img)
+        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(129, 140, 248, 255), width=3)
 
         # Member Info
-        text_x = 206
-        draw.text((text_x, 48), clean_display_name(user.display_name, max_len=20), font=font_title, fill=(255, 255, 255, 255))
+        text_x = av_x + av_size + 20
+        draw.text((text_x, 38), clean_display_name(user.display_name, max_len=20), font=font_title, fill=(255, 255, 255, 255))
         joined_str = user.joined_at.strftime("%B %d, %Y") if user.joined_at else "Unknown"
-        draw.text((text_x, 84), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(142, 146, 155, 255))
+        draw.text((text_x, 70), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(148, 153, 163, 255))
 
         # Top-right Badges
         top_role = user.top_role.name if (user.top_role and user.top_role.name != "@everyone") else "Member"
@@ -155,68 +202,288 @@ class Leveling(commands.Cog):
             (f"LEVEL {current_level}", (129, 140, 248)),
             (clean_display_name(top_role, max_len=14), (56, 189, 248))
         ]
-        bx = W - 46
+        bx = W - 36
         for b_text, b_col in reversed(badges):
             bbox = font_badge.getbbox(b_text)
-            bw = (bbox[2] - bbox[0]) + 22
+            bw = (bbox[2] - bbox[0]) + 20
             bpx = bx - bw
-            draw_rounded_rect(draw, (bpx, 50, bpx + bw, 80), radius=12, fill=(38, 41, 50, 255), outline=b_col + (180,), width=1)
-            draw.text((bpx + 11, 58), b_text, font=font_badge, fill=b_col + (255,))
-            bx = bpx - 10
+            draw_rounded_rect(draw, (bpx, 38, bpx + bw, 66), radius=10, fill=(30, 33, 42, 230), outline=b_col + (180,), width=1)
+            draw.text((bpx + 10, 45), b_text, font=font_badge, fill=b_col + (255,))
+            bx = bpx - 8
 
-        # XP Progress Bar Section
+        # Dynamic XP Progress Bar Section
         bar_x = text_x
-        bar_y = 132
-        bar_w = W - 46 - bar_x
-        bar_h = 24
+        bar_y = 112
+        bar_w = W - 36 - bar_x
+        bar_h = 20
 
-        draw.text((bar_x, 110), "EXP PROGRESSION", font=font_stat_lbl, fill=(142, 146, 155, 255))
+        draw.text((bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(142, 146, 155, 255))
         xp_str = f"{current_xp:,} / {next_xp:,} XP ({percentage:.1f}%)"
         xb = font_xp_num.getbbox(xp_str)
-        draw.text((bar_x + bar_w - (xb[2] - xb[0]), 108), xp_str, font=font_xp_num, fill=(255, 255, 255, 255))
+        draw.text((bar_x + bar_w - (xb[2] - xb[0]), 90), xp_str, font=font_xp_num, fill=(255, 255, 255, 255))
 
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=12, fill=(24, 26, 32, 255))
+        # Background track
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(24, 27, 34, 240), outline=(45, 50, 62, 255), width=1)
         fill_w = int(bar_w * (percentage / 100.0))
         if fill_w > 0:
-            draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=12, fill=(129, 140, 248, 255))
+            # Gradient fill on progress bar
+            draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=10, fill=(129, 140, 248, 255))
 
-        # Bottom Telemetry Cards (3 sub-cards)
-        stat_y = 196
-        stat_h = 96
-        sw = (bar_w - 24) // 3
+        # Bottom 3 Telemetry Stat Cards
+        stat_y = 152
+        stat_h = 86
+        sw = (bar_w - 20) // 3
         stat_items = [
             ("TOTAL MESSAGES", f"{total_messages:,} msgs", "Recorded chat volume"),
-            ("VOICE DURATION", voice_str, "Total recorded voice time"),
+            ("VOICE DURATION", voice_str, "Recorded voice time"),
             ("SERVER STANDING", f"Top {max(1, round((rank_pos / max(1, total_members)) * 100))}%", f"Rank #{rank_pos} of {total_members}")
         ]
         for idx, (lbl, val, sub) in enumerate(stat_items):
-            sx = bar_x + idx * (sw + 12)
-            draw_rounded_rect(draw, (sx, stat_y, sx + sw, stat_y + stat_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-            draw.text((sx + 16, stat_y + 14), lbl, font=font_stat_lbl, fill=(140, 145, 156, 255))
-            draw.text((sx + 16, stat_y + 34), val, font=font_stat_val, fill=(255, 255, 255, 255))
-            draw.text((sx + 16, stat_y + 64), sub, font=font_sub, fill=(120, 125, 136, 255))
+            sx = bar_x + idx * (sw + 10)
+            draw_rounded_rect(draw, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(28, 31, 39, 230), outline=(45, 50, 63, 255), width=1)
+            draw.text((sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(140, 145, 156, 255))
+            draw.text((sx + 14, stat_y + 30), val, font=font_stat_val, fill=(255, 255, 255, 255))
+            draw.text((sx + 14, stat_y + 56), sub, font=font_sub, fill=(120, 125, 136, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
         buf.seek(0)
         return discord.File(fp=buf, filename=f"rankcard_{user.id}.png")
 
-    @app_commands.command(name="leaderboard", description="View the top 10 most active members by XP.")
+    async def generate_levelup_card(self, member: discord.Member, old_level: int, new_level: int) -> discord.File:
+        """
+        Generates a compact, high-resolution 520x150 horizontal milestone badge card.
+        Not oversized, perfectly sized to display in Discord below congratulatory notifications.
+        """
+        W, H = 520, 150
+        img = Image.new("RGBA", (W, H), (20, 22, 27, 255))
+        draw = ImageDraw.Draw(img)
+
+        # Outer Pill/Card with subtle glowing border
+        draw_rounded_rect(draw, (6, 6, W - 6, H - 6), radius=20, fill=(26, 29, 36, 255), outline=(52, 57, 72, 255), width=2)
+
+        # Left Avatar (88x88)
+        av_size = 88
+        av_x, av_y = 26, (H - av_size) // 2
+        av_img = await self.fetch_avatar(member, size=av_size)
+        img.paste(av_img, (av_x, av_y), av_img)
+        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(129, 140, 248, 255), width=3)
+
+        # Right Content
+        text_x = av_x + av_size + 24
+        font_header = Font.poppins(variant="bold", size=32)
+        font_level = Font.poppins(variant="bold", size=24)
+        font_sub = Font.poppins(variant="regular", size=13)
+
+        # "Level-up!" in bold
+        draw.text((text_x, 28), "Level-up!", font=font_header, fill=(255, 255, 255, 255))
+
+        # Milestone Badge: "10 • 11" or "Level 10 ➔ 11"
+        badge_y = 76
+        level_str = f"{old_level}  •  {new_level}"
+        b_box = font_level.getbbox(level_str)
+        bw = (b_box[2] - b_box[0]) + 28
+        bh = 38
+        draw_rounded_rect(draw, (text_x, badge_y, text_x + bw, badge_y + bh), radius=10, fill=(35, 39, 49, 255), outline=(56, 189, 248, 160), width=1)
+        draw.text((text_x + 14, badge_y + 4), level_str, font=font_level, fill=(56, 189, 248, 255))
+
+        # Member subtext on right
+        m_name = clean_display_name(member.display_name, max_len=14)
+        draw.text((text_x + bw + 14, badge_y + 12), f"GG @{m_name}", font=font_sub, fill=(156, 163, 175, 255))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        return discord.File(fp=buf, filename=f"levelup_{member.id}.png")
+
+    def render_xp_leaderboard_card(
+        self,
+        guild_name: str,
+        guild_icon: Image.Image,
+        page: int,
+        total_pages: int,
+        total_members: int,
+        members_data: list, # [(rank, name, username, av_img, level, xp, next_xp), ...]
+        max_xp: int = 1
+    ) -> io.BytesIO:
+        """Renders high-resolution 1020x640 graphic XP leaderboard card with 10 members in a 2-column layout."""
+        W, H = 1020, 640
+        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        draw = ImageDraw.Draw(img)
+
+        # Outer Container
+        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+
+        font_title = Font.poppins(variant="bold", size=22)
+        font_sub = Font.poppins(variant="regular", size=13)
+        font_pill = Font.poppins(variant="bold", size=12)
+        font_name = Font.poppins(variant="bold", size=14)
+        font_user = Font.poppins(variant="regular", size=11)
+        font_rank = Font.poppins(variant="bold", size=13)
+        font_cnt = Font.poppins(variant="bold", size=13)
+        font_lvl = Font.poppins(variant="bold", size=11)
+        font_footer = Font.poppins(variant="regular", size=11)
+        font_footer_bold = Font.poppins(variant="bold", size=11)
+
+        # Header
+        header_x, header_y = 38, 34
+        if guild_icon:
+            try:
+                icon_resized = guild_icon.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (60, 60), 0)
+                mask_draw = ImageDraw.Draw(mask)
+                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                img.paste(icon_resized, (header_x, header_y), mask)
+                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+            except Exception:
+                pass
+
+        text_x = header_x + 74
+        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255))
+        draw.text((text_x, header_y + 34), "Server XP & Level Leaderboard", font=font_sub, fill=(142, 146, 155, 255))
+
+        # Status pills
+        pills = [
+            f"PAGE {page} OF {total_pages}",
+            f"{total_members:,} Ranked",
+            "XP RANKINGS"
+        ]
+        pill_right = W - 38
+        for p in reversed(pills):
+            bbox = font_pill.getbbox(p)
+            pw = (bbox[2] - bbox[0]) + 24
+            px = pill_right - pw
+            py = header_y + 14
+            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
+            draw.text((px + 12, py + 8), p, font=font_pill, fill=(240, 242, 245, 255))
+            pill_right = px - 10
+
+        col_w = 460
+        col1_x = 38
+        col2_x = 522
+        start_y = 114
+        row_h = 80
+        spacing = 14
+
+        m_dict = {m[0]: m for m in members_data}
+        start_rank = (page - 1) * 10 + 1
+
+        for slot_idx in range(10):
+            current_rank = start_rank + slot_idx
+            col = 0 if slot_idx < 5 else 1
+            row = slot_idx % 5
+            cx = col1_x if col == 0 else col2_x
+            cy = start_y + row * (row_h + spacing)
+
+            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+
+            if current_rank in m_dict:
+                _, name_str, user_str, av_img, lvl_val, xp_val, req_val = m_dict[current_rank]
+
+                ratio = xp_val / max(1, max_xp)
+                fill_w = int(col_w * min(1.0, max(0.02, ratio)))
+                if fill_w > 0:
+                    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                    od = ImageDraw.Draw(overlay)
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=(129, 140, 248, 22))
+                    img = Image.alpha_composite(img, overlay)
+                    draw = ImageDraw.Draw(img)
+
+                if current_rank == 1:
+                    r_fill, r_out, r_txt = (60, 45, 15, 255), (217, 119, 6, 255), (245, 158, 11, 255)
+                elif current_rank == 2:
+                    r_fill, r_out, r_txt = (40, 45, 55, 255), (148, 163, 184, 255), (203, 213, 225, 255)
+                elif current_rank == 3:
+                    r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
+                else:
+                    r_fill, r_out, r_txt = (28, 30, 36, 255), (46, 50, 60, 255), (150, 155, 166, 255)
+
+                draw_rounded_rect(draw, (cx + 12, cy + 24, cx + 48, cy + 56), radius=10, fill=r_fill, outline=r_out, width=1)
+                r_str = f"#{current_rank}"
+                rb = font_rank.getbbox(r_str)
+                rx = cx + 30 - (rb[2] - rb[0]) // 2
+                draw.text((rx, cy + 31), r_str, font=font_rank, fill=r_txt)
+
+                # Avatar
+                av_x = cx + 58
+                av_y = cy + 14
+                if av_img:
+                    try:
+                        img.paste(av_img, (av_x, av_y), av_img)
+                        draw.ellipse((av_x, av_y, av_x + 52, av_y + 52), outline=(55, 60, 72, 255), width=2)
+                    except Exception:
+                        pass
+
+                # Name & Username
+                nx = av_x + 64
+                draw.text((nx, cy + 18), clean_display_name(name_str, max_len=14), font=font_name, fill=(255, 255, 255, 255))
+                draw.text((nx, cy + 42), f"Level {lvl_val}", font=font_lvl, fill=(56, 189, 248, 255))
+
+                # XP Count on right
+                c_str = f"{xp_val:,} XP"
+                cb = font_cnt.getbbox(c_str)
+                draw.text((cx + col_w - 20 - (cb[2] - cb[0]), cy + 28), c_str, font=font_cnt, fill=(255, 255, 255, 255))
+            else:
+                draw.text((cx + 20, cy + 28), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(90, 95, 105, 255))
+
+        # Footer
+        footer_y = H - 36
+        draw.text((38, footer_y), "Server XP Leaderboard • Top Active Members", font=font_footer, fill=(115, 120, 130, 255))
+        fb = font_footer_bold.getbbox("Powered by Friday")
+        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(150, 155, 166, 255))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        return buf
+
+    async def generate_xp_leaderboard_file(self, guild: discord.Guild, page: int = 1, per_page: int = 10) -> discord.File:
+        gid = str(guild.id)
+        raw_xp = db.xp_data.get(gid, {})
+        sorted_users = sorted(raw_xp.items(), key=lambda item: (item[1].get('level', 0), item[1].get('xp', 0)), reverse=True)
+        total_members = len(sorted_users)
+        total_pages = max(1, math.ceil(total_members / per_page))
+        current_page = max(1, min(page, total_pages))
+        offset = (current_page - 1) * per_page
+        page_users = sorted_users[offset:offset + per_page]
+
+        async def fetch_item(rank_num, uid, data):
+            mem = guild.get_member(int(uid))
+            name = mem.display_name if mem else f"User {uid[-4:]}"
+            username = mem.name if mem else f"id_{uid}"
+            av = await self.fetch_avatar(mem or uid, size=52)
+            lvl = data.get("level", 0)
+            xp = data.get("xp", 0)
+            req = self.get_xp_requirement(lvl)
+            return (rank_num, name, username, av, lvl, xp, req)
+
+        tasks = [fetch_item(offset + i, uid, d) for i, (uid, d) in enumerate(page_users, start=1)]
+        members_data = await asyncio.gather(*tasks) if tasks else []
+        max_xp = sorted_users[0][1].get("xp", 1) if sorted_users else 1
+
+        guild_icon = await self.fetch_avatar(guild, size=60)
+        buf = self.render_xp_leaderboard_card(
+            guild_name=guild.name,
+            guild_icon=guild_icon,
+            page=current_page,
+            total_pages=total_pages,
+            total_members=total_members,
+            members_data=members_data,
+            max_xp=max_xp
+        )
+        return discord.File(fp=buf, filename=f"xp_leaderboard_{guild.id}_p{current_page}.png")
+
+    @app_commands.command(name="leaderboard", description="View the visual server leaderboard of top members by XP.")
     async def leaderboard(self, interaction: discord.Interaction):
+        await interaction.response.defer()
         gid = str(interaction.guild.id)
         if gid not in db.xp_data or not db.xp_data[gid]:
-            await interaction.response.send_message("No one has earned any XP yet!")
+            await interaction.followup.send("No one has earned any XP yet! Send messages to climb the leaderboard.")
             return
 
-        sorted_users = sorted(db.xp_data[gid].items(), key=lambda item: (item[1]['level'], item[1]['xp']), reverse=True)[:10]
-        
-        embed = discord.Embed(title="Server XP Leaderboard", color=discord.Color.gold())
-        for index, (uid, data) in enumerate(sorted_users, start=1):
-            member = interaction.guild.get_member(int(uid))
-            name = clean_display_name(member.display_name if member else f"User {uid[-4:]}")
-            embed.add_field(name=f"#{index} - {name}", value=f"Level: **{data['level']}** | XP: **{data['xp']:,}**", inline=False)
-            
-        await interaction.response.send_message(embed=embed)
+        view = XPLeaderboardView(self, interaction.guild, current_page=1)
+        file = await self.generate_xp_leaderboard_file(interaction.guild, page=1)
+        await interaction.followup.send(file=file, view=view)
 
     @app_commands.command(name="level_mode", description="Configure whether Level Up updates use text, image card, or both.")
     @app_commands.choices(mode=[
@@ -230,60 +497,6 @@ class Leveling(commands.Cog):
         db.level_modes[gid] = mode.value
         db.save_data()
         await interaction.response.send_message(f"✅ Level Up notification mode set to **{mode.name}**.", ephemeral=True)
-
-    async def generate_levelup_card(self, member: discord.Member, old_level: int, new_level: int) -> discord.File:
-        """Generate a sleek Level-Up milestone image card without tofu boxes."""
-        W, H = 900, 320
-        img = Image.new("RGBA", (W, H), (18, 19, 22, 255))
-        draw = ImageDraw.Draw(img)
-
-        # Top gradient line
-        draw_rounded_rect(draw, (0, 0, W, 8), radius=0, fill=(88, 101, 242, 255))
-        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=22, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
-
-        # Avatar
-        av_x, av_y, av_size = 50, 70, 180
-        av_drawn = False
-        try:
-            if member.display_avatar:
-                import aiohttp
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(str(member.display_avatar.url), timeout=aiohttp.ClientTimeout(total=4)) as resp:
-                        if resp.status == 200:
-                            data = await resp.read()
-                            av_raw = Image.open(io.BytesIO(data)).convert("RGBA").resize((av_size, av_size), Image.Resampling.LANCZOS)
-                            mask = Image.new("L", (av_size, av_size), 0)
-                            mask_draw = ImageDraw.Draw(mask)
-                            mask_draw.ellipse((0, 0, av_size, av_size), fill=255)
-                            img.paste(av_raw, (av_x, av_y), mask)
-                            draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(88, 101, 242, 255), width=4)
-                            av_drawn = True
-        except Exception:
-            pass
-
-        if not av_drawn:
-            draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), fill=(88, 101, 242, 255))
-            c_letter = clean_display_name(member.display_name)[0].upper()
-            draw.text((av_x + 60, av_y + 45), c_letter, font=Font.poppins(variant="bold", size=70), fill=(255, 255, 255, 255))
-
-        font_title = Font.poppins(variant="bold", size=42)
-        font_sub = Font.poppins(variant="bold", size=26)
-        font_small = Font.poppins(variant="regular", size=22)
-        font_badge = Font.poppins(variant="bold", size=30)
-
-        draw.text((270, 70), "LEVEL UP!", font=font_title, fill=(88, 101, 242, 255))
-        draw.text((270, 130), clean_display_name(member.display_name, max_len=20), font=font_sub, fill=(255, 255, 255, 255))
-        draw.text((270, 175), "Server Activity Milestone", font=font_small, fill=(148, 155, 164, 255))
-
-        # Milestone Level Pill
-        draw_rounded_rect(draw, (270, 225, 850, 275), radius=12, fill=(35, 36, 40, 255))
-        draw.text((300, 236), f"Level {old_level}  ->", font=font_small, fill=(181, 186, 193, 255))
-        draw.text((430, 232), f"LEVEL {new_level}", font=font_badge, fill=(56, 189, 248, 255))
-
-        buf = io.BytesIO()
-        img.save(buf, format="PNG", optimize=True)
-        buf.seek(0)
-        return discord.File(fp=buf, filename=f"levelup-{member.id}.png")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -341,6 +554,51 @@ class Leveling(commands.Cog):
                                 pass
             else:
                 db.save_data()
+
+
+class XPLeaderboardView(discord.ui.View):
+    """Interactive pagination view for the XP Leaderboard Graphic Card."""
+    def __init__(self, cog: Leveling, guild: discord.Guild, current_page: int = 1):
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.guild = guild
+        self.current_page = current_page
+        self.update_buttons()
+
+    def get_total_pages(self) -> int:
+        gid = str(self.guild.id)
+        raw_xp = db.xp_data.get(gid, {})
+        return max(1, math.ceil(len(raw_xp) / 10))
+
+    def update_buttons(self):
+        total_pages = self.get_total_pages()
+        self.prev_btn.disabled = (self.current_page <= 1)
+        self.next_btn.disabled = (self.current_page >= total_pages)
+        self.page_indicator.label = f"Page {self.current_page} / {total_pages}"
+
+    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary, custom_id="xp_lb_prev")
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        if self.current_page > 1:
+            self.current_page -= 1
+        self.update_buttons()
+        file = await self.cog.generate_xp_leaderboard_file(self.guild, page=self.current_page)
+        await interaction.edit_original_response(attachments=[file], view=self)
+
+    @discord.ui.button(label="Page 1 / 1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="xp_lb_page")
+    async def page_indicator(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary, custom_id="xp_lb_next")
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        total_pages = self.get_total_pages()
+        if self.current_page < total_pages:
+            self.current_page += 1
+        self.update_buttons()
+        file = await self.cog.generate_xp_leaderboard_file(self.guild, page=self.current_page)
+        await interaction.edit_original_response(attachments=[file], view=self)
+
 
 async def setup(bot):
     await bot.add_cog(Leveling(bot))

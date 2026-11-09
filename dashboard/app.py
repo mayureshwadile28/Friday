@@ -665,6 +665,192 @@ def test_leveling_message(gid):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+@app.route('/api/guild/<gid>/leveling/upload-background', methods=['POST'])
+def upload_rank_background(gid):
+    gid_str = str(gid)
+    try:
+        os.makedirs(RANK_BG_DIR, exist_ok=True)
+        file = flask_request.files.get('background_file') or flask_request.files.get('file')
+        if not file or not file.filename:
+            return jsonify({"success": False, "error": "No file uploaded."}), 400
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.webp']:
+            return jsonify({"success": False, "error": "Unsupported file format. Please upload PNG, JPG, or WebP."}), 400
+        safe_filename = f"rank_bg_{gid_str}_{uuid.uuid4().hex[:8]}{ext}"
+        save_path = os.path.join(RANK_BG_DIR, safe_filename)
+        file.save(save_path)
+        
+        rel_url = f"/static/uploads/rank_backgrounds/{safe_filename}"
+        db.rank_card_backgrounds[gid_str] = save_path
+        db.save_data()
+        return jsonify({"success": True, "url": rel_url, "path": save_path})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/leveling/reset-background', methods=['POST'])
+def reset_rank_background(gid):
+    gid_str = str(gid)
+    if gid_str in db.rank_card_backgrounds:
+        del db.rank_card_backgrounds[gid_str]
+        db.save_data()
+    return jsonify({"success": True})
+
+# ───────────────────── API: Invite Tracker ─────────────────────
+
+@app.route('/api/guild/<gid>/invite-tracker', methods=['GET'])
+def get_invite_tracker(gid):
+    gid_str = str(gid)
+    cfg = db.invite_tracker.get(gid_str, {
+        "enabled": True,
+        "log_channel": "",
+        "join_msg": "👋 Welcome {user} to **{guild}**!\nInvited by {inviter} (Code: `{code}`).\n📈 {inviter_name} now has **{invites}** invites (**{regular}** regular, **{bonus}** bonus, **{left}** left, **{fake}** fake)!",
+        "leave_msg": "📤 **{user.name}** left the server. They were invited by {inviter}. ({inviter_name} now has **{invites}** invites).",
+        "embed": True,
+        "embed_title": "📥 Member Joined",
+        "embed_color": "#5865F2"
+    })
+    
+    # Compile top inviters
+    counts = db.invite_counts.get(gid_str, {})
+    inviters_list = []
+    guild_obj = bot_instance.get_guild(int(gid)) if bot_instance and str(gid).isdigit() else None
+    
+    for uid_str, d in counts.items():
+        reg = d.get("regular", 0)
+        bon = d.get("bonus", 0)
+        lft = d.get("left", 0)
+        fak = d.get("fake", 0)
+        tot = reg + bon - lft - fak
+        
+        name = f"User {uid_str[-4:]}"
+        avatar_url = "/static/avatar.png"
+        if guild_obj:
+            m = guild_obj.get_member(int(uid_str))
+            if m:
+                name = m.display_name
+                avatar_url = m.display_avatar.url
+                
+        inviters_list.append({
+            "user_id": uid_str,
+            "name": name,
+            "avatar": str(avatar_url),
+            "regular": reg,
+            "bonus": bon,
+            "left": lft,
+            "fake": fak,
+            "total": tot
+        })
+    inviters_list.sort(key=lambda x: x["total"], reverse=True)
+
+    return jsonify({
+        "success": True,
+        "config": cfg,
+        "inviters": inviters_list[:50]
+    })
+
+@app.route('/api/guild/<gid>/invite-tracker/save', methods=['POST'])
+def save_invite_tracker(gid):
+    gid_str = str(gid)
+    body = flask_request.json or {}
+    
+    if gid_str not in db.invite_tracker:
+        db.invite_tracker[gid_str] = {}
+        
+    db.invite_tracker[gid_str]["enabled"] = bool(body.get("enabled", True))
+    db.invite_tracker[gid_str]["log_channel"] = str(body.get("log_channel", "")).strip()
+    db.invite_tracker[gid_str]["join_msg"] = body.get("join_msg", "")
+    db.invite_tracker[gid_str]["leave_msg"] = body.get("leave_msg", "")
+    db.invite_tracker[gid_str]["embed"] = bool(body.get("embed", True))
+    db.invite_tracker[gid_str]["embed_title"] = body.get("embed_title", "📥 Member Joined")
+    db.invite_tracker[gid_str]["embed_color"] = body.get("embed_color", "#5865F2")
+    db.save_data()
+    return jsonify({"success": True, "message": "Invite tracker settings saved successfully!"})
+
+@app.route('/api/guild/<gid>/invite-tracker/bonus', methods=['POST'])
+def adjust_invite_bonus(gid):
+    gid_str = str(gid)
+    body = flask_request.json or {}
+    user_id = str(body.get("user_id", "")).strip()
+    amount = int(body.get("amount", 0))
+    action = body.get("action", "add") # 'add' or 'remove' or 'clear'
+
+    if not user_id:
+        return jsonify({"success": False, "error": "Invalid user ID"}), 400
+
+    if gid_str not in db.invite_counts:
+        db.invite_counts[gid_str] = {}
+    if user_id not in db.invite_counts[gid_str]:
+        db.invite_counts[gid_str][user_id] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
+
+    if action == "add":
+        db.invite_counts[gid_str][user_id]["bonus"] += amount
+    elif action == "remove":
+        db.invite_counts[gid_str][user_id]["bonus"] = max(0, db.invite_counts[gid_str][user_id]["bonus"] - amount)
+    elif action == "clear":
+        db.invite_counts[gid_str][user_id] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
+
+    db.save_data()
+    c = db.invite_counts[gid_str][user_id]
+    net_total = c["regular"] + c["bonus"] - c["left"] - c["fake"]
+    return jsonify({"success": True, "counts": c, "total": net_total})
+
+@app.route('/api/guild/<gid>/invite-tracker/test', methods=['POST'])
+def test_invite_message(gid):
+    gid_str = str(gid)
+    body = flask_request.json or {}
+    channel_id = body.get("channel_id")
+    msg_type = body.get("type", "join") # 'join' or 'leave'
+
+    if not channel_id:
+        return jsonify({"success": False, "error": "Please select a channel to send the test message to."})
+
+    if not bot_instance or not bot_instance.loop:
+        return jsonify({"success": False, "error": "Friday bot is not connected right now."})
+
+    try:
+        channel = bot_instance.get_channel(int(channel_id))
+        if not channel:
+            return jsonify({"success": False, "error": "Channel not found or Friday lacks permissions."})
+
+        cfg = db.invite_tracker.get(gid_str, {})
+        tpl = cfg.get("join_msg") if msg_type == "join" else cfg.get("leave_msg")
+        if not tpl:
+            tpl = "👋 Welcome {user} to **{guild}**! Invited by {inviter}. {inviter_name} now has **{invites}** invites!"
+        
+        formatted = tpl.replace("{user}", bot_instance.user.mention) \
+                       .replace("{user.name}", bot_instance.user.name) \
+                       .replace("{guild}", channel.guild.name) \
+                       .replace("{inviter}", bot_instance.user.mention) \
+                       .replace("{inviter.name}", bot_instance.user.name) \
+                       .replace("{code}", "test-code") \
+                       .replace("{invites}", "12") \
+                       .replace("{regular}", "10") \
+                       .replace("{bonus}", "4") \
+                       .replace("{left}", "1") \
+                       .replace("{fake}", "1") \
+                       .replace("{total_members}", str(channel.guild.member_count))
+
+        formatted = replace_plain_emojis(formatted, bot_instance, guild_id=gid)
+
+        if cfg.get("embed", True):
+            color = int(cfg.get("embed_color", "5865F2").replace("#", ""), 16)
+            embed = discord.Embed(
+                title=cfg.get("embed_title", "📥 Member Joined (Test Preview)"),
+                description=formatted,
+                color=color
+            )
+            embed.set_thumbnail(url=bot_instance.user.display_avatar.url)
+            embed.set_footer(text="Friday Invite Tracker • Test Card")
+            coro = channel.send(embed=embed)
+        else:
+            coro = channel.send(formatted)
+
+        future = asyncio.run_coroutine_threadsafe(coro, bot_instance.loop)
+        future.result(timeout=6)
+        return jsonify({"success": True, "channel_name": channel.name})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
 
 
 # ───────────────────── API: Anti-Abuse ─────────────────────
@@ -2799,6 +2985,8 @@ BIRTHDAY_BANNER_DIR = os.path.join(app.root_path, "static", "uploads", "birthday
 os.makedirs(BIRTHDAY_BANNER_DIR, exist_ok=True)
 APPLICATION_BANNER_DIR = os.path.join(app.root_path, "static", "uploads", "application_banners")
 os.makedirs(APPLICATION_BANNER_DIR, exist_ok=True)
+RANK_BG_DIR = os.path.join(app.root_path, "static", "uploads", "rank_backgrounds")
+os.makedirs(RANK_BG_DIR, exist_ok=True)
 
 def validate_image_url(url):
     if not url:
