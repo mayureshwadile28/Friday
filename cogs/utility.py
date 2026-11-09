@@ -386,7 +386,7 @@ class Utility(commands.Cog):
                 except Exception:
                     pass
         if interaction.guild:
-            self.bot.tree.copy_global_to(guild=interaction.guild)
+            self.bot.tree.clear_commands(guild=interaction.guild)
             await self.bot.tree.sync(guild=interaction.guild)
         synced = await self.bot.tree.sync()
         await reply_box(
