@@ -4620,503 +4620,489 @@ Thank you for reaching out! If you have further questions, feel free to open a n
         </div>
     </div>
 
-    <!-- Two-Column Studio & Live Simulator Grid -->
-    <div class="ticket-studio-grid">
-        <!-- Left: Studio Controls Column -->
-        <div class="ticket-studio-left" style="min-width: 0;">
+    <!-- Studio Full-Width Container (Spacious, No Sticky Moving Preview, No Cramped Columns) -->
+    <div style="display: flex; flex-direction: column; gap: 24px; max-width: 1100px; margin: 0 auto; width: 100%;">
 
-            <!-- Card 1: Channel Routing, Role & Delivery Mode -->
-            <div class="card">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.3); display: flex; align-items: center; justify-content: center; color: #818cf8;">
-                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
-                    </div>
-                    <div>
-                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Routing, Roles & Delivery Mode</h3>
-                    </div>
+        <!-- Card 1: Channel Routing, Role & Delivery Mode -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.3); display: flex; align-items: center; justify-content: center; color: #818cf8;">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
                 </div>
-                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Configure where Friday will post the interactive embed, where staff reviews submissions, and how applicants complete the form.</p>
-
-                <div class="grid-2" style="margin-bottom: 16px;">
-                    <div>
-                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Panel Destination Channel</label>
-                        <select class="text-input" id="appPanelChannelSelect">
-                            <option value="">Select a Text Channel...</option>
-                        </select>
-                        <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Channel where the public "Apply Now" card is posted.</p>
-                    </div>
-                    <div>
-                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Staff Review Channel</label>
-                        <select class="text-input" id="appReviewChannelSelect">
-                            <option value="">Select a Private Staff Channel...</option>
-                        </select>
-                        <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Channel where submitted applications appear with Approve & Reject buttons.</p>
-                    </div>
-                </div>
-
-                <div style="margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                        <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Role Granted on Approval (Optional)</label>
-                        <span class="ticket-switch-badge teal">Auto-Assigned</span>
-                    </div>
-                    <select class="text-input" id="appApprovedRoleSelect">
-                        <option value="">No automatic role (review only)</option>
-                    </select>
-                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">When an administrator clicks [Approve], Friday automatically assigns this role to the applicant.</p>
-                </div>
-
-                <!-- Delivery Mode Segmented Selector -->
                 <div>
-                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Form Interaction Location</label>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                        <label id="appModeServerLabel" style="border: 2px solid #5865f2; background: rgba(88, 101, 242, 0.1); border-radius: 8px; padding: 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; transition: all 0.2s ease;">
-                            <input type="radio" name="appDeliveryMode" id="appModeServerRadio" value="server" checked style="margin-top: 3px;">
-                            <div>
-                                <div style="font-weight: 700; font-size: 13px; color: #ffffff;">🏢 In-Server (Private Temp Channel)</div>
-                                <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.4;">Friday creates a temporary private channel for the applicant and staff. Auto-closes after submission. Unlimited questions!</div>
-                            </div>
-                        </label>
-                        <label id="appModeDmLabel" style="border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.02); border-radius: 8px; padding: 12px; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; transition: all 0.2s ease;">
-                            <input type="radio" name="appDeliveryMode" id="appModeDmRadio" value="dm" style="margin-top: 3px;">
-                            <div>
-                                <div style="font-weight: 700; font-size: 13px; color: #ffffff;">📬 Direct Message (DM)</div>
-                                <div style="font-size: 11px; color: #94a3b8; margin-top: 3px; line-height: 1.4;">Friday sends a direct message to the applicant and asks questions sequentially in private chat.</div>
-                            </div>
-                        </label>
-                    </div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Routing, Roles & Delivery Mode</h3>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Configure where Friday will post the interactive embed, where staff reviews submissions, and how applicants complete the form.</p>
+
+            <div class="grid-2" style="margin-bottom: 16px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Panel Destination Channel</label>
+                    <select class="text-input" id="appPanelChannelSelect">
+                        <option value="">Select a Text Channel...</option>
+                    </select>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Channel where the public "Apply Now" card is posted.</p>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Staff Review Channel</label>
+                    <select class="text-input" id="appReviewChannelSelect">
+                        <option value="">Select a Private Staff Channel...</option>
+                    </select>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Channel where submitted applications appear with Approve & Reject buttons.</p>
                 </div>
             </div>
 
-            <!-- Card 2: Panel Embed & Button Design -->
-            <div class="card">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(45, 212, 191, 0.15); border: 1px solid rgba(45, 212, 191, 0.3); display: flex; align-items: center; justify-content: center; color: #2dd4bf;">
-                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><rect height="18" rx="2" ry="2" width="18" x="3" y="3"></rect><line x1="3" x2="21" y1="9" y2="9"></line><line x1="9" x2="9" y1="21" y2="9"></line></svg>
-                    </div>
-                    <div>
-                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Application Panel Embed & Button Design</h3>
-                    </div>
-                </div>
-                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Customize the announcement embed and interactive button that members click to begin their application.</p>
-
-                <!-- Panel Title with Emoji Button -->
+            <div style="margin-bottom: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Embed Title</label>
-                    <button class="btn btn-secondary emoji-picker-btn" id="appPanelTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;" type="button">
-                        😊 Emojis
-                    </button>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Role Granted on Approval (Optional)</label>
+                    <span class="ticket-switch-badge teal">Auto-Assigned</span>
                 </div>
-                <input class="text-input" id="appPanelTitleInput" placeholder="📋 Staff Application" style="margin-bottom: 14px;" type="text" value="📋 Staff Application"/>
+                <select class="text-input" id="appApprovedRoleSelect">
+                    <option value="">No automatic role (review only)</option>
+                </select>
+                <p style="font-size: 11px; color: var(--text-muted); margin-top: 5px;">When an administrator clicks [Approve], Friday automatically assigns this role to the applicant.</p>
+            </div>
 
-                <!-- Panel Description with Markdown Chips & Emoji Button -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Embed Description</label>
-                    <span style="font-size: 11px; color: var(--text-muted);">Markdown & Emojis Supported</span>
+            <!-- Delivery Mode Segmented Selector -->
+            <div>
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Form Interaction Location</label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <label id="appModeServerLabel" style="border: 2px solid #5865f2; background: rgba(88, 101, 242, 0.1); border-radius: 8px; padding: 14px; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; transition: all 0.2s ease;">
+                        <input type="radio" name="appDeliveryMode" id="appModeServerRadio" value="server" checked style="margin-top: 3px;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13.5px; color: #ffffff;">🏢 In-Server (Private Temp Channel)</div>
+                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px; line-height: 1.4;">Friday creates a temporary private channel for the applicant and staff. Auto-closes after submission. Unlimited questions!</div>
+                        </div>
+                    </label>
+                    <label id="appModeDmLabel" style="border: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255, 255, 255, 0.02); border-radius: 8px; padding: 14px; cursor: pointer; display: flex; align-items: flex-start; gap: 10px; transition: all 0.2s ease;">
+                        <input type="radio" name="appDeliveryMode" id="appModeDmRadio" value="dm" style="margin-top: 3px;">
+                        <div>
+                            <div style="font-weight: 700; font-size: 13.5px; color: #ffffff;">📬 Direct Message (DM)</div>
+                            <div style="font-size: 11.5px; color: #94a3b8; margin-top: 3px; line-height: 1.4;">Friday sends a direct message to the applicant and asks questions sequentially in private chat.</div>
+                        </div>
+                    </label>
                 </div>
-                <div class="var-chips-row" style="margin-bottom: 8px;">
-                    <button class="var-chip" onclick="insertAppVar('# ')" type="button"><code>#</code> H1</button>
-                    <button class="var-chip" onclick="insertAppVar('## ')" type="button"><code>##</code> H2</button>
-                    <button class="var-chip" onclick="insertAppVar('### ')" type="button"><code>###</code> H3</button>
-                    <button class="var-chip" onclick="insertAppVar('-# ')" type="button"><code>-#</code> Subtext</button>
-                    <button class="var-chip" onclick="insertAppVar('**bold**')" type="button">Bold</button>
-                    <button class="var-chip" onclick="insertAppVar('*italic*')" type="button">Italic</button>
-                    <button class="var-chip" onclick="insertAppVar('&gt; ')" type="button">Quote</button>
-                    <button class="var-chip emoji-picker-btn" id="appPanelDescEmojiBtn" title="Insert server emojis" type="button">
-                        😊 Server Emojis
-                    </button>
+            </div>
+        </div>
+
+        <!-- Card 2: Panel Embed & Button Design + Live In-Place Panel Preview -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(45, 212, 191, 0.15); border: 1px solid rgba(45, 212, 191, 0.3); display: flex; align-items: center; justify-content: center; color: #2dd4bf;">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><rect height="18" rx="2" ry="2" width="18" x="3" y="3"></rect><line x1="3" x2="21" y1="9" y2="9"></line><line x1="9" x2="9" y1="21" y2="9"></line></svg>
                 </div>
-                <textarea class="text-input" id="appPanelDescInput" style="height: 100px; resize: vertical; font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 16px;"># Interested in joining our staff team?
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Application Panel Embed & Button Design</h3>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Customize the announcement embed and interactive button that members click to begin their application.</p>
+
+            <!-- Panel Title with Emoji Button -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Embed Title</label>
+                <button class="btn btn-secondary emoji-picker-btn" id="appPanelTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;" type="button">
+                    😊 Emojis
+                </button>
+            </div>
+            <input class="text-input" id="appPanelTitleInput" placeholder="📋 Staff Application" style="margin-bottom: 14px;" type="text" value="📋 Staff Application"/>
+
+            <!-- Panel Description with Markdown Chips & Emoji Button -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Embed Description</label>
+                <span style="font-size: 11px; color: var(--text-muted);">Markdown & Emojis Supported</span>
+            </div>
+            <div class="var-chips-row" style="margin-bottom: 8px;">
+                <button class="var-chip" onclick="insertAppVar('# ')" type="button"><code>#</code> H1</button>
+                <button class="var-chip" onclick="insertAppVar('## ')" type="button"><code>##</code> H2</button>
+                <button class="var-chip" onclick="insertAppVar('### ')" type="button"><code>###</code> H3</button>
+                <button class="var-chip" onclick="insertAppVar('-# ')" type="button"><code>-#</code> Subtext</button>
+                <button class="var-chip" onclick="insertAppVar('**bold**')" type="button">Bold</button>
+                <button class="var-chip" onclick="insertAppVar('*italic*')" type="button">Italic</button>
+                <button class="var-chip" onclick="insertAppVar('&gt; ')" type="button">Quote</button>
+                <button class="var-chip emoji-picker-btn" id="appPanelDescEmojiBtn" title="Insert server emojis" type="button">
+                    😊 Server Emojis
+                </button>
+            </div>
+            <textarea class="text-input" id="appPanelDescInput" style="height: 100px; resize: vertical; font-family: 'JetBrains Mono', monospace; font-size: 13px; margin-bottom: 16px;"># Interested in joining our staff team?
 
 We are looking for dedicated, passionate members to help moderate and grow our community!
 Click the button below to submit your confidential application.
 
 -# Make sure you have at least 5-10 minutes to complete the questions.</textarea>
 
-                <!-- Theme Accent Color -->
-                <div style="padding: 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase;">🎨 Embed Accent Color</label>
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input id="appPanelColorInput" style="width: 24px; height: 24px; border: none; border-radius: 6px; cursor: pointer; background: transparent;" title="Pick custom color" type="color" value="#5865f2"/>
-                            <span id="appPanelColorHex" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">#5865f2</span>
-                        </div>
-                    </div>
-                    <div class="ticket-theme-chips">
-                        <button class="ticket-theme-chip active" data-color="#5865f2" style="--chip-color: #5865f2;" type="button"><span class="chip-dot"></span>Blurple</button>
-                        <button class="ticket-theme-chip" data-color="#2dd4bf" style="--chip-color: #2dd4bf;" type="button"><span class="chip-dot"></span>Cyber Teal</button>
-                        <button class="ticket-theme-chip" data-color="#a855f7" style="--chip-color: #a855f7;" type="button"><span class="chip-dot"></span>Amethyst</button>
-                        <button class="ticket-theme-chip" data-color="#f43f5e" style="--chip-color: #f43f5e;" type="button"><span class="chip-dot"></span>Crimson</button>
-                        <button class="ticket-theme-chip" data-color="#f59e0b" style="--chip-color: #f59e0b;" type="button"><span class="chip-dot"></span>Amber</button>
-                        <button class="ticket-theme-chip" data-color="#10b981" style="--chip-color: #10b981;" type="button"><span class="chip-dot"></span>Emerald</button>
-                        <button class="ticket-theme-chip" data-color="#38bdf8" style="--chip-color: #38bdf8;" type="button"><span class="chip-dot"></span>Sky</button>
+            <!-- Theme Accent Color -->
+            <div style="padding: 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase;">🎨 Embed Accent Color</label>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <input id="appPanelColorInput" style="width: 24px; height: 24px; border: none; border-radius: 6px; cursor: pointer; background: transparent;" title="Pick custom color" type="color" value="#5865f2"/>
+                        <span id="appPanelColorHex" style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted);">#5865f2</span>
                     </div>
                 </div>
+                <div class="ticket-theme-chips">
+                    <button class="ticket-theme-chip active" data-color="#5865f2" style="--chip-color: #5865f2;" type="button"><span class="chip-dot"></span>Blurple</button>
+                    <button class="ticket-theme-chip" data-color="#2dd4bf" style="--chip-color: #2dd4bf;" type="button"><span class="chip-dot"></span>Cyber Teal</button>
+                    <button class="ticket-theme-chip" data-color="#a855f7" style="--chip-color: #a855f7;" type="button"><span class="chip-dot"></span>Amethyst</button>
+                    <button class="ticket-theme-chip" data-color="#f43f5e" style="--chip-color: #f43f5e;" type="button"><span class="chip-dot"></span>Crimson</button>
+                    <button class="ticket-theme-chip" data-color="#f59e0b" style="--chip-color: #f59e0b;" type="button"><span class="chip-dot"></span>Amber</button>
+                    <button class="ticket-theme-chip" data-color="#10b981" style="--chip-color: #10b981;" type="button"><span class="chip-dot"></span>Emerald</button>
+                    <button class="ticket-theme-chip" data-color="#38bdf8" style="--chip-color: #38bdf8;" type="button"><span class="chip-dot"></span>Sky</button>
+                </div>
+            </div>
 
-                <!-- Footer Text -->
-                <div style="margin-bottom: 16px;">
-                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Embed Footer Text</label>
-                    <input class="text-input" id="appPanelFooterInput" placeholder="Friday Applications • Click below to apply" type="text" value="Friday Applications • Click below to apply"/>
+            <!-- Footer Text -->
+            <div style="margin-bottom: 16px;">
+                <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Embed Footer Text</label>
+                <input class="text-input" id="appPanelFooterInput" placeholder="Friday Applications • Click below to apply" type="text" value="Friday Applications • Click below to apply"/>
+            </div>
+
+            <!-- Interactive Button Customization (Full Width, Clear Server Emojis Option) -->
+            <div style="padding: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase;">🔘 Interactive Button Customization</label>
+                    <span class="ticket-switch-badge blurple">Rounded Discord Button</span>
                 </div>
 
-                <!-- Interactive Button Customization (Rounded, Visual Emoji) -->
-                <div style="padding: 14px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase;">🔘 Interactive Button Customization</label>
-                        <span class="ticket-switch-badge blurple">Rounded Styling</span>
+                <div style="display: grid; grid-template-columns: 1.2fr 1.6fr 1fr; gap: 14px; align-items: end;">
+                    <div>
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Button Label</label>
+                        <input class="text-input" id="appButtonLabelInput" placeholder="Apply Now" type="text" value="Apply Now" style="height: 40px;"/>
                     </div>
-
-                    <div style="display: grid; grid-template-columns: 1.5fr 1.5fr 1fr; gap: 10px; align-items: end;">
-                        <div>
-                            <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: block;">Button Label</label>
-                            <input class="text-input" id="appButtonLabelInput" placeholder="Apply Now" type="text" value="Apply Now"/>
+                    <div>
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Button Emoji (Server Custom & Standard)</label>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <button type="button" id="appButtonEmojiBtn" class="btn btn-secondary emoji-picker-btn" style="height: 40px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 14px; background: rgba(88,101,242,0.15); border: 1px solid rgba(88,101,242,0.4); color: #fff; border-radius: 8px; cursor: pointer; flex-shrink: 0;" title="Click to pick Server Custom Emoji or Standard Emoji">
+                                <span id="appButtonEmojiVisual" style="font-size: 18px; display: inline-flex; align-items: center;">📝</span>
+                                <span style="font-size: 12px; font-weight: 600;">😊 Server Emojis</span>
+                            </button>
+                            <input type="text" class="text-input" id="appButtonEmojiInput" value="📝" placeholder="<:name:id>" style="height: 40px; font-size: 12px; font-family: monospace; flex: 1; min-width: 0;" title="Custom emoji syntax or emoji character">
                         </div>
-                        <div>
-                            <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: block;">Button Emoji</label>
-                            <div style="display: flex; gap: 6px; align-items: center;">
-                                <button type="button" id="appButtonEmojiBtn" class="btn btn-secondary" style="height: 38px; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 10px; min-width: 90px; background: rgba(255,255,255,0.06); border-radius: 8px;" title="Pick standard or server emoji">
-                                    <span id="appButtonEmojiVisual" style="font-size: 18px; display: inline-flex; align-items: center;">📝</span>
-                                    <span style="font-size: 11px; font-weight: 600;">Choose</span>
-                                </button>
-                                <input type="text" class="text-input" id="appButtonEmojiInput" value="📝" placeholder="Emoji or <:name:id>" style="height: 38px; font-size: 12px; font-family: monospace; flex: 1;">
-                            </div>
-                        </div>
-                        <div>
-                            <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: block;">Button Style</label>
-                            <select class="text-input" id="appButtonStyleSelect" style="height: 38px;">
-                                <option value="primary">Blurple (Primary)</option>
-                                <option value="success">Green (Success)</option>
-                                <option value="secondary">Grey (Secondary)</option>
-                                <option value="danger">Red (Danger)</option>
-                            </select>
-                        </div>
+                    </div>
+                    <div>
+                        <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Button Style</label>
+                        <select class="text-input" id="appButtonStyleSelect" style="height: 40px;">
+                            <option value="primary">Blurple (Primary)</option>
+                            <option value="success">Green (Success)</option>
+                            <option value="secondary">Grey (Secondary)</option>
+                            <option value="danger">Red (Danger)</option>
+                        </select>
                     </div>
                 </div>
             </div>
 
-            <!-- Card 3: Questions Builder (Unlimited 1 to 15+ Questions) -->
-            <div class="card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); display: flex; align-items: center; justify-content: center; color: #c084fc;">
-                            <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
-                        </div>
-                        <div>
-                            <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Application Questions Builder</h3>
-                        </div>
+            <!-- In-Place Live Application Panel Preview -->
+            <div style="background: #2b2d31; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d399;"></span>
+                        Live Application Panel Preview (Posted to Public Channel)
                     </div>
-                    <span id="appQuestionsCountBadge" class="ticket-switch-badge amber" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">5 Questions</span>
-                </div>
-                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Add, reorder, or edit the questions that Friday will ask applicants sequentially. You can add 10 or more questions without limit.</p>
-
-                <!-- Dynamic Questions Container -->
-                <div id="appQuestionsContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
-                    <!-- Rendered dynamically by script.js -->
+                    <span style="font-size: 11px; color: var(--text-muted);">Public Channel Embed & Interactive Button</span>
                 </div>
 
-                <!-- Add Question Row -->
-                <div style="display: flex; gap: 8px; align-items: center; padding: 12px; background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 8px;">
-                    <input class="text-input" id="appNewQuestionInput" placeholder="Type a new question here (e.g. What is your past staff experience?)..." style="flex: 1;" type="text"/>
-                    <button class="btn btn-secondary emoji-picker-btn" id="appNewQuestionEmojiBtn" style="padding: 0 10px; height: 38px;" title="Insert emoji" type="button">😊</button>
-                    <button class="btn-action-primary" id="appAddQuestionBtn" style="white-space: nowrap; height: 38px; padding: 0 16px;" type="button">
-                        ➕ Add Question
-                    </button>
-                </div>
-            </div>
-
-            <!-- Card 4: DM & Temp Channel Intro Customization -->
-            <div class="card">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(236, 72, 153, 0.3); display: flex; align-items: center; justify-content: center; font-size: 15px;">
-                        ✉️
-                    </div>
-                    <div>
-                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Intro & Confirmation Messages</h3>
-                    </div>
-                </div>
-                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Customize the introductory prompt and action buttons shown right before questioning begins.</p>
-
-                <div class="grid-2" style="margin-bottom: 0; align-items: start;">
-                    <!-- Left: Form Controls -->
-                    <div>
-                        <div class="form-field-full" style="margin-bottom: 12px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <label class="form-sublabel" style="margin: 0;">Intro Embed Title</label>
-                                <button type="button" class="btn btn-secondary emoji-picker-btn" id="appIntroTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
-                            </div>
-                            <input type="text" class="text-input" id="appIntroTitleInput" placeholder="📝 Staff Application • {server}" value="📝 Staff Application • {server}">
+                <div class="discord-msg" style="display: flex; gap: 12px; align-items: flex-start;">
+                    <div class="discord-avatar" id="appSimAvatar" style="width: 38px; height: 38px; border-radius: 50%; overflow: hidden; flex-shrink: 0; background: #5865f2; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff;">F</div>
+                    <div class="discord-msg-content" style="flex: 1; min-width: 0;">
+                        <div class="discord-msg-header" style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span class="discord-bot-name" style="font-weight: 600; font-size: 14px; color: #ffffff;">Friday</span>
+                            <span class="discord-bot-tag" style="background: #5865f2; color: #ffffff; font-size: 9.5px; font-weight: 700; padding: 1px 4px; border-radius: 3px; line-height: 1;">BOT</span>
+                            <span class="discord-timestamp" style="font-size: 11px; color: #949ba4;">Today at 7:00 PM</span>
                         </div>
 
-                        <div class="form-field-full" style="margin-bottom: 14px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                                <label class="form-sublabel" style="margin: 0;">Intro Embed Description</label>
-                                <div style="display: flex; gap: 4px; align-items: center;">
-                                    <span class="resp-var-badge" onclick="insertAppIntroVar('{user}')">{user}</span>
-                                    <span class="resp-var-badge" onclick="insertAppIntroVar('{server}')">{server}</span>
-                                    <button type="button" class="btn btn-secondary emoji-picker-btn" id="appIntroDescEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
-                                </div>
-                            </div>
-                            <textarea class="text-input" id="appIntroDescInput" rows="3" style="resize: vertical; min-height: 75px;" placeholder="Hello {user}! Thank you for your interest in joining the staff team in **{server}**...">Hello {user}! Thank you for your interest in joining the staff team in **{server}**.&#10;&#10;You are about to begin the application form. Please make sure you have enough time to answer all questions thoughtfully.</textarea>
-                        </div>
-
-                        <div class="grid-2" style="margin-bottom: 0;">
-                            <div>
-                                <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: block;">1st Button ("Let's Start")</label>
-                                <div style="display: flex; gap: 6px;">
-                                    <input class="text-input" id="appStartBtnLabel" placeholder="Let's Start" type="text" value="Let's Start" style="flex: 1;"/>
-                                    <button type="button" id="appStartBtnEmojiBtn" class="btn btn-secondary" style="padding: 0 10px; font-size: 16px; min-width: 42px;" title="Change Button Emoji">
-                                        <span id="appStartBtnEmojiVisual">🚀</span>
-                                    </button>
-                                    <input type="hidden" id="appStartBtnEmoji" value="🚀">
-                                </div>
-                            </div>
-                            <div>
-                                <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: block;">2nd Button ("Cancel")</label>
-                                <div style="display: flex; gap: 6px;">
-                                    <input class="text-input" id="appCancelBtnLabel" placeholder="Cancel" type="text" value="Cancel" style="flex: 1;"/>
-                                    <button type="button" id="appCancelBtnEmojiBtn" class="btn btn-secondary" style="padding: 0 10px; font-size: 16px; min-width: 42px;" title="Change Button Emoji">
-                                        <span id="appCancelBtnEmojiVisual">✖️</span>
-                                    </button>
-                                    <input type="hidden" id="appCancelBtnEmoji" value="✖️">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right: Dedicated Live In-Front Preview -->
-                    <div style="background: #2b2d31; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
-                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                            <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.5px;">
-                                <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d399;"></span>
-                                Live Intro Preview
-                            </div>
-                            <span style="font-size: 10.5px; color: var(--text-muted);">Direct Message / Temp Channel</span>
-                        </div>
-                        <div style="display: flex; gap: 10px; align-items: flex-start;">
-                            <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;" alt="Bot">
-                            <div style="flex: 1; min-width: 0;">
-                                <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-                                    <span style="font-weight: 600; font-size: 13.5px; color: #ffffff;">Friday</span>
-                                    <span style="background: #5865f2; color: #ffffff; font-size: 9.5px; font-weight: 700; padding: 1px 4px; border-radius: 3px; line-height: 1;">BOT</span>
-                                    <span style="font-size: 11px; color: #949ba4;">Today at 7:00 PM</span>
-                                </div>
-                                <div style="background: #2f3136; border-left: 4px solid #5865f2; border-radius: 4px; padding: 10px 12px; margin-top: 4px;">
-                                    <div id="cardIntroPreviewTitle" style="font-weight: 700; font-size: 14px; color: #ffffff; margin-bottom: 6px;">📝 Staff Application • Server</div>
-                                    <div id="cardIntroPreviewDesc" style="font-size: 13px; color: #dbdee1; line-height: 1.4; word-break: break-word; white-space: pre-wrap;">Hello Alex! Thank you for your interest in joining the staff team in **Server**...</div>
-                                    <div style="font-size: 11px; color: #949ba4; margin-top: 8px;">Friday Applications • Application Prompt</div>
-                                </div>
-                                <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
-                                    <button type="button" id="cardIntroPreviewStartBtn" style="background: #248046; color: #ffffff; border: none; border-radius: 8px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
-                                        <span>🚀</span><span>Let's Start</span>
-                                    </button>
-                                    <button type="button" id="cardIntroPreviewCancelBtn" style="background: #da373c; color: #ffffff; border: none; border-radius: 8px; padding: 6px 14px; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
-                                        <span>✖️</span><span>Cancel</span>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Card 5: Decision DMs (Approved & Rejected) -->
-            <div class="card">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; justify-content: center; font-size: 15px;">
-                        📬
-                    </div>
-                    <div>
-                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Automated Member Decision DMs</h3>
-                    </div>
-                </div>
-                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Customize the congratulatory DM sent upon approval and the polite notification sent upon rejection.</p>
-
-                <!-- Approval DM Sub-box -->
-                <div style="padding: 14px; background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 8px; margin-bottom: 16px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-weight: 700; font-size: 13px; color: #34d399; display: flex; align-items: center; gap: 6px;">
-                            <span>✅</span> Approval Congratulatory DM
-                        </span>
-                        <div style="display: flex; gap: 4px;">
-                            <span class="resp-var-badge" onclick="insertAppApprovedVar('{user}')">{user}</span>
-                            <span class="resp-var-badge" onclick="insertAppApprovedVar('{server}')">{server}</span>
-                            <span class="resp-var-badge" onclick="insertAppApprovedVar('{role}')">{role}</span>
-                        </div>
-                    </div>
-
-                    <div class="grid-2" style="margin-bottom: 0; align-items: start;">
-                        <!-- Left: Inputs -->
-                        <div>
-                            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-                                <input class="text-input" id="appApprovedTitleInput" placeholder="🎉 Application Approved • {server}" type="text" value="🎉 Application Approved • {server}" style="flex: 1;"/>
-                                <button type="button" class="btn btn-secondary emoji-picker-btn" id="appApprovedTitleEmojiBtn" style="padding: 0 10px;">😊</button>
-                            </div>
-                            <div style="display: flex; gap: 6px;">
-                                <textarea class="text-input" id="appApprovedDescInput" rows="3" style="resize: vertical; flex: 1; min-height: 80px;" placeholder="Congratulations {user}!\n\nYour staff application for **{server}** has been **APPROVED**! 🎉\nYou have been granted the {role} role. Welcome to the team!">Congratulations {user}!&#10;&#10;Your staff application for **{server}** has been **APPROVED**! 🎉&#10;You have been granted the {role} role. Welcome to the team!</textarea>
-                                <button type="button" class="btn btn-secondary emoji-picker-btn" id="appApprovedDescEmojiBtn" style="padding: 0 10px;">😊</button>
-                            </div>
-                        </div>
-
-                        <!-- Right: Live Approval DM Preview -->
-                        <div style="background: #2b2d31; border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #34d399; text-transform: uppercase;">
-                                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d399;"></span>
-                                    Live Approval DM Preview
-                                </div>
-                                <span style="font-size: 10px; color: var(--text-muted);">Sent to Member's DM</span>
-                            </div>
-                            <div style="display: flex; gap: 8px; align-items: flex-start;">
-                                <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;" alt="Bot">
+                        <!-- Simulated Discord Embed -->
+                        <div id="appSimEmbed" style="border-left: 4px solid #5865f2; background: #2f3136; border-radius: 4px; padding: 12px 14px; margin-top: 4px; max-width: 560px; transition: border-left-color 0.25s ease;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
                                 <div style="flex: 1; min-width: 0;">
-                                    <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 3px;">
-                                        <span style="font-weight: 600; font-size: 13px; color: #ffffff;">Friday</span>
-                                        <span style="background: #5865f2; color: #ffffff; font-size: 9px; font-weight: 700; padding: 1px 3px; border-radius: 3px; line-height: 1;">BOT</span>
-                                        <span style="font-size: 10.5px; color: #949ba4;">Today at 7:00 PM</span>
-                                    </div>
-                                    <div style="background: #2f3136; border-left: 4px solid #10b981; border-radius: 4px; padding: 8px 10px; margin-top: 3px;">
-                                        <div id="cardApprovedPreviewTitle" style="font-weight: 700; font-size: 13px; color: #ffffff; margin-bottom: 4px;">🎉 Application Approved • Server</div>
-                                        <div id="cardApprovedPreviewDesc" style="font-size: 12.5px; color: #dbdee1; line-height: 1.4; word-break: break-word; white-space: pre-wrap;">Congratulations Alex! Your staff application has been APPROVED!</div>
-                                        <div style="font-size: 10.5px; color: #949ba4; margin-top: 6px;">Server • Applications</div>
+                                    <div id="appSimTitle" style="font-size: 15px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">📋 Staff Application</div>
+                                    <div id="appSimDesc" style="font-size: 13.5px; color: #dbdee1; line-height: 1.5; margin-bottom: 8px; word-break: break-word; white-space: pre-wrap;">
+                                        Interested in joining our staff team? Click the button below to submit your application!
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Rejection DM Sub-box -->
-                <div style="padding: 14px; background: rgba(239, 68, 68, 0.04); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                        <span style="font-weight: 700; font-size: 13px; color: #f87171; display: flex; align-items: center; gap: 6px;">
-                            <span>❌</span> Rejection Polite Notice DM
-                        </span>
-                        <div style="display: flex; gap: 4px;">
-                            <span class="resp-var-badge" onclick="insertAppRejectedVar('{user}')">{user}</span>
-                            <span class="resp-var-badge" onclick="insertAppRejectedVar('{server}')">{server}</span>
-                            <span class="resp-var-badge" onclick="insertAppRejectedVar('{reason}')">{reason}</span>
-                        </div>
-                    </div>
-
-                    <div class="grid-2" style="margin-bottom: 0; align-items: start;">
-                        <!-- Left: Inputs -->
-                        <div>
-                            <div style="display: flex; gap: 6px; margin-bottom: 8px;">
-                                <input class="text-input" id="appRejectedTitleInput" placeholder="Application Update • {server}" type="text" value="Application Update • {server}" style="flex: 1;"/>
-                                <button type="button" class="btn btn-secondary emoji-picker-btn" id="appRejectedTitleEmojiBtn" style="padding: 0 10px;">😊</button>
-                            </div>
-                            <div style="display: flex; gap: 6px;">
-                                <textarea class="text-input" id="appRejectedDescInput" rows="3" style="resize: vertical; flex: 1; min-height: 80px;" placeholder="Hello {user},\n\nThank you for taking the time to apply for a staff position in **{server}**.\nAfter careful review, we regret to inform you that your application was not accepted at this time.\n\n**Reason:** {reason}\n\nYou are welcome to re-apply in the future.">Hello {user},&#10;&#10;Thank you for taking the time to apply for a staff position in **{server}**.&#10;After careful review, we regret to inform you that your application was not accepted at this time.&#10;&#10;**Reason:** {reason}&#10;&#10;You are welcome to re-apply in the future.</textarea>
-                                <button type="button" class="btn btn-secondary emoji-picker-btn" id="appRejectedDescEmojiBtn" style="padding: 0 10px;">😊</button>
-                            </div>
-                        </div>
-
-                        <!-- Right: Live Rejection DM Preview -->
-                        <div style="background: #2b2d31; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);">
-                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.06);">
-                                <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: #f87171; text-transform: uppercase;">
-                                    <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f87171;"></span>
-                                    Live Rejection DM Preview
-                                </div>
-                                <span style="font-size: 10px; color: var(--text-muted);">Sent to Member's DM</span>
-                            </div>
-                            <div style="display: flex; gap: 8px; align-items: flex-start;">
-                                <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;" alt="Bot">
-                                <div style="flex: 1; min-width: 0;">
-                                    <div style="display: flex; align-items: center; gap: 5px; margin-bottom: 3px;">
-                                        <span style="font-weight: 600; font-size: 13px; color: #ffffff;">Friday</span>
-                                        <span style="background: #5865f2; color: #ffffff; font-size: 9px; font-weight: 700; padding: 1px 3px; border-radius: 3px; line-height: 1;">BOT</span>
-                                        <span style="font-size: 10.5px; color: #949ba4;">Today at 7:00 PM</span>
-                                    </div>
-                                    <div style="background: #2f3136; border-left: 4px solid #ef4444; border-radius: 4px; padding: 8px 10px; margin-top: 3px;">
-                                        <div id="cardRejectedPreviewTitle" style="font-weight: 700; font-size: 13px; color: #ffffff; margin-bottom: 4px;">Application Update • Server</div>
-                                        <div id="cardRejectedPreviewDesc" style="font-size: 12.5px; color: #dbdee1; line-height: 1.4; word-break: break-word; white-space: pre-wrap;">Hello Alex, thank you for taking the time to apply...</div>
-                                        <div style="font-size: 10.5px; color: #949ba4; margin-top: 6px;">Server • Applications</div>
-                                    </div>
+                                <div id="appSimThumbnail" style="width: 52px; height: 52px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #1e1f22;">
+                                    <img alt="" id="appSimThumbnailImg" src="" style="width: 100%; height: 100%; object-fit: cover;"/>
                                 </div>
                             </div>
+
+                            <!-- Dynamic Review Fields Container -->
+                            <div id="appSimReviewFields" style="display: none; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;"></div>
+
+                            <!-- Embed Footer -->
+                            <div id="appSimFooter" style="display: flex; align-items: center; gap: 6px; margin-top: 10px; font-size: 11px; color: #949ba4;">
+                                <span>Friday Applications • Click below to apply</span>
+                            </div>
+                        </div>
+
+                        <!-- Simulated Discord Buttons Action Row -->
+                        <div id="appSimButtonsRow" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">
+                            <!-- Live dynamically generated button with rounded radius and custom SVG/GIF emoji -->
                         </div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Deploy Action Bar -->
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); margin-top: 20px; flex-wrap: wrap; gap: 14px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 20px;">🚀</span>
-                    <div>
-                        <div style="font-size: 14px; font-weight: 700; color: #ffffff;">Ready to Dispatch</div>
-                        <div style="font-size: 12px; color: var(--text-secondary);">Save your questions and deploy the interactive application panel to your server.</div>
-                    </div>
-                </div>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <button class="btn btn-secondary" id="saveAppConfigBtn" title="Save drafts and settings without posting" type="button">
-                        <svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                        Save Settings
-                    </button>
-                    <button class="btn-deploy-glow" id="deployAppPanelBtn" type="button">
-                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                        Deploy Application Panel
-                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- Right: Authentic Discord Application Panel Live Simulator -->
-        <div class="ticket-studio-right" style="position: sticky; top: 20px; min-width: 0;">
-            <div class="discord-preview-card" style="margin-top: 0;">
-                <div class="discord-preview-header" style="display: flex; justify-content: space-between; align-items: center;">
-                    <div style="display: flex; align-items: center; gap: 6px;">
-                        <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #34d399;"></span>
-                        <span>Discord Live Simulator</span>
+        <!-- Card 3: Questions Builder (Unlimited 1 to 15+ Questions) -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); display: flex; align-items: center; justify-content: center; color: #c084fc;">
+                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" x2="12.01" y1="17" y2="17"></line></svg>
                     </div>
-                    <!-- Mode switch pills -->
-                    <div style="display: flex; gap: 4px;">
-                        <button type="button" class="btn btn-secondary" id="appSimTabPanel" style="padding: 2px 7px; font-size: 10px; background: rgba(88,101,242,0.3); border-color: #5865f2;">Panel</button>
-                        <button type="button" class="btn btn-secondary" id="appSimTabIntro" style="padding: 2px 7px; font-size: 10px;">Intro</button>
-                        <button type="button" class="btn btn-secondary" id="appSimTabReview" style="padding: 2px 7px; font-size: 10px;">Staff Review</button>
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Application Questions Builder</h3>
                     </div>
                 </div>
+                <span id="appQuestionsCountBadge" class="ticket-switch-badge amber" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">5 Questions</span>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Add, reorder, or edit the questions that Friday will ask applicants sequentially. You can add 10 or more questions without limit.</p>
 
-                <div class="discord-chat-box">
-                    <div class="discord-msg">
-                        <div class="discord-avatar" id="appSimAvatar">F</div>
-                        <div class="discord-msg-content" style="width: 100%;">
-                            <div class="discord-msg-header">
-                                <span class="discord-bot-name">Friday</span>
-                                <span class="discord-bot-tag">BOT</span>
-                                <span class="discord-timestamp">Today at 7:00 PM</span>
-                            </div>
+            <!-- Dynamic Questions Container -->
+            <div id="appQuestionsContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px;">
+                <!-- Rendered dynamically by script.js -->
+            </div>
 
-                            <!-- Simulated Discord Embed -->
-                            <div id="appSimEmbed" style="border-left: 4px solid #5865f2; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 500px; transition: border-left-color 0.25s ease;">
-                                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
-                                    <div style="flex: 1;">
-                                        <div id="appSimTitle" style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">📋 Staff Application</div>
-                                        <div id="appSimDesc" style="font-size: 13px; color: #dbdee1; line-height: 1.5; margin-bottom: 8px;">
-                                            Interested in joining our staff team? Click the button below to submit your application!
-                                        </div>
-                                    </div>
-                                    <div id="appSimThumbnail" style="width: 52px; height: 52px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #1e1f22;">
-                                        <img alt="" id="appSimThumbnailImg" src="" style="width: 100%; height: 100%; object-fit: cover;"/>
-                                    </div>
-                                </div>
+            <!-- Add Question Row -->
+            <div style="display: flex; gap: 8px; align-items: center; padding: 12px; background: rgba(255, 255, 255, 0.02); border: 1px dashed rgba(255, 255, 255, 0.15); border-radius: 8px;">
+                <input class="text-input" id="appNewQuestionInput" placeholder="Type a new question here (e.g. What is your past staff experience?)..." style="flex: 1;" type="text"/>
+                <button class="btn btn-secondary emoji-picker-btn" id="appNewQuestionEmojiBtn" style="padding: 0 10px; height: 38px;" title="Insert emoji" type="button">😊</button>
+                <button class="btn-action-primary" id="appAddQuestionBtn" style="white-space: nowrap; height: 38px; padding: 0 16px;" type="button">
+                    ➕ Add Question
+                </button>
+            </div>
+        </div>
 
-                                <!-- Dynamic Review Fields Container (Only visible in review mode) -->
-                                <div id="appSimReviewFields" style="display: none; margin-top: 10px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px;"></div>
+        <!-- Card 4: DM & Temp Channel Intro Customization + Live In-Place Intro Preview -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(236, 72, 153, 0.15); border: 1px solid rgba(236, 72, 153, 0.3); display: flex; align-items: center; justify-content: center; font-size: 15px;">
+                    ✉️
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Intro & Confirmation Messages</h3>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Customize the introductory prompt and action buttons shown right before questioning begins.</p>
 
-                                <!-- Embed Footer -->
-                                <div id="appSimFooter" style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4;">
-                                    <span>Friday Applications • Click below to apply</span>
-                                </div>
-                            </div>
+            <div class="form-field-full" style="margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-sublabel" style="margin: 0;">Intro Embed Title</label>
+                    <button type="button" class="btn btn-secondary emoji-picker-btn" id="appIntroTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
+                </div>
+                <input type="text" class="text-input" id="appIntroTitleInput" placeholder="📝 Staff Application • {server}" value="📝 Staff Application • {server}">
+            </div>
 
-                            <!-- Simulated Discord Buttons Action Row -->
-                            <div id="appSimButtonsRow" style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
-                                <!-- Live dynamically generated button with rounded radius and custom SVG/GIF emoji -->
-                            </div>
+            <div class="form-field-full" style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-sublabel" style="margin: 0;">Intro Embed Description</label>
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <span class="resp-var-badge" onclick="insertAppIntroVar('{user}')">{user}</span>
+                        <span class="resp-var-badge" onclick="insertAppIntroVar('{server}')">{server}</span>
+                        <button type="button" class="btn btn-secondary emoji-picker-btn" id="appIntroDescEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
+                    </div>
+                </div>
+                <textarea class="text-input" id="appIntroDescInput" rows="3" style="resize: vertical; min-height: 80px;" placeholder="Hello {user}! Thank you for your interest in joining the staff team in **{server}**...">Hello {user}! Thank you for your interest in joining the staff team in **{server}**.&#10;&#10;You are about to begin the application form. Please make sure you have enough time to answer all questions thoughtfully.</textarea>
+            </div>
+
+            <div class="grid-2" style="margin-bottom: 18px;">
+                <div>
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">1st Button ("Let's Start")</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input class="text-input" id="appStartBtnLabel" placeholder="Let's Start" type="text" value="Let's Start" style="flex: 1; height: 38px;"/>
+                        <button type="button" id="appStartBtnEmojiBtn" class="btn btn-secondary emoji-picker-btn" style="padding: 0 12px; font-size: 16px; min-width: 48px; height: 38px; display: inline-flex; align-items: center; gap: 6px;" title="Pick Server Custom Emoji or Standard Emoji">
+                            <span id="appStartBtnEmojiVisual">🚀</span>
+                        </button>
+                        <input type="hidden" id="appStartBtnEmoji" value="🚀">
+                    </div>
+                </div>
+                <div>
+                    <label style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">2nd Button ("Cancel")</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input class="text-input" id="appCancelBtnLabel" placeholder="Cancel" type="text" value="Cancel" style="flex: 1; height: 38px;"/>
+                        <button type="button" id="appCancelBtnEmojiBtn" class="btn btn-secondary emoji-picker-btn" style="padding: 0 12px; font-size: 16px; min-width: 48px; height: 38px; display: inline-flex; align-items: center; gap: 6px;" title="Pick Server Custom Emoji or Standard Emoji">
+                            <span id="appCancelBtnEmojiVisual">✖️</span>
+                        </button>
+                        <input type="hidden" id="appCancelBtnEmoji" value="✖️">
+                    </div>
+                </div>
+            </div>
+
+            <!-- In-Place Dedicated Live Intro Preview -->
+            <div style="background: #2b2d31; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: #a1a1aa; text-transform: uppercase; letter-spacing: 0.5px;">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d399;"></span>
+                        Live Intro Prompt Preview (Direct Message or Private Channel)
+                    </div>
+                    <span style="font-size: 11px; color: var(--text-muted);">What the applicant sees before answering questions</span>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;" alt="Bot">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-weight: 600; font-size: 14px; color: #ffffff;">Friday</span>
+                            <span style="background: #5865f2; color: #ffffff; font-size: 9.5px; font-weight: 700; padding: 1px 4px; border-radius: 3px; line-height: 1;">BOT</span>
+                            <span style="font-size: 11px; color: #949ba4;">Today at 7:00 PM</span>
+                        </div>
+                        <div style="background: #2f3136; border-left: 4px solid #5865f2; border-radius: 4px; padding: 12px 14px; margin-top: 4px; max-width: 560px;">
+                            <div id="cardIntroPreviewTitle" style="font-weight: 700; font-size: 14.5px; color: #ffffff; margin-bottom: 6px;">📝 Staff Application • Server</div>
+                            <div id="cardIntroPreviewDesc" style="font-size: 13.5px; color: #dbdee1; line-height: 1.5; word-break: break-word; white-space: pre-wrap;">Hello Alex! Thank you for your interest in joining the staff team in **Server**...</div>
+                            <div style="font-size: 11px; color: #949ba4; margin-top: 8px;">Friday Applications • Application Prompt</div>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                            <button type="button" id="cardIntroPreviewStartBtn" style="background: #248046; color: #ffffff; border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                                <span>🚀</span><span>Let's Start</span>
+                            </button>
+                            <button type="button" id="cardIntroPreviewCancelBtn" style="background: #da373c; color: #ffffff; border: none; border-radius: 8px; padding: 7px 16px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; cursor: default;">
+                                <span>✖️</span><span>Cancel</span>
+                            </button>
                         </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- Card 5: Automated Decision DM • Approval Notice -->
+        <div class="card" style="border-left: 4px solid #10b981;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; justify-content: center; font-size: 15px;">
+                        ✅
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Automated Decision DM • Approval Notice</h3>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <span class="resp-var-badge" onclick="insertAppApprovedVar('{user}')">{user}</span>
+                    <span class="resp-var-badge" onclick="insertAppApprovedVar('{server}')">{server}</span>
+                    <span class="resp-var-badge" onclick="insertAppApprovedVar('{role}')">{role}</span>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Customize the congratulatory DM sent to the member automatically when an administrator clicks <strong>Approve</strong>.</p>
+
+            <div class="form-field-full" style="margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-sublabel" style="margin: 0;">Approval Embed Title</label>
+                    <button type="button" class="btn btn-secondary emoji-picker-btn" id="appApprovedTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
+                </div>
+                <input class="text-input" id="appApprovedTitleInput" placeholder="🎉 Application Approved • {server}" type="text" value="🎉 Application Approved • {server}"/>
+            </div>
+
+            <div class="form-field-full" style="margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-sublabel" style="margin: 0;">Approval Embed Description</label>
+                    <button type="button" class="btn btn-secondary emoji-picker-btn" id="appApprovedDescEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
+                </div>
+                <textarea class="text-input" id="appApprovedDescInput" rows="3" style="resize: vertical; min-height: 80px;" placeholder="Congratulations {user}!\n\nYour staff application for **{server}** has been **APPROVED**! 🎉\nYou have been granted the {role} role. Welcome to the team!">Congratulations {user}!&#10;&#10;Your staff application for **{server}** has been **APPROVED**! 🎉&#10;You have been granted the {role} role. Welcome to the team!</textarea>
+            </div>
+
+            <!-- In-Place Live Approval DM Preview -->
+            <div style="background: #2b2d31; border: 1px solid rgba(16, 185, 129, 0.25); border-radius: 8px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: #34d399; text-transform: uppercase;">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #34d399;"></span>
+                        Live Approval DM Preview (Sent to Member's Direct Message)
+                    </div>
+                    <span style="font-size: 11px; color: var(--text-muted);">Delivered privately via DM</span>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;" alt="Bot">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-weight: 600; font-size: 14px; color: #ffffff;">Friday</span>
+                            <span style="background: #5865f2; color: #ffffff; font-size: 9.5px; font-weight: 700; padding: 1px 4px; border-radius: 3px; line-height: 1;">BOT</span>
+                            <span style="font-size: 11px; color: #949ba4;">Today at 7:00 PM</span>
+                        </div>
+                        <div style="background: #2f3136; border-left: 4px solid #10b981; border-radius: 4px; padding: 12px 14px; margin-top: 4px; max-width: 560px;">
+                            <div id="cardApprovedPreviewTitle" style="font-weight: 700; font-size: 14.5px; color: #ffffff; margin-bottom: 6px;">🎉 Application Approved • Server</div>
+                            <div id="cardApprovedPreviewDesc" style="font-size: 13.5px; color: #dbdee1; line-height: 1.5; word-break: break-word; white-space: pre-wrap;">Congratulations Alex! Your staff application has been APPROVED!</div>
+                            <div style="font-size: 11px; color: #949ba4; margin-top: 8px;">Server • Applications</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 6: Automated Decision DM • Rejection Notice -->
+        <div class="card" style="border-left: 4px solid #ef4444;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; font-size: 15px;">
+                        ❌
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Automated Decision DM • Rejection Notice</h3>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 6px;">
+                    <span class="resp-var-badge" onclick="insertAppRejectedVar('{user}')">{user}</span>
+                    <span class="resp-var-badge" onclick="insertAppRejectedVar('{server}')">{server}</span>
+                    <span class="resp-var-badge" onclick="insertAppRejectedVar('{reason}')">{reason}</span>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Customize the polite DM sent to the member automatically when an administrator clicks <strong>Reject</strong>.</p>
+
+            <div class="form-field-full" style="margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-sublabel" style="margin: 0;">Rejection Embed Title</label>
+                    <button type="button" class="btn btn-secondary emoji-picker-btn" id="appRejectedTitleEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
+                </div>
+                <input class="text-input" id="appRejectedTitleInput" placeholder="Application Update • {server}" type="text" value="Application Update • {server}"/>
+            </div>
+
+            <div class="form-field-full" style="margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label class="form-sublabel" style="margin: 0;">Rejection Embed Description</label>
+                    <button type="button" class="btn btn-secondary emoji-picker-btn" id="appRejectedDescEmojiBtn" style="padding: 2px 8px; font-size: 11px;">😊 Emojis</button>
+                </div>
+                <textarea class="text-input" id="appRejectedDescInput" rows="3" style="resize: vertical; min-height: 80px;" placeholder="Hello {user},\n\nThank you for taking the time to apply for a staff position in **{server}**.\nAfter careful review, we regret to inform you that your application was not accepted at this time.\n\n**Reason:** {reason}\n\nYou are welcome to re-apply in the future.">Hello {user},&#10;&#10;Thank you for taking the time to apply for a staff position in **{server}**.&#10;After careful review, we regret to inform you that your application was not accepted at this time.&#10;&#10;**Reason:** {reason}&#10;&#10;You are welcome to re-apply in the future.</textarea>
+            </div>
+
+            <!-- In-Place Live Rejection DM Preview -->
+            <div style="background: #2b2d31; border: 1px solid rgba(239, 68, 68, 0.25); border-radius: 8px; padding: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.25);">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                    <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; color: #f87171; text-transform: uppercase;">
+                        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #f87171;"></span>
+                        Live Rejection DM Preview (Sent to Member's Direct Message)
+                    </div>
+                    <span style="font-size: 11px; color: var(--text-muted);">Delivered privately via DM</span>
+                </div>
+                <div style="display: flex; gap: 12px; align-items: flex-start;">
+                    <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;" alt="Bot">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
+                            <span style="font-weight: 600; font-size: 14px; color: #ffffff;">Friday</span>
+                            <span style="background: #5865f2; color: #ffffff; font-size: 9.5px; font-weight: 700; padding: 1px 4px; border-radius: 3px; line-height: 1;">BOT</span>
+                            <span style="font-size: 11px; color: #949ba4;">Today at 7:00 PM</span>
+                        </div>
+                        <div style="background: #2f3136; border-left: 4px solid #ef4444; border-radius: 4px; padding: 12px 14px; margin-top: 4px; max-width: 560px;">
+                            <div id="cardRejectedPreviewTitle" style="font-weight: 700; font-size: 14.5px; color: #ffffff; margin-bottom: 6px;">Application Update • Server</div>
+                            <div id="cardRejectedPreviewDesc" style="font-size: 13.5px; color: #dbdee1; line-height: 1.5; word-break: break-word; white-space: pre-wrap;">Hello Alex, thank you for taking the time to apply...</div>
+                            <div style="font-size: 11px; color: #949ba4; margin-top: 8px;">Server • Applications</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Deploy Action Bar -->
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: var(--radius-md); margin-top: 10px; margin-bottom: 30px; flex-wrap: wrap; gap: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 20px;">🚀</span>
+                <div>
+                    <div style="font-size: 14px; font-weight: 700; color: #ffffff;">Ready to Dispatch</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Save your questions and deploy the interactive application panel to your server.</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button class="btn btn-secondary" id="saveAppConfigBtn" title="Save drafts and settings without posting" type="button">
+                    <svg fill="none" height="14" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="14"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                    Save Settings
+                </button>
+                <button class="btn-deploy-glow" id="deployAppPanelBtn" type="button">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" width="16"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                    Deploy Application Panel
+                </button>
             </div>
         </div>
     </div>

@@ -8,6 +8,7 @@ import pytz
 import re
 from database import db
 from response_utils import make_box_embed, reply_box
+from emoji_utils import replace_plain_emojis
 
 MONTH_NAMES = {
     1: "January", 2: "February", 3: "March", 4: "April",
@@ -451,17 +452,20 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         # Custom header text
         wish_msg_tpl = cfg.get("wish_message", "🎂 Happy Birthday {mention}! Let's celebrate! 🎉")
         header_text = wish_msg_tpl.replace("{mention}", mention_txt).replace("{user}", display_name).replace("{server}", server_name)
+        header_text = replace_plain_emojis(header_text, bot=self.bot, guild=guild, guild_id=str(guild.id))
 
         if cfg.get("ping_everyone", False):
             header_text = f"@everyone\n{header_text}"
 
         # Custom Embed
-        embed_title = cfg.get("embed_title", "🎉 HAPPY BIRTHDAY, {user}! 🎂").replace("{user}", display_name).replace("{mention}", mention_txt)
+        raw_embed_title = cfg.get("embed_title", "🎉 HAPPY BIRTHDAY, {user}! 🎂").replace("{user}", display_name).replace("{mention}", mention_txt)
+        embed_title = replace_plain_emojis(raw_embed_title, bot=self.bot, guild=guild, guild_id=str(guild.id))
         embed_desc_tpl = cfg.get(
             "embed_description",
             "Wishing a very Happy Birthday to {mention}! May your special day be filled with happiness, success, and endless joy! 🎈✨"
         )
-        embed_desc = embed_desc_tpl.replace("{mention}", mention_txt).replace("{user}", display_name).replace("{server}", server_name)
+        raw_embed_desc = embed_desc_tpl.replace("{mention}", mention_txt).replace("{user}", display_name).replace("{server}", server_name)
+        embed_desc = replace_plain_emojis(raw_embed_desc, bot=self.bot, guild=guild, guild_id=str(guild.id))
 
         color_hex = cfg.get("embed_color", "#ff69b4")
         try:
@@ -576,13 +580,15 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
             cfg["role_id"] = str(birthday_role.id)
 
         # Deploy permanent interactive registration card into form_channel
-        card_title = cfg.get("form_card_title", "🎂 Member Birthday Registration")
-        card_desc = cfg.get(
+        raw_card_title = cfg.get("form_card_title", "🎂 Member Birthday Registration")
+        card_title = replace_plain_emojis(raw_card_title, bot=self.bot, guild=guild, guild_id=str(guild.id))
+        raw_card_desc = cfg.get(
             "form_card_desc",
             "Click the button below to register your birthday!\n\n"
             "🎉 Friday will deliver celebratory wishes on your special day.\n"
             "🔒 **Strict Privacy:** Only Month & Day are saved. Zero birth year or age is stored."
         )
+        card_desc = replace_plain_emojis(raw_card_desc, bot=self.bot, guild=guild, guild_id=str(guild.id))
         embed = discord.Embed(
             title=card_title,
             description=card_desc,

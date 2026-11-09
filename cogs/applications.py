@@ -722,11 +722,16 @@ class Applications(commands.Cog):
             review_channel = guild.system_channel
 
         if review_channel:
+            created_ts = int(applicant.created_at.timestamp()) if (applicant and applicant.created_at) else None
+            created_str = f"<t:{created_ts}:R>" if created_ts else "Unknown"
+            joined_ts = int(applicant.joined_at.timestamp()) if (applicant and applicant.joined_at) else None
+            joined_str = f"<t:{joined_ts}:R>" if joined_ts else "Unknown"
+
             review_embed = discord.Embed(
                 title=f"📋 New Staff Application • #{counter:04d}",
                 description=f"**Applicant:** {applicant.mention} (`{applicant.name}` • ID: `{applicant.id}`)\n"
-                            f"**Account Created:** <t:{int(applicant.created_at.timestamp())}:R>\n"
-                            f"**Server Joined:** <t:{int(applicant.joined_at.timestamp())}:R if applicant.joined_at else 'Unknown'>\n"
+                            f"**Account Created:** {created_str}\n"
+                            f"**Server Joined:** {joined_str}\n"
                             f"**Status:** ⏳ `Pending Review`",
                 color=0xf59e0b
             )
@@ -848,7 +853,26 @@ class Applications(commands.Cog):
             disabled_view.add_item(btn_app)
 
             await interaction.message.edit(embed=embed, view=disabled_view)
-            await interaction.followup.send(f"✅ **Application #{sub.get('number', 0):04d} APPROVED** by {reviewer.mention}!")
+
+            # Post decision as an embedded box in review channel
+            app_num = sub.get('number', 0)
+            app_log_embed = discord.Embed(
+                title=f"✅ Staff Application Approved • #{app_num:04d}",
+                description=(
+                    f"**Applicant:** <@{applicant_id}> (`{applicant.name if applicant else applicant_id}`)\n"
+                    f"**Reviewed By:** {reviewer.mention}\n"
+                    f"**Decision:** ✅ **Approved**\n"
+                    f"**Assigned Role:** {granted_role.mention if granted_role else 'None'}\n"
+                    f"**Application Card:** [Jump to Application]({interaction.message.jump_url})"
+                ),
+                color=0x10b981,
+                timestamp=discord.utils.utcnow()
+            )
+            app_log_embed.set_author(name=f"Decision by {reviewer.display_name}", icon_url=reviewer.display_avatar.url if reviewer.display_avatar else None)
+            if applicant and hasattr(applicant, "display_avatar") and applicant.display_avatar:
+                app_log_embed.set_thumbnail(url=applicant.display_avatar.url)
+            app_log_embed.set_footer(text=f"{guild.name} • Application Review", icon_url=guild.icon.url if guild.icon else None)
+            await interaction.followup.send(embed=app_log_embed)
 
             # Send Congratulatory DM to Applicant
             app_cfg = cfg.get("approved_msg", {})
@@ -859,7 +883,9 @@ class Applications(commands.Cog):
             )
             color_int = hex_to_int(app_cfg.get("color", "#10b981"), 0x10b981)
 
-            role_mention_str = granted_role.mention if granted_role else "Staff"
+            # In DMs, role mention <@&id> renders as @unknown-role because DMs have no server context.
+            # Using bold role name e.g. **Staff** or **Moderator** ensures clean, authentic rendering.
+            role_dm_str = f"**@{granted_role.name}**" if granted_role else "**Staff**"
             role_name_str = granted_role.name if granted_role else "Staff"
 
             dm_title = replace_plain_emojis(
@@ -870,7 +896,7 @@ class Applications(commands.Cog):
                 raw_desc.replace("{server}", guild.name)
                         .replace("{user}", applicant.mention if applicant else f"<@{applicant_id}>")
                         .replace("{username}", applicant.name if applicant else "Applicant")
-                        .replace("{role}", role_mention_str)
+                        .replace("{role}", role_dm_str)
                         .replace("{role_name}", role_name_str),
                 bot=self.bot, guild=guild, guild_id=gid_str
             )
@@ -914,7 +940,26 @@ class Applications(commands.Cog):
             disabled_view.add_item(btn_rej)
 
             await interaction.message.edit(embed=embed, view=disabled_view)
-            await interaction.followup.send(f"❌ **Application #{sub.get('number', 0):04d} REJECTED** by {reviewer.mention}.")
+
+            # Post decision as an embedded box in review channel
+            app_num = sub.get('number', 0)
+            rej_log_embed = discord.Embed(
+                title=f"❌ Staff Application Rejected • #{app_num:04d}",
+                description=(
+                    f"**Applicant:** <@{applicant_id}> (`{applicant.name if applicant else applicant_id}`)\n"
+                    f"**Reviewed By:** {reviewer.mention}\n"
+                    f"**Decision:** ❌ **Rejected**\n"
+                    f"**Reason:** {reason}\n"
+                    f"**Application Card:** [Jump to Application]({interaction.message.jump_url})"
+                ),
+                color=0xef4444,
+                timestamp=discord.utils.utcnow()
+            )
+            rej_log_embed.set_author(name=f"Decision by {reviewer.display_name}", icon_url=reviewer.display_avatar.url if reviewer.display_avatar else None)
+            if applicant and hasattr(applicant, "display_avatar") and applicant.display_avatar:
+                rej_log_embed.set_thumbnail(url=applicant.display_avatar.url)
+            rej_log_embed.set_footer(text=f"{guild.name} • Application Review", icon_url=guild.icon.url if guild.icon else None)
+            await interaction.followup.send(embed=rej_log_embed)
 
             # Send Rejection DM to Applicant
             rej_cfg = cfg.get("rejected_msg", {})

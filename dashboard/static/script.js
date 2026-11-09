@@ -68687,11 +68687,19 @@ function insertAppVar(text) {
     if (richEl && richEl.style.display !== 'none') {
         insertEmojiOrTextIntoRichEditor(richEl, text);
     } else {
-        const start = descEl.selectionStart || 0;
-        const end = descEl.selectionEnd || 0;
-        const val = descEl.value;
+        const val = descEl.value || '';
+        let start = descEl.selectionStart;
+        let end = descEl.selectionEnd;
+        if (typeof descEl._lastCaretPos === 'number') {
+            start = descEl._lastCaretPos;
+            end = descEl._lastCaretPos;
+        } else if (start === null || start === undefined || (start === 0 && end === 0 && val.length > 0 && document.activeElement !== descEl)) {
+            start = val.length;
+            end = val.length;
+        }
         descEl.value = val.substring(0, start) + text + val.substring(end);
         descEl.selectionStart = descEl.selectionEnd = start + text.length;
+        descEl._lastCaretPos = descEl.selectionEnd;
         descEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
 }
@@ -68715,11 +68723,19 @@ function insertEmojiIntoInputOrRich(targetId, emojiVal) {
     if (richEl && richEl.style.display !== 'none') {
         insertEmojiOrTextIntoRichEditor(richEl, emojiVal);
     } else {
-        const start = targetEl.selectionStart ?? targetEl.value.length;
-        const end = targetEl.selectionEnd ?? targetEl.value.length;
         const val = targetEl.value || '';
+        let start = targetEl.selectionStart;
+        let end = targetEl.selectionEnd;
+        if (typeof targetEl._lastCaretPos === 'number') {
+            start = targetEl._lastCaretPos;
+            end = targetEl._lastCaretPos;
+        } else if (start === null || start === undefined || (start === 0 && end === 0 && val.length > 0 && document.activeElement !== targetEl)) {
+            start = val.length;
+            end = val.length;
+        }
         targetEl.value = val.substring(0, start) + emojiVal + val.substring(end);
         targetEl.selectionStart = targetEl.selectionEnd = start + emojiVal.length;
+        targetEl._lastCaretPos = targetEl.selectionEnd;
         targetEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
 }
@@ -68777,12 +68793,20 @@ function populateAppSelects(panelCid, reviewCid, roleId) {
 
     if (panelSelect) {
         const cur = panelCid !== undefined ? panelCid : panelSelect.value;
-        panelSelect.innerHTML = buildChanOpts('Select Panel Channel...', cur);
+        if (typeof populateChannelDropdown === 'function' && chans.length) {
+            populateChannelDropdown(panelSelect, chans, cur, 'Select Panel Channel...');
+        } else {
+            panelSelect.innerHTML = buildChanOpts('Select Panel Channel...', cur);
+        }
     }
 
     if (reviewSelect) {
         const cur = reviewCid !== undefined ? reviewCid : reviewSelect.value;
-        reviewSelect.innerHTML = buildChanOpts('Select Staff Review Channel...', cur);
+        if (typeof populateChannelDropdown === 'function' && chans.length) {
+            populateChannelDropdown(reviewSelect, chans, cur, 'Select Staff Review Channel...');
+        } else {
+            reviewSelect.innerHTML = buildChanOpts('Select Staff Review Channel...', cur);
+        }
     }
 
     if (roleSelect) {
@@ -68799,7 +68823,7 @@ function populateAppSelects(panelCid, reviewCid, roleId) {
 
     // Auto-fetch if channels aren't populated in memory yet
     if (chans.length === 0 && currentGuildId) {
-        fetch(`/api/guild/${currentGuildId}/channels`).then(r => r.json()).then(data => {
+        fetch(`/api/guild/${currentGuildId}/channels?t=${Date.now()}`).then(r => r.json()).then(data => {
             if (Array.isArray(data) && data.length) {
                 currentGuildChannels = data;
                 populateAppSelects(panelCid, reviewCid, roleId);
@@ -68807,7 +68831,7 @@ function populateAppSelects(panelCid, reviewCid, roleId) {
         }).catch(() => {});
     }
     if (roles.length === 0 && currentGuildId) {
-        fetch(`/api/guild/${currentGuildId}/roles`).then(r => r.json()).then(data => {
+        fetch(`/api/guild/${currentGuildId}/roles?t=${Date.now()}`).then(r => r.json()).then(data => {
             if (Array.isArray(data) && data.length) {
                 currentGuildRoles = data;
                 populateAppSelects(panelCid, reviewCid, roleId);
@@ -69391,6 +69415,26 @@ async function deployApplicationPanel() {
 async function loadApplicationsSettings() {
     if (!currentGuildId) return;
     try {
+        // Ensure channels & roles are available from API if not yet loaded
+        if ((!currentGuildChannels || currentGuildChannels.length === 0) && currentGuildId) {
+            try {
+                const cResp = await fetch(`/api/guild/${currentGuildId}/channels?t=${Date.now()}`);
+                if (cResp.ok) {
+                    const cData = await cResp.json();
+                    if (Array.isArray(cData) && cData.length) currentGuildChannels = cData;
+                }
+            } catch (e) {}
+        }
+        if ((!currentGuildRoles || currentGuildRoles.length === 0) && currentGuildId) {
+            try {
+                const rResp = await fetch(`/api/guild/${currentGuildId}/roles?t=${Date.now()}`);
+                if (rResp.ok) {
+                    const rData = await rResp.json();
+                    if (Array.isArray(rData) && rData.length) currentGuildRoles = rData;
+                }
+            } catch (e) {}
+        }
+
         const res = await fetch(`/api/guild/${currentGuildId}/applications`);
         const data = await res.json();
         if (!data || !data.success) {
@@ -69428,7 +69472,17 @@ async function loadApplicationsSettings() {
         // Helper to sync raw input and rich emoji editor
         const syncField = (id, val, isSingleLine = false) => {
             const el = document.getElementById(id);
-            if (el) el.value = val;
+            if (el) {
+                el.value = val;
+                if (!el._caretBound) {
+                    el._caretBound = true;
+                    ['keyup', 'mouseup', 'touchend', 'input', 'focus'].forEach(evt => {
+                        el.addEventListener(evt, () => {
+                            el._lastCaretPos = el.selectionStart;
+                        });
+                    });
+                }
+            }
             const rich = document.getElementById(id + '_rich') || (typeof attachRichEmojiEditor === 'function' ? attachRichEmojiEditor(id, isSingleLine) : null);
             if (rich && typeof rawMarkdownToRichHtml === 'function') {
                 rich.innerHTML = rawMarkdownToRichHtml(val);

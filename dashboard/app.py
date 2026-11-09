@@ -3707,6 +3707,10 @@ def cancel_guild_giveaway(gid):
 @app.route('/api/guild/<gid>/birthdays', methods=['GET'])
 def get_guild_birthdays(gid):
     gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
     cfg = db.birthdays_config.get(gid_str, {})
     if not isinstance(cfg, dict):
         cfg = {}
@@ -3861,13 +3865,15 @@ def post_birthday_form_card(gid):
         if not channel:
             raise Exception("Form channel could not be found.")
 
-        card_title = cfg.get("form_card_title", "🎂 Member Birthday Registration")
-        card_desc = cfg.get(
+        raw_card_title = cfg.get("form_card_title", "🎂 Member Birthday Registration")
+        card_title = replace_plain_emojis(raw_card_title, bot=bot_instance, guild=guild, guild_id=gid_str)
+        raw_card_desc = cfg.get(
             "form_card_desc",
             "Click the button below to register your birthday!\n\n"
             "🎉 Friday will deliver celebratory wishes on your special day.\n"
             "🔒 **Strict Privacy:** Only Month & Day are saved. Zero birth year or age is stored."
         )
+        card_desc = replace_plain_emojis(raw_card_desc, bot=bot_instance, guild=guild, guild_id=gid_str)
         embed = discord.Embed(
             title=card_title,
             description=card_desc,
