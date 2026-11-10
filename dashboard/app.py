@@ -604,14 +604,37 @@ def whitelist_remove(gid):
 
 # ───────────────────── API: Leveling (With Test Message Sender) ─────────────────────
 
+def resolve_card_bg_url(path):
+    """Robustly resolve static URL for uploaded card backgrounds."""
+    if not path or not isinstance(path, str):
+        return ""
+    if path.startswith("http://") or path.startswith("https://") or path.startswith("/static/"):
+        return path
+    base = os.path.basename(path)
+    if os.path.exists(os.path.join(RANK_BG_DIR, base)):
+        return f"/static/uploads/rank_backgrounds/{base}"
+    if os.path.exists(path):
+        return f"/static/uploads/rank_backgrounds/{base}"
+    if base and ("." in base):
+        return f"/static/uploads/rank_backgrounds/{base}"
+    return ""
+
 @app.route('/api/guild/<gid>/leveling')
 def get_leveling(gid):
     gid_str = str(gid)
     chan_id = db.level_channels.get(gid_str, None)
+    lu_path = db.levelup_card_backgrounds.get(gid_str)
+    rk_path = db.rank_card_backgrounds.get(gid_str) or db.rank_backgrounds.get(gid_str)
+    lu_url = resolve_card_bg_url(lu_path)
+    rk_url = resolve_card_bg_url(rk_path)
+
     return jsonify({
         "channel": str(chan_id) if chan_id else "",
         "message": db.level_messages.get(gid_str, "--------------------\n# 🎉 LEVEL UP!\n**{user}** just advanced to **Level {level}**! Keep it up!\n--------------------"),
-        "mode": db.level_modes.get(gid_str, "both")
+        "mode": db.level_modes.get(gid_str, "both"),
+        "levelup_background": lu_url,
+        "rank_background": rk_url,
+        "background": lu_url or rk_url
     })
 
 @app.route('/api/guild/<gid>/leveling/update', methods=['POST'])
@@ -687,34 +710,56 @@ def test_leveling_message(gid):
         return jsonify({"success": False, "error": str(e)})
 
 @app.route('/api/guild/<gid>/leveling/upload-background', methods=['POST'])
+@app.route('/api/guild/<gid>/card-background/upload', methods=['POST'])
 def upload_rank_background(gid):
     gid_str = str(gid)
+    card_type = flask_request.form.get("card_type", "rank")
     try:
         os.makedirs(RANK_BG_DIR, exist_ok=True)
-        file = flask_request.files.get('background_file') or flask_request.files.get('file')
+        file = flask_request.files.get('background_file') or flask_request.files.get('file') or flask_request.files.get('background')
         if not file or not file.filename:
             return jsonify({"success": False, "error": "No file uploaded."}), 400
         ext = os.path.splitext(file.filename)[1].lower()
         if ext not in ['.png', '.jpg', '.jpeg', '.webp']:
             return jsonify({"success": False, "error": "Unsupported file format. Please upload PNG, JPG, or WebP."}), 400
-        safe_filename = f"rank_bg_{gid_str}_{uuid.uuid4().hex[:8]}{ext}"
+        safe_filename = f"{card_type}_bg_{gid_str}_{uuid.uuid4().hex[:8]}{ext}"
         save_path = os.path.join(RANK_BG_DIR, safe_filename)
         file.save(save_path)
         
         rel_url = f"/static/uploads/rank_backgrounds/{safe_filename}"
-        db.rank_card_backgrounds[gid_str] = save_path
+        if card_type == "levelup":
+            db.levelup_card_backgrounds[gid_str] = save_path
+        elif card_type == "invite":
+            db.invite_card_backgrounds[gid_str] = save_path
+        elif card_type == "activity":
+            db.activity_card_backgrounds[gid_str] = save_path
+        elif card_type == "leaderboard":
+            db.leaderboard_card_backgrounds[gid_str] = save_path
+        else:
+            db.rank_card_backgrounds[gid_str] = save_path
         db.save_data()
-        return jsonify({"success": True, "url": rel_url, "path": save_path})
+        return jsonify({"success": True, "url": rel_url, "path": save_path, "card_type": card_type})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/guild/<gid>/leveling/reset-background', methods=['POST'])
+@app.route('/api/guild/<gid>/card-background/reset', methods=['POST'])
 def reset_rank_background(gid):
     gid_str = str(gid)
-    if gid_str in db.rank_card_backgrounds:
+    body = flask_request.json or {}
+    card_type = body.get("card_type") or flask_request.args.get("card_type", "rank")
+    if card_type == "levelup" and gid_str in db.levelup_card_backgrounds:
+        del db.levelup_card_backgrounds[gid_str]
+    elif card_type == "invite" and gid_str in db.invite_card_backgrounds:
+        del db.invite_card_backgrounds[gid_str]
+    elif card_type == "activity" and gid_str in db.activity_card_backgrounds:
+        del db.activity_card_backgrounds[gid_str]
+    elif card_type == "leaderboard" and gid_str in db.leaderboard_card_backgrounds:
+        del db.leaderboard_card_backgrounds[gid_str]
+    elif gid_str in db.rank_card_backgrounds:
         del db.rank_card_backgrounds[gid_str]
-        db.save_data()
-    return jsonify({"success": True})
+    db.save_data()
+    return jsonify({"success": True, "card_type": card_type})
 
 # ───────────────────── API: Invite Tracker ─────────────────────
 
@@ -763,10 +808,25 @@ def get_invite_tracker(gid):
         })
     inviters_list.sort(key=lambda x: x["total"], reverse=True)
 
+    inv_bg = db.invite_card_backgrounds.get(gid_str)
+    inv_bg_url = resolve_card_bg_url(inv_bg)
+
     return jsonify({
         "success": True,
         "config": cfg,
-        "inviters": inviters_list[:50]
+        "inviters": inviters_list[:50],
+        "invite_card_background": inv_bg_url
+    })
+
+@app.route('/api/guild/<gid>/activity-cards', methods=['GET'])
+def get_activity_cards(gid):
+    gid_str = str(gid)
+    act_bg = db.activity_card_backgrounds.get(gid_str)
+    lb_bg = db.leaderboard_card_backgrounds.get(gid_str)
+    return jsonify({
+        "success": True,
+        "activity_card_background": resolve_card_bg_url(act_bg),
+        "leaderboard_card_background": resolve_card_bg_url(lb_bg)
     })
 
 @app.route('/api/guild/<gid>/invite-tracker/save', methods=['POST'])

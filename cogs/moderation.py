@@ -797,6 +797,7 @@ class Moderation(commands.Cog):
         members="Mention members, enter IDs, or names separated by spaces (e.g. @Alex @Bob @Charlie)",
         member="Or pick a single member from the list"
     )
+    @app_commands.default_permissions(move_members=True)
     async def move(
         self,
         interaction: discord.Interaction,
@@ -878,6 +879,7 @@ class Moderation(commands.Cog):
         target_channel="The destination voice channel to move all members to",
         source_channel="The source voice channel (defaults to your current voice channel)"
     )
+    @app_commands.default_permissions(move_members=True)
     async def moveall(
         self,
         interaction: discord.Interaction,

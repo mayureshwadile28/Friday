@@ -19081,18 +19081,75 @@ async function loadLevelingSettings() {
 
         syncAllRichEmojiEditors();
 
+        // Level-Up Milestone Card Wallpaper
+        const luStatus = document.getElementById('levelupBgStatus');
+        const luPreviewWrap = document.getElementById('levelupBgPreviewWrap');
+        const luPreviewImg = document.getElementById('levelupBgPreviewImg');
+        const luBg = data.levelup_background || "";
+        if (luBg) {
+            if (luStatus) luStatus.textContent = "Custom Wallpaper Active";
+            if (luPreviewWrap && luPreviewImg) {
+                luPreviewWrap.style.display = 'block';
+                luPreviewImg.src = luBg;
+            }
+        } else {
+            if (luStatus) luStatus.textContent = "Default Theme Active";
+            if (luPreviewWrap) luPreviewWrap.style.display = 'none';
+        }
+
+        // Rank Progression Card Wallpaper (/rank)
         const bgStatus = document.getElementById('rankBgStatus');
         const bgPreviewWrap = document.getElementById('rankBgPreviewWrap');
         const bgPreviewImg = document.getElementById('rankBgPreviewImg');
-        if (data.background) {
+        const rkBg = data.rank_background || data.background || "";
+        if (rkBg) {
             if (bgStatus) bgStatus.textContent = "Custom Wallpaper Active";
             if (bgPreviewWrap && bgPreviewImg) {
                 bgPreviewWrap.style.display = 'block';
-                bgPreviewImg.src = data.background.startsWith('/') || data.background.startsWith('http') ? data.background : `/static/uploads/rank_backgrounds/${data.background.split(/[\/\\]/).pop()}`;
+                bgPreviewImg.src = rkBg.startsWith('/') || rkBg.startsWith('http') ? rkBg : `/static/uploads/rank_backgrounds/${rkBg.split(/[\/\\]/).pop()}`;
             }
         } else {
             if (bgStatus) bgStatus.textContent = "Default Theme Active";
             if (bgPreviewWrap) bgPreviewWrap.style.display = 'none';
+        }
+
+        // Activity & Leaderboard Matrix Wallpapers
+        try {
+            const actResp = await fetch(`/api/guild/${currentGuildId}/activity-cards`);
+            const actData = await actResp.json();
+            if (actData.success) {
+                const lbStatus = document.getElementById('leaderboardBgStatus');
+                const lbWrap = document.getElementById('leaderboardBgPreviewWrap');
+                const lbImg = document.getElementById('leaderboardBgPreviewImg');
+                const lbBg = actData.leaderboard_card_background || "";
+                if (lbBg) {
+                    if (lbStatus) lbStatus.textContent = "Custom Wallpaper Active";
+                    if (lbWrap && lbImg) {
+                        lbWrap.style.display = 'block';
+                        lbImg.src = lbBg;
+                    }
+                } else {
+                    if (lbStatus) lbStatus.textContent = "Default Theme Active";
+                    if (lbWrap) lbWrap.style.display = 'none';
+                }
+
+                const actStatus = document.getElementById('activityBgStatus');
+                const actWrap = document.getElementById('activityBgPreviewWrap');
+                const actImg = document.getElementById('activityBgPreviewImg');
+                const aBg = actData.activity_card_background || "";
+                if (aBg) {
+                    if (actStatus) actStatus.textContent = "Custom Wallpaper Active";
+                    if (actWrap && actImg) {
+                        actWrap.style.display = 'block';
+                        actImg.src = aBg;
+                    }
+                } else {
+                    if (actStatus) actStatus.textContent = "Default Theme Active";
+                    if (actWrap) actWrap.style.display = 'none';
+                }
+            }
+        } catch (ae) {
+            console.warn("Could not load activity card wallpapers:", ae);
         }
 
         updateLevelPreview();
@@ -69744,7 +69801,7 @@ async function loadApplicationsSettings() {
 }
 
 /* ────────────────────────── RANK CARD WALLPAPER MANAGER ────────────────────────── */
-async function uploadRankBackground(input) {
+async function uploadCardBackground(input, cardType = 'rank') {
     if (!input.files || !input.files[0]) return;
     if (!currentGuildId) {
         showToast("Please select a server first.");
@@ -69752,48 +69809,82 @@ async function uploadRankBackground(input) {
     }
     const file = input.files[0];
     const formData = new FormData();
-    formData.append('background_file', file);
+    formData.append('background', file);
+    formData.append('card_type', cardType);
     try {
-        showToast("Uploading rank card background...");
-        const resp = await fetch(`/api/guild/${currentGuildId}/leveling/upload-background`, {
+        showToast(`Uploading ${cardType} card wallpaper...`);
+        const resp = await fetch(`/api/guild/${currentGuildId}/card-background/upload`, {
             method: 'POST',
             body: formData
         });
         const res = await resp.json();
         if (res.success) {
-            showToast("Custom rank background saved successfully!");
-            const bgStatus = document.getElementById('rankBgStatus');
-            const bgPreviewWrap = document.getElementById('rankBgPreviewWrap');
-            const bgPreviewImg = document.getElementById('rankBgPreviewImg');
+            showToast(`Custom ${cardType} wallpaper saved successfully!`);
+            let statusId = `${cardType}BgStatus`;
+            let wrapId = `${cardType}BgPreviewWrap`;
+            let imgId = `${cardType}BgPreviewImg`;
+            if (cardType === 'invite') {
+                statusId = 'inviteCardBgStatus';
+                wrapId = 'inviteCardBgPreviewWrap';
+                imgId = 'inviteCardBgPreviewImg';
+            }
+            const bgStatus = document.getElementById(statusId);
+            const bgPreviewWrap = document.getElementById(wrapId);
+            const bgPreviewImg = document.getElementById(imgId);
             if (bgStatus) bgStatus.textContent = "Custom Wallpaper Active";
             if (bgPreviewWrap && bgPreviewImg) {
                 bgPreviewWrap.style.display = 'block';
                 bgPreviewImg.src = res.url;
+            }
+            if (cardType === 'levelup') {
+                updateLevelPreview();
             }
         } else {
             showToast("Upload failed: " + (res.error || "Unknown error"));
         }
     } catch (e) {
         showToast("Upload error: " + e.message);
+    } finally {
+        input.value = "";
     }
 }
 
-async function resetRankBackground() {
+async function resetCardBackground(cardType = 'rank') {
     if (!currentGuildId) return;
     try {
-        const resp = await fetch(`/api/guild/${currentGuildId}/leveling/reset-background`, { method: 'POST' });
+        const resp = await fetch(`/api/guild/${currentGuildId}/card-background/reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ card_type: cardType })
+        });
         const res = await resp.json();
         if (res.success) {
-            showToast("Restored default dark theme!");
-            const bgStatus = document.getElementById('rankBgStatus');
-            const bgPreviewWrap = document.getElementById('rankBgPreviewWrap');
+            showToast(`Restored default ${cardType} theme!`);
+            let statusId = `${cardType}BgStatus`;
+            let wrapId = `${cardType}BgPreviewWrap`;
+            let imgId = `${cardType}BgPreviewImg`;
+            if (cardType === 'invite') {
+                statusId = 'inviteCardBgStatus';
+                wrapId = 'inviteCardBgPreviewWrap';
+                imgId = 'inviteCardBgPreviewImg';
+            }
+            const bgStatus = document.getElementById(statusId);
+            const bgPreviewWrap = document.getElementById(wrapId);
+            const bgPreviewImg = document.getElementById(imgId);
             if (bgStatus) bgStatus.textContent = "Default Theme Active";
             if (bgPreviewWrap) bgPreviewWrap.style.display = 'none';
+            if (bgPreviewImg) bgPreviewImg.src = "";
+            if (cardType === 'levelup') {
+                updateLevelPreview();
+            }
         }
     } catch (e) {
         showToast("Reset error: " + e.message);
     }
 }
+
+function uploadRankBackground(input) { return uploadCardBackground(input, 'rank'); }
+function resetRankBackground() { return resetCardBackground('rank'); }
 
 /* ────────────────────────── INVITE TRACKER DASHBOARD ENGINE ────────────────────────── */
 let currentInvitersList = [];
@@ -69842,6 +69933,22 @@ async function loadInviteTrackerSettings() {
         const bannerInput = document.getElementById('inviteBannerUrlInput');
         if (bannerInput) bannerInput.value = cfg.banner_url || "";
         updateInviteBannerPreview(cfg.banner_url || "");
+
+        // /invites Image Card Wallpaper
+        const invCardStatus = document.getElementById('inviteCardBgStatus');
+        const invCardWrap = document.getElementById('inviteCardBgPreviewWrap');
+        const invCardImg = document.getElementById('inviteCardBgPreviewImg');
+        const invCardBg = data.invite_card_background || "";
+        if (invCardBg) {
+            if (invCardStatus) invCardStatus.textContent = "Custom Wallpaper Active";
+            if (invCardWrap && invCardImg) {
+                invCardWrap.style.display = 'block';
+                invCardImg.src = invCardBg;
+            }
+        } else {
+            if (invCardStatus) invCardStatus.textContent = "Default Theme Active";
+            if (invCardWrap) invCardWrap.style.display = 'none';
+        }
 
         // Wire server emoji pickers
         const titleEmojiBtn = document.getElementById('inviteTitleEmojiBtn');

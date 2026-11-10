@@ -163,7 +163,7 @@
 
 </div>
 
-                    Progression &amp; Invites
+                    Leveling System
 
                 </a>
 
@@ -2464,19 +2464,9 @@
 
 <div class="section-header">
 
-<h1 class="section-title">Progression &amp; Invites</h1>
+<h1 class="section-title">Leveling &amp; Rewards</h1>
 
-<p class="section-desc">Keep your community active with customizable chat progression, notification channels, formatted level-up cards, and member invite tracking.</p>
-
-<!-- Sub-Navigation Pill Bar -->
-<div class="welcome-subtab-bar" style="margin-top: 14px; margin-bottom: 6px;">
-    <button type="button" class="welcome-subtab-btn active" id="subtabProgressionLevels" onclick="switchProgressionSubtab('levels')">
-        <span>🏆 Chat XP &amp; Levels</span>
-    </button>
-    <button type="button" class="welcome-subtab-btn" id="subtabProgressionInvites" onclick="switchProgressionSubtab('invites')">
-        <span>📨 Member Invites &amp; Tracker</span>
-    </button>
-</div>
+<p class="section-desc">Keep your community active with customizable chat progression, notification channels, and formatted level-up messages.</p>
 
 </div>
 
@@ -2714,24 +2704,87 @@
 
 </div>
 
-<!-- Rank Card Wallpaper Customization -->
+<!-- Level-Up Announcement Card Wallpaper Customization -->
 <div class="card" style="margin-top: 20px;">
-    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Rank Card Background Wallpaper</h3>
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Level-Up Announcement Card Wallpaper</h3>
     <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
-        Customize the rank progression card with a custom wallpaper from your device. Friday renders an adaptive frosted dark glass container so your avatar, stats, and dynamic progress bar always remain vibrant and 100% readable.
+        Customize the milestone card dispatched in chat when members level up. Friday renders an adaptive frosted dark glass container and glowing progress bar that adapts to your wallpaper's palette.
     </p>
     <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-        <input type="file" id="rankBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadRankBackground(this)">
-        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('rankBgFileInput').click()">
-            📁 Select Local Wallpaper
+        <input type="file" id="levelupBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'levelup')">
+        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('levelupBgFileInput').click()">
+            📁 Select Level-Up Wallpaper
         </button>
-        <button class="btn btn-secondary btn-action-secondary" type="button" id="rankBgResetBtn" onclick="resetRankBackground()">
+        <button class="btn btn-secondary btn-action-secondary" type="button" id="levelupBgResetBtn" onclick="resetCardBackground('levelup')">
+            ↺ Restore Default Theme
+        </button>
+        <span id="levelupBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
+    </div>
+    <div id="levelupBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+        <img id="levelupBgPreviewImg" src="" style="width: 100%; height: 120px; object-fit: cover; display: block;" alt="Level-Up Card Background Preview">
+    </div>
+</div>
+
+<!-- Rank Card Wallpaper Customization -->
+<div class="card" style="margin-top: 20px;">
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Rank Progression Card Wallpaper (/rank)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+        Customize the 840×270 rank progression card when members run <code>/rank</code> or <code>/level</code>. Keeps avatar, stats, voice time, and progress bar 100% readable.
+    </p>
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <input type="file" id="rankBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'rank')">
+        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('rankBgFileInput').click()">
+            📁 Select Rank Wallpaper
+        </button>
+        <button class="btn btn-secondary btn-action-secondary" type="button" id="rankBgResetBtn" onclick="resetCardBackground('rank')">
             ↺ Restore Default Theme
         </button>
         <span id="rankBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
     </div>
     <div id="rankBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
         <img id="rankBgPreviewImg" src="" style="width: 100%; height: 140px; object-fit: cover; display: block;" alt="Rank Card Background Preview">
+    </div>
+</div>
+
+<!-- Leaderboard Cards Wallpaper Customization -->
+<div class="card" style="margin-top: 20px;">
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Leaderboard Cards Wallpaper (/leaderboard msg, /leaderboard xp, /invite_leaderboard)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+        Customize the 1020×640 2-column leaderboard card used for top chatters, top XP earners, and top inviters with frosted dark glass and adaptive accents.
+    </p>
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <input type="file" id="leaderboardBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'leaderboard')">
+        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('leaderboardBgFileInput').click()">
+            📁 Select Leaderboard Wallpaper
+        </button>
+        <button class="btn btn-secondary btn-action-secondary" type="button" id="leaderboardBgResetBtn" onclick="resetCardBackground('leaderboard')">
+            ↺ Restore Default Theme
+        </button>
+        <span id="leaderboardBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
+    </div>
+    <div id="leaderboardBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+        <img id="leaderboardBgPreviewImg" src="" style="width: 100%; height: 140px; object-fit: cover; display: block;" alt="Leaderboard Card Background Preview">
+    </div>
+</div>
+
+<!-- Activity & Telemetry Matrix Wallpaper Customization -->
+<div class="card" style="margin-top: 20px;">
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Activity & Demographics Matrix Wallpaper (/activity server, /activity member)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+        Customize the 1080×760 activity analytics cards showing 7-day trend graphs, top channels, and telemetry with translucent dark frosted backdrop.
+    </p>
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <input type="file" id="activityBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'activity')">
+        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('activityBgFileInput').click()">
+            📁 Select Activity Wallpaper
+        </button>
+        <button class="btn btn-secondary btn-action-secondary" type="button" id="activityBgResetBtn" onclick="resetCardBackground('activity')">
+            ↺ Restore Default Theme
+        </button>
+        <span id="activityBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
+    </div>
+    <div id="activityBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+        <img id="activityBgPreviewImg" src="" style="width: 100%; height: 140px; object-fit: cover; display: block;" alt="Activity Card Background Preview">
     </div>
 </div>
 
@@ -10596,16 +10649,6 @@ Click the button below to submit your confidential application.
         </div>
     </div>
 
-    <!-- Sub-Navigation Pill Bar -->
-    <div class="welcome-subtab-bar" style="margin-top: -10px; margin-bottom: 24px;">
-        <button type="button" class="welcome-subtab-btn" onclick="switchProgressionSubtab('levels')">
-            <span>🏆 Chat XP &amp; Levels</span>
-        </button>
-        <button type="button" class="welcome-subtab-btn active" onclick="switchProgressionSubtab('invites')">
-            <span>📨 Member Invites &amp; Tracker</span>
-        </button>
-    </div>
-
     <!-- Main Configuration Card -->
     <div class="card" style="margin-bottom: 24px;">
         <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Announcement Channel</h3>
@@ -10785,6 +10828,27 @@ Click the button below to submit your confidential application.
                     </tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- /invites Command Image Card Wallpaper Customization -->
+    <div class="card" style="margin-bottom: 24px;">
+        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">/invites Command Image Card Wallpaper</h3>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+            Customize the personal 840×270 image card dispatched when members run <code>/invites [@member]</code>. Friday renders an adaptive frosted dark glass container so all stat numbers and icons remain 100% readable.
+        </p>
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <input type="file" id="inviteCardBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'invite')">
+            <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('inviteCardBgFileInput').click()">
+                📁 Choose Invite Card Wallpaper
+            </button>
+            <button class="btn btn-secondary btn-action-secondary" type="button" id="inviteCardBgResetBtn" onclick="resetCardBackground('invite')">
+                ↺ Restore Default Theme
+            </button>
+            <span id="inviteCardBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
+        </div>
+        <div id="inviteCardBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+            <img id="inviteCardBgPreviewImg" src="" style="width: 100%; height: 140px; object-fit: cover; display: block;" alt="Invite Card Wallpaper Preview">
         </div>
     </div>
 

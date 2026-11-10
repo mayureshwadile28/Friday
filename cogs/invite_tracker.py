@@ -5,9 +5,10 @@ from typing import Optional, List, Dict, Any
 import datetime
 import math
 import io
+import os
 import unicodedata
 import aiohttp
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from database import db
 from emoji_utils import replace_plain_emojis
 from font_utils import clean_display_name, get_unicode_font
@@ -15,6 +16,21 @@ from font_utils import clean_display_name, get_unicode_font
 def draw_rounded_rect(draw, bounds, radius, fill=None, outline=None, width=1):
     x1, y1, x2, y2 = bounds
     draw.rounded_rectangle([x1, y1, x2, y2], radius=radius, fill=fill, outline=outline, width=width)
+
+def resolve_card_background(bg_path: str) -> Optional[str]:
+    """Robustly resolve card background on local machine and Linux VM."""
+    if not bg_path or not isinstance(bg_path, str):
+        return None
+    if os.path.exists(bg_path):
+        return bg_path
+    base = os.path.basename(bg_path)
+    cand1 = os.path.join(os.getcwd(), "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand1):
+        return cand1
+    cand2 = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand2):
+        return os.path.abspath(cand2)
+    return None
 
 class InviteTracker(commands.Cog):
     """
@@ -411,15 +427,43 @@ class InviteTracker(commands.Cog):
         total_pages: int,
         total_inviters: int,
         members_data: list,  # [(rank, name, username, av_img, total, reg, bonus, left, fake), ...]
-        max_invites: int = 1
+        max_invites: int = 1,
+        guild_id: int = None
     ) -> io.BytesIO:
         """Renders high-resolution 1020x640 graphic Invite leaderboard card with 10 members in a 2-column layout."""
         W, H = 1020, 640
-        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
-        draw = ImageDraw.Draw(img)
 
-        # Outer Container
-        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+        # Check custom wallpaper for leaderboard
+        raw_bg = None
+        bg_img = None
+        custom_bg = resolve_card_background(db.leaderboard_card_backgrounds.get(str(guild_id))) if guild_id else None
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx = (nw - W) // 2
+                cy = (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+            except Exception:
+                raw_bg = bg_img = None
+
+        if not bg_img:
+            img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        else:
+            img = bg_img
+
+        # Outer Container (Frosted glass if custom_bg)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = get_unicode_font(13)
@@ -550,30 +594,204 @@ class InviteTracker(commands.Cog):
         buf.seek(0)
         return buf
 
+    def _extract_accent_color(self, bg_img: Image.Image) -> tuple:
+        """Extracts the most vibrant non-dark accent color from a background image."""
+        import colorsys
+        try:
+            small = bg_img.convert("RGB").resize((60, 40), Image.Resampling.LANCZOS)
+            quantized = small.quantize(colors=12).convert("RGB")
+            counts = {}
+            for px in quantized.getdata():
+                counts[px] = counts.get(px, 0) + 1
+
+            best_color = None
+            best_score = -1
+            for color, count in counts.items():
+                r, g, b = color
+                h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+                if v < 0.25 or (s < 0.15 and v > 0.85):
+                    continue
+                score = s * 2.0 + v * 1.0 + (count / 2400) * 0.5
+                if score > best_score:
+                    best_score = score
+                    best_color = color
+
+            if best_color:
+                return best_color
+        except Exception:
+            pass
+        return (99, 102, 241)
+
+    async def generate_invite_card(
+        self,
+        target: discord.Member,
+        requester: discord.Member,
+        guild: discord.Guild
+    ) -> discord.File:
+        """
+        Renders an ultra-sleek, compact 840x270 dark glassmorphic invite summary card.
+        Matches the exact size of the rank card.
+        Supports custom wallpaper (db.invite_card_backgrounds.get(gid)) with adaptive
+        frosted glass and palette color extraction for 100% legibility and vibrant contrast.
+        """
+        import colorsys
+        W, H = 840, 270
+        gid_str = str(guild.id)
+        stats = self.get_user_invites(guild.id, target.id)
+
+        # 1. Custom background handling
+        raw_bg = None
+        bg_img = None
+        custom_bg = resolve_card_background(db.invite_card_backgrounds.get(gid_str))
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx = (nw - W) // 2
+                cy = (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+            except Exception:
+                raw_bg = bg_img = None
+
+        # 2. Adaptive color extraction
+        accent_rgb = self._extract_accent_color(raw_bg) if raw_bg else (99, 102, 241)
+        ar, ag, ab = accent_rgb
+        # Boost for text vibrancy
+        h_a, s_a, v_a = colorsys.rgb_to_hsv(ar / 255, ag / 255, ab / 255)
+        text_r, text_g, text_b = colorsys.hsv_to_rgb(h_a, min(s_a, 0.65), max(v_a, 0.95))
+        tar, tag, tab = int(text_r * 255), int(text_g * 255), int(text_b * 255)
+
+        if not bg_img:
+            # Default premium dark canvas
+            bg_img = Image.new("RGBA", (W, H), (18, 20, 24, 255))
+            d_bg = ImageDraw.Draw(bg_img)
+            d_bg.ellipse((-80, -80, 260, 260), fill=(ar, ag, ab, 35))
+            d_bg.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(ar // 2, ag // 2, ab, 25))
+
+        # 3. Frosted Glass Container
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        container_fill = (16, 18, 24, 160) if raw_bg else (18, 20, 26, 215)
+        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 38), width=1)
+        img = Image.alpha_composite(bg_img, overlay)
+        draw = ImageDraw.Draw(img)
+
+        # 4. Fonts
+        font_title = get_unicode_font(22, bold=True)
+        font_sub = get_unicode_font(12, bold=False)
+        font_badge = get_unicode_font(11, bold=True)
+        font_stat_lbl = get_unicode_font(11, bold=True)
+        font_stat_val = get_unicode_font(18, bold=True)
+        font_stat_sub = get_unicode_font(10, bold=False)
+        font_footer = get_unicode_font(10, bold=False)
+
+        # 5. Avatar (Left, 96x96)
+        av_x, av_y, av_size = 32, 28, 96
+        av_img = await self.fetch_avatar(target, size=av_size)
+        img.paste(av_img, (av_x, av_y), av_img)
+        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(tar, tag, tab, 255), width=3)
+
+        # 6. Member Info
+        text_x = av_x + av_size + 18
+        display_name = clean_display_name(target.display_name, max_len=18)
+        draw.text((text_x, 34), display_name, font=font_title, fill=(255, 255, 255, 255))
+        
+        joined_str = target.joined_at.strftime("%b %d, %Y") if target.joined_at else "Unknown"
+        sub_text = f"@{clean_display_name(target.name, max_len=16)} • Joined {joined_str}"
+        draw.text((text_x, 62), sub_text, font=font_sub, fill=(203, 213, 225, 255))
+
+        # 7. Top Right: Rank Badge & Net Invites Pill
+        all_inviters = db.invite_counts.get(gid_str, {})
+        sorted_inviters = sorted(
+            [
+                (uid, udata.get("regular", 0) + udata.get("bonus", 0) - udata.get("left", 0) - udata.get("fake", 0))
+                for uid, udata in all_inviters.items()
+            ],
+            key=lambda x: x[1],
+            reverse=True
+        )
+        inviter_rank = None
+        for r_idx, (uid, _) in enumerate(sorted_inviters, start=1):
+            if uid == str(target.id):
+                inviter_rank = r_idx
+                break
+
+        badge_x = W - 32
+        rank_text = f"INVITER #{inviter_rank}" if inviter_rank else "VERIFIED INVITER"
+        bb_r = font_badge.getbbox(rank_text)
+        bw_r = (bb_r[2] - bb_r[0]) + 18
+        bx_r = badge_x - bw_r
+        draw_rounded_rect(draw, (bx_r, 34, badge_x, 56), radius=11, fill=(tar, tag, tab, 35), outline=(tar, tag, tab, 180), width=1)
+        draw.text((bx_r + 9, 39), rank_text, font=font_badge, fill=(tar, tag, tab, 255))
+
+        # Net Total Pill next to badge
+        net_text = f"✨ {stats['total']} NET INVITES"
+        bb_n = font_badge.getbbox(net_text)
+        bw_n = (bb_n[2] - bb_n[0]) + 18
+        bx_n = bx_r - bw_n - 8
+        draw_rounded_rect(draw, (bx_n, 34, bx_r - 8, 56), radius=11, fill=(16, 185, 129, 35), outline=(16, 185, 129, 180), width=1)
+        draw.text((bx_n + 9, 39), net_text, font=font_badge, fill=(16, 185, 129, 255))
+
+        # 8. Mid separator
+        line_y = 138
+        draw.line([(32, line_y), (W - 32, line_y)], fill=(255, 255, 255, 30), width=1)
+
+        # 9. Bottom: 4 Stat Tiles
+        tile_y = 152
+        tile_h = 78
+        tile_w = (W - 64 - 36) // 4
+        
+        stat_configs = [
+            ("REGULAR", f"+{stats['regular']}", (16, 185, 129), "Verified joins"),
+            ("BONUS", f"+{stats['bonus']}", (56, 189, 248), "Staff granted"),
+            ("LEFT", f"-{stats['left']}", (239, 68, 68), "Departed"),
+            ("FAKE (<3D)", f"{stats['fake']}", (245, 158, 11), "Suspected alts")
+        ]
+
+        for i, (lbl, val, val_col, sub_lbl) in enumerate(stat_configs):
+            tx = 32 + i * (tile_w + 12)
+            draw_rounded_rect(draw, (tx, tile_y, tx + tile_w, tile_y + tile_h), radius=12, fill=(28, 30, 38, 175), outline=(255, 255, 255, 30), width=1)
+            vr, vg, vb = val_col
+            draw_rounded_rect(draw, (tx, tile_y, tx + tile_w, tile_y + 4), radius=2, fill=(vr, vg, vb, 220))
+            draw.text((tx + 12, tile_y + 10), lbl, font=font_stat_lbl, fill=(148, 163, 184, 255))
+            draw.text((tx + 12, tile_y + 28), val, font=font_stat_val, fill=(vr, vg, vb, 255))
+            draw.text((tx + 12, tile_y + 54), sub_lbl, font=font_stat_sub, fill=(148, 163, 184, 200))
+
+        # 10. Sub-Footer
+        history = db.invite_history.get(gid_str, {}).get(str(target.id))
+        inviter_id = history.get("inviter_id") if history else None
+        inviter_member = guild.get_member(int(inviter_id)) if inviter_id and str(inviter_id).isdigit() else None
+        if inviter_member:
+            inv_by_str = f"Invited by @{clean_display_name(inviter_member.display_name, max_len=18)}"
+        elif history and history.get("code") == "vanity":
+            inv_by_str = "Joined via Server Vanity URL"
+        else:
+            inv_by_str = "Joined directly / Unknown inviter"
+
+        draw.text((34, 102), f"🔗 {inv_by_str}", font=font_footer, fill=(203, 213, 225, 220))
+        req_by_str = f"Requested by @{clean_display_name(requester.name, max_len=16)}"
+        bb_req = font_footer.getbbox(req_by_str)
+        draw.text((W - 32 - (bb_req[2] - bb_req[0]), 102), req_by_str, font=font_footer, fill=(148, 163, 184, 200))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        return discord.File(fp=buf, filename=f"invites_{target.id}.png")
+
     # ────────────────────────── Slash Commands ──────────────────────────
 
-    @app_commands.command(name="invites", description="Check your or another member's invite statistics.")
+    @app_commands.command(name="invites", description="Check your or another member's invite statistics with custom image card.")
     @app_commands.describe(member="Member to inspect (defaults to yourself)")
     async def invites(self, interaction: discord.Interaction, member: discord.Member = None):
         target = member or interaction.user
-        stats = self.get_user_invites(interaction.guild.id, target.id)
-
-        embed = discord.Embed(
-            title=f"📨 Invite Summary • {clean_display_name(target.display_name)}",
-            color=0x5865F2,
-            timestamp=datetime.datetime.now(datetime.timezone.utc)
-        )
-        embed.set_thumbnail(url=target.display_avatar.url)
-
-        net_total = stats["total"]
-        embed.add_field(name="✨ Total Net Invites", value=f"**{net_total}**", inline=False)
-        embed.add_field(name="📥 Regular", value=f"`{stats['regular']}`", inline=True)
-        embed.add_field(name="🎁 Bonus", value=f"`{stats['bonus']}`", inline=True)
-        embed.add_field(name="📤 Left", value=f"`{stats['left']}`", inline=True)
-        embed.add_field(name="⚠️ Fake (<3d)", value=f"`{stats['fake']}`", inline=True)
-
-        embed.set_footer(text=f"Requested by @{clean_display_name(interaction.user.name)}")
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.defer()
+        file = await self.generate_invite_card(target, interaction.user, interaction.guild)
+        await interaction.followup.send(file=file)
 
     @app_commands.command(name="invite_leaderboard", description="View custom graphic leaderboard of top inviters in the server.")
     async def invite_leaderboard(self, interaction: discord.Interaction):
@@ -755,6 +973,7 @@ class InviteLeaderboardView(discord.ui.View):
         self.page_indicator.label = f"Page {self.current_page} / {self.total_pages}"
 
     async def generate_card_file(self) -> discord.File:
+        import asyncio
         offset = (self.current_page - 1) * self.per_page
         page_items = self.data[offset:offset + self.per_page]
 
@@ -765,7 +984,6 @@ class InviteLeaderboardView(discord.ui.View):
             av = await self.cog.fetch_avatar(mem or uid_str, size=60)
             return (rank_num, name, username, av, total, reg, bon, left, fake)
 
-        import asyncio
         tasks_list = [
             fetch_item(offset + i, uid_str, total, reg, bon, left, fake)
             for i, (uid_str, total, reg, bon, left, fake) in enumerate(page_items, start=1)
@@ -782,7 +1000,8 @@ class InviteLeaderboardView(discord.ui.View):
             total_pages=self.total_pages,
             total_inviters=len(self.data),
             members_data=members_data,
-            max_invites=max_inv
+            max_invites=max_inv,
+            guild_id=self.guild.id
         )
         return discord.File(fp=buf, filename=f"invite_leaderboard_{self.guild.id}.png")
 

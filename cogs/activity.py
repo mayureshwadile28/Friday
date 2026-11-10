@@ -12,13 +12,55 @@ import time
 import unicodedata
 import asyncio
 import aiohttp
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from database import db
 from font_utils import get_unicode_font, clean_display_name, safe_channel_label
 
 # SQLite Database path inside data/ directory
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 DB_FILE = os.path.join(DATA_DIR, "activity.db")
+
+def resolve_card_background(bg_path: str) -> Optional[str]:
+    """Robustly resolve card background on local machine and Linux VM."""
+    if not bg_path or not isinstance(bg_path, str):
+        return None
+    if os.path.exists(bg_path):
+        return bg_path
+    base = os.path.basename(bg_path)
+    cand1 = os.path.join(os.getcwd(), "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand1):
+        return cand1
+    cand2 = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand2):
+        return os.path.abspath(cand2)
+    return None
+
+def extract_accent_color(img: Image.Image, default_rgb=(56, 189, 248)) -> tuple:
+    """Extract vibrant dominant accent color from image palette."""
+    if not img:
+        return default_rgb
+    try:
+        import colorsys
+        small = img.convert("RGB").resize((60, 60), Image.Resampling.BILINEAR)
+        colors = small.getcolors(maxcolors=3600)
+        if not colors:
+            return default_rgb
+        best_color = None
+        best_score = -1.0
+        for count, color in colors:
+            r, g, b = color
+            h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+            if v < 0.25 or (s < 0.15 and v > 0.85):
+                continue
+            score = s * 2.0 + v * 1.0 + (count / 2400) * 0.5
+            if score > best_score:
+                best_score = score
+                best_color = color
+        if best_color:
+            return best_color
+    except Exception:
+        pass
+    return default_rgb
 
 def monotone_cubic_spline(points, num_subdivisions=16):
     """
@@ -658,15 +700,42 @@ class Activity(commands.Cog):
         top_channels: list, # [(name, count), ...]
         top_chatters: list, # [(name, count), ...]
         footer_left: str,
-        footer_right: str = "Powered by Friday"
+        footer_right: str = "Powered by Friday",
+        guild_id: int = None
     ) -> io.BytesIO:
         """Renders comprehensive 1080x760 Master Server Demographics & Activity Telemetry Card."""
         W, H = 1080, 760
-        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
-        draw = ImageDraw.Draw(img)
 
-        # Outer rounded container
-        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+        # Check custom wallpaper for activity card
+        raw_bg = None
+        bg_img = None
+        custom_bg = resolve_card_background(db.activity_card_backgrounds.get(str(guild_id))) if guild_id else None
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx, cy = (nw - W) // 2, (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+            except Exception:
+                raw_bg = bg_img = None
+
+        if not bg_img:
+            img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        else:
+            img = bg_img
+
+        # Outer rounded container (Frosted glass when custom wallpaper is set)
+        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = get_unicode_font(13)
@@ -683,7 +752,7 @@ class Activity(commands.Cog):
         font_footer = get_unicode_font(11)
         font_footer_bold = get_unicode_font(11, bold=True)
 
-        accent_color = (56, 189, 248) # Cyan
+        accent_color = extract_accent_color(raw_bg, default_rgb=(56, 189, 248)) if raw_bg else (56, 189, 248)
 
         # 1. Header
         header_x, header_y = 38, 30
@@ -916,15 +985,42 @@ class Activity(commands.Cog):
         footer_left: str,
         footer_right: str = "Powered by Friday",
         voice_rank_num: int = 0,
-        voice_today_str: str = "0m"
+        voice_today_str: str = "0m",
+        guild_id: int = None
     ) -> io.BytesIO:
         """Renders comprehensive 1080x760 Master Member Telemetry & Activity Card."""
         W, H = 1080, 760
-        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
-        draw = ImageDraw.Draw(img)
 
-        # Outer rounded container
-        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+        # Check custom wallpaper for activity card
+        raw_bg = None
+        bg_img = None
+        custom_bg = resolve_card_background(db.activity_card_backgrounds.get(str(guild_id))) if guild_id else None
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx, cy = (nw - W) // 2, (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+            except Exception:
+                raw_bg = bg_img = None
+
+        if not bg_img:
+            img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        else:
+            img = bg_img
+
+        # Outer rounded container (Frosted glass when custom wallpaper is set)
+        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = get_unicode_font(13)
@@ -941,7 +1037,7 @@ class Activity(commands.Cog):
         font_footer = get_unicode_font(11)
         font_footer_bold = get_unicode_font(11, bold=True)
 
-        accent_color = (129, 140, 248) # Indigo / Blurple
+        accent_color = extract_accent_color(raw_bg, default_rgb=(129, 140, 248)) if raw_bg else (129, 140, 248)
 
         # 1. Header
         header_x, header_y = 38, 30
@@ -1145,15 +1241,43 @@ class Activity(commands.Cog):
         total_pages: int,
         total_chatters: int,
         members_data: list, # [(rank, name, username, avatar_img, count), ...]
-        max_msgs: int = 1
+        max_msgs: int = 1,
+        guild_id: int = None
     ) -> io.BytesIO:
         """Renders high-resolution 1020x640 graphic leaderboard card with 10 members per page in a 2-column grid."""
         W, H = 1020, 640
-        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
-        draw = ImageDraw.Draw(img)
 
-        # Outer Container
-        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+        # Check custom wallpaper for leaderboard
+        raw_bg = None
+        bg_img = None
+        custom_bg = resolve_card_background(db.leaderboard_card_backgrounds.get(str(guild_id))) if guild_id else None
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx = (nw - W) // 2
+                cy = (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+            except Exception:
+                raw_bg = bg_img = None
+
+        if not bg_img:
+            img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        else:
+            img = bg_img
+
+        # Outer Container (Frosted glass when custom wallpaper is set)
+        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = get_unicode_font(13)
@@ -1362,7 +1486,8 @@ class Activity(commands.Cog):
             top_channels=top_channels,
             top_chatters=top_chatters,
             footer_left=f"Server Demographics & Telemetry Matrix • Server ID: {guild.id} • Timezone: UTC",
-            footer_right="Powered by Friday"
+            footer_right="Powered by Friday",
+            guild_id=guild.id
         )
         return discord.File(fp=buf, filename=f"server_matrix_{guild.id}.png")
 
@@ -1443,7 +1568,8 @@ class Activity(commands.Cog):
             footer_left=f"Member Telemetry Matrix • Tag: @{clean_display_name(member.name)} • User ID: {member.id} • Timezone: UTC",
             footer_right="Powered by Friday",
             voice_rank_num=voice_rank_num,
-            voice_today_str=voice_today_str
+            voice_today_str=voice_today_str,
+            guild_id=guild.id
         )
         return discord.File(fp=buf, filename=f"member_matrix_{member.id}.png")
 
@@ -1492,7 +1618,8 @@ class Activity(commands.Cog):
             total_pages=total_pages,
             total_chatters=total_chatters,
             members_data=members_data,
-            max_msgs=max_msgs
+            max_msgs=max_msgs,
+            guild_id=guild.id
         )
         return discord.File(fp=buf, filename=f"leaderboard_{guild.id}_{timeframe}_p{current_page}.png")
 

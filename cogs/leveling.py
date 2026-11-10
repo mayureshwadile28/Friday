@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from typing import Optional, List, Dict, Any
 import time
 import random
 import io
@@ -15,6 +16,21 @@ from font_utils import get_unicode_font, clean_display_name, safe_channel_label
 
 def draw_rounded_rect(draw, bbox, radius, fill, outline=None, width=1):
     draw.rounded_rectangle(bbox, radius=radius, fill=fill, outline=outline, width=width)
+
+def resolve_card_background(bg_path: str) -> Optional[str]:
+    """Robustly resolve card background on local machine and Linux VM."""
+    if not bg_path or not isinstance(bg_path, str):
+        return None
+    if os.path.exists(bg_path):
+        return bg_path
+    base = os.path.basename(bg_path)
+    cand1 = os.path.join(os.getcwd(), "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand1):
+        return cand1
+    cand2 = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand2):
+        return os.path.abspath(cand2)
+    return None
 
 class Leveling(commands.Cog):
     def __init__(self, bot):
@@ -157,25 +173,23 @@ class Leveling(commands.Cog):
         # Check if a custom rank card background is configured via dashboard
         raw_bg = None
         bg_img = None
-        custom_bg = db.rank_card_backgrounds.get(gid)
-        if custom_bg and isinstance(custom_bg, str):
-            # Check local file or uploaded file
-            if os.path.exists(custom_bg):
-                try:
-                    loaded = Image.open(custom_bg).convert("RGBA")
-                    # Cover crop to W x H
-                    w_ratio = W / loaded.width
-                    h_ratio = H / loaded.height
-                    ratio = max(w_ratio, h_ratio)
-                    new_w = int(loaded.width * ratio)
-                    new_h = int(loaded.height * ratio)
-                    resized = loaded.resize((new_w, new_h), Image.Resampling.LANCZOS)
-                    crop_x = (new_w - W) // 2
-                    crop_y = (new_h - H) // 2
-                    raw_bg = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
-                    bg_img = raw_bg.copy()
-                except Exception:
-                    raw_bg = bg_img = None
+        custom_bg = resolve_card_background(db.rank_card_backgrounds.get(gid) or db.rank_backgrounds.get(gid))
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                # Cover crop to W x H
+                w_ratio = W / loaded.width
+                h_ratio = H / loaded.height
+                ratio = max(w_ratio, h_ratio)
+                new_w = int(loaded.width * ratio)
+                new_h = int(loaded.height * ratio)
+                resized = loaded.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                crop_x = (new_w - W) // 2
+                crop_y = (new_h - H) // 2
+                raw_bg = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
+                bg_img = raw_bg.copy()
+            except Exception:
+                raw_bg = bg_img = None
 
         # Extract adaptive accent color from wallpaper (or fallback indigo)
         accent_rgb = self._extract_accent_color(raw_bg) if raw_bg else (129, 140, 248)
@@ -350,8 +364,8 @@ class Leveling(commands.Cog):
         raw_bg = None
         bg_img = None
         if gid:
-            custom_bg = db.rank_card_backgrounds.get(gid)
-            if custom_bg and isinstance(custom_bg, str) and os.path.exists(custom_bg):
+            custom_bg = resolve_card_background(db.levelup_card_backgrounds.get(gid))
+            if custom_bg:
                 try:
                     loaded = Image.open(custom_bg).convert("RGBA")
                     w_r = W / loaded.width
@@ -556,15 +570,43 @@ class Leveling(commands.Cog):
         total_pages: int,
         total_members: int,
         members_data: list, # [(rank, name, username, av_img, level, xp, next_xp), ...]
-        max_xp: int = 1
+        max_xp: int = 1,
+        guild_id: int = None
     ) -> io.BytesIO:
         """Renders high-resolution 1020x640 graphic XP leaderboard card with 10 members in a 2-column layout."""
         W, H = 1020, 640
-        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
-        draw = ImageDraw.Draw(img)
 
-        # Outer Container
-        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+        # Check custom wallpaper for leaderboard
+        raw_bg = None
+        bg_img = None
+        custom_bg = resolve_card_background(db.leaderboard_card_backgrounds.get(str(guild_id))) if guild_id else None
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx = (nw - W) // 2
+                cy = (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+            except Exception:
+                raw_bg = bg_img = None
+
+        if not bg_img:
+            img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        else:
+            img = bg_img
+
+        # Outer Container with Frosted Glass when wallpaper is active
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = Font.poppins(variant="regular", size=13)
@@ -737,7 +779,8 @@ class Leveling(commands.Cog):
             total_pages=total_pages,
             total_members=total_members,
             members_data=members_data,
-            max_xp=max_xp
+            max_xp=max_xp,
+            guild_id=guild.id
         )
         return discord.File(fp=buf, filename=f"xp_leaderboard_{guild.id}_p{current_page}.png")
 

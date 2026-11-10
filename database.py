@@ -60,6 +60,14 @@ class Database:
         self.applications = apps if isinstance(apps, dict) else {}
         rc_bg = self.data.get("rank_card_backgrounds")
         self.rank_card_backgrounds = rc_bg if isinstance(rc_bg, dict) else {}
+        lu_bg = self.data.get("levelup_card_backgrounds")
+        self.levelup_card_backgrounds = lu_bg if isinstance(lu_bg, dict) else {}
+        ic_bg = self.data.get("invite_card_backgrounds")
+        self.invite_card_backgrounds = ic_bg if isinstance(ic_bg, dict) else {}
+        ac_bg = self.data.get("activity_card_backgrounds")
+        self.activity_card_backgrounds = ac_bg if isinstance(ac_bg, dict) else {}
+        lb_bg = self.data.get("leaderboard_card_backgrounds")
+        self.leaderboard_card_backgrounds = lb_bg if isinstance(lb_bg, dict) else {}
         inv_trk = self.data.get("invite_tracker")
         self.invite_tracker = inv_trk if isinstance(inv_trk, dict) else {}
         inv_cnt = self.data.get("invite_counts")
@@ -116,6 +124,10 @@ class Database:
                 "scheduled_announcements": {},
                 "applications": {},
                 "rank_card_backgrounds": {},
+                "levelup_card_backgrounds": {},
+                "invite_card_backgrounds": {},
+                "activity_card_backgrounds": {},
+                "leaderboard_card_backgrounds": {},
                 "invite_tracker": {},
                 "invite_counts": {},
                 "invite_history": {}
