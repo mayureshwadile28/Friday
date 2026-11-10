@@ -347,6 +347,11 @@ class Leveling(commands.Cog):
         accent_color = self._extract_accent_color(raw_bg) if raw_bg else (56, 189, 248)
         ar, ag, ab = accent_color
 
+        # Boost accent color specifically for text to guarantee high vibrancy and brightness
+        h_a, s_a, v_a = colorsys.rgb_to_hsv(ar / 255, ag / 255, ab / 255)
+        text_r, text_g, text_b = colorsys.hsv_to_rgb(h_a, min(s_a, 0.65), max(v_a, 0.95))
+        tar, tag, tab = int(text_r * 255), int(text_g * 255), int(text_b * 255)
+
         if not bg_img:
             # Default dark canvas with gradient orbs (no wallpaper)
             bg_img = Image.new("RGBA", (W, H), (18, 20, 26, 255))
@@ -354,31 +359,27 @@ class Leveling(commands.Cog):
             d_bg.ellipse((-80, -80, 320, 320), fill=(ar, ag, ab, 50))
             d_bg.ellipse((W - 240, H - 240, W + 100, H + 100), fill=(ar // 2, ag // 2, ab, 35))
 
-        # ── 3. Very thin dark vignette — does NOT hide wallpaper ──
-        # Only darken edges slightly for text contrast
-        vignette = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-        v_draw = ImageDraw.Draw(vignette)
-        # Semi-dark strip only along bottom 25% (where text lives) — very transparent
-        v_draw.rectangle((0, H * 3 // 4, W, H), fill=(0, 0, 0, 55))
-        img = Image.alpha_composite(bg_img, vignette)
+        # ── 3. Smooth frosted glass backdrop — preserves wallpaper vibrancy while guaranteeing contrast ──
+        glass_backdrop = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        gb_draw = ImageDraw.Draw(glass_backdrop)
+        gb_draw.rounded_rectangle((6, 6, W - 6, H - 6), radius=RADIUS_CARD, fill=(10, 14, 22, 95))
+        img = Image.alpha_composite(bg_img, glass_backdrop)
 
         # ── 4. Glass card border — TRUE glassmorphism ──
         # Border: rounded rect with ONLY outline, fill is completely transparent
-        # We draw it on a separate layer so the outline blends cleanly
         glass_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         gl_draw = ImageDraw.Draw(glass_layer)
-        # Outer subtle glow (wider, very transparent)
+        # Outer subtle glow (wider, transparent)
         gl_draw.rounded_rectangle(
             (4, 4, W - 4, H - 4), radius=RADIUS_CARD,
-            outline=(ar, ag, ab, 60), width=6
+            outline=(ar, ag, ab, 70), width=6
         )
         # Inner crisp accent border
         gl_draw.rounded_rectangle(
             (8, 8, W - 8, H - 8), radius=RADIUS_CARD - 4,
-            outline=(ar, ag, ab, 180), width=3
+            outline=(tar, tag, tab, 210), width=3
         )
         img = Image.alpha_composite(img, glass_layer)
-        draw = ImageDraw.Draw(img)
 
         # ── 5. Avatar — perfectly round with anti-aliased glow ring ──
         av_size = 96 * SCALE
@@ -402,71 +403,89 @@ class Leveling(commands.Cog):
         pad = 10
         ring_draw.ellipse(
             (av_x - pad, av_y - pad, av_x + av_size + pad, av_y + av_size + pad),
-            outline=(ar, ag, ab, 55), width=14
+            outline=(ar, ag, ab, 60), width=14
         )
         ring_draw.ellipse(
             (av_x - 4, av_y - 4, av_x + av_size + 4, av_y + av_size + 4),
-            outline=(ar, ag, ab, 200), width=5
+            outline=(tar, tag, tab, 220), width=5
         )
         img = Image.alpha_composite(img, ring_layer)
-        draw = ImageDraw.Draw(img)
 
         # Paste circular avatar over ring
         img.paste(av_circle, (av_x, av_y), av_circle)
-        draw = ImageDraw.Draw(img)
 
-        # ── 6. Text content ──
-        text_x = av_x + av_size + 22 * SCALE
-        content_w = W - text_x - 24 * SCALE
+        # ── 6. Text content with cinematic soft drop shadow and crisp outline ──
+        text_x = av_x + av_size + 24 * SCALE
+        content_w = W - text_x - 26 * SCALE
 
-        font_header = get_unicode_font(28 * SCALE, bold=True)
-        font_lvl_lbl = get_unicode_font(12 * SCALE, bold=True)
-        font_sub = get_unicode_font(13 * SCALE)
+        font_header = get_unicode_font(31 * SCALE, bold=True)
+        font_sub = get_unicode_font(15 * SCALE, bold=True)
+        font_lvl_lbl = get_unicode_font(13 * SCALE, bold=True)
 
-        # "Level-up!" — bold white with subtle text shadow
-        shadow_off = 2
-        draw.text((text_x + shadow_off, 22 * SCALE + shadow_off), "Level-up!", font=font_header, fill=(0, 0, 0, 100))
-        draw.text((text_x, 22 * SCALE), "Level-up!", font=font_header, fill=(255, 255, 255, 255))
-
-        # Member name
         m_name = clean_display_name(
             getattr(member, "display_name", None) or getattr(member, "name", "User"),
             max_len=20
         )
-        draw.text((text_x, 60 * SCALE), f"GG @{m_name}", font=font_sub, fill=(220, 228, 240, 230))
-
-        # ── 7. Progress bar ──
-        bar_top_y = 86 * SCALE
-        bar_y = 106 * SCALE
-        bar_h = 20 * SCALE
-        bar_r = bar_h // 2  # Fully rounded capsule
-
-        # Level labels
         lbl_old = f"LVL {old_level}"
         lbl_new = f"LVL {new_level}"
-        draw.text((text_x, bar_top_y), lbl_old, font=font_lvl_lbl, fill=(ar, ag, ab, 230))
-        rbb = font_lvl_lbl.getbbox(lbl_new)
-        draw.text((text_x + content_w - (rbb[2] - rbb[0]), bar_top_y), lbl_new, font=font_lvl_lbl, fill=(255, 255, 255, 190))
+        bar_top_y = 86 * SCALE
+        bar_y = 106 * SCALE
+        bar_h = 22 * SCALE
+        bar_r = bar_h // 2
 
-        # Track (dark rounded capsule)
-        draw_rounded_rect(
-            draw,
+        # Pass A: Soft blurred drop shadow layer for maximum contrast against any wallpaper
+        shadow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        s_draw = ImageDraw.Draw(shadow_layer)
+        s_draw.text((text_x, 21 * SCALE), "Level-up!", font=font_header, fill=(0, 0, 0, 200))
+        s_draw.text((text_x, 59 * SCALE), f"GG @{m_name}", font=font_sub, fill=(0, 0, 0, 180))
+        s_draw.text((text_x, bar_top_y), lbl_old, font=font_lvl_lbl, fill=(0, 0, 0, 180))
+        rbb = font_lvl_lbl.getbbox(lbl_new)
+        s_draw.text((text_x + content_w - (rbb[2] - rbb[0]), bar_top_y), lbl_new, font=font_lvl_lbl, fill=(0, 0, 0, 180))
+
+        blurred_shadow = shadow_layer.filter(ImageFilter.GaussianBlur(radius=3 * SCALE))
+        img = Image.alpha_composite(img, blurred_shadow)
+
+        # Pass B: Ultra-bright foreground text with subtle sharpening stroke
+        draw = ImageDraw.Draw(img)
+        draw.text(
+            (text_x, 21 * SCALE), "Level-up!",
+            font=font_header, fill=(255, 255, 255, 255),
+            stroke_width=SCALE, stroke_fill=(0, 0, 0, 140)
+        )
+        draw.text(
+            (text_x, 59 * SCALE), f"GG @{m_name}",
+            font=font_sub, fill=(255, 255, 255, 255),
+            stroke_width=SCALE, stroke_fill=(0, 0, 0, 130)
+        )
+        draw.text(
+            (text_x, bar_top_y), lbl_old,
+            font=font_lvl_lbl, fill=(tar, tag, tab, 255),
+            stroke_width=SCALE, stroke_fill=(0, 0, 0, 150)
+        )
+        draw.text(
+            (text_x + content_w - (rbb[2] - rbb[0]), bar_top_y), lbl_new,
+            font=font_lvl_lbl, fill=(255, 255, 255, 255),
+            stroke_width=SCALE, stroke_fill=(0, 0, 0, 150)
+        )
+
+        # ── 7. Dynamic Progress Bar ──
+        # Track (rounded dark capsule with accent border)
+        draw.rounded_rectangle(
             (text_x, bar_y, text_x + content_w, bar_y + bar_h),
-            radius=bar_r, fill=(15, 18, 28, 190), outline=(ar, ag, ab, 50), width=2
+            radius=bar_r, fill=(12, 16, 26, 210), outline=(tar, tag, tab, 80), width=2
         )
 
         # Filled portion (gradient) rendered on its own layer with proper capsule clip
         fill_ratio = 0.92
-        fill_px = max(bar_h, int(content_w * fill_ratio))  # Minimum width = bar height for round cap
+        fill_px = max(bar_h, int(content_w * fill_ratio))
 
         # Build gradient band image
         grad_band = Image.new("RGBA", (fill_px, bar_h), (0, 0, 0, 0))
-        h_b, s_b, v_b = colorsys.rgb_to_hsv(ar / 255, ag / 255, ab / 255)
         for i in range(fill_px):
             t = i / max(1, fill_px - 1)
-            v_g = min(1.0, v_b + (1.0 - v_b) * t * 0.55)
-            s_g = s_b * (1 - t * 0.2)
-            rr, gg, bb = colorsys.hsv_to_rgb(h_b, s_g, v_g)
+            v_g = min(1.0, v_a + (1.0 - v_a) * t * 0.6)
+            s_g = s_a * (1 - t * 0.25)
+            rr, gg, bb = colorsys.hsv_to_rgb(h_a, s_g, v_g)
             ImageDraw.Draw(grad_band).line(
                 [(i, 0), (i, bar_h - 1)],
                 fill=(int(rr * 255), int(gg * 255), int(bb * 255), 255)
@@ -490,7 +509,6 @@ class Leveling(commands.Cog):
             (gx - gr, bar_y + bar_h // 2 - gr, gx + gr, bar_y + bar_h // 2 + gr),
             fill=(255, 255, 255, 240)
         )
-        # Inner bright core
         draw.ellipse(
             (gx - gr // 2, bar_y + bar_h // 2 - gr // 2, gx + gr // 2, bar_y + bar_h // 2 + gr // 2),
             fill=(255, 255, 255, 255)
