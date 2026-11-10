@@ -8,9 +8,10 @@ class AntiAbuse(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="anti_abuse", description="Add bad words to the filter, separated by commas.")
-    @app_commands.default_permissions(manage_messages=True)
-    async def anti_abuse(self, interaction: discord.Interaction, words: str):
+    anti_abuse_group = app_commands.Group(name="anti_abuse", description="Manage server word filter and whitelists", default_permissions=discord.Permissions(manage_messages=True))
+
+    @anti_abuse_group.command(name="add", description="Add bad words to the filter, separated by commas.")
+    async def anti_abuse_add(self, interaction: discord.Interaction, words: str):
         gid = str(interaction.guild.id)
         if gid not in db.banned_words:
             db.banned_words[gid] = []
@@ -27,8 +28,7 @@ class AntiAbuse(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="anti_abuse_remove", description="Remove a specific word from the filter.")
-    @app_commands.default_permissions(manage_messages=True)
+    @anti_abuse_group.command(name="remove", description="Remove a specific word from the filter.")
     async def anti_abuse_remove(self, interaction: discord.Interaction, word: str):
         gid = str(interaction.guild.id)
         if gid not in db.banned_words or not db.banned_words[gid]:
@@ -59,8 +59,7 @@ class AntiAbuse(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="anti_abuse_list", description="View all currently banned words in the server's filter.")
-    @app_commands.default_permissions(manage_messages=True)
+    @anti_abuse_group.command(name="list", description="View all currently banned words in the server's filter.")
     async def anti_abuse_list(self, interaction: discord.Interaction):
         gid = str(interaction.guild.id)
         word_list = db.banned_words.get(gid, [])
@@ -78,8 +77,7 @@ class AntiAbuse(commands.Cog):
         embed = discord.Embed(title="✔ Anti-Abuse Word List", description=words_formatted, color=0x2b2d31)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="anti_abuse_whitelist_add", description="Make a user IMMUNE to the word filter.")
-    @app_commands.default_permissions(manage_messages=True)
+    @anti_abuse_group.command(name="whitelist_add", description="Make a user IMMUNE to the word filter.")
     async def anti_abuse_whitelist_add(self, interaction: discord.Interaction, user: discord.Member):
         gid = str(interaction.guild.id)
         if gid not in db.abuse_whitelist:
@@ -102,8 +100,7 @@ class AntiAbuse(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="anti_abuse_whitelist_remove", description="Remove a user's immunity to the word filter.")
-    @app_commands.default_permissions(manage_guild=True)
+    @anti_abuse_group.command(name="whitelist_remove", description="Remove a user's immunity to the word filter.")
     async def anti_abuse_whitelist_remove(self, interaction: discord.Interaction, user: discord.Member):
         gid = str(interaction.guild.id)
         if gid in db.abuse_whitelist and user.id in db.abuse_whitelist[gid]:

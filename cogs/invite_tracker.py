@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+from typing import Optional, List, Dict, Any
 import datetime
 import math
 import unicodedata
@@ -23,9 +24,16 @@ class InviteTracker(commands.Cog):
         self.vanity_cache = {}
 
     async def cog_load(self):
-        # Cache invites on cog load
-        await self.bot.wait_until_ready()
-        await self.refresh_all_guild_invites()
+        # Cache invites on cog load via background task
+        import asyncio
+        asyncio.create_task(self._init_cache())
+
+    async def _init_cache(self):
+        try:
+            await self.bot.wait_until_ready()
+            await self.refresh_all_guild_invites()
+        except Exception:
+            pass
 
     async def refresh_all_guild_invites(self):
         """Builds in-memory invite cache across all guilds the bot belongs to."""

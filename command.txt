@@ -111,8 +111,6 @@ Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conv
 /first_welcome test - Sends an authentic test welcome card to preview the squeezed layout and styling
 /first_welcome message <template> - Updates the welcome message format with live variables
 /first_welcome reset [member] - Resets first-welcome status for a specific member or all members to re-trigger greetings
-/set_welcomer [mode] [channel] - Quick shortcut command to set the welcome channel (server join or first chat)
-/set_first_welcome [channel] - Standalone shortcut to set the first-welcome channel to current channel
 
 🔒 Channel Privacy & Lockdown
 /private [channel] - Makes a specific channel private
@@ -124,11 +122,11 @@ Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conv
 /force_private - Initiates Lockdown: Makes all channels private EXCEPT ignored channels, which become Read-Only.
 
 🤬 Anti-Abuse Chat Filter
-/anti_abuse <words> - Add words to the filter (comma-separated)
-/anti_abuse_remove <word> - Remove a specific word from the filter
-/anti_abuse_list - View all currently banned words
-/anti_abuse_whitelist_add @user - Make a user immune to the word filter
-/anti_abuse_whitelist_remove @user - Remove a user's immunity
+/anti_abuse add <words> - Add words to the filter (comma-separated)
+/anti_abuse remove <word> - Remove a specific word from the filter
+/anti_abuse list - View all currently banned words
+/anti_abuse whitelist_add @user - Make a user immune to the word filter
+/anti_abuse whitelist_remove @user - Remove a user's immunity
 
 🎨 Expressions, Reactions & Keyword Auto-Responder
 /emoji_steal <emojis> - Paste one or more custom emojis to bulk-steal them into your server
@@ -163,8 +161,6 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /ticket add @user - Temporarily grants a specific user access to an active ticket channel
 /ticket remove @user - Revokes access for a specific user from an active ticket channel
 /ticket close [reason] - Closes an active ticket, logs transcripts, and archives or deletes channel
-/close - Quick shortcut command to close the current active support ticket channel
-/create_ticket_panel - Quick shortcut command to deploy a support ticket panel
 
 🎵 Music & High-Fidelity Audio (Pure YouTube Engine)
 /join - Connect Friday to your current voice channel

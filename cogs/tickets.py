@@ -619,10 +619,6 @@ class Tickets(commands.Cog):
             notes=""
         )
 
-    @app_commands.command(name="close", description="Close the current ticket with an optional reason")
-    @app_commands.describe(reason="Reason for closing the ticket")
-    async def global_close(self, interaction: discord.Interaction, reason: str = None):
-        await self.slash_close(interaction, reason)
 
 async def setup(bot):
     await bot.add_cog(Tickets(bot))

@@ -1164,52 +1164,6 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
                 ephemeral=True
             )
 
-    # ──────────────── Convenience Shortcut Commands ────────────────
-
-    @app_commands.command(
-        name="set_welcomer",
-        description="Set THIS channel (or chosen channel) for welcome greetings. No channel name required!"
-    )
-    @app_commands.describe(
-        mode="Welcome mode (first chat reply or server join arrival)",
-        channel="Channel to use (Leave empty to use THIS channel automatically!)"
-    )
-    @app_commands.choices(mode=[
-        app_commands.Choice(name="First Message Greeting (Reply when newcomer speaks in chat)", value="first"),
-        app_commands.Choice(name="Server Join Greeting (New Member Arrival)", value="join"),
-    ])
-    @app_commands.default_permissions(administrator=True)
-    async def set_welcomer_command(
-        self,
-        interaction: discord.Interaction,
-        mode: str = "first",
-        channel: discord.TextChannel = None
-    ):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
-            return
-
-        if mode == "first":
-            await self.fw_set_channel.callback(self, interaction, channel=channel)
-        else:
-            await self.welcome_channel.callback(self, interaction, channel=channel)
-
-    @app_commands.command(
-        name="set_first_welcome",
-        description="Quick shortcut to set first welcome channel (Leave empty for THIS channel)."
-    )
-    @app_commands.describe(channel="Channel to use (Leave empty to use THIS channel automatically!)")
-    @app_commands.default_permissions(administrator=True)
-    async def set_first_welcome_standalone(
-        self,
-        interaction: discord.Interaction,
-        channel: discord.TextChannel = None
-    ):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
-            return
-        await self.fw_set_channel.callback(self, interaction, channel=channel)
-
     # ══════════════════════════════════════════════════════════════
     # 🎧 DISCORD EVENT LISTENERS
     # ══════════════════════════════════════════════════════════════
