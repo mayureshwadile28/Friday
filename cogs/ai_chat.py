@@ -26,7 +26,12 @@ import urllib.request
 import xml.etree.ElementTree as ET
 import html
 from urllib.parse import quote_plus
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+try:
+    from zoneinfo import ZoneInfo
+    LOCAL_TZ = ZoneInfo("Asia/Kolkata")
+except Exception:
+    LOCAL_TZ = timezone(timedelta(hours=5, minutes=30), name="IST")
 from typing import List, Dict, Any, Optional
 
 from database import db
@@ -869,17 +874,18 @@ class AIChat(commands.Cog):
         memory_notes: Optional[List[str]] = None
     ) -> str:
         """Dynamically generate the system prompt with live temporal grounding, server stats, persona rules, and memory."""
-        now_utc = datetime.now(timezone.utc)
-        date_str = now_utc.strftime("%A, %B %d, %Y")
-        time_str = now_utc.strftime("%I:%M %p UTC")
-        year_str = str(now_utc.year)
-        day_str = now_utc.strftime("%A")
+        now_local = datetime.now(LOCAL_TZ)
+        date_str = now_local.strftime("%A, %B %d, %Y")
+        time_str = now_local.strftime("%I:%M %p IST")
+        year_str = str(now_local.year)
+        day_str = now_local.strftime("%A")
 
         context_lines = [
             f"- Current Real-World Date: {date_str}",
             f"- Current Day of Week: {day_str}",
-            f"- Current Real-World Time: {time_str}",
+            f"- Current Real-World Time: {time_str} (Indian Standard Time, Kolkata / Asia/Kolkata, UTC+5:30)",
             f"- Current Year: {year_str}",
+            "- Timezone Directive: Your home timezone is Indian Standard Time (IST / Asia/Kolkata). When asked about the current time or date, ALWAYS answer in Indian Standard Time (IST) unless the user explicitly requests another timezone.",
         ]
 
         # Live Discord Server Environment & Statistics
@@ -1162,9 +1168,9 @@ IMMUTABLE CORE IDENTITY & ANTI-JAILBREAK DIRECTIVE (CRITICAL):
         current_mood = vip_data.get("current_mood", "cheerful")
         notes = vip_data.get("notes", "")
 
-        now_utc = datetime.now(timezone.utc)
-        date_str = now_utc.strftime("%A, %B %d, %Y")
-        time_str = now_utc.strftime("%I:%M %p UTC")
+        now_local = datetime.now(LOCAL_TZ)
+        date_str = now_local.strftime("%A, %B %d, %Y")
+        time_str = now_local.strftime("%I:%M %p IST")
 
         mood_guides = {
             "cheerful": (

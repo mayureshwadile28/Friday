@@ -784,8 +784,33 @@ def save_invite_tracker(gid):
     db.invite_tracker[gid_str]["embed"] = bool(body.get("embed", True))
     db.invite_tracker[gid_str]["embed_title"] = body.get("embed_title", "📥 Member Joined")
     db.invite_tracker[gid_str]["embed_color"] = body.get("embed_color", "#5865F2")
+    db.invite_tracker[gid_str]["banner_url"] = str(body.get("banner_url", "")).strip()
     db.save_data()
     return jsonify({"success": True, "message": "Invite tracker settings saved successfully!"})
+
+@app.route('/api/guild/<gid>/invite-tracker/upload-banner', methods=['POST'])
+def upload_invite_banner(gid):
+    gid_str = str(gid)
+    try:
+        os.makedirs(INVITE_BANNER_DIR, exist_ok=True)
+        file = flask_request.files.get('banner_file') or flask_request.files.get('file')
+        if not file or not file.filename:
+            return jsonify({"success": False, "error": "No file uploaded."}), 400
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.gif', '.webp']:
+            return jsonify({"success": False, "error": "Unsupported file format. Please upload PNG, JPG, GIF, or WebP."}), 400
+        safe_filename = f"invite_banner_{gid_str}_{uuid.uuid4().hex[:8]}{ext}"
+        save_path = os.path.join(INVITE_BANNER_DIR, safe_filename)
+        file.save(save_path)
+        
+        rel_url = f"/static/uploads/invite_banners/{safe_filename}"
+        if gid_str not in db.invite_tracker:
+            db.invite_tracker[gid_str] = {}
+        db.invite_tracker[gid_str]["banner_url"] = rel_url
+        db.save_data()
+        return jsonify({"success": True, "url": rel_url})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 @app.route('/api/guild/<gid>/invite-tracker/bonus', methods=['POST'])
 def adjust_invite_bonus(gid):
@@ -834,6 +859,22 @@ def test_invite_message(gid):
             return jsonify({"success": False, "error": "Channel not found or Friday lacks permissions."})
 
         cfg = db.invite_tracker.get(gid_str, {})
+        # If body provides preview overrides, use them
+        if "join_msg" in body:
+            cfg["join_msg"] = body["join_msg"]
+        if "embed_title" in body:
+            cfg["embed_title"] = body["embed_title"]
+        if "banner_url" in body:
+            cfg["banner_url"] = body["banner_url"]
+
+        inv_cog = bot_instance.get_cog("InviteTracker")
+        if inv_cog:
+            coro = inv_cog.send_test_notification(channel, bot_instance.user, cfg=cfg, msg_type=msg_type)
+            future = asyncio.run_coroutine_threadsafe(coro, bot_instance.loop)
+            future.result(timeout=6)
+            return jsonify({"success": True, "channel_name": channel.name})
+
+        # Fallback manual build if cog not resolved
         tpl = cfg.get("join_msg") if msg_type == "join" else cfg.get("leave_msg")
         if not tpl:
             tpl = "👋 Welcome {user} to **{guild}**! Invited by {inviter}. {inviter_name} now has **{invites}** invites!"
@@ -843,25 +884,30 @@ def test_invite_message(gid):
                        .replace("{guild}", channel.guild.name) \
                        .replace("{inviter}", bot_instance.user.mention) \
                        .replace("{inviter.name}", bot_instance.user.name) \
-                       .replace("{code}", "test-code") \
+                       .replace("{code}", "friday-vip") \
                        .replace("{invites}", "12") \
                        .replace("{regular}", "10") \
-                       .replace("{bonus}", "4") \
+                       .replace("{bonus}", "3") \
                        .replace("{left}", "1") \
-                       .replace("{fake}", "1") \
+                       .replace("{fake}", "0") \
                        .replace("{total_members}", str(channel.guild.member_count))
 
         formatted = replace_plain_emojis(formatted, bot_instance, guild_id=gid)
 
         if cfg.get("embed", True):
             color = int(cfg.get("embed_color", "5865F2").replace("#", ""), 16)
+            raw_title = cfg.get("embed_title", "📥 Member Joined (Test Preview)")
+            title = replace_plain_emojis(raw_title, bot_instance, guild_id=gid)
             embed = discord.Embed(
-                title=cfg.get("embed_title", "📥 Member Joined (Test Preview)"),
+                title=title,
                 description=formatted,
                 color=color
             )
             embed.set_thumbnail(url=bot_instance.user.display_avatar.url)
-            embed.set_footer(text="Friday Invite Tracker • Test Card")
+            banner = cfg.get("banner_url") or cfg.get("banner")
+            if banner:
+                embed.set_image(url=banner)
+            embed.set_footer(text="Friday Invite Tracker • Test Card • Timezone: IST")
             coro = channel.send(embed=embed)
         else:
             coro = channel.send(formatted)
@@ -3008,6 +3054,8 @@ APPLICATION_BANNER_DIR = os.path.join(app.root_path, "static", "uploads", "appli
 os.makedirs(APPLICATION_BANNER_DIR, exist_ok=True)
 RANK_BG_DIR = os.path.join(app.root_path, "static", "uploads", "rank_backgrounds")
 os.makedirs(RANK_BG_DIR, exist_ok=True)
+INVITE_BANNER_DIR = os.path.join(app.root_path, "static", "uploads", "invite_banners")
+os.makedirs(INVITE_BANNER_DIR, exist_ok=True)
 
 def validate_image_url(url):
     if not url:

@@ -163,7 +163,7 @@
 
 </div>
 
-                    Leveling System
+                    Progression &amp; Invites
 
                 </a>
 
@@ -2464,9 +2464,19 @@
 
 <div class="section-header">
 
-<h1 class="section-title">Leveling &amp; Rewards</h1>
+<h1 class="section-title">Progression &amp; Invites</h1>
 
-<p class="section-desc">Keep your community active with customizable chat progression, notification channels, and formatted level-up messages.</p>
+<p class="section-desc">Keep your community active with customizable chat progression, notification channels, formatted level-up cards, and member invite tracking.</p>
+
+<!-- Sub-Navigation Pill Bar -->
+<div class="welcome-subtab-bar" style="margin-top: 14px; margin-bottom: 6px;">
+    <button type="button" class="welcome-subtab-btn active" id="subtabProgressionLevels" onclick="switchProgressionSubtab('levels')">
+        <span>🏆 Chat XP &amp; Levels</span>
+    </button>
+    <button type="button" class="welcome-subtab-btn" id="subtabProgressionInvites" onclick="switchProgressionSubtab('invites')">
+        <span>📨 Member Invites &amp; Tracker</span>
+    </button>
+</div>
 
 </div>
 
@@ -10586,6 +10596,16 @@ Click the button below to submit your confidential application.
         </div>
     </div>
 
+    <!-- Sub-Navigation Pill Bar -->
+    <div class="welcome-subtab-bar" style="margin-top: -10px; margin-bottom: 24px;">
+        <button type="button" class="welcome-subtab-btn" onclick="switchProgressionSubtab('levels')">
+            <span>🏆 Chat XP &amp; Levels</span>
+        </button>
+        <button type="button" class="welcome-subtab-btn active" onclick="switchProgressionSubtab('invites')">
+            <span>📨 Member Invites &amp; Tracker</span>
+        </button>
+    </div>
+
     <!-- Main Configuration Card -->
     <div class="card" style="margin-bottom: 24px;">
         <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Announcement Channel</h3>
@@ -10610,6 +10630,14 @@ Click the button below to submit your confidential application.
             <button class="var-chip" onclick="insertInviteVar('{fake}', 'inviteJoinMsg')" type="button"><code>{fake}</code> Fake</button>
             <button class="var-chip" onclick="insertInviteVar('{code}', 'inviteJoinMsg')" type="button"><code>{code}</code> Code</button>
             <button class="var-chip" onclick="insertInviteVar('{guild}', 'inviteJoinMsg')" type="button"><code>{guild}</code> Server</button>
+            <button class="var-chip" onclick="insertInviteVar('# ', 'inviteJoinMsg')" type="button"><code>#</code> Header</button>
+            <button class="var-chip" onclick="insertInviteVar('**bold**', 'inviteJoinMsg')" type="button">Bold</button>
+            <button class="var-chip" onclick="insertInviteVar('> ', 'inviteJoinMsg')" type="button">Quote</button>
+            <div class="emoji-picker-wrapper">
+                <button class="btn-emoji-picker" type="button" id="inviteJoinMsgEmojiBtn" title="Insert Server or Unicode Emoji">
+                    <span>😊 Server Emojis</span>
+                </button>
+            </div>
         </div>
 
         <div style="position: relative; margin-top: 10px;">
@@ -10626,6 +10654,11 @@ Click the button below to submit your confidential application.
             <button class="var-chip" onclick="insertInviteVar('{inviter}', 'inviteLeaveMsg')" type="button"><code>{inviter}</code> Inviter</button>
             <button class="var-chip" onclick="insertInviteVar('{inviter.name}', 'inviteLeaveMsg')" type="button"><code>{inviter.name}</code> Inviter Name</button>
             <button class="var-chip" onclick="insertInviteVar('{invites}', 'inviteLeaveMsg')" type="button"><code>{invites}</code> Total Net</button>
+            <div class="emoji-picker-wrapper">
+                <button class="btn-emoji-picker" type="button" id="inviteLeaveMsgEmojiBtn" title="Insert Server or Unicode Emoji">
+                    <span>😊 Server Emojis</span>
+                </button>
+            </div>
         </div>
 
         <div style="position: relative; margin-top: 10px;">
@@ -10634,9 +10667,9 @@ Click the button below to submit your confidential application.
 
         <!-- Embed Customization -->
         <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-top: 26px; margin-bottom: 4px;">Embed Card Styling</h3>
-        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Style the card container and accent color.</p>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Style the card container, heading, banner image or GIF, and accent color.</p>
         
-        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center; margin-bottom: 18px;">
             <div style="display: flex; align-items: center; gap: 10px;">
                 <label class="switch">
                     <input type="checkbox" id="inviteEmbedToggle" checked onchange="renderInviteLivePreview()">
@@ -10647,12 +10680,41 @@ Click the button below to submit your confidential application.
 
             <div style="display: flex; align-items: center; gap: 8px;">
                 <label style="font-size: 13px; font-weight: 600; color: #e2e8f0;">Card Title:</label>
-                <input type="text" class="text-input" id="inviteEmbedTitle" value="📥 Member Joined" style="max-width: 220px;" oninput="renderInviteLivePreview()">
+                <div style="display: flex; align-items: center; gap: 6px;">
+                    <input type="text" class="text-input" id="inviteEmbedTitle" value="📥 Member Joined" style="max-width: 220px;" oninput="renderInviteLivePreview()">
+                    <button class="btn-emoji-picker" type="button" id="inviteTitleEmojiBtn" style="padding: 6px 10px;" title="Insert Server or Unicode Emoji">
+                        <span>😊</span>
+                    </button>
+                </div>
             </div>
 
             <div style="display: flex; align-items: center; gap: 8px;">
                 <label style="font-size: 13px; font-weight: 600; color: #e2e8f0;">Accent Color:</label>
                 <input type="color" id="inviteEmbedColor" value="#5865F2" style="width: 44px; height: 36px; border: none; border-radius: 6px; cursor: pointer; background: transparent;" onchange="renderInviteLivePreview()">
+            </div>
+        </div>
+
+        <!-- Banner Image / GIF Customization -->
+        <div style="padding-top: 14px; border-top: 1px solid var(--border-card);">
+            <h4 style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Card Banner Image or Animated GIF</h4>
+            <p style="font-size: 12.5px; color: var(--text-secondary); margin-bottom: 12px;">
+                Attach a custom banner (PNG, JPG, GIF, WebP) to the invite card. Upload locally or provide a direct image/GIF link.
+            </p>
+            <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 10px;">
+                <input type="file" id="inviteBannerFileInput" accept="image/png, image/jpeg, image/gif, image/webp" style="display: none;" onchange="uploadInviteBanner(this)">
+                <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('inviteBannerFileInput').click()">
+                    📁 Choose Local Banner Image / GIF
+                </button>
+                <button class="btn btn-secondary btn-action-secondary" type="button" id="inviteBannerResetBtn" onclick="resetInviteBanner()">
+                    ↺ Remove Banner
+                </button>
+                <span id="inviteBannerStatus" style="font-size: 12.5px; color: var(--text-muted);">No Banner Active</span>
+            </div>
+            <div style="max-width: 520px;">
+                <input type="text" class="text-input" id="inviteBannerUrlInput" placeholder="Or paste image / GIF URL (https://...)" oninput="onInviteBannerUrlChanged(this.value)">
+            </div>
+            <div id="inviteBannerPreviewWrap" style="margin-top: 12px; max-width: 460px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+                <img id="inviteBannerPreviewImg" src="" style="width: 100%; max-height: 180px; object-fit: cover; display: block;" alt="Banner Preview">
             </div>
         </div>
     </div>
@@ -10675,13 +10737,18 @@ Click the button below to submit your confidential application.
                     <div class="discord-msg-body" id="invitePreviewBody"></div>
 
                     <!-- Embed Card Simulation -->
-                    <div id="invitePreviewEmbed" style="display: flex; border-left: 4px solid #5865F2; background: rgba(43, 45, 49, 0.6); padding: 14px 18px; border-radius: 4px; margin-top: 8px; max-width: 540px; gap: 14px;">
-                        <div style="flex: 1;">
-                            <div id="invitePreviewTitle" style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px;">📥 Member Joined</div>
-                            <div id="invitePreviewDesc" style="font-size: 13px; color: #dcddde; line-height: 1.5;"></div>
-                            <div style="font-size: 11px; color: #94a3b8; margin-top: 10px;">Member #1,250 • Server Time</div>
+                    <div id="invitePreviewEmbed" style="display: flex; flex-direction: column; border-left: 4px solid #5865F2; background: rgba(43, 45, 49, 0.6); padding: 14px 18px; border-radius: 4px; margin-top: 8px; max-width: 540px;">
+                        <div style="display: flex; gap: 14px;">
+                            <div style="flex: 1;">
+                                <div id="invitePreviewTitle" style="font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px;">📥 Member Joined</div>
+                                <div id="invitePreviewDesc" style="font-size: 13px; color: #dcddde; line-height: 1.5;"></div>
+                                <div style="font-size: 11px; color: #94a3b8; margin-top: 10px;">Member #1,250 • Timezone: IST</div>
+                            </div>
+                            <img src="https://cdn.discordapp.com/embed/avatars/0.png" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; align-self: flex-start;" alt="Avatar">
                         </div>
-                        <img src="https://cdn.discordapp.com/embed/avatars/0.png" style="width: 56px; height: 56px; border-radius: 50%; object-fit: cover; align-self: flex-start;" alt="Avatar">
+                        <div id="invitePreviewBannerWrap" style="margin-top: 12px; border-radius: 6px; overflow: hidden; display: none;">
+                            <img id="invitePreviewBannerImg" src="" style="width: 100%; max-height: 220px; object-fit: cover; display: block;" alt="Invite Banner">
+                        </div>
                     </div>
                 </div>
             </div>

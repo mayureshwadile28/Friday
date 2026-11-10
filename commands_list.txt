@@ -46,11 +46,9 @@ Friday Bot - Complete Command List (100+ Commands)
 
 📨 Invite Tracker & Verification
 /invites [@member] - Check your or another member's invite statistics (Total Net Invites, Regular, Bonus, Left, Fake <3d, and who invited them)
-/invite_leaderboard - View the server leaderboard of top inviters with interactive pagination
-/invite_admin add @member <amount> - Add bonus invites to a member (Admin only)
-/invite_admin remove @member <amount> - Remove bonus invites from a member (Admin only)
-/invite_admin add_fake @member <amount> - Add fake invites to a member (Admin only)
-/invite_admin remove_fake @member <amount> - Remove fake invites from a member (Admin only)
+/invite_leaderboard - View the server graphic image card leaderboard of top inviters with interactive pagination (Also available via /leaderboard invites)
+/invite_admin add @member <amount> [type: bonus/fake] - Add bonus or fake invites to a member (Admin only)
+/invite_admin remove @member <amount> [type: bonus/fake] - Deduct bonus or fake invites from a member (Admin only)
 /invite_admin set @member [regular] [fake] [bonus] [left] - Manually set exact invite numbers for a member (Admin only)
 /invite_admin clear @member - Reset all invite records for a member (Admin only)
 /invite_admin channel #channel - Set the channel where invite join/leave logs are posted (Admin only)

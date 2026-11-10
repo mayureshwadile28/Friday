@@ -4,10 +4,17 @@ from discord import app_commands
 from typing import Optional, List, Dict, Any
 import datetime
 import math
+import io
 import unicodedata
+import aiohttp
+from PIL import Image, ImageDraw
 from database import db
 from emoji_utils import replace_plain_emojis
-from font_utils import clean_display_name
+from font_utils import clean_display_name, get_unicode_font
+
+def draw_rounded_rect(draw, bounds, radius, fill=None, outline=None, width=1):
+    x1, y1, x2, y2 = bounds
+    draw.rounded_rectangle([x1, y1, x2, y2], radius=radius, fill=fill, outline=outline, width=width)
 
 class InviteTracker(commands.Cog):
     """
@@ -256,16 +263,71 @@ class InviteTracker(commands.Cog):
 
         if cfg.get("embed", True):
             color = int(cfg.get("embed_color", "5865F2").replace("#", ""), 16)
+            raw_title = cfg.get("embed_title", "📥 Member Joined")
+            title = replace_plain_emojis(raw_title, self.bot, guild=member.guild)
             embed = discord.Embed(
-                title=cfg.get("embed_title", "📥 Member Joined"),
+                title=title,
                 description=formatted,
                 color=color
             )
             embed.set_thumbnail(url=member.display_avatar.url)
+            
+            # Custom Banner Image or Animated GIF
+            banner = cfg.get("banner_url") or cfg.get("banner")
+            if banner:
+                embed.set_image(url=banner)
+
             if is_fake:
                 embed.set_footer(text="⚠️ Suspected alt / fresh account (< 3 days old)")
             else:
-                embed.set_footer(text=f"Member #{member.guild.member_count} • Server Time")
+                embed.set_footer(text=f"Member #{member.guild.member_count} • Timezone: IST")
+            await channel.send(embed=embed)
+        else:
+            await channel.send(formatted)
+
+    async def send_test_notification(self, channel: discord.TextChannel, user: discord.Member, cfg: dict = None, msg_type: str = "join"):
+        """Dispatches an authentic test invite notification card to verify emojis, markdown, and banner."""
+        if cfg is None:
+            cfg = db.invite_tracker.get(str(channel.guild.id), {})
+
+        default_tpl = (
+            "👋 Welcome {user} to **{guild}**!\n"
+            "Invited by {inviter} (Code: `{code}`).\n"
+            "📈 {inviter.name} now has **{invites}** invites (**{regular}** regular, **{bonus}** bonus, **{left}** left, **{fake}** fake)!"
+        )
+        template = cfg.get("join_msg") if msg_type == "join" else cfg.get("leave_msg")
+        if not template:
+            template = default_tpl
+
+        formatted = template.replace("{user}", user.mention) \
+                            .replace("{user.name}", user.name) \
+                            .replace("{guild}", channel.guild.name) \
+                            .replace("{inviter}", channel.guild.me.mention) \
+                            .replace("{inviter.name}", channel.guild.me.name) \
+                            .replace("{code}", "friday-vip") \
+                            .replace("{invites}", "12") \
+                            .replace("{regular}", "10") \
+                            .replace("{bonus}", "3") \
+                            .replace("{left}", "1") \
+                            .replace("{fake}", "0") \
+                            .replace("{total_members}", str(channel.guild.member_count))
+
+        formatted = replace_plain_emojis(formatted, self.bot, guild=channel.guild)
+
+        if cfg.get("embed", True):
+            raw_title = cfg.get("embed_title", "📥 Member Joined")
+            title = replace_plain_emojis(raw_title, self.bot, guild=channel.guild)
+            color = int(cfg.get("embed_color", "5865F2").replace("#", ""), 16)
+            embed = discord.Embed(
+                title=f"{title} (Test Card)",
+                description=formatted,
+                color=color
+            )
+            embed.set_thumbnail(url=user.display_avatar.url)
+            banner = cfg.get("banner_url") or cfg.get("banner")
+            if banner:
+                embed.set_image(url=banner)
+            embed.set_footer(text=f"Test Simulation • Member #{channel.guild.member_count} • Timezone: IST")
             await channel.send(embed=embed)
         else:
             await channel.send(formatted)
@@ -305,6 +367,189 @@ class InviteTracker(commands.Cog):
         else:
             await channel.send(formatted)
 
+    async def fetch_avatar(self, target, size: int = 110) -> Image.Image:
+        """Helper to fetch and circle-mask an avatar or server icon, or return a default colored circle."""
+        icon_url = None
+        if hasattr(target, "display_avatar") and target.display_avatar:
+            try:
+                icon_url = str(target.display_avatar.with_format("png").with_size(128).url)
+            except Exception:
+                icon_url = str(target.display_avatar.url)
+        elif hasattr(target, "icon") and target.icon:
+            try:
+                icon_url = str(target.icon.with_format("png").with_size(128).url)
+            except Exception:
+                icon_url = str(target.icon.url)
+
+        if icon_url:
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(icon_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            av_raw = Image.open(io.BytesIO(data)).convert("RGBA")
+                            av_resized = av_raw.resize((size, size), Image.Resampling.LANCZOS)
+                            mask = Image.new("L", (size, size), 0)
+                            ImageDraw.Draw(mask).ellipse((0, 0, size - 1, size - 1), fill=255)
+                            output = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+                            output.paste(av_resized, (0, 0), mask)
+                            return output
+            except Exception:
+                pass
+
+        # Fallback circle
+        av_img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        d = ImageDraw.Draw(av_img)
+        d.ellipse((0, 0, size - 1, size - 1), fill=(70, 75, 90, 255), outline=(90, 95, 115, 255), width=2)
+        return av_img
+
+    def render_invite_leaderboard_card(
+        self,
+        guild_name: str,
+        guild_icon: Image.Image,
+        page: int,
+        total_pages: int,
+        total_inviters: int,
+        members_data: list,  # [(rank, name, username, av_img, total, reg, bonus, left, fake), ...]
+        max_invites: int = 1
+    ) -> io.BytesIO:
+        """Renders high-resolution 1020x640 graphic Invite leaderboard card with 10 members in a 2-column layout."""
+        W, H = 1020, 640
+        img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+        draw = ImageDraw.Draw(img)
+
+        # Outer Container
+        draw_rounded_rect(draw, (12, 12, W - 12, H - 12), radius=26, fill=(28, 30, 36, 255), outline=(42, 45, 54, 255), width=2)
+
+        font_title = get_unicode_font(22, bold=True)
+        font_sub = get_unicode_font(13)
+        font_pill = get_unicode_font(12, bold=True)
+        font_name = get_unicode_font(14, bold=True)
+        font_user = get_unicode_font(11)
+        font_rank = get_unicode_font(13, bold=True)
+        font_cnt = get_unicode_font(13, bold=True)
+        font_breakdown = get_unicode_font(10, bold=True)
+        font_footer = get_unicode_font(11)
+        font_footer_bold = get_unicode_font(11, bold=True)
+
+        # Header
+        header_x, header_y = 38, 34
+        if guild_icon:
+            try:
+                icon_resized = guild_icon.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (60, 60), 0)
+                mask_draw = ImageDraw.Draw(mask)
+                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                img.paste(icon_resized, (header_x, header_y), mask)
+                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+            except Exception:
+                pass
+
+        text_x = header_x + 74
+        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255))
+        draw.text((text_x, header_y + 34), "Server Invites Leaderboard", font=font_sub, fill=(142, 146, 155, 255))
+
+        # Status pills
+        pills = [
+            f"PAGE {page} OF {total_pages}",
+            f"{total_inviters:,} Total Inviters",
+            "INVITE RANKINGS"
+        ]
+        pill_right = W - 38
+        for p in reversed(pills):
+            bbox = font_pill.getbbox(p)
+            pw = (bbox[2] - bbox[0]) + 24
+            px = pill_right - pw
+            py = header_y + 14
+            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
+            draw.text((px + 12, py + 8), p, font=font_pill, fill=(240, 242, 245, 255))
+            pill_right = px - 10
+
+        col_w = 460
+        col1_x = 38
+        col2_x = 522
+        start_y = 114
+        row_h = 80
+        spacing = 14
+
+        m_dict = {m[0]: m for m in members_data}
+        start_rank = (page - 1) * 10 + 1
+
+        for slot_idx in range(10):
+            current_rank = start_rank + slot_idx
+            col = 0 if slot_idx < 5 else 1
+            row = slot_idx % 5
+            cx = col1_x if col == 0 else col2_x
+            cy = start_y + row * (row_h + spacing)
+
+            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+
+            if current_rank in m_dict:
+                _, name_str, user_str, av_img, total_inv, reg_val, bns_val, left_val, fake_val = m_dict[current_rank]
+
+                ratio = max(0.02, min(1.0, total_inv / max(1, max_invites)))
+                fill_w = int(col_w * ratio)
+                if fill_w > 0:
+                    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                    od = ImageDraw.Draw(overlay)
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=(99, 102, 241, 24))
+                    img = Image.alpha_composite(img, overlay)
+                    draw = ImageDraw.Draw(img)
+
+                if current_rank == 1:
+                    r_fill, r_out, r_txt = (60, 45, 15, 255), (217, 119, 6, 255), (245, 158, 11, 255)
+                elif current_rank == 2:
+                    r_fill, r_out, r_txt = (40, 45, 55, 255), (148, 163, 184, 255), (203, 213, 225, 255)
+                elif current_rank == 3:
+                    r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
+                else:
+                    r_fill, r_out, r_txt = (28, 30, 36, 255), (45, 48, 58, 255), (130, 135, 148, 255)
+
+                rx, ry, rw, rh = cx + 12, cy + 18, 36, 44
+                draw_rounded_rect(draw, (rx, ry, rx + rw, ry + rh), radius=8, fill=r_fill, outline=r_out, width=1)
+                r_str = f"#{current_rank}"
+                rb = font_rank.getbbox(r_str)
+                draw.text((rx + (rw - (rb[2] - rb[0])) // 2, ry + (rh - (rb[3] - rb[1])) // 2), r_str, font=font_rank, fill=r_txt)
+
+                ax, ay, asz = rx + rw + 12, cy + 15, 50
+                if av_img:
+                    try:
+                        av_thumb = av_img.convert("RGBA").resize((asz, asz), Image.Resampling.LANCZOS)
+                        img.paste(av_thumb, (ax, ay), av_thumb)
+                        draw.ellipse((ax, ay, ax + asz, ay + asz), outline=(52, 56, 68, 255), width=2)
+                    except Exception:
+                        pass
+
+                nx = ax + asz + 12
+                clean_name = clean_display_name(name_str, max_len=18)
+                clean_handle = clean_display_name(user_str, max_len=16)
+                draw.text((nx, cy + 16), clean_name, font=font_name, fill=(255, 255, 255, 255))
+                draw.text((nx, cy + 36), f"@{clean_handle}", font=font_user, fill=(140, 144, 155, 255))
+
+                bd_text = f"+{reg_val} reg • +{bns_val} bns • -{left_val} left • -{fake_val} fake"
+                draw.text((nx, cy + 52), bd_text, font=font_breakdown, fill=(115, 120, 135, 255))
+
+                inv_str = f"{total_inv:,} invites" if total_inv != 1 else "1 invite"
+                tb = font_cnt.getbbox(inv_str)
+                tw = (tb[2] - tb[0]) + 18
+                tx = cx + col_w - tw - 12
+                ty = cy + 24
+                draw_rounded_rect(draw, (tx, ty, tx + tw, ty + 30), radius=8, fill=(45, 48, 58, 255), outline=(62, 68, 82, 255), width=1)
+                draw.text((tx + 9, ty + 7), inv_str, font=font_cnt, fill=(99, 102, 241, 255))
+            else:
+                draw.text((cx + 20, cy + (row_h // 2) - 8), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(75, 80, 92, 255))
+
+        footer_y = H - 34
+        draw.text((38, footer_y), f"Server Invites Leaderboard • Page {page} of {total_pages} • Timezone: IST", font=font_footer, fill=(115, 120, 130, 255))
+        f_brand = "Powered by Friday"
+        fbb = font_footer_bold.getbbox(f_brand)
+        draw.text((W - 38 - (fbb[2] - fbb[0]), footer_y), f_brand, font=font_footer_bold, fill=(140, 145, 155, 255))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        return buf
+
     # ────────────────────────── Slash Commands ──────────────────────────
 
     @app_commands.command(name="invites", description="Check your or another member's invite statistics.")
@@ -330,7 +575,7 @@ class InviteTracker(commands.Cog):
         embed.set_footer(text=f"Requested by @{clean_display_name(interaction.user.name)}")
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="invite_leaderboard", description="View the top inviters in the server.")
+    @app_commands.command(name="invite_leaderboard", description="View custom graphic leaderboard of top inviters in the server.")
     async def invite_leaderboard(self, interaction: discord.Interaction):
         await interaction.response.defer()
         gid = str(interaction.guild.id)
@@ -348,20 +593,29 @@ class InviteTracker(commands.Cog):
         leaderboard_data.sort(key=lambda x: x[1], reverse=True)
 
         if not leaderboard_data:
-            await interaction.followup.send("No invite statistics recorded yet!")
+            await interaction.followup.send("No invite statistics recorded yet!", ephemeral=True)
             return
 
-        view = InviteLeaderboardView(interaction.guild, leaderboard_data, current_page=1)
-        embed = view.build_embed()
-        await interaction.followup.send(embed=embed, view=view)
+        view = InviteLeaderboardView(self, interaction.guild, leaderboard_data, current_page=1, per_page=10)
+        file = await view.generate_card_file()
+        await interaction.followup.send(file=file, view=view)
 
     # ────────────────────────── Admin Subgroup ──────────────────────────
 
     invite_admin = app_commands.Group(name="invite_admin", description="Configure and manage the server invite tracker.")
 
-    @invite_admin.command(name="add", description="Add bonus invites to a member.")
+    @invite_admin.command(name="add", description="Add bonus or fake invites to a member.")
+    @app_commands.describe(
+        member="Target member",
+        amount="Number of invites to add",
+        invite_type="Type of invite to adjust (Bonus or Fake)"
+    )
+    @app_commands.choices(invite_type=[
+        app_commands.Choice(name="Bonus Invites (Default)", value="bonus"),
+        app_commands.Choice(name="Fake Invites", value="fake"),
+    ])
     @app_commands.default_permissions(administrator=True)
-    async def add_bonus(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+    async def add_invites(self, interaction: discord.Interaction, member: discord.Member, amount: int, invite_type: str = "bonus"):
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
             return
@@ -370,14 +624,27 @@ class InviteTracker(commands.Cog):
         if uid_str not in db.invite_counts[gid_str]:
             db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
 
-        db.invite_counts[gid_str][uid_str]["bonus"] += amount
+        target_field = "fake" if invite_type == "fake" else "bonus"
+        db.invite_counts[gid_str][uid_str][target_field] += amount
         db.save_data()
         stats = self.get_user_invites(interaction.guild.id, member.id)
-        await interaction.response.send_message(f"✅ Added **{amount}** bonus invites to {member.mention}. New total: **{stats['total']}** invites.")
+        await interaction.response.send_message(
+            f"✅ Added **{amount}** {target_field} invites to {member.mention}. "
+            f"New stats: **{stats['total']}** net invites (Regular: {stats['regular']}, Bonus: {stats['bonus']}, Left: {stats['left']}, Fake: {stats['fake']})."
+        )
 
-    @invite_admin.command(name="remove", description="Remove bonus invites from a member.")
+    @invite_admin.command(name="remove", description="Remove bonus or fake invites from a member.")
+    @app_commands.describe(
+        member="Target member",
+        amount="Number of invites to remove",
+        invite_type="Type of invite to adjust (Bonus or Fake)"
+    )
+    @app_commands.choices(invite_type=[
+        app_commands.Choice(name="Bonus Invites (Default)", value="bonus"),
+        app_commands.Choice(name="Fake Invites", value="fake"),
+    ])
     @app_commands.default_permissions(administrator=True)
-    async def remove_bonus(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+    async def remove_invites(self, interaction: discord.Interaction, member: discord.Member, amount: int, invite_type: str = "bonus"):
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
             return
@@ -386,44 +653,14 @@ class InviteTracker(commands.Cog):
         if uid_str not in db.invite_counts[gid_str]:
             db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
 
-        db.invite_counts[gid_str][uid_str]["bonus"] = max(0, db.invite_counts[gid_str][uid_str]["bonus"] - amount)
+        target_field = "fake" if invite_type == "fake" else "bonus"
+        db.invite_counts[gid_str][uid_str][target_field] = max(0, db.invite_counts[gid_str][uid_str][target_field] - amount)
         db.save_data()
         stats = self.get_user_invites(interaction.guild.id, member.id)
-        await interaction.response.send_message(f"✅ Removed **{amount}** bonus invites from {member.mention}. New total: **{stats['total']}** invites.")
-
-    @invite_admin.command(name="add_fake", description="Add fake invites to a member.")
-    @app_commands.describe(member="Target member", amount="Number of fake invites to add")
-    @app_commands.default_permissions(administrator=True)
-    async def add_fake(self, interaction: discord.Interaction, member: discord.Member, amount: int):
-        if amount <= 0:
-            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
-            return
-        gid_str, uid_str = str(interaction.guild.id), str(member.id)
-        if gid_str not in db.invite_counts: db.invite_counts[gid_str] = {}
-        if uid_str not in db.invite_counts[gid_str]:
-            db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
-
-        db.invite_counts[gid_str][uid_str]["fake"] += amount
-        db.save_data()
-        stats = self.get_user_invites(interaction.guild.id, member.id)
-        await interaction.response.send_message(f"✅ Added **{amount}** fake invites to {member.mention}. (Net: **{stats['total']}**, Fake: **{stats['fake']}**)")
-
-    @invite_admin.command(name="remove_fake", description="Remove fake invites from a member.")
-    @app_commands.describe(member="Target member", amount="Number of fake invites to remove")
-    @app_commands.default_permissions(administrator=True)
-    async def remove_fake(self, interaction: discord.Interaction, member: discord.Member, amount: int):
-        if amount <= 0:
-            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
-            return
-        gid_str, uid_str = str(interaction.guild.id), str(member.id)
-        if gid_str not in db.invite_counts: db.invite_counts[gid_str] = {}
-        if uid_str not in db.invite_counts[gid_str]:
-            db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
-
-        db.invite_counts[gid_str][uid_str]["fake"] = max(0, db.invite_counts[gid_str][uid_str]["fake"] - amount)
-        db.save_data()
-        stats = self.get_user_invites(interaction.guild.id, member.id)
-        await interaction.response.send_message(f"✅ Removed **{amount}** fake invites from {member.mention}. (Net: **{stats['total']}**, Fake: **{stats['fake']}**)")
+        await interaction.response.send_message(
+            f"✅ Removed **{amount}** {target_field} invites from {member.mention}. "
+            f"New stats: **{stats['total']}** net invites (Regular: {stats['regular']}, Bonus: {stats['bonus']}, Left: {stats['left']}, Fake: {stats['fake']})."
+        )
 
     @invite_admin.command(name="set", description="Manually set exact invite numbers for a member.")
     @app_commands.describe(
@@ -501,9 +738,10 @@ class InviteTracker(commands.Cog):
 
 
 class InviteLeaderboardView(discord.ui.View):
-    """Interactive pagination view for Invite Leaderboard."""
-    def __init__(self, guild: discord.Guild, data: list, current_page: int = 1, per_page: int = 10):
+    """Interactive pagination view for Invite Graphic Leaderboard."""
+    def __init__(self, cog, guild: discord.Guild, data: list, current_page: int = 1, per_page: int = 10):
         super().__init__(timeout=300)
+        self.cog = cog
         self.guild = guild
         self.data = data
         self.current_page = current_page
@@ -516,28 +754,37 @@ class InviteLeaderboardView(discord.ui.View):
         self.next_btn.disabled = (self.current_page >= self.total_pages)
         self.page_indicator.label = f"Page {self.current_page} / {self.total_pages}"
 
-    def build_embed(self) -> discord.Embed:
-        embed = discord.Embed(
-            title=f"🏆 Top Inviters • {self.guild.name}",
-            color=0x5865F2,
-            timestamp=datetime.datetime.now(datetime.timezone.utc)
-        )
-        if self.guild.icon:
-            embed.set_thumbnail(url=self.guild.icon.url)
-
+    async def generate_card_file(self) -> discord.File:
         offset = (self.current_page - 1) * self.per_page
         page_items = self.data[offset:offset + self.per_page]
 
-        lines = []
-        for idx, (uid_str, total, reg, bon, left, fake) in enumerate(page_items, start=offset + 1):
-            member = self.guild.get_member(int(uid_str))
-            name = clean_display_name(member.display_name if member else f"User {uid_str[-4:]}")
-            medal = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else f"`#{idx}`"
-            lines.append(f"{medal} **{name}** — **{total}** invites (`+{reg}` reg, `+{bon}` bonus, `-{left}` left, `-{fake}` fake)")
+        async def fetch_item(rank_num, uid_str, total, reg, bon, left, fake):
+            mem = self.guild.get_member(int(uid_str))
+            name = mem.display_name if mem else f"User {uid_str[-4:]}"
+            username = mem.name if mem else f"id_{uid_str}"
+            av = await self.cog.fetch_avatar(mem or uid_str, size=60)
+            return (rank_num, name, username, av, total, reg, bon, left, fake)
 
-        embed.description = "\n".join(lines) if lines else "No ranked inviters found."
-        embed.set_footer(text=f"Page {self.current_page} of {self.total_pages} • Total {len(self.data)} inviters")
-        return embed
+        import asyncio
+        tasks_list = [
+            fetch_item(offset + i, uid_str, total, reg, bon, left, fake)
+            for i, (uid_str, total, reg, bon, left, fake) in enumerate(page_items, start=1)
+        ]
+        members_data = await asyncio.gather(*tasks_list) if tasks_list else []
+
+        max_inv = self.data[0][1] if self.data else 1
+        guild_icon = await self.cog.fetch_avatar(self.guild, size=60)
+
+        buf = self.cog.render_invite_leaderboard_card(
+            guild_name=self.guild.name,
+            guild_icon=guild_icon,
+            page=self.current_page,
+            total_pages=self.total_pages,
+            total_inviters=len(self.data),
+            members_data=members_data,
+            max_invites=max_inv
+        )
+        return discord.File(fp=buf, filename=f"invite_leaderboard_{self.guild.id}.png")
 
     @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary, custom_id="inv_lb_prev")
     async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -545,7 +792,8 @@ class InviteLeaderboardView(discord.ui.View):
         if self.current_page > 1:
             self.current_page -= 1
         self.update_buttons()
-        await interaction.edit_original_response(embed=self.build_embed(), view=self)
+        file = await self.generate_card_file()
+        await interaction.edit_original_response(attachments=[file], view=self)
 
     @discord.ui.button(label="Page 1 / 1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="inv_lb_page")
     async def page_indicator(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -557,7 +805,8 @@ class InviteLeaderboardView(discord.ui.View):
         if self.current_page < self.total_pages:
             self.current_page += 1
         self.update_buttons()
-        await interaction.edit_original_response(embed=self.build_embed(), view=self)
+        file = await self.generate_card_file()
+        await interaction.edit_original_response(attachments=[file], view=self)
 
 
 async def setup(bot):

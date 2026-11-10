@@ -1567,6 +1567,14 @@ class Activity(commands.Cog):
         file = await lvl_cog.generate_xp_leaderboard_file(interaction.guild, page=1)
         await interaction.followup.send(file=file, view=view)
 
+    @leaderboard_group.command(name="invites", description="View custom graphic leaderboard of top inviters in the server.")
+    async def lb_invites(self, interaction: discord.Interaction):
+        inv_cog = self.bot.get_cog("InviteTracker")
+        if not inv_cog:
+            await interaction.response.send_message("❌ Invite Tracker module is currently offline.", ephemeral=True)
+            return
+        await inv_cog.invite_leaderboard(interaction)
+
 class ActivityLeaderboardView(discord.ui.View):
     """
     Interactive pagination view for Leaderboard Image Cards.

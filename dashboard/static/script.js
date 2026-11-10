@@ -11874,7 +11874,10 @@ async function loadDataForActiveTab() {
 
 
 
-    else if (activeTab === 'levelingSection') await loadLevelingSettings();
+    else if (activeTab === 'levelingSection') {
+        await loadLevelingSettings();
+        await loadInviteTrackerSettings();
+    }
 
 
 
@@ -69836,6 +69839,47 @@ async function loadInviteTrackerSettings() {
         const embedColor = document.getElementById('inviteEmbedColor');
         if (embedColor) embedColor.value = cfg.embed_color || "#5865F2";
 
+        const bannerInput = document.getElementById('inviteBannerUrlInput');
+        if (bannerInput) bannerInput.value = cfg.banner_url || "";
+        updateInviteBannerPreview(cfg.banner_url || "");
+
+        // Wire server emoji pickers
+        const titleEmojiBtn = document.getElementById('inviteTitleEmojiBtn');
+        if (titleEmojiBtn) {
+            titleEmojiBtn.onclick = () => {
+                if (typeof openEmojiPicker === 'function') {
+                    openEmojiPicker(titleEmojiBtn, (emojiVal) => {
+                        if (!emojiVal) return;
+                        insertInviteVar(emojiVal, 'inviteEmbedTitle');
+                    });
+                }
+            };
+        }
+
+        const joinEmojiBtn = document.getElementById('inviteJoinMsgEmojiBtn');
+        if (joinEmojiBtn) {
+            joinEmojiBtn.onclick = () => {
+                if (typeof openEmojiPicker === 'function') {
+                    openEmojiPicker(joinEmojiBtn, (emojiVal) => {
+                        if (!emojiVal) return;
+                        insertInviteVar(emojiVal, 'inviteJoinMsg');
+                    });
+                }
+            };
+        }
+
+        const leaveEmojiBtn = document.getElementById('inviteLeaveMsgEmojiBtn');
+        if (leaveEmojiBtn) {
+            leaveEmojiBtn.onclick = () => {
+                if (typeof openEmojiPicker === 'function') {
+                    openEmojiPicker(leaveEmojiBtn, (emojiVal) => {
+                        if (!emojiVal) return;
+                        insertInviteVar(emojiVal, 'inviteLeaveMsg');
+                    });
+                }
+            };
+        }
+
         // Attach Rich Emoji Editors for universal visual emoji picker
         if (typeof attachRichEmojiEditor === 'function') {
             attachRichEmojiEditor('inviteJoinMsg');
@@ -69880,6 +69924,9 @@ function renderInviteLivePreview() {
     const embedTitle = document.getElementById('inviteEmbedTitle');
     const embedColor = document.getElementById('inviteEmbedColor');
     const joinMsg = document.getElementById('inviteJoinMsg');
+    const bannerWrap = document.getElementById('invitePreviewBannerWrap');
+    const bannerImg = document.getElementById('invitePreviewBannerImg');
+    const bannerInput = document.getElementById('inviteBannerUrlInput');
 
     let rawText = (joinMsg ? joinMsg.value : "") || "👋 Welcome {user} to **{guild}**!\nInvited by {inviter} (Code: `{code}`).\n📈 {inviter_name} now has **{invites}** invites (**{regular}** regular, **{bonus}** bonus, **{left}** left, **{fake}** fake)!";
     let formatted = rawText.replace(/{user}/g, "@NewMember")
@@ -69904,10 +69951,27 @@ function renderInviteLivePreview() {
     if (previewEmbed) {
         if (isEmbed) {
             previewEmbed.style.display = 'flex';
-            if (previewTitle) previewTitle.textContent = (embedTitle && embedTitle.value.trim()) ? embedTitle.value : "📥 Member Joined";
+            const rawTitle = (embedTitle && embedTitle.value.trim()) ? embedTitle.value.trim() : "📥 Member Joined";
+            if (previewTitle) {
+                if (typeof renderDiscordMarkdown === 'function') {
+                    previewTitle.innerHTML = renderDiscordMarkdown(rawTitle);
+                } else {
+                    previewTitle.textContent = rawTitle;
+                }
+            }
             if (previewDesc) previewDesc.innerHTML = htmlContent;
             if (embedColor) previewEmbed.style.borderLeftColor = embedColor.value || "#5865F2";
             if (previewBody) previewBody.innerHTML = "";
+
+            const bannerUrl = bannerInput ? bannerInput.value.trim() : "";
+            if (bannerWrap && bannerImg) {
+                if (bannerUrl) {
+                    bannerImg.src = bannerUrl;
+                    bannerWrap.style.display = 'block';
+                } else {
+                    bannerWrap.style.display = 'none';
+                }
+            }
         } else {
             previewEmbed.style.display = 'none';
             if (previewBody) previewBody.innerHTML = htmlContent;
@@ -69997,6 +70061,7 @@ async function saveInviteTrackerSettings() {
     const embedToggle = document.getElementById('inviteEmbedToggle');
     const embedTitle = document.getElementById('inviteEmbedTitle');
     const embedColor = document.getElementById('inviteEmbedColor');
+    const bannerInput = document.getElementById('inviteBannerUrlInput');
 
     const payload = {
         enabled: toggle ? toggle.checked : true,
@@ -70005,7 +70070,8 @@ async function saveInviteTrackerSettings() {
         leave_msg: leaveMsg ? leaveMsg.value : "",
         embed: embedToggle ? embedToggle.checked : true,
         embed_title: embedTitle ? embedTitle.value : "📥 Member Joined",
-        embed_color: embedColor ? embedColor.value : "#5865F2"
+        embed_color: embedColor ? embedColor.value : "#5865F2",
+        banner_url: bannerInput ? bannerInput.value.trim() : ""
     };
 
     try {
@@ -70060,6 +70126,115 @@ async function testInviteMessage(type) {
     } catch (e) {
         if (statusEl) statusEl.style.opacity = "0";
         showToast("Dispatch error: " + e.message);
+    }
+}
+
+function updateInviteBannerPreview(url) {
+    const wrap = document.getElementById('inviteBannerPreviewWrap');
+    const img = document.getElementById('inviteBannerPreviewImg');
+    const status = document.getElementById('inviteBannerStatus');
+    const clean = (url || "").trim();
+
+    if (clean) {
+        if (img) img.src = clean;
+        if (wrap) wrap.style.display = 'block';
+        if (status) {
+            status.textContent = "Custom Banner Active";
+            status.style.color = "#10b981";
+        }
+    } else {
+        if (img) img.src = "";
+        if (wrap) wrap.style.display = 'none';
+        if (status) {
+            status.textContent = "No Banner Active";
+            status.style.color = "var(--text-muted)";
+        }
+    }
+}
+
+async function uploadInviteBanner(input) {
+    if (!input || !input.files || input.files.length === 0) return;
+    if (!currentGuildId) {
+        showToast("Please select a server first!");
+        return;
+    }
+    const file = input.files[0];
+    const statusEl = document.getElementById('inviteBannerStatus');
+    if (statusEl) {
+        statusEl.textContent = "Uploading banner...";
+        statusEl.style.color = "#6366f1";
+    }
+
+    const formData = new FormData();
+    formData.append('banner', file);
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/invite-tracker/upload-banner`, {
+            method: 'POST',
+            body: formData
+        });
+        const res = await resp.json();
+        if (res.success && res.banner_url) {
+            const urlInput = document.getElementById('inviteBannerUrlInput');
+            if (urlInput) urlInput.value = res.banner_url;
+            updateInviteBannerPreview(res.banner_url);
+            renderInviteLivePreview();
+            showToast("Banner uploaded and attached!");
+        } else {
+            showToast("Banner upload failed: " + (res.error || "Unknown error"));
+            if (statusEl) statusEl.textContent = "Upload failed";
+        }
+    } catch (e) {
+        showToast("Upload error: " + e.message);
+        if (statusEl) statusEl.textContent = "Upload error";
+    } finally {
+        input.value = "";
+    }
+}
+
+function resetInviteBanner() {
+    const urlInput = document.getElementById('inviteBannerUrlInput');
+    if (urlInput) urlInput.value = "";
+    updateInviteBannerPreview("");
+    renderInviteLivePreview();
+    showToast("Banner removed.");
+}
+
+function onInviteBannerUrlChanged(val) {
+    updateInviteBannerPreview(val);
+    renderInviteLivePreview();
+}
+
+function insertInviteVar(val, targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const text = el.value || "";
+    el.value = text.substring(0, start) + val + text.substring(end);
+    el.focus();
+    el.selectionStart = el.selectionEnd = start + val.length;
+    renderInviteLivePreview();
+}
+
+function switchProgressionSubtab(tab) {
+    const btnLevels = document.getElementById('subtabProgressionLevels');
+    const btnInvites = document.getElementById('subtabProgressionInvites');
+    const panelLevels = document.getElementById('progressionLevelsPanel');
+    const panelInvites = document.getElementById('progressionInvitesPanel');
+
+    if (tab === 'invites') {
+        if (btnLevels) btnLevels.classList.remove('active');
+        if (btnInvites) btnInvites.classList.add('active');
+        if (panelLevels) panelLevels.style.display = 'none';
+        if (panelInvites) panelInvites.style.display = 'block';
+        if (typeof loadInviteTrackerSettings === 'function') loadInviteTrackerSettings();
+    } else {
+        if (btnInvites) btnInvites.classList.remove('active');
+        if (btnLevels) btnLevels.classList.add('active');
+        if (panelInvites) panelInvites.style.display = 'none';
+        if (panelLevels) panelLevels.style.display = 'block';
+        if (typeof loadLevelingData === 'function') loadLevelingData();
     }
 }
 
