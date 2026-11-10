@@ -351,6 +351,22 @@ class Activity(commands.Cog):
                     if r["user_id"] == uid_str:
                         stats["rank"] = idx
                         break
+
+                # Voice rank in server
+                cursor.execute("""
+                    SELECT user_id, SUM(seconds) AS total
+                    FROM member_voice
+                    WHERE guild_id = ?
+                    GROUP BY user_id
+                    ORDER BY total DESC
+                """, (gid_str,))
+                all_v_ranks = cursor.fetchall()
+                stats["total_voice_members"] = len(all_v_ranks)
+                stats["voice_rank"] = 0
+                for idx, r in enumerate(all_v_ranks, start=1):
+                    if r["user_id"] == uid_str:
+                        stats["voice_rank"] = idx
+                        break
         except Exception as e:
             print(f"⚠️ Activity DB get_member_stats error: {e}")
 
@@ -897,7 +913,9 @@ class Activity(commands.Cog):
         chart_values: list,
         top_channels: list, # [(name, count), ...]
         footer_left: str,
-        footer_right: str = "Powered by Friday"
+        footer_right: str = "Powered by Friday",
+        voice_rank_num: int = 0,
+        voice_today_str: str = "0m"
     ) -> io.BytesIO:
         """Renders comprehensive 1080x760 Master Member Telemetry & Activity Card."""
         W, H = 1080, 760
@@ -941,12 +959,14 @@ class Activity(commands.Cog):
         draw.text((text_x, header_y + 4), clean_display_name(member_name, max_len=24), font=font_title, fill=(255, 255, 255, 255))
         draw.text((text_x, header_y + 32), f"Joined {joined_str} • Account Created {created_str}", font=font_sub, fill=(142, 146, 155, 255))
 
-        # Top-right status pills
+        # Top-right status pills (Statbot-inspired richness: Level, Msg Rank, Voice Rank, Top Role)
         pills = [
             f"Level {level_num}",
             f"Rank #{rank_num}" if rank_num > 0 else "Unranked",
+            f"Voice #{voice_rank_num}" if voice_rank_num > 0 else None,
             clean_display_name(top_role_str, max_len=14)
         ]
+        pills = [p for p in pills if p]
         pill_right = W - 38
         for p in reversed(pills):
             bbox = font_pill.getbbox(p)
@@ -1094,12 +1114,15 @@ class Activity(commands.Cog):
         
         draw.text((rx2 + 18, ribbon_y + 14), "VOICE TELEMETRY", font=font_ribbon_lbl, fill=(150, 155, 166, 255))
         draw.text((rx2 + 18, ribbon_y + 34), voice_str, font=font_ribbon_val, fill=(255, 255, 255, 255))
-        draw.text((rx2 + 18, ribbon_y + 68), "Total recorded VC time", font=font_ribbon_sub, fill=(125, 130, 142, 255))
+        voice_sub_str = f"Voice Rank #{voice_rank_num} • Today: {voice_today_str}" if voice_rank_num > 0 else (f"Today: {voice_today_str}" if voice_today_str != "0s" else "Total recorded VC time")
+        draw.text((rx2 + 18, ribbon_y + 68), voice_sub_str, font=font_ribbon_sub, fill=(125, 130, 142, 255))
 
         col2_x = rx2 + 220
         draw.text((col2_x, ribbon_y + 14), "SERVER STANDING", font=font_ribbon_lbl, fill=(150, 155, 166, 255))
-        draw.text((col2_x, ribbon_y + 34), f"Rank #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(255, 255, 255, 255))
-        draw.text((col2_x, ribbon_y + 68), f"Out of {total_chatters:,} chatters", font=font_ribbon_sub, fill=(125, 130, 142, 255))
+        draw.text((col2_x, ribbon_y + 34), f"Msg #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(255, 255, 255, 255))
+        top_pct = max(1, round((rank_num / max(1, total_chatters)) * 100)) if (rank_num > 0 and total_chatters > 0) else 0
+        standing_sub = f"Top {top_pct}% of {total_chatters:,} chatters" if top_pct > 0 else f"Out of {total_chatters:,} chatters"
+        draw.text((col2_x, ribbon_y + 68), standing_sub, font=font_ribbon_sub, fill=(125, 130, 142, 255))
 
         # 5. Footer
         footer_y = H - 36
@@ -1356,6 +1379,8 @@ class Activity(commands.Cog):
         xp_percentage = min(100.0, (curr_xp / req_xp) * 100.0) if req_xp > 0 else 0.0
 
         voice_str = self.format_duration(m_stats["voice_lifetime"])
+        voice_today_str = self.format_duration(m_stats.get("voice_today", 0))
+        voice_rank_num = m_stats.get("voice_rank", 0)
 
         kpi_metrics = [
             ("Today", m_stats["today"]),
@@ -1385,7 +1410,9 @@ class Activity(commands.Cog):
             chart_values=values,
             top_channels=top_channels,
             footer_left=f"Member Telemetry Matrix • Tag: @{clean_display_name(member.name)} • User ID: {member.id} • Timezone: UTC",
-            footer_right="Powered by Friday"
+            footer_right="Powered by Friday",
+            voice_rank_num=voice_rank_num,
+            voice_today_str=voice_today_str
         )
         return discord.File(fp=buf, filename=f"member_matrix_{member.id}.png")
 
@@ -1479,10 +1506,40 @@ class Activity(commands.Cog):
         file = await self.generate_member_card_file(interaction.guild, interaction.user)
         await interaction.followup.send(file=file)
 
+    # ─── Unified /leaderboard commands (Messages & XP) ───
+    leaderboard_group = app_commands.Group(name="leaderboard", description="View server leaderboards for messages or XP.")
+
+    @leaderboard_group.command(name="msg", description="View custom graphic leaderboard of members with most messages.")
+    @app_commands.choices(timeframe=[
+        app_commands.Choice(name="Today", value="today"),
+        app_commands.Choice(name="This Week (7 Days)", value="week"),
+        app_commands.Choice(name="This Month (30 Days)", value="month"),
+        app_commands.Choice(name="This Year (365 Days)", value="year"),
+        app_commands.Choice(name="Lifetime", value="lifetime")
+    ])
+    async def lb_msg(self, interaction: discord.Interaction, timeframe: app_commands.Choice[str] = None):
+        await interaction.response.defer()
+        tf = timeframe.value if timeframe else "lifetime"
+        view = ActivityLeaderboardView(self, interaction.guild, current_tf=tf, current_page=1)
+        file = await self.generate_leaderboard_card_file(interaction.guild, tf, page=1)
+        await interaction.followup.send(file=file, view=view)
+
+    @leaderboard_group.command(name="xp", description="View custom graphic leaderboard of top members by XP and level.")
+    async def lb_xp(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        lvl_cog = self.bot.get_cog("Leveling")
+        if not lvl_cog:
+            await interaction.followup.send("Leveling module is currently offline.")
+            return
+        from cogs.leveling import XPLeaderboardView
+        view = XPLeaderboardView(lvl_cog, interaction.guild, current_page=1)
+        file = await lvl_cog.generate_xp_leaderboard_file(interaction.guild, page=1)
+        await interaction.followup.send(file=file, view=view)
+
 class ActivityLeaderboardView(discord.ui.View):
     """
     Interactive pagination view for Leaderboard Image Cards.
-    Provides clean 'Previous' and 'Next' buttons and timeframe switcher with zero emojis.
+    Provides clean '◀ Previous' and 'Next ▶' buttons and timeframe switcher with zero emojis.
     """
     def __init__(self, cog: Activity, guild: discord.Guild, current_tf: str = "lifetime", current_page: int = 1):
         super().__init__(timeout=300)
@@ -1503,7 +1560,7 @@ class ActivityLeaderboardView(discord.ui.View):
 
         # Row 0: Pagination Buttons (Clean text labels, no mobile emojis)
         prev_btn = discord.ui.Button(
-            label="Previous",
+            label="◀ Previous",
             style=discord.ButtonStyle.secondary,
             disabled=(self.current_page <= 1),
             row=0
@@ -1513,14 +1570,14 @@ class ActivityLeaderboardView(discord.ui.View):
 
         page_btn = discord.ui.Button(
             label=f"Page {self.current_page} / {total_pages}",
-            style=discord.ButtonStyle.primary,
+            style=discord.ButtonStyle.secondary,
             disabled=True,
             row=0
         )
         self.add_item(page_btn)
 
         next_btn = discord.ui.Button(
-            label="Next",
+            label="Next ▶",
             style=discord.ButtonStyle.secondary,
             disabled=(self.current_page >= total_pages),
             row=0

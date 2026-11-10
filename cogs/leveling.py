@@ -715,18 +715,6 @@ class Leveling(commands.Cog):
         )
         return discord.File(fp=buf, filename=f"xp_leaderboard_{guild.id}_p{current_page}.png")
 
-    @app_commands.command(name="leaderboard", description="View the visual server leaderboard of top members by XP.")
-    async def leaderboard(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        gid = str(interaction.guild.id)
-        if gid not in db.xp_data or not db.xp_data[gid]:
-            await interaction.followup.send("No one has earned any XP yet! Send messages to climb the leaderboard.")
-            return
-
-        view = XPLeaderboardView(self, interaction.guild, current_page=1)
-        file = await self.generate_xp_leaderboard_file(interaction.guild, page=1)
-        await interaction.followup.send(file=file, view=view)
-
     @app_commands.command(name="level_mode", description="Configure whether Level Up updates use text, image card, or both.")
     @app_commands.choices(mode=[
         app_commands.Choice(name="Text Message Only", value="text"),

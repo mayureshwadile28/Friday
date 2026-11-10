@@ -1,7 +1,7 @@
-Friday Bot - Complete Command List
-==================================
+Friday Bot - Complete Command List (100+ Commands)
+===================================================
 
-🛡️ Moderation
+🛡️ Moderation & Server Management
 /ban @member [reason] - Bans a member from the server
 /unban <user> [reason] - Unbans a user by username, tag, or numeric ID (with live autocomplete dropdown)
 /warn @member [reason] [delivery] - Issues formal warning with flexible delivery (Both, DM Only, or Channel Chat)
@@ -10,6 +10,10 @@ Friday Bot - Complete Command List
 /timeout @member <minutes> [reason] - Mutes a member for a duration
 /untimeout @member [reason] - Removes an active timeout early
 /purge <amount> - Bulk-deletes messages in the current channel
+/slowmode <seconds> [channel] - Set slowmode rate limit for a text channel (0 to disable)
+/unlock [channel] - Quick shortcut to unlock and restore send permissions in a locked channel
+/move @member <voice_channel> - Move an active voice member to another voice channel
+/moveall <source_vc> <target_vc> - Mass-move all members from one voice room to another
 /role add @member @role - Assign a role to a member with hierarchy protection
 /role remove @member @role - Remove a role from a member with hierarchy protection
 /role info @role - Inspect role details, creation date, members count, and color
@@ -30,12 +34,39 @@ Friday Bot - Complete Command List
 /whitelist_add @user - Makes a user immune to anti-nuke, anti-raid, and anti-spam detection
 /whitelist_remove @user - Removes a user's security immunity
 
+📈 Server & Member Activity Telemetry
+/activity member [@member] - View custom graphic telemetry dashboard for a member (today, week, month, year, lifetime, daily trend line chart, top channels chatted, XP level progression, dual message & voice server rankings)
+/activity server - View custom graphic analytics dashboard for the server (7-day message volume trend, top channels, top chatters, voice telemetry, server channels, demographics, configuration)
+/activity leaderboard [timeframe] - View custom graphic leaderboard for Today, Week, Month, Year, or Lifetime with interactive 2-row pagination and timeframe buttons
+/my stats - User shortcut to view personal chat activity, voice telemetry, and message stats graphic card
+
+🏆 Server Leaderboards (Graphic Image Cards)
+/leaderboard msg [timeframe] - View high-resolution 1020x640 graphic leaderboard of top chatters by message volume (Today, Week, Month, Year, Lifetime) with ◀ Previous and Next ▶ pagination
+/leaderboard xp - View high-resolution 1020x640 graphic leaderboard of top members by XP and Level with ◀ Previous and Next ▶ pagination
+
+📨 Invite Tracker & Verification
+/invites [@member] - Check your or another member's invite statistics (Total Net Invites, Regular, Bonus, Left, Fake <3d, and who invited them)
+/invite_leaderboard - View the server leaderboard of top inviters with interactive pagination
+/invite_admin add @member <amount> - Add bonus invites to a member (Admin only)
+/invite_admin remove @member <amount> - Remove bonus invites from a member (Admin only)
+/invite_admin clear @member - Reset all invite records for a member (Admin only)
+/invite_admin channel #channel - Set the channel where invite join/leave logs are posted (Admin only)
+/invite_admin message <template> - Configure the custom invite join message template with variables (Admin only)
+/invite_admin leave_message <template> - Configure the custom invite leave message template with variables (Admin only)
+
+🎉 Leveling & Community Rank Progression
+/level_setup #channel - Activates leveling and sets the notification channel for level-up announcements
+/level_mode <text/image/both> - Choose level-up notification dispatch: Text Message Only, Graphical Image Card Only, or Both
+/rank [@user] - Check your current Level, XP, and progression card with custom local wallpaper support, dynamic progress bar, and server standings
+/joke [category] - Returns a hilarious Hinglish, Desi, or tech joke from a library of 420 jokes with an interactive 'Next Joke 🔄' button
+
 🤖 AI Assistant & Conversations (Groq / OpenRouter / Gemini Pipeline)
 /ask <question> - Ask Friday anything directly with her charming lady personality and real-time knowledge
 /clearchat - Reset your recent multi-turn conversation memory with Friday in the current channel
 /mymemory <view/clear> - Inspect what friendly personal memories Friday remembers about you, or clear them
 /server_instruction <add/view/clear> [instruction] - Configure server-wide behavioral instructions for Friday (Admin & Owner only)
-Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conversation with contextual memory, live Google news search, live date/time handling, safe mention sanitization, and ironclad Anti-Manipulation / Anti-Parrot / Hinglish Prompt Injection protection
+/vip nickname <new_nick> - VIP DM guest setting to update personal nickname in private DM conversations
+Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conversation with contextual memory, live Google news search, live date/time handling, full member/voice status awareness, safe mention sanitization, and ironclad Anti-Manipulation / Anti-Parrot / Hinglish Prompt Injection protection
 
 💤 Member AFK System
 /afk [reason] - Sets your status to AFK with an optional reason (e.g. Studying, Lunch, Sleeping)
@@ -45,7 +76,7 @@ Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conv
   • Automatically welcomes you back and displays your missed pings summary on your next message
   • Automatically suppresses conflicting mention auto-responses while you are AFK
 
-👋 Welcome & Farewell Studio
+👋 Welcome & Server Greetings
 /welcome setup [channel] [message] [title] [image] [embed] [ping] - Complete setup for server-join welcome greetings
 /welcome channel [channel] - Set or change the destination welcome greetings channel (defaults to current channel if blank)
 /welcome message <template> - Update the welcome message template ({user}, {username}, {server}, {member_count}, {rules}, {channel})
@@ -75,11 +106,6 @@ Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conv
 /first_welcome reset [member] - Resets first-welcome status for a specific member or all members to re-trigger greetings
 /set_welcomer [mode] [channel] - Quick shortcut command to set the welcome channel (server join or first chat)
 /set_first_welcome [channel] - Standalone shortcut to set the first-welcome channel to current channel
-  • Squeezed compact box format with member avatar thumbnail and author header prevents horizontal stretching
-  • Full support for embedded animated GIFs, banner images, and custom color accents
-  • Farewell identifier mode prevents broken tags if member is no longer cached in Discord memory
-  • Supports {user}, {user_display}, {username}, {name}, {id}, {server}, {member_count}, {rules} (clean bright-blue clickable text without hashtag box), {channel}, and {link:#channel}
-  • Strictly protected by Administrator permissions across all slash commands and web dashboard
 
 🔒 Channel Privacy & Lockdown
 /private [channel] - Makes a specific channel private
@@ -97,56 +123,46 @@ Chat Trigger: Tagging @Friday or replying to her messages initiates a smart conv
 /anti_abuse_whitelist_add @user - Make a user immune to the word filter
 /anti_abuse_whitelist_remove @user - Remove a user's immunity
 
-🎉 Community & Leveling
-/level_setup #channel - Activates leveling and sets the notification channel
-/level_mode <text/image/both> - Choose level-up notification dispatch: Text Only, Graphical Image Card, or Both
-/rank [@user] - Shows a visual rank card (custom generated image)
-/leaderboard - Displays the top 10 most active members
-/joke [category] - Returns a hilarious Hinglish, Desi, or tech joke from a library of 420 jokes with an interactive 'Next Joke 🔄' button
-
 🎨 Expressions, Reactions & Keyword Auto-Responder
-/emoji_steal <emojis> - Paste one or more custom emojis to bulk-steal them
+/emoji_steal <emojis> - Paste one or more custom emojis to bulk-steal them into your server
 Right-Click -> Apps -> Steal Sticker - Steal a sticker from a message
 /autoreact add @member <emoji> - Automatically reacts with an emoji when @member is mentioned
 /autoreact remove @member - Removes the auto-reaction rule for @member
 /autoreact list - Lists all active auto-reaction mention rules
-/autoresponder add <response> [member] [keyword] [emoji] - Auto-replies and/or reacts when @member is mentioned OR when a standalone keyword/word is typed ({author} and {user} supported). Uses strict word boundaries so words like 'ip' trigger on 'what is the ip?' but strictly NOT on 'IPL' or 'equipment'.
+/autoresponder add <response> [member] [keyword] [emoji] - Auto-replies and/or reacts when @member is mentioned OR when a standalone keyword is typed ({author} and {user} supported; whole-word boundary matching)
 /autoresponder remove [member] [keyword] - Removes the auto-responder rule for @member or keyword
 /autoresponder list - Lists all active auto-responder rules (mentions and keywords) and ignored channels
 /autoresponder ignore_channel #channel - Disables auto-responses in the specified channel
 /autoresponder unignore_channel #channel - Re-enables auto-responses in an ignored channel
 
 🎭 Reaction Roles
-/reaction_panel - Creates an embed panel with up to 3 emoji-role pairs
+/reaction_panel - Creates an embed panel with up to 3 interactive emoji-role pairing buttons
 
 📢 Self Announcements Dispatcher
 /announcement <channel> - Configures or overwrites the official announcement destination channel
-Reply shortcut: In any staff/chat channel, reply to your draft announcement and tag "@Friday announcement kardo" / "@Friday announcement do it" - Friday retrieves the draft message, embeds, and attachments, and immediately broadcasts them to the destination channel. (If not configured yet, Friday prompts to set up with /announcement first).
-
-📊 Utility
-/bot_status - Staff Dashboard: View Friday's current security and system status
-/ping - Shows bot latency confirmation
-/serverinfo - Displays server info, member counts, and creation date
-/help - Full command reference organized by category
-/sync - Force-syncs global slash commands to the server
+/announcement_channel <channel> - Shortcut to bind the announcement broadcast channel
+Reply shortcut: In any staff/chat channel, reply to your draft announcement and tag "@Friday announcement kardo" / "@Friday announcement do it" - Friday retrieves the draft message, embeds, and attachments, and immediately broadcasts them to the destination channel.
 
 🎉 Giveaways System
 /gcreate <prize> <duration> [winners] [description] [image] [channel] [header_emoji] - Creates and launches a giveaway (Admins launch immediately; regular members submit for staff approval; supports custom header announcement emojis)
 /gend <message_id> - Conclude an active giveaway early and immediately roll winners
 /greroll <message_id> [winners_count] - Re-draw new winners for an ended giveaway
 /gsetup - Interactive wizard to configure giveaway broadcast, approval, and log channels
-/glist - List all active and recent giveaways with countdowns and entry counts
+/glist - List all active and recent giveaways with live countdowns and entry counts
 
-🎫 Ticket System
-/ticket create_ticket_panel <channel> <title> <desc> <btn1> <cat> ... - Deploys an interactive support panel
+🎫 Ticket Support System
+/ticket create_ticket_panel <channel> <title> <desc> <btn1> <cat> ... - Deploys an interactive support ticket panel
 /ticket handle_role <role> - Designates a staff role to be pinged and given access when a ticket opens
 /ticket add @user - Temporarily grants a specific user access to an active ticket channel
 /ticket remove @user - Revokes access for a specific user from an active ticket channel
+/ticket close [reason] - Closes an active ticket, logs transcripts, and archives or deletes channel
+/close - Quick shortcut command to close the current active support ticket channel
+/create_ticket_panel - Quick shortcut command to deploy a support ticket panel
 
 🎵 Music & High-Fidelity Audio (Pure YouTube Engine)
 /join - Connect Friday to your current voice channel
 /leave - Stop playback, clear queue, and disconnect Friday from voice channel
-/play <music> - Search & stream official tracks strictly from YouTube with live autocomplete, high-fidelity 48kHz audio, balanced grid controls (Row 0: Pause, Skip, Shuffle, Loop, Stop [Danger]; Row 1: Queue, Like [Success], Vol -, Vol +), and an interactive DSP Equalizer dropdown
+/play <music> - Search & stream official tracks strictly from YouTube with live autocomplete, high-fidelity 48kHz audio, balanced grid controls (Row 0: Pause, Skip, Shuffle, Loop, Stop; Row 1: Queue, Like, Vol -, Vol +), and an interactive DSP Equalizer dropdown
 /soundtest - Play a 2-second studio test chime to verify voice channel audio output
 /pause - Pause currently active music playback
 /resume - Resume paused music playback
@@ -179,25 +195,57 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /voice claim - Claim ownership of the temporary room if the original creator left
 *(Note: Friday also automatically drops an Interactive In-Chat Button Panel in the temporary VC with Lock, Hide, Limit, Rename, Kick, and Claim buttons!)*
 
+📝 Applications & Forms Engine
+/app panel #channel <role> [title] [description] - Deploy an interactive member application panel
+/app question_add <question> - Add a question to the server application questionnaire
+/app question_remove <question_number> - Remove a specific question from the application form
+/app question_list - Review all currently active application questions
+/app set_channel #channel - Set destination channel where submitted staff applications are reviewed
+/app role @role - Configure the target role applied for
+/app mode <dm/channel> - Configure whether application questions are delivered in Private DM or Modal/Channel
+/app view_config - Inspect the entire application system configuration for the server
+
+🎂 Birthday Celebrations
+/birthday set <DD/MM> - Set your birth date for automatic celebratory server greetings
+/birthday remove - Remove your saved birthday from the bot
+/birthday list - View upcoming birthdays for server members
+/birthday setup #channel [@role] - Set the birthday announcement channel and optional celebratory role
+/birthday toggle <on/off> - Enable or disable automatic birthday greetings
+/birthday test - Sends a test birthday celebration greeting card
+
+💾 Server Structure Backups
+/backup create [name] - Take a complete snapshot backup of server channels, categories, roles, and permissions
+/backup list - View all saved server backups with creation timestamps
+/backup restore <backup_id> - Restore server channels, categories, and roles from a backup snapshot
+/backup delete <backup_id> - Delete a saved backup snapshot
+/backup update <backup_id> - Overwrite a backup snapshot with the server's current live state
+
+📊 Diagnostic & General Utility
+/bot_status - Staff Dashboard: View Friday's current security, system metrics, and memory status
+/ping - Shows bot latency and gateway websocket heartbeat
+/serverinfo - Displays server demographics, channel totals, roles, and creation date
+/avatar [@member] - Displays member avatar in ultra high-resolution with direct download link
+/diagnose - Deep automated diagnostics check verifying all cogs, permissions, and database health
+/help - Full command reference organized by category
+/sync - Force-syncs global and guild slash commands to Discord
+
 💬 Tag Greeting Protocol
 @Friday - Tagging Friday alone or with a simple greeting ("hi", "heyy", "hello", "yo") prompts a sweet, warm girl-speak greeting that tags the user from 300 non-conversational greetings in data/greetings.json
 
 🌐 Friday Web Control Center (http://localhost:5000)
-- Temporary Voice Studio: Master Voice Hub toggle, One-Click Auto-Setup button (automatically creates Hub VC & Category), Hub channel selector, Category selector, custom room name template ({user}, {username}), default user limit, live active rooms stream (owner, occupants, lock/visibility status), and in-chat button panel cheatsheet.
-- Security Command Center: Master Anti-Nuke toggle, Anti-Raid system hero card (velocity tracking & thresholds), Anti-Spam system hero card (rate limits & flood control), 10 live security channel status pills, Limit & Punish matrix, Instant Punishment matrix, Detect Only matrix, immunity whitelist, and one-click channel creation.
-- Universal Visual Rich Emoji Editor: Interactive contenteditable editors across all modules rendering actual emoji images (<img class="editor-inline-emoji">) for custom server emojis and Unicode emojis, caret position preservation, and glitch-free dot/ellipsis support.
-- First Welcome Studio: Channel selector, active toggle, custom embed title & message editors with dynamic variables ({user}, {username}, {name}, {server}, {member_count}, {channel}), avatar thumbnail toggle, accent color picker (Success, Info, Warning, Danger, or Custom Hex), and one-click live test dispatch.
-- Autoresponder Studio: Toggle between Keyword mode (with whole-word regex matching notice) and Member Mention mode, message template editor with rich visual emojis, optional emoji reaction picker, and ignored channels manager.
-- Leveling: 3 notification modes (Text Only, Image Card Only, Both), channel selector, markdown template editor (#, ##, -#, **, *, etc.), server animated/static emoji picker, simulated Discord card preview, live chat simulator, real-time Discord test dispatch.
-- @ Mention Autocomplete: Live popup popover in all text editors typing '@' searching members (<@ID>) and roles (<@&ID>) with Discord-styled live badges.
-- Anti-Abuse: Real-time blacklist tag manager, immunity whitelist.
+- Temporary Voice Studio: Master Voice Hub toggle, One-Click Auto-Setup button, Hub channel selector, Category selector, custom room name template ({user}, {username}), default user limit, live active rooms stream, and in-chat button panel cheatsheet.
+- Security Command Center: Master Anti-Nuke toggle, Anti-Raid system hero card, Anti-Spam system hero card, 10 live security channel status pills, Limit & Punish matrix, Instant Punishment matrix, Detect Only matrix, immunity whitelist, and one-click channel creation.
+- Universal Visual Rich Emoji Editor: Interactive contenteditable editors across all modules rendering actual emoji images (<img class="editor-inline-emoji">) for custom server emojis and Unicode emojis.
+- First Welcome Studio: Channel selector, active toggle, custom embed title & message editors with dynamic variables ({user}, {username}, {name}, {server}, {member_count}, {channel}), avatar thumbnail toggle, accent color picker, and one-click live test dispatch.
+- Autoresponder Studio: Toggle between Keyword mode and Member Mention mode, message template editor with rich visual emojis, optional emoji reaction picker, and ignored channels manager.
+- Leveling Studio: 3 notification modes (Text Only, Image Card Only, Both), channel selector, custom local wallpaper picker & live preview, markdown template editor, simulated Discord card preview, live chat simulator, real-time Discord test dispatch.
+- Activity & Telemetry Studio: Member and server telemetry matrix cards, 7-day spline trend graphs, voice tracking, top channels, message volume KPI monitors.
+- Invite Tracker Studio: Log destination channel selector, custom join & leave embed template designer, live test dispatch, anti-fake threshold rules.
 - Channel & Category Privacy: Global lockdown button, unlock all button, individual channel lock/unlock, whole category lock/unlock, lockdown exempt channels list.
 - Reaction Roles: Target channel selector, title, markdown description with server & standard emojis, interactive role-emoji pairing builder, live authentic Discord embed simulator with reaction buttons, one-click server deployment, state restoration.
 - Announcements: Destination channel selector & save, title, audience notification ping (@everyone/@here/none), Discord markdown chips & server emojis, embed theme colors, thumbnail & footer controls, live simulator, one-click web broadcasting.
-- Giveaways Studio: Quick Launch Studio with real-time Discord simulator, customizable prize, duration, winners, description, custom banner GIF/image, embed accent color picker, and customizable header announcement emojis (supporting custom animated/static server emojis and Unicode emojis with visual rendering, zero raw syntax), host/sponsor selection, automatic persistent button/reaction entry, routing configuration, and celebratory winner/reroll announcement designer.
-- Ticket System: Interactive studio with live Discord simulator, panel channel and ticket category routing, support staff role, soft rounded secondary action buttons (border-radius: 8px), direct transcript destination text channel, optional transcript category, private ticket toggle, draft save button, one-click deploy.
+- Giveaways Studio: Quick Launch Studio with real-time Discord simulator, customizable prize, duration, winners, description, custom banner GIF/image, embed accent color picker, customizable header announcement emojis, and celebratory announcement designer.
+- Ticket System: Interactive studio with live Discord simulator, panel channel and ticket category routing, support staff role, direct transcript destination text channel, optional transcript category, private ticket toggle, one-click deploy.
 - Music Customizer: Full suite of customizable bot replies for VC events (join, leave, play, pause, queue, filter).
-- Live LLM Telemetry Monitor: Real-time dashboard monitor displaying active AI provider, remaining Groq free requests/tokens per minute, and session token usage (strictly numerical telemetry; zero private chat or message logs captured).
-- VIP DM Guest Management: Exclusive bot-owner-only portal to invite VIP members for private 1-on-1 chats with Friday, initiate onboarding questionnaire, view active mood dynamics, and manage rate limits without exposing public Discord slash commands.
-- State Persistence: Complete multi-module synchronization ensuring no configurations or drafts are reset upon clicking "Sync State".
-
+- Live LLM Telemetry Monitor: Real-time dashboard monitor displaying active AI provider, remaining Groq free requests/tokens per minute, and session token usage.
+- VIP DM Guest Management: Exclusive bot-owner-only portal to invite VIP members for private 1-on-1 chats with Friday, initiate onboarding questionnaire, view active mood dynamics, and manage rate limits.

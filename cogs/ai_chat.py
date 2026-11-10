@@ -893,11 +893,19 @@ class AIChat(commands.Cog):
             if guild.members:
                 humans = sum(1 for m in guild.members if not m.bot)
                 bots = sum(1 for m in guild.members if m.bot)
-                online_members = sum(1 for m in guild.members if hasattr(m, "status") and m.status != discord.Status.offline)
+                online_members = sum(1 for m in guild.members if getattr(m, "status", None) not in (None, discord.Status.offline))
             else:
                 humans = total_members
                 bots = 0
                 online_members = 0
+
+            today_chatters = 0
+            act_cog = self.bot.get_cog("Activity")
+            if act_cog:
+                try:
+                    today_chatters = act_cog.get_leaderboard_total_count(guild.id, "today")
+                except Exception:
+                    pass
 
             vc_active_count = sum(len(vc.members) for vc in guild.voice_channels)
             prominent_roles = [r.name for r in reversed(guild.roles) if r.name != "@everyone" and not r.managed][:8]
@@ -909,7 +917,9 @@ class AIChat(commands.Cog):
                 f"- Total Members: {total_members} (Humans: {humans}, Bots: {bots})",
             ])
             if online_members > 0:
-                context_lines.append(f"- Members Online / Active: {online_members}")
+                context_lines.append(f"- Members Currently Online / Active (Online, Idle, DND): {online_members}")
+            if today_chatters > 0:
+                context_lines.append(f"- Members Who Chatted Today: {today_chatters}")
             if vc_active_count > 0:
                 context_lines.append(f"- Members Active in Voice Channels (VC): {vc_active_count}")
             context_lines.extend([
