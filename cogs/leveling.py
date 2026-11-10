@@ -264,46 +264,84 @@ class Leveling(commands.Cog):
         buf.seek(0)
         return discord.File(fp=buf, filename=f"rankcard_{user.id}.png")
 
-    async def generate_levelup_card(self, member: discord.Member, old_level: int, new_level: int) -> discord.File:
+    async def generate_levelup_card(self, member: discord.Member, old_level: int, new_level: int, guild_id: str = None) -> discord.File:
         """
-        Generates a compact, high-resolution 520x150 horizontal milestone badge card.
-        Not oversized, perfectly sized to display in Discord below congratulatory notifications.
+        Generates a sleek, compact 540x150 horizontal milestone card matching Image 5.
+        Applies custom uploaded wallpaper with soft Gaussian blur and frosted glass overlay,
+        glowing avatar aura, vibrant white typography, luminous cyan milestone badge, and star accents.
         """
-        W, H = 520, 150
-        img = Image.new("RGBA", (W, H), (20, 22, 27, 255))
+        W, H = 540, 150
+        gid = str(guild_id) if guild_id else (str(member.guild.id) if hasattr(member, "guild") and member.guild else None)
+
+        # 1. Custom background wallpaper with soft Gaussian blur
+        bg_img = None
+        if gid:
+            custom_bg = db.rank_card_backgrounds.get(gid)
+            if custom_bg and isinstance(custom_bg, str) and os.path.exists(custom_bg):
+                try:
+                    loaded = Image.open(custom_bg).convert("RGBA")
+                    w_ratio = W / loaded.width
+                    h_ratio = H / loaded.height
+                    ratio = max(w_ratio, h_ratio)
+                    new_w = int(loaded.width * ratio)
+                    new_h = int(loaded.height * ratio)
+                    resized = loaded.resize((new_w, new_h), Image.Resampling.LANCZOS)
+                    crop_x = (new_w - W) // 2
+                    crop_y = (new_h - H) // 2
+                    bg_img = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
+                    from PIL import ImageFilter
+                    bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=2.5))
+                except Exception:
+                    bg_img = None
+
+        if not bg_img:
+            # Default dark cosmic canvas with gradient orbs
+            bg_img = Image.new("RGBA", (W, H), (18, 20, 26, 255))
+            d_bg = ImageDraw.Draw(bg_img)
+            d_bg.ellipse((-50, -50, 180, 180), fill=(99, 102, 241, 45))
+            d_bg.ellipse((W - 140, H - 140, W + 60, H + 60), fill=(56, 189, 248, 35))
+
+        # Frosted glass overlay (guarantees contrast while allowing wallpaper to shine through)
+        overlay = Image.new("RGBA", (W, H), (12, 16, 26, 150))
+        img = Image.alpha_composite(bg_img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # Outer Pill/Card with subtle glowing border
-        draw_rounded_rect(draw, (6, 6, W - 6, H - 6), radius=20, fill=(26, 29, 36, 255), outline=(52, 57, 72, 255), width=2)
+        # Outer glass card pill with subtle glowing border
+        draw_rounded_rect(draw, (6, 6, W - 6, H - 6), radius=22, fill=(14, 18, 28, 140), outline=(56, 189, 248, 110), width=2)
 
-        # Left Avatar (88x88)
-        av_size = 88
+        # Left Avatar (90x90) with glowing aura ring
+        av_size = 90
         av_x, av_y = 26, (H - av_size) // 2
         av_img = await self.fetch_avatar(member, size=av_size)
         img.paste(av_img, (av_x, av_y), av_img)
-        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(129, 140, 248, 255), width=3)
+        draw.ellipse((av_x - 3, av_y - 3, av_x + av_size + 3, av_y + av_size + 3), outline=(99, 102, 241, 90), width=4)
+        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(56, 189, 248, 220), width=2)
 
         # Right Content
         text_x = av_x + av_size + 24
-        font_header = Font.poppins(variant="bold", size=32)
-        font_level = Font.poppins(variant="bold", size=24)
+        font_header = get_unicode_font(30, bold=True)
+        font_level = get_unicode_font(22, bold=True)
         font_sub = get_unicode_font(13)
+        font_star = get_unicode_font(18)
 
-        # "Level-up!" in bold
-        draw.text((text_x, 28), "Level-up!", font=font_header, fill=(255, 255, 255, 255))
+        # "Level-up!" in bold white
+        draw.text((text_x, 26), "Level-up!", font=font_header, fill=(255, 255, 255, 255))
 
-        # Milestone Badge: "10 • 11" or "Level 10 ➔ 11"
-        badge_y = 76
+        # Milestone Badge: "4 • 5"
+        badge_y = 78
         level_str = f"{old_level}  •  {new_level}"
         b_box = font_level.getbbox(level_str)
-        bw = (b_box[2] - b_box[0]) + 28
+        bw = (b_box[2] - b_box[0]) + 30
         bh = 38
-        draw_rounded_rect(draw, (text_x, badge_y, text_x + bw, badge_y + bh), radius=10, fill=(35, 39, 49, 255), outline=(56, 189, 248, 160), width=1)
-        draw.text((text_x + 14, badge_y + 4), level_str, font=font_level, fill=(56, 189, 248, 255))
+        draw_rounded_rect(draw, (text_x, badge_y, text_x + bw, badge_y + bh), radius=12, fill=(16, 36, 56, 210), outline=(56, 189, 248, 200), width=2)
+        draw.text((text_x + 15, badge_y + 4), level_str, font=font_level, fill=(56, 189, 248, 255))
 
         # Member subtext on right
-        m_name = clean_display_name(member.display_name, max_len=14)
-        draw.text((text_x + bw + 14, badge_y + 12), f"GG @{m_name}", font=font_sub, fill=(156, 163, 175, 255))
+        m_name = clean_display_name(getattr(member, "display_name", None) or getattr(member, "name", "User"), max_len=16)
+        draw.text((text_x + bw + 14, badge_y + 11), f"GG @{m_name}", font=font_sub, fill=(203, 213, 225, 255))
+
+        # Star sparkle on bottom right
+        draw.text((W - 36, H - 38), "✦", font=font_star, fill=(186, 230, 253, 160))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -572,10 +610,10 @@ class Leveling(commands.Cog):
                             if mode == "text":
                                 await notif_channel.send(level_msg)
                             elif mode == "image":
-                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level)
+                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level, guild_id=gid)
                                 await notif_channel.send(file=card_file)
                             else: # "both"
-                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level)
+                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level, guild_id=gid)
                                 await notif_channel.send(content=level_msg, file=card_file)
                         except Exception as e:
                             try:

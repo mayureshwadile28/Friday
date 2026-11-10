@@ -664,7 +664,7 @@ def test_leveling_message(gid):
                 try:
                     target_user = channel.guild.me if channel.guild and channel.guild.me else bot_instance.user
                     card_fut = asyncio.run_coroutine_threadsafe(
-                        leveling_cog.generate_levelup_card(target_user, 4, 5),
+                        leveling_cog.generate_levelup_card(target_user, 4, 5, guild_id=str(gid)),
                         bot_instance.loop
                     )
                     card_file = card_fut.result(timeout=6)
