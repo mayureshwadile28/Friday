@@ -206,12 +206,10 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /app view_config - Inspect the entire application system configuration for the server
 
 🎂 Birthday Celebrations
-/birthday set <DD/MM> - Set your birth date for automatic celebratory server greetings
-/birthday remove - Remove your saved birthday from the bot
-/birthday list - View upcoming birthdays for server members
-/birthday setup #channel [@role] - Set the birthday announcement channel and optional celebratory role
-/birthday toggle <on/off> - Enable or disable automatic birthday greetings
-/birthday test - Sends a test birthday celebration greeting card
+• Note: Members register and remove their birthdate exclusively via interactive buttons ('🎂 Register Birthday' & '🗑 Remove Birthday') on the official card deployed in the birthday channel.
+/birthday setup #channel [@role] - Staff: Set the registration channel, wish announcement channel, and optional celebratory role
+/birthday toggle <on/off> - Staff: Enable or disable automatic birthday greetings
+/birthday test - Staff: Sends a test birthday celebration greeting card
 
 💾 Server Structure Backups
 /backup create [name] - Take a complete snapshot backup of server channels, categories, roles, and permissions
