@@ -148,11 +148,14 @@ class Leveling(commands.Cog):
         Renders a sleek, compact 840x270 dark glassmorphic rank card.
         Supports custom wallpapers from the dashboard with an adaptive dark frosted glass
         container ensuring all text and the dynamic progress bar stay 100% legible and vibrant.
+        Accent color adapts to custom wallpaper using the same palette extractor as the level-up card.
         """
+        import colorsys
         W, H = 840, 270
         gid = str(user.guild.id)
         
         # Check if a custom rank card background is configured via dashboard
+        raw_bg = None
         bg_img = None
         custom_bg = db.rank_card_backgrounds.get(gid)
         if custom_bg and isinstance(custom_bg, str):
@@ -169,17 +172,26 @@ class Leveling(commands.Cog):
                     resized = loaded.resize((new_w, new_h), Image.Resampling.LANCZOS)
                     crop_x = (new_w - W) // 2
                     crop_y = (new_h - H) // 2
-                    bg_img = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
+                    raw_bg = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
+                    bg_img = raw_bg.copy()
                 except Exception:
-                    bg_img = None
+                    raw_bg = bg_img = None
+
+        # Extract adaptive accent color from wallpaper (or fallback indigo)
+        accent_rgb = self._extract_accent_color(raw_bg) if raw_bg else (129, 140, 248)
+        ar, ag, ab = accent_rgb
+        # Boost for text legibility
+        h_a, s_a, v_a = colorsys.rgb_to_hsv(ar / 255, ag / 255, ab / 255)
+        text_r, text_g, text_b = colorsys.hsv_to_rgb(h_a, min(s_a, 0.65), max(v_a, 0.95))
+        tar, tag, tab = int(text_r * 255), int(text_g * 255), int(text_b * 255)
 
         if not bg_img:
             # High-end default dark canvas
             bg_img = Image.new("RGBA", (W, H), (18, 20, 24, 255))
             d_bg = ImageDraw.Draw(bg_img)
             # Subtle gradient mesh accents
-            d_bg.ellipse((-80, -80, 240, 240), fill=(99, 102, 241, 35))
-            d_bg.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(56, 189, 248, 25))
+            d_bg.ellipse((-80, -80, 240, 240), fill=(ar, ag, ab, 35))
+            d_bg.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(ar // 2, ag // 2, ab, 25))
 
         # Frosted Glass Overlay (guarantees WCAG AAA contrast for all text & elements)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -202,7 +214,7 @@ class Leveling(commands.Cog):
         av_x, av_y, av_size = 36, 36, 100
         av_img = await self.fetch_avatar(user, size=av_size)
         img.paste(av_img, (av_x, av_y), av_img)
-        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(129, 140, 248, 255), width=3)
+        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(tar, tag, tab, 255), width=3)
 
         # Member Info
         text_x = av_x + av_size + 20
@@ -210,12 +222,12 @@ class Leveling(commands.Cog):
         joined_str = user.joined_at.strftime("%B %d, %Y") if user.joined_at else "Unknown"
         draw.text((text_x, 70), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(160, 165, 175, 255))
 
-        # Top-right Badges
+        # Top-right Badges — accent badge adapts to wallpaper
         top_role = user.top_role.name if (user.top_role and user.top_role.name != "@everyone") else "Member"
         badges = [
             (f"RANK #{rank_pos}", (245, 158, 11) if rank_pos <= 3 else (150, 155, 166)),
-            (f"LEVEL {current_level}", (129, 140, 248)),
-            (clean_display_name(top_role, max_len=14), (56, 189, 248))
+            (f"LEVEL {current_level}", (tar, tag, tab)),
+            (clean_display_name(top_role, max_len=14), (ar, ag, ab))
         ]
         bx = W - 36
         for b_text, b_col in reversed(badges):
@@ -232,17 +244,17 @@ class Leveling(commands.Cog):
         bar_w = W - 36 - bar_x
         bar_h = 20
 
-        draw.text((bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(155, 160, 172, 255))
+        draw.text((bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(tar, tag, tab, 220))
         xp_str = f"{current_xp:,} / {next_xp:,} XP ({percentage:.1f}%)"
         xb = font_xp_num.getbbox(xp_str)
         draw.text((bar_x + bar_w - (xb[2] - xb[0]), 90), xp_str, font=font_xp_num, fill=(255, 255, 255, 255))
 
         # Background track
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(20, 23, 30, 200), outline=(50, 56, 70, 255), width=1)
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(20, 23, 30, 200), outline=(tar, tag, tab, 60), width=1)
         fill_w = int(bar_w * (percentage / 100.0))
         if fill_w > 0:
-            # Gradient fill on progress bar
-            draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=10, fill=(129, 140, 248, 255))
+            # Gradient fill on progress bar using adaptive accent color
+            draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=10, fill=(ar, ag, ab, 255))
 
         # Bottom 3 Telemetry Stat Cards - Frosted Glassmorphism
         stat_y = 152
@@ -259,16 +271,16 @@ class Leveling(commands.Cog):
         god = ImageDraw.Draw(glass_overlay)
         for idx, (lbl, val, sub) in enumerate(stat_items):
             sx = bar_x + idx * (sw + 10)
-            draw_rounded_rect(god, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(12, 15, 22, 115), outline=(255, 255, 255, 42), width=1)
+            draw_rounded_rect(god, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(12, 15, 22, 115), outline=(ar, ag, ab, 55), width=1)
         img = Image.alpha_composite(img, glass_overlay)
         draw = ImageDraw.Draw(img)
 
-        # Draw text over glass containers with ultra-crisp kerning
+        # Draw text over glass containers — brighter labels + adaptive accent
         for idx, (lbl, val, sub) in enumerate(stat_items):
             sx = bar_x + idx * (sw + 10)
-            draw.text((sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(155, 160, 172, 255))
+            draw.text((sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(tar, tag, tab, 230))
             draw.text((sx + 14, stat_y + 30), val, font=font_stat_val, fill=(255, 255, 255, 255))
-            draw.text((sx + 14, stat_y + 57), sub, font=font_sub, fill=(135, 140, 152, 255))
+            draw.text((sx + 14, stat_y + 57), sub, font=font_sub, fill=(200, 205, 215, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -315,7 +327,7 @@ class Leveling(commands.Cog):
             pass
         return (56, 189, 248)  # Fallback cyan
 
-    async def generate_levelup_card(self, member: discord.Member, old_level: int, new_level: int, guild_id: str = None) -> discord.File:
+    async def generate_levelup_card(self, member: discord.Member, old_level: int, new_level: int, guild_id: str = None, xp_after: int = 0) -> discord.File:
         """
         Generates a high-quality 580x160 level-up card rendered at 2× for crisp anti-aliasing.
         - Wallpaper fills full card; glass card border is transparent (true glassmorphism)
@@ -486,44 +498,47 @@ class Leveling(commands.Cog):
             radius=bar_r, fill=(12, 16, 26, 210), outline=(tar, tag, tab, 80), width=2
         )
 
-        # Filled portion (gradient) rendered on its own layer with proper capsule clip
-        fill_ratio = 0.92
-        fill_px = max(bar_h, int(content_w * fill_ratio))
+        # Compute actual fill ratio based on XP gained since level-up (0% at brand new level)
+        req_new_xp = self.get_xp_requirement(new_level)
+        fill_ratio = max(0.0, min(1.0, xp_after / req_new_xp)) if req_new_xp > 0 else 0.0
+        # Minimum visual fill = bar_h so the endpoint dot still renders; skip if 0%
+        fill_px = max(bar_h, int(content_w * fill_ratio)) if fill_ratio > 0 else 0
 
-        # Build gradient band image
-        grad_band = Image.new("RGBA", (fill_px, bar_h), (0, 0, 0, 0))
-        for i in range(fill_px):
-            t = i / max(1, fill_px - 1)
-            v_g = min(1.0, v_a + (1.0 - v_a) * t * 0.6)
-            s_g = s_a * (1 - t * 0.25)
-            rr, gg, bb = colorsys.hsv_to_rgb(h_a, s_g, v_g)
-            ImageDraw.Draw(grad_band).line(
-                [(i, 0), (i, bar_h - 1)],
-                fill=(int(rr * 255), int(gg * 255), int(bb * 255), 255)
+        # Build gradient band image (only if there is actual fill)
+        if fill_px > 0:
+            grad_band = Image.new("RGBA", (fill_px, bar_h), (0, 0, 0, 0))
+            for i in range(fill_px):
+                t = i / max(1, fill_px - 1)
+                v_g = min(1.0, v_a + (1.0 - v_a) * t * 0.6)
+                s_g = s_a * (1 - t * 0.25)
+                rr, gg, bb = colorsys.hsv_to_rgb(h_a, s_g, v_g)
+                ImageDraw.Draw(grad_band).line(
+                    [(i, 0), (i, bar_h - 1)],
+                    fill=(int(rr * 255), int(gg * 255), int(bb * 255), 255)
+                )
+
+            # Clip gradient to rounded capsule shape
+            fill_mask = Image.new("L", (fill_px, bar_h), 0)
+            ImageDraw.Draw(fill_mask).rounded_rectangle(
+                (0, 0, fill_px - 1, bar_h - 1), radius=bar_r, fill=255
             )
+            grad_band.putalpha(fill_mask)
 
-        # Clip gradient to rounded capsule shape
-        fill_mask = Image.new("L", (fill_px, bar_h), 0)
-        ImageDraw.Draw(fill_mask).rounded_rectangle(
-            (0, 0, fill_px - 1, bar_h - 1), radius=bar_r, fill=255
-        )
-        grad_band.putalpha(fill_mask)
+            # Paste gradient fill onto card
+            img.paste(grad_band, (text_x, bar_y), grad_band)
+            draw = ImageDraw.Draw(img)
 
-        # Paste gradient fill onto card
-        img.paste(grad_band, (text_x, bar_y), grad_band)
-        draw = ImageDraw.Draw(img)
-
-        # Glowing endpoint dot
-        gx = text_x + fill_px
-        gr = bar_h // 2 + 2
-        draw.ellipse(
-            (gx - gr, bar_y + bar_h // 2 - gr, gx + gr, bar_y + bar_h // 2 + gr),
-            fill=(255, 255, 255, 240)
-        )
-        draw.ellipse(
-            (gx - gr // 2, bar_y + bar_h // 2 - gr // 2, gx + gr // 2, bar_y + bar_h // 2 + gr // 2),
-            fill=(255, 255, 255, 255)
-        )
+            # Glowing endpoint dot
+            gx = text_x + fill_px
+            gr = bar_h // 2 + 2
+            draw.ellipse(
+                (gx - gr, bar_y + bar_h // 2 - gr, gx + gr, bar_y + bar_h // 2 + gr),
+                fill=(255, 255, 255, 240)
+            )
+            draw.ellipse(
+                (gx - gr // 2, bar_y + bar_h // 2 - gr // 2, gx + gr // 2, bar_y + bar_h // 2 + gr // 2),
+                fill=(255, 255, 255, 255)
+            )
 
         # ── 8. Downscale 2× → 1× for final crisp output ──
         final = img.resize((W // SCALE, H // SCALE), Image.Resampling.LANCZOS)
@@ -860,6 +875,7 @@ class Leveling(commands.Cog):
                 db.xp_data[gid][uid]["level"] += 1
                 db.xp_data[gid][uid]["xp"] = current_xp - required_xp 
                 new_level = db.xp_data[gid][uid]["level"]
+                xp_after_levelup = db.xp_data[gid][uid]["xp"]  # XP carried over after level-up (usually ~0)
                 db.save_data()
 
                 channel_id = db.level_channels.get(gid)
@@ -879,10 +895,10 @@ class Leveling(commands.Cog):
                             if mode == "text":
                                 await notif_channel.send(level_msg)
                             elif mode == "image":
-                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level, guild_id=gid)
+                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level, guild_id=gid, xp_after=xp_after_levelup)
                                 await notif_channel.send(file=card_file)
                             else: # "both"
-                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level, guild_id=gid)
+                                card_file = await self.generate_levelup_card(message.author, old_lvl, new_level, guild_id=gid, xp_after=xp_after_levelup)
                                 await notif_channel.send(content=level_msg, file=card_file)
                         except Exception as e:
                             try:

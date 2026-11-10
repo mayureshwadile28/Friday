@@ -608,29 +608,6 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         )
         await reply_box(interaction, desc, title="BIRTHDAY SETUP COMPLETE", status="success")
 
-    @birthday_group.command(name="test", description="Send a sample birthday wish embed to the wish channel to verify formatting.")
-    @app_commands.default_permissions(manage_guild=True)
-    async def birthday_test(self, interaction: discord.Interaction):
-        guild = interaction.guild
-        gid = str(guild.id)
-        cfg = db.birthdays_config.get(gid, {})
-        wish_chan_id = cfg.get("wish_channel_id")
-
-        if not wish_chan_id:
-            await reply_box(interaction, "No wish channel configured. Please run `/birthday setup` first.", title="NOT CONFIGURED", status="error", ephemeral=True)
-            return
-
-        wish_chan = interaction.guild.get_channel(int(wish_chan_id))
-        if not wish_chan:
-            await reply_box(interaction, f"Wish channel with ID `{wish_chan_id}` could not be found.", title="CHANNEL NOT FOUND", status="error", ephemeral=True)
-            return
-
-        await interaction.response.defer(ephemeral=True)
-        try:
-            await self._send_birthday_wish(interaction.guild, wish_chan, interaction.user, cfg)
-            await reply_box(interaction, f"Sample birthday wish delivered to {wish_chan.mention}!", title="TEST WISH SENT", status="success", ephemeral=True)
-        except Exception as e:
-            await reply_box(interaction, f"Failed to send test wish: {e}", title="DELIVERY ERROR", status="error", ephemeral=True)
 
 
 async def setup(bot):
