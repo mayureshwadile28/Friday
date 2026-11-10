@@ -1472,13 +1472,7 @@ class Activity(commands.Cog):
         file = await self.generate_leaderboard_card_file(interaction.guild, tf, page=1)
         await interaction.followup.send(file=file, view=view)
 
-    # ─── User shortcut: /my msg and /my stats ───
-    @my_group.command(name="msg", description="View your personal chat activity and message stats graphic card.")
-    async def my_msg(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        file = await self.generate_member_card_file(interaction.guild, interaction.user)
-        await interaction.followup.send(file=file)
-
+    # ─── User shortcut: /my stats ───
     @my_group.command(name="stats", description="View your personal chat activity and message stats graphic card.")
     async def my_stats(self, interaction: discord.Interaction):
         await interaction.response.defer()

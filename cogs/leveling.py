@@ -264,16 +264,59 @@ class Leveling(commands.Cog):
         buf.seek(0)
         return discord.File(fp=buf, filename=f"rankcard_{user.id}.png")
 
+    def _extract_accent_color(self, bg_img: "Image.Image") -> tuple:
+        """
+        Extracts the most visually vibrant (saturated) non-dark accent color from a background image.
+        Returns an (R, G, B) tuple suitable for text and progress bar accent.
+        Falls back to cyan (56, 189, 248) if no vibrant color is found.
+        """
+        import colorsys
+        try:
+            small = bg_img.convert("RGB").resize((60, 40), Image.Resampling.LANCZOS)
+            quantized = small.quantize(colors=12).convert("RGB")
+            counts = {}
+            for px in quantized.getdata():
+                counts[px] = counts.get(px, 0) + 1
+
+            best_color = None
+            best_score = -1
+            for color, count in counts.items():
+                r, g, b = color
+                h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+                # Skip near-black and near-white colors
+                if v < 0.25 or (s < 0.15 and v > 0.85):
+                    continue
+                # Score = saturation * brightness weight * count
+                score = s * (0.5 + v * 0.5) * (count ** 0.5)
+                if score > best_score:
+                    best_score = score
+                    best_color = color
+
+            if best_color:
+                r, g, b = best_color
+                # Ensure it's bright enough for legibility
+                h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+                v = max(v, 0.75)  # Minimum brightness
+                s = max(s, 0.45)  # Minimum saturation
+                rr, gg, bb = colorsys.hsv_to_rgb(h, s, v)
+                return (int(rr * 255), int(gg * 255), int(bb * 255))
+        except Exception:
+            pass
+        return (56, 189, 248)  # Fallback cyan
+
     async def generate_levelup_card(self, member: discord.Member, old_level: int, new_level: int, guild_id: str = None) -> discord.File:
         """
-        Generates a sleek, compact 540x150 horizontal milestone card matching Image 5.
+        Generates a sleek, compact 580x160 horizontal milestone card.
         Applies custom uploaded wallpaper with soft Gaussian blur and frosted glass overlay,
-        glowing avatar aura, vibrant white typography, luminous cyan milestone badge, and star accents.
+        glowing avatar aura, adaptive text colors extracted from the wallpaper palette,
+        and a beautiful dynamic progress bar replacing the old level badge.
         """
-        W, H = 540, 150
+        from PIL import ImageFilter
+        W, H = 580, 160
         gid = str(guild_id) if guild_id else (str(member.guild.id) if hasattr(member, "guild") and member.guild else None)
 
         # 1. Custom background wallpaper with soft Gaussian blur
+        raw_bg = None  # Keep unblurred copy for color extraction
         bg_img = None
         if gid:
             custom_bg = db.rank_card_backgrounds.get(gid)
@@ -288,60 +331,120 @@ class Leveling(commands.Cog):
                     resized = loaded.resize((new_w, new_h), Image.Resampling.LANCZOS)
                     crop_x = (new_w - W) // 2
                     crop_y = (new_h - H) // 2
-                    bg_img = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
-                    from PIL import ImageFilter
-                    bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=2.5))
+                    raw_bg = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
+                    bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
                 except Exception:
+                    raw_bg = None
                     bg_img = None
+
+        # Extract accent color from wallpaper BEFORE adding overlay
+        accent_color = self._extract_accent_color(raw_bg) if raw_bg else (56, 189, 248)
+        ar, ag, ab = accent_color
 
         if not bg_img:
             # Default dark cosmic canvas with gradient orbs
             bg_img = Image.new("RGBA", (W, H), (18, 20, 26, 255))
             d_bg = ImageDraw.Draw(bg_img)
-            d_bg.ellipse((-50, -50, 180, 180), fill=(99, 102, 241, 45))
-            d_bg.ellipse((W - 140, H - 140, W + 60, H + 60), fill=(56, 189, 248, 35))
+            d_bg.ellipse((-50, -50, 200, 200), fill=(ar, ag, ab, 40))
+            d_bg.ellipse((W - 150, H - 150, W + 70, H + 70), fill=(ar // 2, ag // 2, ab, 30))
 
-        # Frosted glass overlay (guarantees contrast while allowing wallpaper to shine through)
-        overlay = Image.new("RGBA", (W, H), (12, 16, 26, 150))
+        # Frosted glass overlay — lighter so wallpaper shows clearly
+        overlay = Image.new("RGBA", (W, H), (10, 12, 20, 90))
         img = Image.alpha_composite(bg_img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # Outer glass card pill with subtle glowing border
-        draw_rounded_rect(draw, (6, 6, W - 6, H - 6), radius=22, fill=(14, 18, 28, 140), outline=(56, 189, 248, 110), width=2)
+        # Outer glass card with accent-colored glowing border (semi-transparent inner fill)
+        draw_rounded_rect(
+            draw, (5, 5, W - 5, H - 5), radius=22,
+            fill=(12, 15, 22, 120),
+            outline=(ar, ag, ab, 130), width=2
+        )
 
-        # Left Avatar (90x90) with glowing aura ring
-        av_size = 90
-        av_x, av_y = 26, (H - av_size) // 2
+        # Left Avatar (96x96) with glowing aura ring using accent color
+        av_size = 96
+        av_x, av_y = 24, (H - av_size) // 2
         av_img = await self.fetch_avatar(member, size=av_size)
         img.paste(av_img, (av_x, av_y), av_img)
-        draw.ellipse((av_x - 3, av_y - 3, av_x + av_size + 3, av_y + av_size + 3), outline=(99, 102, 241, 90), width=4)
-        draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(56, 189, 248, 220), width=2)
+        # Outer soft glow ring
+        draw.ellipse(
+            (av_x - 4, av_y - 4, av_x + av_size + 4, av_y + av_size + 4),
+            outline=(ar, ag, ab, 70), width=5
+        )
+        # Inner sharp accent ring
+        draw.ellipse(
+            (av_x, av_y, av_x + av_size, av_y + av_size),
+            outline=(ar, ag, ab, 220), width=2
+        )
 
-        # Right Content
-        text_x = av_x + av_size + 24
-        font_header = get_unicode_font(30, bold=True)
-        font_level = get_unicode_font(22, bold=True)
+        # Right Content area
+        text_x = av_x + av_size + 22
+        content_w = W - text_x - 20
+
+        font_header = get_unicode_font(28, bold=True)
+        font_lvl_lbl = get_unicode_font(12, bold=True)
         font_sub = get_unicode_font(13)
-        font_star = get_unicode_font(18)
 
-        # "Level-up!" in bold white
-        draw.text((text_x, 26), "Level-up!", font=font_header, fill=(255, 255, 255, 255))
+        # "Level-up!" in bold white at top
+        draw.text((text_x, 22), "Level-up!", font=font_header, fill=(255, 255, 255, 255))
 
-        # Milestone Badge: "4 • 5"
-        badge_y = 78
-        level_str = f"{old_level}  •  {new_level}"
-        b_box = font_level.getbbox(level_str)
-        bw = (b_box[2] - b_box[0]) + 30
-        bh = 38
-        draw_rounded_rect(draw, (text_x, badge_y, text_x + bw, badge_y + bh), radius=12, fill=(16, 36, 56, 210), outline=(56, 189, 248, 200), width=2)
-        draw.text((text_x + 15, badge_y + 4), level_str, font=font_level, fill=(56, 189, 248, 255))
+        # Member name below header
+        m_name = clean_display_name(
+            getattr(member, "display_name", None) or getattr(member, "name", "User"),
+            max_len=18
+        )
+        draw.text((text_x, 60), f"GG @{m_name}", font=font_sub, fill=(220, 225, 235, 230))
 
-        # Member subtext on right
-        m_name = clean_display_name(getattr(member, "display_name", None) or getattr(member, "name", "User"), max_len=16)
-        draw.text((text_x + bw + 14, badge_y + 11), f"GG @{m_name}", font=font_sub, fill=(203, 213, 225, 255))
+        # ── Dynamic Progress Bar Section ──
+        bar_top_y = 86   # Y position of level labels
+        bar_y = 108       # Y position of the bar itself
+        bar_h = 18
+        bar_w = content_w
 
-        # Star sparkle on bottom right
-        draw.text((W - 36, H - 38), "✦", font=font_star, fill=(186, 230, 253, 160))
+        # Level labels: "LVL {old}" on left, "LVL {new}" on right
+        lbl_old = f"LVL {old_level}"
+        lbl_new = f"LVL {new_level}"
+        draw.text((text_x, bar_top_y), lbl_old, font=font_lvl_lbl, fill=(ar, ag, ab, 220))
+        rbb = font_lvl_lbl.getbbox(lbl_new)
+        draw.text((text_x + bar_w - (rbb[2] - rbb[0]), bar_top_y), lbl_new, font=font_lvl_lbl, fill=(255, 255, 255, 180))
+
+        # Bar background track
+        draw_rounded_rect(
+            draw,
+            (text_x, bar_y, text_x + bar_w, bar_y + bar_h),
+            radius=9, fill=(20, 24, 32, 210), outline=(ar, ag, ab, 60), width=1
+        )
+
+        # Filled portion — they just leveled up so show bar at ~92% (nearly complete / just achieved)
+        fill_ratio = 0.92
+        fill_px = int(bar_w * fill_ratio)
+
+        # Build gradient fill by drawing thin vertical slices from accent → lighter shade
+        import colorsys
+        h_base, s_base, v_base = colorsys.rgb_to_hsv(ar / 255, ag / 255, ab / 255)
+        for i in range(fill_px):
+            t = i / max(1, fill_px - 1)
+            # Gradient: left = accent color, right = lighter/brighter version
+            v_grad = v_base + (1.0 - v_base) * t * 0.5
+            s_grad = s_base * (1.0 - t * 0.25)
+            rr, gg, bb = colorsys.hsv_to_rgb(h_base, s_grad, min(1.0, v_grad))
+            px_x = text_x + i
+            # Apply rounded capsule clipping (only draw within rounded rect area)
+            left_r = min(9, i)
+            right_r = min(9, fill_px - 1 - i)
+            top_alpha = 255
+            if i < 9 or i > fill_px - 10:
+                top_alpha = 230
+            draw.line(
+                [(px_x, bar_y + 1), (px_x, bar_y + bar_h - 1)],
+                fill=(int(rr * 255), int(gg * 255), int(bb * 255), top_alpha)
+            )
+
+        # Glow dot at the fill endpoint
+        glow_x = text_x + fill_px
+        draw.ellipse(
+            (glow_x - 5, bar_y + bar_h // 2 - 5, glow_x + 5, bar_y + bar_h // 2 + 5),
+            fill=(255, 255, 255, 220)
+        )
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
