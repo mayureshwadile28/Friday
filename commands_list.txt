@@ -49,6 +49,9 @@ Friday Bot - Complete Command List (100+ Commands)
 /invite_leaderboard - View the server leaderboard of top inviters with interactive pagination
 /invite_admin add @member <amount> - Add bonus invites to a member (Admin only)
 /invite_admin remove @member <amount> - Remove bonus invites from a member (Admin only)
+/invite_admin add_fake @member <amount> - Add fake invites to a member (Admin only)
+/invite_admin remove_fake @member <amount> - Remove fake invites from a member (Admin only)
+/invite_admin set @member [regular] [fake] [bonus] [left] - Manually set exact invite numbers for a member (Admin only)
 /invite_admin clear @member - Reset all invite records for a member (Admin only)
 /invite_admin channel #channel - Set the channel where invite join/leave logs are posted (Admin only)
 /invite_admin message <template> - Configure the custom invite join message template with variables (Admin only)
@@ -57,6 +60,10 @@ Friday Bot - Complete Command List (100+ Commands)
 🎉 Leveling & Community Rank Progression
 /level_setup #channel - Activates leveling and sets the notification channel for level-up announcements
 /level_mode <text/image/both> - Choose level-up notification dispatch: Text Message Only, Graphical Image Card Only, or Both
+/level_admin add_xp @member <amount> - Award XP to a member with automatic levelup calculation (Admin only)
+/level_admin remove_xp @member <amount> - Deduct XP from a member (Admin only)
+/level_admin set_level @member <level> - Directly set a member's level and reset XP to 0 (Admin only)
+/level_admin reset @member - Reset a member's XP and Level to Level 0 (0 XP) (Admin only)
 /rank [@user] - Check your current Level, XP, and progression card with custom local wallpaper support, dynamic progress bar, and server standings
 /joke [category] - Returns a hilarious Hinglish, Desi, or tech joke from a library of 420 jokes with an interactive 'Next Joke 🔄' button
 

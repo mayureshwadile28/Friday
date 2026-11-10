@@ -184,18 +184,19 @@ class Leveling(commands.Cog):
         # Frosted Glass Overlay (guarantees WCAG AAA contrast for all text & elements)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        # Inner dark card container
-        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=(18, 20, 26, 215), outline=(255, 255, 255, 25), width=1)
+        # Inner dark card container: subtle transparency when custom wallpaper is active
+        container_fill = (16, 18, 24, 160) if custom_bg else (18, 20, 26, 215)
+        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 38), width=1)
         img = Image.alpha_composite(bg_img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # Fonts
+        # Fonts - using hinted unicode fonts to ensure uniform kerning with zero letter gaps
         font_title = get_unicode_font(24, bold=True)
-        font_sub = Font.poppins(variant="regular", size=12)
+        font_sub = get_unicode_font(12, bold=False)
         font_badge = get_unicode_font(11, bold=True)
-        font_xp_num = Font.poppins(variant="bold", size=14)
-        font_stat_val = Font.poppins(variant="bold", size=15)
-        font_stat_lbl = Font.poppins(variant="bold", size=10)
+        font_xp_num = get_unicode_font(14, bold=True)
+        font_stat_val = get_unicode_font(16, bold=True)
+        font_stat_lbl = get_unicode_font(11, bold=True)
 
         # Avatar on left (100x100)
         av_x, av_y, av_size = 36, 36, 100
@@ -207,7 +208,7 @@ class Leveling(commands.Cog):
         text_x = av_x + av_size + 20
         draw.text((text_x, 38), clean_display_name(user.display_name, max_len=20), font=font_title, fill=(255, 255, 255, 255))
         joined_str = user.joined_at.strftime("%B %d, %Y") if user.joined_at else "Unknown"
-        draw.text((text_x, 70), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(148, 153, 163, 255))
+        draw.text((text_x, 70), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(160, 165, 175, 255))
 
         # Top-right Badges
         top_role = user.top_role.name if (user.top_role and user.top_role.name != "@everyone") else "Member"
@@ -221,7 +222,7 @@ class Leveling(commands.Cog):
             bbox = font_badge.getbbox(b_text)
             bw = (bbox[2] - bbox[0]) + 20
             bpx = bx - bw
-            draw_rounded_rect(draw, (bpx, 38, bpx + bw, 66), radius=10, fill=(30, 33, 42, 230), outline=b_col + (180,), width=1)
+            draw_rounded_rect(draw, (bpx, 38, bpx + bw, 66), radius=10, fill=(24, 27, 36, 170), outline=b_col + (190,), width=1)
             draw.text((bpx + 10, 45), b_text, font=font_badge, fill=b_col + (255,))
             bx = bpx - 8
 
@@ -231,19 +232,19 @@ class Leveling(commands.Cog):
         bar_w = W - 36 - bar_x
         bar_h = 20
 
-        draw.text((bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(142, 146, 155, 255))
+        draw.text((bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(155, 160, 172, 255))
         xp_str = f"{current_xp:,} / {next_xp:,} XP ({percentage:.1f}%)"
         xb = font_xp_num.getbbox(xp_str)
         draw.text((bar_x + bar_w - (xb[2] - xb[0]), 90), xp_str, font=font_xp_num, fill=(255, 255, 255, 255))
 
         # Background track
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(24, 27, 34, 240), outline=(45, 50, 62, 255), width=1)
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(20, 23, 30, 200), outline=(50, 56, 70, 255), width=1)
         fill_w = int(bar_w * (percentage / 100.0))
         if fill_w > 0:
             # Gradient fill on progress bar
             draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=10, fill=(129, 140, 248, 255))
 
-        # Bottom 3 Telemetry Stat Cards
+        # Bottom 3 Telemetry Stat Cards - Frosted Glassmorphism
         stat_y = 152
         stat_h = 86
         sw = (bar_w - 20) // 3
@@ -252,12 +253,22 @@ class Leveling(commands.Cog):
             ("VOICE DURATION", voice_str, "Recorded voice time"),
             ("SERVER STANDING", f"Top {max(1, round((rank_pos / max(1, total_members)) * 100))}%", f"Rank #{rank_pos} of {total_members}")
         ]
+
+        # Render glassmorphic translucent containers via alpha composite
+        glass_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        god = ImageDraw.Draw(glass_overlay)
         for idx, (lbl, val, sub) in enumerate(stat_items):
             sx = bar_x + idx * (sw + 10)
-            draw_rounded_rect(draw, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(28, 31, 39, 230), outline=(45, 50, 63, 255), width=1)
-            draw.text((sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(140, 145, 156, 255))
+            draw_rounded_rect(god, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(12, 15, 22, 115), outline=(255, 255, 255, 42), width=1)
+        img = Image.alpha_composite(img, glass_overlay)
+        draw = ImageDraw.Draw(img)
+
+        # Draw text over glass containers with ultra-crisp kerning
+        for idx, (lbl, val, sub) in enumerate(stat_items):
+            sx = bar_x + idx * (sw + 10)
+            draw.text((sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(155, 160, 172, 255))
             draw.text((sx + 14, stat_y + 30), val, font=font_stat_val, fill=(255, 255, 255, 255))
-            draw.text((sx + 14, stat_y + 56), sub, font=font_sub, fill=(120, 125, 136, 255))
+            draw.text((sx + 14, stat_y + 57), sub, font=font_sub, fill=(135, 140, 152, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -727,6 +738,102 @@ class Leveling(commands.Cog):
         db.level_modes[gid] = mode.value
         db.save_data()
         await interaction.response.send_message(f"✅ Level Up notification mode set to **{mode.name}**.", ephemeral=True)
+
+    # ────────────────────────── Staff Level & XP Admin Group ──────────────────────────
+    level_admin = app_commands.Group(name="level_admin", description="Staff controls for server leveling, XP, and ranks.")
+
+    @level_admin.command(name="add_xp", description="Add XP to a member.")
+    @app_commands.describe(member="Member to award XP", amount="Amount of XP to add")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_add_xp(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+            return
+        gid, uid = str(interaction.guild.id), str(member.id)
+        if gid not in db.xp_data: db.xp_data[gid] = {}
+        if uid not in db.xp_data[gid]: db.xp_data[gid][uid] = {"xp": 0, "level": 0}
+
+        db.xp_data[gid][uid]["xp"] += amount
+        current_xp = db.xp_data[gid][uid]["xp"]
+        current_level = db.xp_data[gid][uid]["level"]
+        leveled_up = False
+
+        while True:
+            req_xp = self.get_xp_requirement(current_level)
+            if current_xp >= req_xp:
+                current_level += 1
+                current_xp -= req_xp
+                leveled_up = True
+            else:
+                break
+
+        db.xp_data[gid][uid]["level"] = current_level
+        db.xp_data[gid][uid]["xp"] = current_xp
+        db.save_data()
+        lvl_note = f" (Now **Level {current_level}**! 🎉)" if leveled_up else ""
+        await interaction.response.send_message(f"✅ Added **{amount:,} XP** to {member.mention}. Current: Level **{current_level}** • **{current_xp:,} XP**{lvl_note}")
+
+    @level_admin.command(name="remove_xp", description="Remove XP from a member.")
+    @app_commands.describe(member="Member to deduct XP from", amount="Amount of XP to remove")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_remove_xp(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+            return
+        gid, uid = str(interaction.guild.id), str(member.id)
+        if gid not in db.xp_data or uid not in db.xp_data[gid]:
+            await interaction.response.send_message(f"❌ {member.mention} has no XP recorded.", ephemeral=True)
+            return
+
+        current_xp = db.xp_data[gid][uid].get("xp", 0)
+        current_level = db.xp_data[gid][uid].get("level", 0)
+
+        # Deduct XP cleanly
+        if amount <= current_xp:
+            current_xp -= amount
+        else:
+            remaining_to_remove = amount - current_xp
+            current_xp = 0
+            while remaining_to_remove > 0 and current_level > 0:
+                current_level -= 1
+                req_xp = self.get_xp_requirement(current_level)
+                if remaining_to_remove <= req_xp:
+                    current_xp = req_xp - remaining_to_remove
+                    remaining_to_remove = 0
+                else:
+                    remaining_to_remove -= req_xp
+                    current_xp = 0
+
+        db.xp_data[gid][uid]["level"] = current_level
+        db.xp_data[gid][uid]["xp"] = current_xp
+        db.save_data()
+        await interaction.response.send_message(f"✅ Removed **{amount:,} XP** from {member.mention}. Current: Level **{current_level}** • **{current_xp:,} XP**")
+
+    @level_admin.command(name="set_level", description="Directly set a member's level.")
+    @app_commands.describe(member="Target member", level="New level number (0 or higher)")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_set_level(self, interaction: discord.Interaction, member: discord.Member, level: int):
+        if level < 0:
+            await interaction.response.send_message("❌ Level must be 0 or higher.", ephemeral=True)
+            return
+        gid, uid = str(interaction.guild.id), str(member.id)
+        if gid not in db.xp_data: db.xp_data[gid] = {}
+        if uid not in db.xp_data[gid]: db.xp_data[gid][uid] = {"xp": 0, "level": 0}
+
+        db.xp_data[gid][uid]["level"] = level
+        db.xp_data[gid][uid]["xp"] = 0
+        db.save_data()
+        await interaction.response.send_message(f"✅ Set {member.mention}'s level directly to **Level {level}** (XP reset to 0).")
+
+    @level_admin.command(name="reset", description="Reset a member's XP and Level to 0.")
+    @app_commands.describe(member="Target member to reset")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_reset(self, interaction: discord.Interaction, member: discord.Member):
+        gid, uid = str(interaction.guild.id), str(member.id)
+        if gid in db.xp_data and uid in db.xp_data[gid]:
+            db.xp_data[gid][uid] = {"xp": 0, "level": 0}
+            db.save_data()
+        await interaction.response.send_message(f"🧹 Reset XP and Level for {member.mention} to **Level 0 (0 XP)**.")
 
     @commands.Cog.listener()
     async def on_message(self, message):

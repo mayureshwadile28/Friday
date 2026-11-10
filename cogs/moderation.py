@@ -222,6 +222,18 @@ class Moderation(commands.Cog):
 
         channel_type_name = "Voice Chat" if isinstance(target, discord.VoiceChannel) else ("Stage Chat" if isinstance(target, discord.StageChannel) else ("Thread" if isinstance(target, discord.Thread) else "Channel"))
 
+        # Check if channel is already locked
+        if isinstance(target, discord.Thread):
+            if target.locked:
+                await reply_box(interaction, f"This thread ({target.mention}) is already locked.", title="ALREADY LOCKED", status="info", ephemeral=True)
+                return
+        else:
+            default_role = interaction.guild.default_role
+            current_ow = target.overwrites_for(default_role)
+            if current_ow.send_messages is False:
+                await reply_box(interaction, f"This {channel_type_name.lower()} ({target.mention}) is already locked.", title="ALREADY LOCKED", status="info", ephemeral=True)
+                return
+
         try:
             if isinstance(target, discord.Thread):
                 await target.edit(locked=True, reason=f"Thread locked by {interaction.user}: {reason}")
@@ -275,6 +287,18 @@ class Moderation(commands.Cog):
             return
 
         channel_type_name = "Voice Chat" if isinstance(target, discord.VoiceChannel) else ("Stage Chat" if isinstance(target, discord.StageChannel) else ("Thread" if isinstance(target, discord.Thread) else "Channel"))
+
+        # Check if channel is already unlocked
+        if isinstance(target, discord.Thread):
+            if not target.locked:
+                await reply_box(interaction, f"This thread ({target.mention}) is already unlocked.", title="ALREADY UNLOCKED", status="info", ephemeral=True)
+                return
+        else:
+            default_role = interaction.guild.default_role
+            current_ow = target.overwrites_for(default_role)
+            if current_ow.send_messages is not False:
+                await reply_box(interaction, f"This {channel_type_name.lower()} ({target.mention}) is already unlocked.", title="ALREADY UNLOCKED", status="info", ephemeral=True)
+                return
 
         try:
             if isinstance(target, discord.Thread):

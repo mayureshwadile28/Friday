@@ -383,6 +383,77 @@ class InviteTracker(commands.Cog):
         stats = self.get_user_invites(interaction.guild.id, member.id)
         await interaction.response.send_message(f"✅ Removed **{amount}** bonus invites from {member.mention}. New total: **{stats['total']}** invites.")
 
+    @invite_admin.command(name="add_fake", description="Add fake invites to a member.")
+    @app_commands.describe(member="Target member", amount="Number of fake invites to add")
+    @app_commands.default_permissions(administrator=True)
+    async def add_fake(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+            return
+        gid_str, uid_str = str(interaction.guild.id), str(member.id)
+        if gid_str not in db.invite_counts: db.invite_counts[gid_str] = {}
+        if uid_str not in db.invite_counts[gid_str]:
+            db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
+
+        db.invite_counts[gid_str][uid_str]["fake"] += amount
+        db.save_data()
+        stats = self.get_user_invites(interaction.guild.id, member.id)
+        await interaction.response.send_message(f"✅ Added **{amount}** fake invites to {member.mention}. (Net: **{stats['total']}**, Fake: **{stats['fake']}**)")
+
+    @invite_admin.command(name="remove_fake", description="Remove fake invites from a member.")
+    @app_commands.describe(member="Target member", amount="Number of fake invites to remove")
+    @app_commands.default_permissions(administrator=True)
+    async def remove_fake(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+            return
+        gid_str, uid_str = str(interaction.guild.id), str(member.id)
+        if gid_str not in db.invite_counts: db.invite_counts[gid_str] = {}
+        if uid_str not in db.invite_counts[gid_str]:
+            db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
+
+        db.invite_counts[gid_str][uid_str]["fake"] = max(0, db.invite_counts[gid_str][uid_str]["fake"] - amount)
+        db.save_data()
+        stats = self.get_user_invites(interaction.guild.id, member.id)
+        await interaction.response.send_message(f"✅ Removed **{amount}** fake invites from {member.mention}. (Net: **{stats['total']}**, Fake: **{stats['fake']}**)")
+
+    @invite_admin.command(name="set", description="Manually set exact invite numbers for a member.")
+    @app_commands.describe(
+        member="Target member",
+        regular="Regular invites (optional)",
+        fake="Fake invites (optional)",
+        bonus="Bonus invites (optional)",
+        left="Left invites (optional)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def set_invites(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        regular: Optional[int] = None,
+        fake: Optional[int] = None,
+        bonus: Optional[int] = None,
+        left: Optional[int] = None
+    ):
+        gid_str, uid_str = str(interaction.guild.id), str(member.id)
+        if gid_str not in db.invite_counts: db.invite_counts[gid_str] = {}
+        if uid_str not in db.invite_counts[gid_str]:
+            db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
+
+        rec = db.invite_counts[gid_str][uid_str]
+        if regular is not None: rec["regular"] = max(0, regular)
+        if fake is not None: rec["fake"] = max(0, fake)
+        if bonus is not None: rec["bonus"] = max(0, bonus)
+        if left is not None: rec["left"] = max(0, left)
+
+        db.save_data()
+        stats = self.get_user_invites(interaction.guild.id, member.id)
+        await interaction.response.send_message(
+            f"✅ Updated invites for {member.mention}:\n"
+            f"> **Net Total:** `{stats['total']}`\n"
+            f"> **Regular:** `{rec['regular']}` • **Fake:** `{rec['fake']}` • **Bonus:** `{rec['bonus']}` • **Left:** `{rec['left']}`"
+        )
+
     @invite_admin.command(name="clear", description="Reset all invite records for a member.")
     @app_commands.default_permissions(administrator=True)
     async def clear_invites(self, interaction: discord.Interaction, member: discord.Member):

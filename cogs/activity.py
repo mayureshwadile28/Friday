@@ -1284,7 +1284,7 @@ class Activity(commands.Cog):
         buf.seek(0)
         return buf
 
-    async def generate_server_card_file(self, guild: discord.Guild) -> discord.File:
+    async def generate_server_card_file(self, guild: discord.Guild, viewer: Optional[discord.Member] = None) -> discord.File:
         gid = guild.id
         icon_img = await self.fetch_avatar_image(guild)
         labels, values = self.get_daily_trend(gid, days=7)
@@ -1302,12 +1302,27 @@ class Activity(commands.Cog):
 
         voice_hours = round(srv_stats["voice_lifetime_sec"] / 3600, 1)
 
-        # Top 3 Channels with guaranteed safe labels
+        # Top 3 Channels with guaranteed safe labels and viewer permission privacy
         top_raw_channels = self.get_top_channels_list(gid, limit=3)
         top_channels = []
         for cid, total in top_raw_channels:
-            raw_c_name = await self.get_channel_display_name(guild, cid)
-            top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
+            cid_int = int(cid) if str(cid).isdigit() else 0
+            ch = guild.get_channel_or_thread(cid_int) if hasattr(guild, "get_channel_or_thread") else guild.get_channel(cid_int)
+            is_hidden = False
+            if ch:
+                if viewer and isinstance(viewer, discord.Member):
+                    perms = ch.permissions_for(viewer)
+                    if not perms.view_channel or not perms.read_messages:
+                        is_hidden = True
+                else:
+                    d_perms = ch.permissions_for(guild.default_role)
+                    if not d_perms.view_channel:
+                        is_hidden = True
+            if is_hidden:
+                top_channels.append(("🔒 Private Channel", total))
+            else:
+                raw_c_name = await self.get_channel_display_name(guild, cid)
+                top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
 
         # Top 3 Chatters
         top_raw_chatters = self.get_leaderboard(gid, timeframe="lifetime", limit=3, offset=0)
@@ -1350,19 +1365,34 @@ class Activity(commands.Cog):
         )
         return discord.File(fp=buf, filename=f"server_matrix_{guild.id}.png")
 
-    async def generate_member_card_file(self, guild: discord.Guild, member: discord.Member) -> discord.File:
+    async def generate_member_card_file(self, guild: discord.Guild, member: discord.Member, viewer: Optional[discord.Member] = None) -> discord.File:
         gid = guild.id
         uid = member.id
         avatar_img = await self.fetch_avatar_image(member)
         labels, values = self.get_daily_trend(gid, user_id=uid, days=7)
         m_stats = self.get_member_stats(gid, uid)
 
-        # Top 5 channels with guaranteed safe labels
+        # Top 5 channels with guaranteed safe labels and viewer permission privacy
         top_raw = self.get_top_channels_list(gid, user_id=uid, limit=5)
         top_channels = []
         for cid, total in top_raw:
-            raw_c_name = await self.get_channel_display_name(guild, cid)
-            top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
+            cid_int = int(cid) if str(cid).isdigit() else 0
+            ch = guild.get_channel_or_thread(cid_int) if hasattr(guild, "get_channel_or_thread") else guild.get_channel(cid_int)
+            is_hidden = False
+            if ch:
+                if viewer and isinstance(viewer, discord.Member):
+                    perms = ch.permissions_for(viewer)
+                    if not perms.view_channel or not perms.read_messages:
+                        is_hidden = True
+                else:
+                    d_perms = ch.permissions_for(guild.default_role)
+                    if not d_perms.view_channel:
+                        is_hidden = True
+            if is_hidden:
+                top_channels.append(("🔒 Private Channel", total))
+            else:
+                raw_c_name = await self.get_channel_display_name(guild, cid)
+                top_channels.append((safe_channel_label(raw_c_name, cid=cid), total))
 
         joined_str = member.joined_at.strftime("%B %d, %Y") if member.joined_at else "Unknown"
         created_str = member.created_at.strftime("%B %d, %Y") if member.created_at else "Unknown"
@@ -1475,13 +1505,13 @@ class Activity(commands.Cog):
     async def activity_member(self, interaction: discord.Interaction, member: discord.Member = None):
         await interaction.response.defer()
         target = member or interaction.user
-        file = await self.generate_member_card_file(interaction.guild, target)
+        file = await self.generate_member_card_file(interaction.guild, target, viewer=interaction.user)
         await interaction.followup.send(file=file)
 
     @activity_group.command(name="server", description="View custom graphic analytics dashboard for the server.")
     async def activity_server(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        file = await self.generate_server_card_file(interaction.guild)
+        file = await self.generate_server_card_file(interaction.guild, viewer=interaction.user)
         await interaction.followup.send(file=file)
 
     @activity_group.command(name="leaderboard", description="View custom graphic leaderboard for Today, Week, Month, Year, or Lifetime.")
@@ -1503,7 +1533,7 @@ class Activity(commands.Cog):
     @my_group.command(name="stats", description="View your personal chat activity and message stats graphic card.")
     async def my_stats(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        file = await self.generate_member_card_file(interaction.guild, interaction.user)
+        file = await self.generate_member_card_file(interaction.guild, interaction.user, viewer=interaction.user)
         await interaction.followup.send(file=file)
 
     # ─── Unified /leaderboard commands (Messages & XP) ───
