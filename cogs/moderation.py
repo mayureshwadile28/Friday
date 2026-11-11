@@ -13,9 +13,36 @@ class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    def check_mod_permission(self, interaction: discord.Interaction, perm_name: str) -> bool:
+        """Strict runtime check verifying Administrator, Server Owner, or the explicit moderation permission."""
+        if not interaction.guild:
+            return False
+        if interaction.user.id == interaction.guild.owner_id:
+            return True
+        perms = getattr(interaction.user, "guild_permissions", None)
+        if not perms:
+            return False
+        if perms.administrator:
+            return True
+        return getattr(perms, perm_name, False)
+
+    async def require_mod_permission(self, interaction: discord.Interaction, perm_name: str, friendly_name: str) -> bool:
+        """Enforces runtime permission; sends an authentic error box if unauthorized."""
+        if self.check_mod_permission(interaction, perm_name):
+            return True
+        gid = str(interaction.guild.id)
+        err_tpl = db.custom_responses.get(gid, {}).get(
+            f"perm_err_{perm_name}",
+            f"You do not possess the required **{friendly_name}** permission to execute this moderation action."
+        )
+        await reply_box(interaction, err_tpl, title="PERMISSION DENIED", status="danger", ephemeral=True)
+        return False
+
     @app_commands.command(name="ban", description="Ban a member from the server.")
     @app_commands.default_permissions(ban_members=True)
     async def ban(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Rule violation."):
+        if not await self.require_mod_permission(interaction, "ban_members", "Ban Members"):
+            return
         gid = str(interaction.guild.id)
         if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
             err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot moderate someone with a higher or equal role hierarchy.")
@@ -52,6 +79,8 @@ class Moderation(commands.Cog):
     @app_commands.autocomplete(user=unban_autocomplete)
     @app_commands.default_permissions(ban_members=True)
     async def unban(self, interaction: discord.Interaction, user: str, reason: str = "Pardoned."):
+        if not await self.require_mod_permission(interaction, "ban_members", "Ban Members"):
+            return
         await interaction.response.defer(ephemeral=False)
         guild = interaction.guild
         gid = str(interaction.guild.id)
@@ -115,6 +144,8 @@ class Moderation(commands.Cog):
     @app_commands.command(name="timeout", description="Timeout a member for a set number of minutes.")
     @app_commands.default_permissions(moderate_members=True)
     async def timeout(self, interaction: discord.Interaction, member: discord.Member, minutes: int, reason: str = "Rule violation."):
+        if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
+            return
         gid = str(interaction.guild.id)
         if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
             err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot moderate someone with a higher or equal role hierarchy.")
@@ -152,6 +183,8 @@ class Moderation(commands.Cog):
     @app_commands.command(name="untimeout", description="Remove a timeout from a member.")
     @app_commands.default_permissions(moderate_members=True)
     async def untimeout(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Timeout lifted."):
+        if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
+            return
         gid = str(interaction.guild.id)
         if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
             err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot remove a timeout from someone with a higher or equal role.")
@@ -185,6 +218,8 @@ class Moderation(commands.Cog):
     @app_commands.command(name="purge", description="Delete a specific number of recent messages in this channel.")
     @app_commands.default_permissions(manage_messages=True)
     async def purge(self, interaction: discord.Interaction, amount: int):
+        if not await self.require_mod_permission(interaction, "manage_messages", "Manage Messages"):
+            return
         await interaction.response.defer(ephemeral=True)
         gid = str(interaction.guild.id)
         try:
@@ -210,6 +245,8 @@ class Moderation(commands.Cog):
         channel: Optional[Union[discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread]] = None,
         reason: str = "Channel locked by staff."
     ):
+        if not await self.require_mod_permission(interaction, "manage_channels", "Manage Channels"):
+            return
         target = channel or interaction.channel
         if not isinstance(target, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread)):
             await reply_box(interaction, "Only text, voice, or stage channels (and threads) can be locked.", title="INVALID TARGET", status="error", ephemeral=True)
@@ -276,6 +313,8 @@ class Moderation(commands.Cog):
         channel: Optional[Union[discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread]] = None,
         reason: str = "Channel unlocked by staff."
     ):
+        if not await self.require_mod_permission(interaction, "manage_channels", "Manage Channels"):
+            return
         target = channel or interaction.channel
         if not isinstance(target, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread)):
             await reply_box(interaction, "Only text, voice, or stage channels (and threads) can be unlocked.", title="INVALID TARGET", status="error", ephemeral=True)
@@ -342,6 +381,8 @@ class Moderation(commands.Cog):
         seconds: app_commands.Range[int, 0, 21600],
         channel: Optional[Union[discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread]] = None
     ):
+        if not await self.require_mod_permission(interaction, "manage_channels", "Manage Channels"):
+            return
         target = channel or interaction.channel
         if not isinstance(target, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.Thread)):
             await reply_box(interaction, "Only text, voice, or stage channels (and threads) support slowmode.", title="INVALID TARGET", status="error", ephemeral=True)
@@ -368,6 +409,8 @@ class Moderation(commands.Cog):
         member: discord.Member,
         reason: str = "No reason provided."
     ):
+        if not await self.require_mod_permission(interaction, "kick_members", "Kick Members"):
+            return
         if member.id == interaction.user.id:
             await reply_box(interaction, "You cannot kick yourself.", title="INVALID TARGET", status="warning", ephemeral=True)
             return
@@ -420,6 +463,8 @@ class Moderation(commands.Cog):
         reason: str = "Rule violation.",
         delivery: str = "both"
     ):
+        if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members"):
+            return
         gid = str(interaction.guild.id)
         uid = str(member.id)
 
@@ -560,6 +605,8 @@ class Moderation(commands.Cog):
     )
     @app_commands.default_permissions(moderate_members=True)
     async def clearwarns(self, interaction: discord.Interaction, member: discord.Member, warn_id: int = None):
+        if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members"):
+            return
         gid = str(interaction.guild.id)
         uid = str(member.id)
         warn_list = db.warnings.get(gid, {}).get(uid, [])
@@ -1173,6 +1220,8 @@ class Moderation(commands.Cog):
     @app_commands.describe(member="The member to receive the role", role="The role to assign")
     @app_commands.default_permissions(manage_roles=True)
     async def role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
+        if not await self.require_mod_permission(interaction, "manage_roles", "Manage Roles"):
+            return
         # 1. Invalid / default / managed role checks
         if role.is_default():
             await reply_box(interaction, "Cannot assign the default @everyone role.", title="INVALID ROLE", status="error", ephemeral=True)
@@ -1238,6 +1287,8 @@ class Moderation(commands.Cog):
     @app_commands.describe(member="The member to remove the role from", role="The role to remove")
     @app_commands.default_permissions(manage_roles=True)
     async def role_remove(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
+        if not await self.require_mod_permission(interaction, "manage_roles", "Manage Roles"):
+            return
         # 1. Has role check
         if role not in member.roles:
             await reply_box(interaction, f"{member.mention} does not have the {role.mention} role.", title="ROLE NOT FOUND", status="error", ephemeral=True)
@@ -1330,6 +1381,8 @@ class Moderation(commands.Cog):
     @app_commands.describe(role="The role to update", emoji="The emoji or custom emoji to assign (type 'none' to remove)")
     @app_commands.default_permissions(manage_roles=True)
     async def role_emoji(self, interaction: discord.Interaction, role: discord.Role, emoji: str):
+        if not await self.require_mod_permission(interaction, "manage_roles", "Manage Roles"):
+            return
         # 1. Invalid / default / managed role checks
         if role.is_default():
             await reply_box(interaction, "Cannot modify the default @everyone role.", title="INVALID ROLE", status="error", ephemeral=True)

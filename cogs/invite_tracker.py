@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageStat
 from database import db
 from emoji_utils import replace_plain_emojis
 from font_utils import clean_display_name, get_unicode_font
+from response_utils import ensure_admin_or_owner, reply_box
 
 try:
     from zoneinfo import ZoneInfo
@@ -912,7 +913,11 @@ class InviteTracker(commands.Cog):
 
     # ────────────────────────── Admin Subgroup ──────────────────────────
 
-    invite_admin = app_commands.Group(name="invite_admin", description="Configure and manage the server invite tracker.")
+    invite_admin = app_commands.Group(
+        name="invite_admin",
+        description="Configure and manage the server invite tracker.",
+        default_permissions=discord.Permissions(administrator=True)
+    )
 
     @invite_admin.command(name="add", description="Add bonus or fake invites to a member.")
     @app_commands.describe(
@@ -926,6 +931,8 @@ class InviteTracker(commands.Cog):
     ])
     @app_commands.default_permissions(administrator=True)
     async def add_invites(self, interaction: discord.Interaction, member: discord.Member, amount: int, invite_type: str = "bonus"):
+        if not await ensure_admin_or_owner(interaction):
+            return
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
             return
@@ -955,6 +962,8 @@ class InviteTracker(commands.Cog):
     ])
     @app_commands.default_permissions(administrator=True)
     async def remove_invites(self, interaction: discord.Interaction, member: discord.Member, amount: int, invite_type: str = "bonus"):
+        if not await ensure_admin_or_owner(interaction):
+            return
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
             return
@@ -990,6 +999,8 @@ class InviteTracker(commands.Cog):
         bonus: Optional[int] = None,
         left: Optional[int] = None
     ):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str, uid_str = str(interaction.guild.id), str(member.id)
         if gid_str not in db.invite_counts: db.invite_counts[gid_str] = {}
         if uid_str not in db.invite_counts[gid_str]:
@@ -1012,6 +1023,8 @@ class InviteTracker(commands.Cog):
     @invite_admin.command(name="clear", description="Reset all invite records for a member.")
     @app_commands.default_permissions(administrator=True)
     async def clear_invites(self, interaction: discord.Interaction, member: discord.Member):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str, uid_str = str(interaction.guild.id), str(member.id)
         if gid_str in db.invite_counts and uid_str in db.invite_counts[gid_str]:
             db.invite_counts[gid_str][uid_str] = {"regular": 0, "left": 0, "fake": 0, "bonus": 0}
@@ -1021,6 +1034,8 @@ class InviteTracker(commands.Cog):
     @invite_admin.command(name="channel", description="Set the channel where invite join/leave logs are posted.")
     @app_commands.default_permissions(administrator=True)
     async def set_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         if gid_str not in db.invite_tracker: db.invite_tracker[gid_str] = {}
         db.invite_tracker[gid_str]["log_channel"] = str(channel.id)
@@ -1031,6 +1046,8 @@ class InviteTracker(commands.Cog):
     @invite_admin.command(name="message", description="Configure the custom join message template.")
     @app_commands.default_permissions(administrator=True)
     async def set_join_msg(self, interaction: discord.Interaction, template: str):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         if gid_str not in db.invite_tracker: db.invite_tracker[gid_str] = {}
         db.invite_tracker[gid_str]["join_msg"] = template
@@ -1040,6 +1057,8 @@ class InviteTracker(commands.Cog):
     @invite_admin.command(name="leave_message", description="Configure the custom leave message template.")
     @app_commands.default_permissions(administrator=True)
     async def set_leave_msg(self, interaction: discord.Interaction, template: str):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         if gid_str not in db.invite_tracker: db.invite_tracker[gid_str] = {}
         db.invite_tracker[gid_str]["leave_msg"] = template

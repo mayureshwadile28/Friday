@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageStat
 from easy_pil import Font
 from database import db
 from font_utils import get_unicode_font, clean_display_name, safe_channel_label
+from response_utils import ensure_admin_or_owner, reply_box
 
 def draw_rounded_rect(draw, bbox, radius, fill, outline=None, width=1):
     draw.rounded_rectangle(bbox, radius=radius, fill=fill, outline=outline, width=width)
@@ -56,8 +57,10 @@ class Leveling(commands.Cog):
         return int(5 * (level ** 2) + 50 * level + 100)
 
     @app_commands.command(name="level_setup", description="Activate leveling and set the channel for Level Up updates.")
-    @app_commands.default_permissions(manage_channels=True)
+    @app_commands.default_permissions(administrator=True)
     async def level_setup(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid = str(interaction.guild.id)
         db.level_channels[gid] = str(channel.id)
         db.save_data()
@@ -859,20 +862,28 @@ class Leveling(commands.Cog):
         app_commands.Choice(name="Image Card Only", value="image"),
         app_commands.Choice(name="Both (Text + Image Card)", value="both")
     ])
-    @app_commands.default_permissions(manage_channels=True)
+    @app_commands.default_permissions(administrator=True)
     async def level_mode(self, interaction: discord.Interaction, mode: app_commands.Choice[str]):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid = str(interaction.guild.id)
         db.level_modes[gid] = mode.value
         db.save_data()
         await interaction.response.send_message(f"✅ Level Up notification mode set to **{mode.name}**.", ephemeral=True)
 
     # ────────────────────────── Staff Level & XP Admin Group ──────────────────────────
-    level_admin = app_commands.Group(name="level_admin", description="Staff controls for server leveling, XP, and ranks.")
+    level_admin = app_commands.Group(
+        name="level_admin",
+        description="Staff controls for server leveling, XP, and ranks.",
+        default_permissions=discord.Permissions(administrator=True)
+    )
 
     @level_admin.command(name="add_xp", description="Add XP to a member.")
     @app_commands.describe(member="Member to award XP", amount="Amount of XP to add")
     @app_commands.default_permissions(administrator=True)
     async def admin_add_xp(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if not await ensure_admin_or_owner(interaction):
+            return
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
             return
@@ -904,6 +915,8 @@ class Leveling(commands.Cog):
     @app_commands.describe(member="Member to deduct XP from", amount="Amount of XP to remove")
     @app_commands.default_permissions(administrator=True)
     async def admin_remove_xp(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if not await ensure_admin_or_owner(interaction):
+            return
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
             return
@@ -940,6 +953,8 @@ class Leveling(commands.Cog):
     @app_commands.describe(member="Target member", level="New level number (0 or higher)")
     @app_commands.default_permissions(administrator=True)
     async def admin_set_level(self, interaction: discord.Interaction, member: discord.Member, level: int):
+        if not await ensure_admin_or_owner(interaction):
+            return
         if level < 0:
             await interaction.response.send_message("❌ Level must be 0 or higher.", ephemeral=True)
             return
@@ -956,6 +971,8 @@ class Leveling(commands.Cog):
     @app_commands.describe(member="Target member to reset")
     @app_commands.default_permissions(administrator=True)
     async def admin_reset(self, interaction: discord.Interaction, member: discord.Member):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid, uid = str(interaction.guild.id), str(member.id)
         if gid in db.xp_data and uid in db.xp_data[gid]:
             db.xp_data[gid][uid] = {"xp": 0, "level": 0}

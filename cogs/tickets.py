@@ -7,6 +7,7 @@ import chat_exporter
 import re
 from database import db
 from emoji_utils import replace_plain_emojis, parse_btn
+from response_utils import ensure_admin_or_owner, is_admin_or_owner
 
 
 # ----------------- TICKET HELPERS & MODALS -----------------
@@ -445,7 +446,8 @@ class Tickets(commands.Cog):
                            private: bool = True,
                            transcription: bool = True,
                            transcript_category: discord.CategoryChannel = None):
-        
+        if not await ensure_admin_or_owner(interaction):
+            return
         await interaction.response.defer(ephemeral=True)
 
         embed_title = replace_plain_emojis(title, self.bot, guild=interaction.guild)
@@ -503,6 +505,8 @@ class Tickets(commands.Cog):
 
     @ticket_group.command(name="handle_role", description="Set the staff role that manages tickets")
     async def handle_role(self, interaction: discord.Interaction, role: discord.Role):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid = str(interaction.guild.id)
         if gid not in db.tickets:
             db.tickets[gid] = {"panels": {}, "active_tickets": {}, "ticket_counter": 0}

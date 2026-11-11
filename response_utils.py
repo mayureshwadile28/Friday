@@ -125,3 +125,36 @@ async def reply_box(
                 await interaction.followup.send(embed=embed, ephemeral=ephemeral)
     except Exception as e:
         print(f"[reply_box Error] {e}")
+
+def is_admin_or_owner(interaction: discord.Interaction) -> bool:
+    """
+    Checks if the invoking user has Administrator permissions or is the server owner.
+    Guarantees strict runtime authorization even if Discord client-side defaults are bypassed.
+    """
+    if not interaction.guild:
+        return False
+    # Server Owner always has absolute authority
+    if interaction.user.id == interaction.guild.owner_id:
+        return True
+    # Member with Administrator permission
+    perms = getattr(interaction.user, "guild_permissions", None)
+    if perms and perms.administrator:
+        return True
+    return False
+
+async def ensure_admin_or_owner(interaction: discord.Interaction) -> bool:
+    """
+    Strict runtime permission check. If user lacks Administrator or Owner permissions,
+    sends an authentic rejection box embed ephemerally and returns False.
+    Returns True if fully authorized.
+    """
+    if is_admin_or_owner(interaction):
+        return True
+    await reply_box(
+        interaction,
+        description="This administrative command is strictly restricted to **Server Administrators** and the **Server Owner**.",
+        title="ACCESS DENIED • PERMISSION FAULT",
+        status="error",
+        ephemeral=True
+    )
+    return False

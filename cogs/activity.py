@@ -15,6 +15,7 @@ import aiohttp
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageStat
 from database import db
 from font_utils import get_unicode_font, clean_display_name, safe_channel_label
+from response_utils import ensure_admin_or_owner, reply_box
 
 try:
     from zoneinfo import ZoneInfo
@@ -244,6 +245,55 @@ class Activity(commands.Cog):
                 conn.commit()
         except Exception as e:
             print(f"⚠️ Activity DB record_message error: {e}")
+
+    def adjust_member_messages(self, guild_id: int, user_id: int, amount: int, channel_id: int = None):
+        """Staff helper to add or deduct recorded chat messages for a member."""
+        today = datetime.datetime.now(KOLKATA_TZ).strftime("%Y-%m-%d")
+        gid_str, uid_str = str(guild_id), str(user_id)
+        cid_str = str(channel_id) if channel_id else "0"
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if amount > 0:
+                    cursor.execute("""
+                        INSERT INTO member_messages (guild_id, user_id, date, message_count)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(guild_id, user_id, date)
+                        DO UPDATE SET message_count = message_count + ?
+                    """, (gid_str, uid_str, today, amount, amount))
+                    if channel_id:
+                        cursor.execute("""
+                            INSERT INTO channel_messages (guild_id, channel_id, user_id, date, message_count)
+                            VALUES (?, ?, ?, ?, ?)
+                            ON CONFLICT(guild_id, channel_id, user_id, date)
+                            DO UPDATE SET message_count = message_count + ?
+                        """, (gid_str, cid_str, uid_str, today, amount, amount))
+                elif amount < 0:
+                    deduct = abs(amount)
+                    cursor.execute("""
+                        SELECT message_count FROM member_messages WHERE guild_id = ? AND user_id = ? AND date = ?
+                    """, (gid_str, uid_str, today))
+                    row = cursor.fetchone()
+                    if row:
+                        new_val = max(0, row[0] - deduct)
+                        cursor.execute("""
+                            UPDATE member_messages SET message_count = ? WHERE guild_id = ? AND user_id = ? AND date = ?
+                        """, (new_val, gid_str, uid_str, today))
+                conn.commit()
+        except Exception as e:
+            print(f"⚠️ Activity DB adjust_member_messages error: {e}")
+
+    def reset_member_messages(self, guild_id: int, user_id: int):
+        """Staff helper to purge all chat message telemetry for a member."""
+        gid_str, uid_str = str(guild_id), str(user_id)
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM member_messages WHERE guild_id = ? AND user_id = ?", (gid_str, uid_str))
+                cursor.execute("DELETE FROM channel_messages WHERE guild_id = ? AND user_id = ?", (gid_str, uid_str))
+                conn.commit()
+        except Exception as e:
+            print(f"⚠️ Activity DB reset_member_messages error: {e}")
 
     async def get_channel_display_name(self, guild, channel_id) -> str:
         """Resolves the best human-readable channel name from guild cache, bot cache, Discord API, or SQLite database."""
@@ -1891,6 +1941,57 @@ class Activity(commands.Cog):
             await interaction.response.send_message("❌ Invite Tracker module is currently offline.", ephemeral=True)
             return
         await inv_cog.invite_leaderboard(interaction)
+
+    # ─── Staff Controls: /msg_admin (Add, Remove, Reset Member Messages) ───
+    msg_admin = app_commands.Group(
+        name="msg_admin",
+        description="Staff controls to adjust or reset member recorded chat messages.",
+        default_permissions=discord.Permissions(administrator=True)
+    )
+
+    @msg_admin.command(name="add", description="Add chat messages to a member's activity count.")
+    @app_commands.describe(member="Target member", amount="Number of messages to add", channel="Optional specific channel")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_add_msg(self, interaction: discord.Interaction, member: discord.Member, amount: int, channel: Optional[discord.TextChannel] = None):
+        if not await ensure_admin_or_owner(interaction):
+            return
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+            return
+        self.adjust_member_messages(interaction.guild.id, member.id, amount, channel_id=channel.id if channel else None)
+        stats = self.get_member_stats(interaction.guild.id, member.id)
+        ch_note = f" in {channel.mention}" if channel else ""
+        await interaction.response.send_message(
+            f"✅ Added **{amount:,} messages** to {member.mention}{ch_note}.\n"
+            f"> **Today:** `{stats['today']:,}` • **Lifetime:** `{stats['lifetime']:,}`"
+        )
+
+    @msg_admin.command(name="remove", description="Deduct chat messages from a member's activity count.")
+    @app_commands.describe(member="Target member", amount="Number of messages to deduct")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_remove_msg(self, interaction: discord.Interaction, member: discord.Member, amount: int):
+        if not await ensure_admin_or_owner(interaction):
+            return
+        if amount <= 0:
+            await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
+            return
+        self.adjust_member_messages(interaction.guild.id, member.id, -amount)
+        stats = self.get_member_stats(interaction.guild.id, member.id)
+        await interaction.response.send_message(
+            f"✅ Deducted **{amount:,} messages** from {member.mention}.\n"
+            f"> **Today:** `{stats['today']:,}` • **Lifetime:** `{stats['lifetime']:,}`"
+        )
+
+    @msg_admin.command(name="reset", description="Reset all recorded chat activity and message counts for a member.")
+    @app_commands.describe(member="Target member to reset")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_reset_msg(self, interaction: discord.Interaction, member: discord.Member):
+        if not await ensure_admin_or_owner(interaction):
+            return
+        self.reset_member_messages(interaction.guild.id, member.id)
+        await interaction.response.send_message(
+            f"🧹 Successfully reset all chat message telemetry for {member.mention} to **0**."
+        )
 
 class ActivityLeaderboardView(discord.ui.View):
     """

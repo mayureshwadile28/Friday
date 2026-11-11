@@ -22,6 +22,9 @@ class ReactionRoles(commands.Cog):
         exclusive: bool = True
     ):
         await interaction.response.defer(ephemeral=True)
+        if not (interaction.user.guild_permissions.manage_roles or interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
+            await interaction.followup.send("❌ You need **Manage Roles** or **Administrator** permissions to create a reaction role panel.", ephemeral=True)
+            return
         
         bot_role = interaction.guild.me.top_role
         for role in [role1, role2, role3]:

@@ -5,7 +5,7 @@ from discord.ext import commands
 from discord import app_commands
 from datetime import datetime, timezone
 from database import db
-from response_utils import make_box_embed, reply_box
+from response_utils import make_box_embed, reply_box, ensure_admin_or_owner, is_admin_or_owner
 from emoji_utils import replace_plain_emojis
 
 # ──────────────── Welcome On-Join Defaults ────────────────
@@ -502,8 +502,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         embed: bool = True,
         ping: bool = True
     ):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         target_channel = channel or interaction.channel
@@ -539,8 +538,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @welcome_group.command(name="channel", description="Set or change the welcome greetings destination channel.")
     @app_commands.describe(channel="Target channel (leave blank to use current channel)")
     async def welcome_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         target_channel = channel or interaction.channel
@@ -563,8 +561,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @welcome_group.command(name="message", description="Update the welcome message template.")
     @app_commands.describe(template="New message (supports {user}, {username}, {server}, {member_count}, {rules}, {channel})")
     async def welcome_message(self, interaction: discord.Interaction, template: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -586,8 +583,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @welcome_group.command(name="title", description="Update the welcome embed title template.")
     @app_commands.describe(title="Card title template (supports {server}, {user}, {username})")
     async def welcome_title(self, interaction: discord.Interaction, title: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -608,8 +604,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @welcome_group.command(name="image", description="Set or remove the welcome banner image / animated GIF.")
     @app_commands.describe(url="Direct URL to image or GIF (type 'none' to remove)")
     async def welcome_image(self, interaction: discord.Interaction, url: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -634,8 +629,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         app_commands.Choice(name="Disable Welcome Greetings", value="off")
     ])
     async def welcome_toggle(self, interaction: discord.Interaction, status: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -653,8 +647,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @welcome_group.command(name="status", description="Review current server-join welcome settings.")
     async def welcome_status(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -681,8 +674,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @welcome_group.command(name="test", description="Send a test welcome card into the configured channel or current channel.")
     async def welcome_test(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -744,8 +736,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         identifier: str = "name",
         embed: bool = True
     ):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         target_channel = channel or interaction.channel
@@ -781,8 +772,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @farewell_group.command(name="channel", description="Set or change the farewell notices destination channel.")
     @app_commands.describe(channel="Target channel (leave blank to use current channel)")
     async def farewell_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         target_channel = channel or interaction.channel
@@ -805,8 +795,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @farewell_group.command(name="message", description="Update the farewell message template.")
     @app_commands.describe(template="New message (supports {user_display}, {username}, {id}, {server}, {member_count}, {channel})")
     async def farewell_message(self, interaction: discord.Interaction, template: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -828,8 +817,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @farewell_group.command(name="title", description="Update the farewell embed title template.")
     @app_commands.describe(title="Card title template (supports {server}, {user_display}, {username})")
     async def farewell_title(self, interaction: discord.Interaction, title: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -856,8 +844,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         app_commands.Choice(name="Both Username + User ID", value="both")
     ])
     async def farewell_identifier(self, interaction: discord.Interaction, mode: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -884,8 +871,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @farewell_group.command(name="image", description="Set or remove the farewell banner image / animated GIF.")
     @app_commands.describe(url="Direct URL to image or GIF (type 'none' to remove)")
     async def farewell_image(self, interaction: discord.Interaction, url: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -910,8 +896,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
         app_commands.Choice(name="Disable Farewell Messages", value="off")
     ])
     async def farewell_toggle(self, interaction: discord.Interaction, status: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -929,8 +914,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @farewell_group.command(name="status", description="Review current server-leave farewell settings.")
     async def farewell_status(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -957,8 +941,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @farewell_group.command(name="test", description="Send a test farewell card into the configured channel or current channel.")
     async def farewell_test(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -997,8 +980,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @first_welcome_group.command(name="set", description="Set welcome channel. Leave empty to use THIS current channel!")
     @app_commands.describe(channel="Channel to use (Leave empty to automatically use THIS channel where you run the command!)")
     async def fw_set_channel(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         target_channel = channel or interaction.channel
@@ -1022,8 +1004,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @first_welcome_group.command(name="any_channel", description="Allow first-chat greetings in ANY chat channel where newcomer speaks.")
     async def fw_any_channel(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -1044,8 +1025,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @first_welcome_group.command(name="disable", description="Disable first-chat welcome greetings.")
     async def fw_disable(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -1063,8 +1043,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @first_welcome_group.command(name="status", description="View current first-welcome configuration.")
     async def fw_status(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -1092,8 +1071,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
     @first_welcome_group.command(name="test", description="Send a test welcome card to preview the layout.")
     async def fw_test(self, interaction: discord.Interaction):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -1108,8 +1086,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @first_welcome_group.command(name="message", description="Update the first-welcome message format.")
     @app_commands.describe(template="New template (use {user}, {username}, {server}, {member_count}, {rules}, {channel})")
     async def fw_set_message(self, interaction: discord.Interaction, template: str):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)
@@ -1131,8 +1108,7 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
     @first_welcome_group.command(name="reset", description="Reset first-welcome history for a member or all members to re-test greetings.")
     @app_commands.describe(member="Member to reset (leave empty to reset all members in this server)")
     async def fw_reset_history(self, interaction: discord.Interaction, member: discord.Member = None):
-        if not interaction.user.guild_permissions.administrator:
-            await reply_box(interaction, "You need **Administrator** permissions to use this command.", title="PERMISSION DENIED", status="error", ephemeral=True)
+        if not await ensure_admin_or_owner(interaction):
             return
 
         gid = str(interaction.guild.id)

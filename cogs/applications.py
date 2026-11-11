@@ -8,7 +8,7 @@ import uuid
 from typing import Optional, List, Dict
 from database import db
 from emoji_utils import replace_plain_emojis, parse_btn, resolve_single_emoji, clean_embed_title, normalize_discord_markdown
-from response_utils import make_box_embed, reply_box
+from response_utils import make_box_embed, reply_box, ensure_admin_or_owner
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG DEFAULTS & HELPERS
@@ -1017,6 +1017,8 @@ class Applications(commands.Cog):
     @app_commands.describe(channel="Channel where the interactive application embed will be posted")
     @app_commands.default_permissions(administrator=True)
     async def application_panel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+        if not await ensure_admin_or_owner(interaction):
+            return
         await interaction.response.defer(ephemeral=True)
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
@@ -1103,6 +1105,8 @@ class Applications(commands.Cog):
     @app_commands.describe(review_channel="Channel where submitted applications are logged for staff review")
     @app_commands.default_permissions(administrator=True)
     async def set_channel(self, interaction: discord.Interaction, review_channel: discord.TextChannel):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
         cfg["review_channel_id"] = str(review_channel.id)
@@ -1117,6 +1121,8 @@ class Applications(commands.Cog):
     @app_commands.describe(role="Role to grant upon approval")
     @app_commands.default_permissions(administrator=True)
     async def set_role(self, interaction: discord.Interaction, role: discord.Role):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
         cfg["approved_role_id"] = str(role.id)
@@ -1134,6 +1140,8 @@ class Applications(commands.Cog):
     ])
     @app_commands.default_permissions(administrator=True)
     async def set_mode(self, interaction: discord.Interaction, delivery_mode: str):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
         cfg["delivery_mode"] = delivery_mode
@@ -1149,6 +1157,8 @@ class Applications(commands.Cog):
     @app_commands.describe(question="The question to ask the applicant")
     @app_commands.default_permissions(administrator=True)
     async def question_add(self, interaction: discord.Interaction, question: str):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
         questions = cfg.setdefault("questions", [])
@@ -1164,6 +1174,8 @@ class Applications(commands.Cog):
     @app_commands.describe(number="The question number to remove (1, 2, ...)")
     @app_commands.default_permissions(administrator=True)
     async def question_remove(self, interaction: discord.Interaction, number: int):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
         questions = cfg.setdefault("questions", [])
@@ -1183,6 +1195,8 @@ class Applications(commands.Cog):
     @app_group.command(name="question_list", description="List all configured application questions.")
     @app_commands.default_permissions(administrator=True)
     async def question_list(self, interaction: discord.Interaction):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
         questions = cfg.get("questions", [])
@@ -1203,6 +1217,8 @@ class Applications(commands.Cog):
     @app_group.command(name="view_config", description="Display current application module configuration.")
     @app_commands.default_permissions(administrator=True)
     async def view_config(self, interaction: discord.Interaction):
+        if not await ensure_admin_or_owner(interaction):
+            return
         gid_str = str(interaction.guild.id)
         cfg = get_app_config(gid_str)
 
