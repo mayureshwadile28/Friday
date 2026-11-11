@@ -9,7 +9,7 @@ import math
 import os
 import unicodedata
 import asyncio
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 from easy_pil import Font
 from database import db
 from font_utils import get_unicode_font, clean_display_name, safe_channel_label
@@ -187,7 +187,8 @@ class Leveling(commands.Cog):
                 crop_x = (new_w - W) // 2
                 crop_y = (new_h - H) // 2
                 raw_bg = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
-                bg_img = raw_bg.copy()
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -375,8 +376,8 @@ class Leveling(commands.Cog):
                     resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
                     cx, cy = (nw - W) // 2, (nh - H) // 2
                     raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                    # Slight blur only — keep wallpaper very visible
-                    bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2 * SCALE))
+                    _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5 * SCALE))
+                    bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
                 except Exception:
                     raw_bg = bg_img = None
 
@@ -591,14 +592,15 @@ class Leveling(commands.Cog):
                 cx = (nw - W) // 2
                 cy = (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
             except Exception:
                 raw_bg = bg_img = None
 
         if not bg_img:
             img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
         else:
-            img = bg_img
+            img = bg_img.copy()
 
         # Outer Container with Frosted Glass when wallpaper is active
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -607,6 +609,18 @@ class Leveling(commands.Cog):
         draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
+
+        accent_color = self._extract_accent_color(raw_bg) if raw_bg else (129, 140, 248)
+        import colorsys as _cs
+        if raw_bg:
+            _ar, _ag, _ab = accent_color
+            _h, _s, _v = _cs.rgb_to_hsv(_ar/255, _ag/255, _ab/255)
+            _tr, _tg, _tb = _cs.hsv_to_rgb(_h, min(_s*1.2, 1.0), max(_v, 0.95))
+            text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
+        else:
+            text_accent = (200, 205, 215)
+        card_item_fill = (25, 28, 36, 110) if raw_bg else (35, 38, 46, 255)
+        card_item_outline = (255, 255, 255, 30) if raw_bg else (48, 52, 63, 255)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = Font.poppins(variant="regular", size=13)
@@ -669,7 +683,7 @@ class Leveling(commands.Cog):
             cx = col1_x if col == 0 else col2_x
             cy = start_y + row * (row_h + spacing)
 
-            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=card_item_fill, outline=card_item_outline, width=1)
 
             if current_rank in m_dict:
                 _, name_str, user_str, av_img, lvl_val, xp_val, req_val = m_dict[current_rank]
@@ -679,7 +693,7 @@ class Leveling(commands.Cog):
                 if fill_w > 0:
                     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
                     od = ImageDraw.Draw(overlay)
-                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=(129, 140, 248, 22))
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=accent_color + (28,))
                     img = Image.alpha_composite(img, overlay)
                     draw = ImageDraw.Draw(img)
 
@@ -690,7 +704,7 @@ class Leveling(commands.Cog):
                 elif current_rank == 3:
                     r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
                 else:
-                    r_fill, r_out, r_txt = (28, 30, 36, 255), (46, 50, 60, 255), (150, 155, 166, 255)
+                    r_fill, r_out, r_txt = (20, 22, 30, 150) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 40) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
 
                 draw_rounded_rect(draw, (cx + 12, cy + 24, cx + 48, cy + 56), radius=10, fill=r_fill, outline=r_out, width=1)
                 r_str = f"#{current_rank}"
@@ -711,7 +725,7 @@ class Leveling(commands.Cog):
                 # Name & Username
                 nx = av_x + 64
                 draw.text((nx, cy + 18), clean_display_name(name_str, max_len=14), font=font_name, fill=(255, 255, 255, 255))
-                draw.text((nx, cy + 42), f"Level {lvl_val}", font=font_lvl, fill=(56, 189, 248, 255))
+                draw.text((nx, cy + 42), f"Level {lvl_val}", font=font_lvl, fill=accent_color + (255,))
 
                 # XP Count on right
                 c_str = f"{xp_val:,} XP"

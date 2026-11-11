@@ -8,7 +8,7 @@ import io
 import os
 import unicodedata
 import aiohttp
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 from database import db
 from emoji_utils import replace_plain_emojis
 from font_utils import clean_display_name, get_unicode_font
@@ -448,14 +448,15 @@ class InviteTracker(commands.Cog):
                 cx = (nw - W) // 2
                 cy = (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
             except Exception:
                 raw_bg = bg_img = None
 
         if not bg_img:
             img = Image.new("RGBA", (W, H), (19, 20, 23, 255))
         else:
-            img = bg_img
+            img = bg_img.copy()
 
         # Outer Container (Frosted glass if custom_bg)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -464,6 +465,18 @@ class InviteTracker(commands.Cog):
         draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
+
+        accent_color = self._extract_accent_color(raw_bg) if raw_bg else (99, 102, 241)
+        import colorsys as _cs
+        if raw_bg:
+            _ar, _ag, _ab = accent_color
+            _h, _s, _v = _cs.rgb_to_hsv(_ar/255, _ag/255, _ab/255)
+            _tr, _tg, _tb = _cs.hsv_to_rgb(_h, min(_s*1.2, 1.0), max(_v, 0.95))
+            text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
+        else:
+            text_accent = (200, 205, 215)
+        card_item_fill = (25, 28, 36, 110) if raw_bg else (35, 38, 46, 255)
+        card_item_outline = (255, 255, 255, 30) if raw_bg else (48, 52, 63, 255)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = get_unicode_font(13)
@@ -526,7 +539,7 @@ class InviteTracker(commands.Cog):
             cx = col1_x if col == 0 else col2_x
             cy = start_y + row * (row_h + spacing)
 
-            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=card_item_fill, outline=card_item_outline, width=1)
 
             if current_rank in m_dict:
                 _, name_str, user_str, av_img, total_inv, reg_val, bns_val, left_val, fake_val = m_dict[current_rank]
@@ -536,7 +549,7 @@ class InviteTracker(commands.Cog):
                 if fill_w > 0:
                     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
                     od = ImageDraw.Draw(overlay)
-                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=(99, 102, 241, 24))
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=accent_color + (28,))
                     img = Image.alpha_composite(img, overlay)
                     draw = ImageDraw.Draw(img)
 
@@ -547,7 +560,7 @@ class InviteTracker(commands.Cog):
                 elif current_rank == 3:
                     r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
                 else:
-                    r_fill, r_out, r_txt = (28, 30, 36, 255), (45, 48, 58, 255), (130, 135, 148, 255)
+                    r_fill, r_out, r_txt = (20, 22, 30, 150) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 40) if raw_bg else (45, 48, 58, 255), text_accent if raw_bg else (130, 135, 148, 255)
 
                 rx, ry, rw, rh = cx + 12, cy + 18, 36, 44
                 draw_rounded_rect(draw, (rx, ry, rx + rw, ry + rh), radius=8, fill=r_fill, outline=r_out, width=1)
@@ -568,18 +581,18 @@ class InviteTracker(commands.Cog):
                 clean_name = clean_display_name(name_str, max_len=18)
                 clean_handle = clean_display_name(user_str, max_len=16)
                 draw.text((nx, cy + 16), clean_name, font=font_name, fill=(255, 255, 255, 255))
-                draw.text((nx, cy + 36), f"@{clean_handle}", font=font_user, fill=(140, 144, 155, 255))
+                draw.text((nx, cy + 36), f"@{clean_handle}", font=font_user, fill=text_accent + (160,) if raw_bg else (140, 144, 155, 255))
 
                 bd_text = f"+{reg_val} reg • +{bns_val} bns • -{left_val} left • -{fake_val} fake"
-                draw.text((nx, cy + 52), bd_text, font=font_breakdown, fill=(115, 120, 135, 255))
+                draw.text((nx, cy + 52), bd_text, font=font_breakdown, fill=(160, 165, 180, 255) if raw_bg else (115, 120, 135, 255))
 
                 inv_str = f"{total_inv:,} invites" if total_inv != 1 else "1 invite"
                 tb = font_cnt.getbbox(inv_str)
                 tw = (tb[2] - tb[0]) + 18
                 tx = cx + col_w - tw - 12
                 ty = cy + 24
-                draw_rounded_rect(draw, (tx, ty, tx + tw, ty + 30), radius=8, fill=(45, 48, 58, 255), outline=(62, 68, 82, 255), width=1)
-                draw.text((tx + 9, ty + 7), inv_str, font=font_cnt, fill=(99, 102, 241, 255))
+                draw_rounded_rect(draw, (tx, ty, tx + tw, ty + 30), radius=8, fill=(20, 22, 30, 80) if raw_bg else (45, 48, 58, 255), outline=(255, 255, 255, 30) if raw_bg else (62, 68, 82, 255), width=1)
+                draw.text((tx + 9, ty + 7), inv_str, font=font_cnt, fill=accent_color + (255,))
             else:
                 draw.text((cx + 20, cy + (row_h // 2) - 8), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(75, 80, 92, 255))
 
@@ -654,7 +667,8 @@ class InviteTracker(commands.Cog):
                 cx = (nw - W) // 2
                 cy = (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                bg_img = raw_bg.filter(ImageFilter.GaussianBlur(radius=2))
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -741,7 +755,7 @@ class InviteTracker(commands.Cog):
         line_y = 138
         draw.line([(32, line_y), (W - 32, line_y)], fill=(255, 255, 255, 30), width=1)
 
-        # 9. Bottom: 4 Stat Tiles
+        # 9. Bottom: 4 Stat Tiles (TRUE GLASSMORPHISM)
         tile_y = 152
         tile_h = 78
         tile_w = (W - 64 - 36) // 4
@@ -753,14 +767,15 @@ class InviteTracker(commands.Cog):
             ("FAKE (<3D)", f"{stats['fake']}", (245, 158, 11), "Suspected alts")
         ]
 
+        tile_fill = (12, 15, 22, 115) if raw_bg else (28, 30, 38, 255)
         for i, (lbl, val, val_col, sub_lbl) in enumerate(stat_configs):
             tx = 32 + i * (tile_w + 12)
-            draw_rounded_rect(draw, (tx, tile_y, tx + tile_w, tile_y + tile_h), radius=12, fill=(28, 30, 38, 175), outline=(255, 255, 255, 30), width=1)
+            draw_rounded_rect(draw, (tx, tile_y, tx + tile_w, tile_y + tile_h), radius=12, fill=tile_fill, outline=(tar, tag, tab, 50) if raw_bg else (255, 255, 255, 30), width=1)
             vr, vg, vb = val_col
             draw_rounded_rect(draw, (tx, tile_y, tx + tile_w, tile_y + 4), radius=2, fill=(vr, vg, vb, 220))
-            draw.text((tx + 12, tile_y + 10), lbl, font=font_stat_lbl, fill=(148, 163, 184, 255))
+            draw.text((tx + 12, tile_y + 10), lbl, font=font_stat_lbl, fill=(tar, tag, tab, 230) if raw_bg else (148, 163, 184, 255))
             draw.text((tx + 12, tile_y + 28), val, font=font_stat_val, fill=(vr, vg, vb, 255))
-            draw.text((tx + 12, tile_y + 54), sub_lbl, font=font_stat_sub, fill=(148, 163, 184, 200))
+            draw.text((tx + 12, tile_y + 54), sub_lbl, font=font_stat_sub, fill=(200, 205, 215, 220) if raw_bg else (148, 163, 184, 200))
 
         # 10. Sub-Footer
         history = db.invite_history.get(gid_str, {}).get(str(target.id))
