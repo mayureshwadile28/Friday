@@ -19113,6 +19113,21 @@ async function loadLevelingSettings() {
             if (bgPreviewWrap) bgPreviewWrap.style.display = 'none';
         }
 
+        // Live preview of level card with active background wallpaper
+        const lvlSimCard = document.getElementById('levelCardPreview');
+        const activeCardBg = luBg || rkBg;
+        if (lvlSimCard) {
+            if (activeCardBg) {
+                lvlSimCard.style.backgroundImage = `linear-gradient(rgba(12, 16, 26, 0.65), rgba(12, 16, 26, 0.75)), url("${activeCardBg}")`;
+                lvlSimCard.style.backgroundSize = 'cover';
+                lvlSimCard.style.backgroundPosition = 'center';
+            } else {
+                lvlSimCard.style.backgroundImage = '';
+                lvlSimCard.style.backgroundSize = '';
+                lvlSimCard.style.backgroundPosition = '';
+            }
+        }
+
         // Activity & Leaderboard Matrix Wallpapers
         try {
             const actResp = await fetch(`/api/guild/${currentGuildId}/activity-cards`);
@@ -69836,7 +69851,13 @@ async function uploadCardBackground(input, cardType = 'rank') {
                 bgPreviewWrap.style.display = 'block';
                 bgPreviewImg.src = res.url;
             }
-            if (cardType === 'levelup') {
+            if (cardType === 'levelup' || cardType === 'rank') {
+                const lvlSimCard = document.getElementById('levelCardPreview');
+                if (lvlSimCard) {
+                    lvlSimCard.style.backgroundImage = `linear-gradient(rgba(12, 16, 26, 0.65), rgba(12, 16, 26, 0.75)), url("${res.url}")`;
+                    lvlSimCard.style.backgroundSize = 'cover';
+                    lvlSimCard.style.backgroundPosition = 'center';
+                }
                 updateLevelPreview();
             }
         } else {
@@ -69874,7 +69895,13 @@ async function resetCardBackground(cardType = 'rank') {
             if (bgStatus) bgStatus.textContent = "Default Theme Active";
             if (bgPreviewWrap) bgPreviewWrap.style.display = 'none';
             if (bgPreviewImg) bgPreviewImg.src = "";
-            if (cardType === 'levelup') {
+            if (cardType === 'levelup' || cardType === 'rank') {
+                const lvlSimCard = document.getElementById('levelCardPreview');
+                if (lvlSimCard) {
+                    lvlSimCard.style.backgroundImage = '';
+                    lvlSimCard.style.backgroundSize = '';
+                    lvlSimCard.style.backgroundPosition = '';
+                }
                 updateLevelPreview();
             }
         }

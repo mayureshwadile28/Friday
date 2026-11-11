@@ -12,9 +12,25 @@ import time
 import unicodedata
 import asyncio
 import aiohttp
-from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageStat
 from database import db
 from font_utils import get_unicode_font, clean_display_name, safe_channel_label
+
+try:
+    from zoneinfo import ZoneInfo
+    KOLKATA_TZ = ZoneInfo("Asia/Kolkata")
+except Exception:
+    KOLKATA_TZ = datetime.timezone(datetime.timedelta(hours=5, minutes=30), name="IST")
+
+def draw_luminous_text(draw, pos, text, font, fill, shadow_fill=(0, 0, 0, 180), offset=(1, 1)):
+    """Draws smooth, glowing text with a clean drop-shadow halo for zero noise and 100% legibility."""
+    if not text:
+        return
+    x, y = pos
+    ox, oy = offset
+    if shadow_fill:
+        draw.text((x + ox, y + oy), text, font=font, fill=shadow_fill)
+    draw.text((x, y), text, font=font, fill=fill)
 
 # SQLite Database path inside data/ directory
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
@@ -202,7 +218,7 @@ class Activity(commands.Cog):
             conn.commit()
 
     def record_message(self, guild_id: int, channel_id: int, user_id: int, channel_name: str = None):
-        today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.datetime.now(KOLKATA_TZ).strftime("%Y-%m-%d")
         gid_str, cid_str, uid_str = str(guild_id), str(channel_id), str(user_id)
         try:
             with self.get_connection() as conn:
@@ -262,7 +278,7 @@ class Activity(commands.Cog):
             try:
                 ch = await guild.fetch_channel(cid_int)
                 if ch and getattr(ch, "name", None):
-                    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+                    today = datetime.datetime.now(KOLKATA_TZ).strftime("%Y-%m-%d")
                     try:
                         with self.get_connection() as conn:
                             cursor = conn.cursor()
@@ -282,7 +298,7 @@ class Activity(commands.Cog):
     def add_voice_seconds(self, guild_id: int, user_id: int, seconds: int):
         if seconds <= 0:
             return
-        today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.datetime.now(KOLKATA_TZ).strftime("%Y-%m-%d")
         gid_str, uid_str = str(guild_id), str(user_id)
         try:
             with self.get_connection() as conn:
@@ -329,7 +345,7 @@ class Activity(commands.Cog):
 
     def get_member_stats(self, guild_id: int, user_id: int):
         gid_str, uid_str = str(guild_id), str(user_id)
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(KOLKATA_TZ)
         today_str = now.strftime("%Y-%m-%d")
         week_str = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         month_str = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
@@ -417,7 +433,7 @@ class Activity(commands.Cog):
 
     def get_server_stats(self, guild_id: int):
         gid_str = str(guild_id)
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(KOLKATA_TZ)
         today_str = now.strftime("%Y-%m-%d")
         week_str = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         month_str = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
@@ -466,7 +482,7 @@ class Activity(commands.Cog):
         """Returns (labels, values) for the past `days` days."""
         gid_str = str(guild_id)
         uid_str = str(user_id) if user_id else None
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(KOLKATA_TZ)
 
         dates = [(now - datetime.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1)]
         labels = [(now - datetime.timedelta(days=i)).strftime("%b %d") for i in range(days - 1, -1, -1)]
@@ -490,7 +506,7 @@ class Activity(commands.Cog):
 
     def get_active_chatters_count(self, guild_id: int, days: int = 7) -> int:
         gid_str = str(guild_id)
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(KOLKATA_TZ)
         since_date = (now - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
         try:
             with self.get_connection() as conn:
@@ -533,7 +549,7 @@ class Activity(commands.Cog):
 
     def get_leaderboard(self, guild_id: int, timeframe: str = "lifetime", limit: int = 10, offset: int = 0):
         gid_str = str(guild_id)
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(KOLKATA_TZ)
         today_str = now.strftime("%Y-%m-%d")
         week_str = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         month_str = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
@@ -569,7 +585,7 @@ class Activity(commands.Cog):
 
     def get_leaderboard_total_count(self, guild_id: int, timeframe: str = "lifetime") -> int:
         gid_str = str(guild_id)
-        now = datetime.datetime.now(datetime.timezone.utc)
+        now = datetime.datetime.now(KOLKATA_TZ)
         today_str = now.strftime("%Y-%m-%d")
         week_str = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         month_str = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
@@ -706,10 +722,12 @@ class Activity(commands.Cog):
         """Renders comprehensive 1080x760 Master Server Demographics & Activity Telemetry Card."""
         W, H = 1080, 760
 
-        # Check custom wallpaper for activity card
+        # Check custom wallpaper for activity card with dynamic luminance adaptation
         raw_bg = None
         bg_img = None
         custom_bg = resolve_card_background(db.activity_card_backgrounds.get(str(guild_id))) if guild_id else None
+        container_alpha = 135
+        panel_alpha = 80
         if custom_bg:
             try:
                 loaded = Image.open(custom_bg).convert("RGBA")
@@ -720,8 +738,23 @@ class Activity(commands.Cog):
                 resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
                 cx, cy = (nw - W) // 2, (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=4))
+
+                stat = ImageStat.Stat(raw_bg.convert('L'))
+                mean_lum = stat.mean[0]
+                if mean_lum > 120:
+                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
+                    container_alpha = 185
+                    panel_alpha = 135
+                elif mean_lum > 85:
+                    dim_factor = 0.76
+                    container_alpha = 160
+                    panel_alpha = 110
+                else:
+                    dim_factor = 0.90
+                    container_alpha = 135
+                    panel_alpha = 80
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -730,8 +763,8 @@ class Activity(commands.Cog):
         else:
             img = bg_img.copy()
 
-        # Outer rounded container (True Frosted Glass when custom wallpaper is set)
-        container_fill = (10, 12, 18, 55) if raw_bg else (28, 30, 36, 255)
+        # Outer rounded container (Adaptive Frosted Dark Glass)
+        container_fill = (10, 12, 18, container_alpha) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
         draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
@@ -751,9 +784,9 @@ class Activity(commands.Cog):
         panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(panel_layer)
 
-        p_fill = (14, 16, 22, 55) if raw_bg else (35, 38, 46, 255)
-        p_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
-        r_fill = (255, 255, 255, 18) if raw_bg else (29, 31, 38, 255)
+        p_fill = (14, 16, 22, panel_alpha) if raw_bg else (35, 38, 46, 255)
+        p_outline = (255, 255, 255, 55) if raw_bg else (48, 52, 63, 255)
+        r_fill = (255, 255, 255, 20) if raw_bg else (29, 31, 38, 255)
         b_fill = (255, 255, 255, 35) if raw_bg else (38, 41, 50, 255)
 
         kpi_y = 104
@@ -1056,15 +1089,18 @@ class Activity(commands.Cog):
         footer_right: str = "Powered by Friday",
         voice_rank_num: int = 0,
         voice_today_str: str = "0m",
-        guild_id: int = None
+        guild_id: int = None,
+        role_rgb: Optional[Tuple[int, int, int]] = None
     ) -> io.BytesIO:
         """Renders comprehensive 1080x760 Master Member Telemetry & Activity Card."""
         W, H = 1080, 760
 
-        # Check custom wallpaper for activity card
+        # Check custom wallpaper for activity card with dynamic luminance adaptation
         raw_bg = None
         bg_img = None
         custom_bg = resolve_card_background(db.activity_card_backgrounds.get(str(guild_id))) if guild_id else None
+        container_alpha = 135
+        panel_alpha = 80
         if custom_bg:
             try:
                 loaded = Image.open(custom_bg).convert("RGBA")
@@ -1075,8 +1111,23 @@ class Activity(commands.Cog):
                 resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
                 cx, cy = (nw - W) // 2, (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=4))
+
+                stat = ImageStat.Stat(raw_bg.convert('L'))
+                mean_lum = stat.mean[0]
+                if mean_lum > 120:
+                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
+                    container_alpha = 185
+                    panel_alpha = 135
+                elif mean_lum > 85:
+                    dim_factor = 0.76
+                    container_alpha = 160
+                    panel_alpha = 110
+                else:
+                    dim_factor = 0.90
+                    container_alpha = 135
+                    panel_alpha = 80
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -1085,8 +1136,8 @@ class Activity(commands.Cog):
         else:
             img = bg_img.copy()
 
-        # Outer rounded container (True Frosted Glass when custom wallpaper is set)
-        container_fill = (10, 12, 18, 55) if raw_bg else (28, 30, 36, 255)
+        # Outer rounded container (Adaptive Frosted Dark Glass)
+        container_fill = (10, 12, 18, container_alpha) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
         draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
@@ -1106,10 +1157,9 @@ class Activity(commands.Cog):
         panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(panel_layer)
 
-        p_fill = (14, 16, 22, 55) if raw_bg else (35, 38, 46, 255)
-        p_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
-        r_fill = (255, 255, 255, 18) if raw_bg else (29, 31, 38, 255)
-        b_fill = (255, 255, 255, 35) if raw_bg else (38, 41, 50, 255)
+        p_fill = (14, 16, 22, panel_alpha) if raw_bg else (35, 38, 46, 255)
+        p_outline = (255, 255, 255, 55) if raw_bg else (48, 52, 63, 255)
+        r_fill = (255, 255, 255, 20) if raw_bg else (29, 31, 38, 255)
 
         kpi_y = 104
         kpi_h = 76
@@ -1148,26 +1198,21 @@ class Activity(commands.Cog):
         img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
-        font_title = get_unicode_font(22, bold=True)
+        # Luminous Typography Fonts (Enlarged and bold for flawless readability)
+        font_title = get_unicode_font(24, bold=True)
         font_sub = get_unicode_font(13)
-        font_pill = get_unicode_font(11, bold=True)
-        font_kpi_lbl = get_unicode_font(11, bold=True)
-        font_kpi_val = get_unicode_font(26, bold=True)
-        font_box_title = get_unicode_font(15, bold=True)
-        font_axis = get_unicode_font(11)
-        font_list = get_unicode_font(13)
+        font_pill = get_unicode_font(12, bold=True)
+        font_kpi_lbl = get_unicode_font(12, bold=True)
+        font_kpi_val = get_unicode_font(28, bold=True)
+        font_box_title = get_unicode_font(16, bold=True)
+        font_axis = get_unicode_font(12, bold=True)
+        font_list = get_unicode_font(14, bold=True)
         font_list_badge = get_unicode_font(12, bold=True)
-        font_ribbon_lbl = get_unicode_font(10, bold=True)
-        font_ribbon_val = get_unicode_font(15, bold=True)
-        font_ribbon_sub = get_unicode_font(11)
+        font_ribbon_lbl = get_unicode_font(11, bold=True)
+        font_ribbon_val = get_unicode_font(17, bold=True)
+        font_ribbon_sub = get_unicode_font(12)
         font_footer = get_unicode_font(11)
         font_footer_bold = get_unicode_font(11, bold=True)
-
-        lbl_fill = text_accent + (255,) if raw_bg else (155, 160, 169, 255)
-        sub_fill = (240, 243, 250, 240) if raw_bg else (142, 146, 155, 255)
-        axis_fill = (230, 235, 245, 220) if raw_bg else (115, 120, 131, 255)
-        ribbon_lbl_fill = text_accent + (255,) if raw_bg else (150, 155, 166, 255)
-        ribbon_sub_fill = (220, 225, 235, 220) if raw_bg else (125, 130, 142, 255)
 
         # 1. Header
         header_x, header_y = 38, 30
@@ -1183,38 +1228,43 @@ class Activity(commands.Cog):
                 pass
 
         text_x = header_x + 74
-        draw.text((text_x, header_y + 4), clean_display_name(member_name, max_len=24), font=font_title, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
-        draw.text((text_x, header_y + 32), f"Joined {joined_str} • Account Created {created_str}", font=font_sub, fill=(235, 240, 250, 240) if raw_bg else (142, 146, 155, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw_luminous_text(draw, (text_x, header_y + 3), clean_display_name(member_name, max_len=24), font=font_title, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (text_x, header_y + 32), f"Joined {joined_str} • Account Created {created_str}", font=font_sub, fill=(200, 225, 255, 255) if raw_bg else (160, 168, 182, 255))
 
-        # Top-right status pills (Statbot-inspired richness: Level, Msg Rank, Voice Rank, Top Role)
-        pills = [
-            f"Level {level_num}",
-            f"Rank #{rank_num}" if rank_num > 0 else "Unranked",
-            f"Voice #{voice_rank_num}" if voice_rank_num > 0 else None,
-            clean_display_name(top_role_str, max_len=14)
-        ]
-        pills = [p for p in pills if p]
+        # Top-right status pills: Level, Msg Rank, Voice Rank, and Discord Role Color! (NO BLACK BOXES)
+        pill_items = []
+        pill_items.append({"text": f"Level {level_num}", "color": (56, 189, 248)})
+        if rank_num > 0:
+            pill_items.append({"text": f"Rank #{rank_num}", "color": (245, 158, 11)})
+        if voice_rank_num > 0:
+            pill_items.append({"text": f"Voice #{voice_rank_num}", "color": (168, 85, 247)})
+
+        role_label = clean_display_name(top_role_str, max_len=16)
+        if role_label and role_label.lower() != "@everyone":
+            role_c = role_rgb if (role_rgb and role_rgb != (0, 0, 0)) else (52, 211, 153)
+            pill_items.append({"text": role_label, "color": role_c})
+
         pill_right = W - 38
-        for p in reversed(pills):
-            bbox = font_pill.getbbox(p)
-            pw = (bbox[2] - bbox[0]) + 22
+        for item in reversed(pill_items):
+            p_text = item["text"]
+            cr, cg, cb = item["color"]
+            bbox = font_pill.getbbox(p_text)
+            pw = (bbox[2] - bbox[0]) + 24
             px = pill_right - pw
             py = header_y + 12
-            draw_rounded_rect(draw, (px, py, px + pw, py + 30), radius=15, fill=(14, 16, 22, 60) if raw_bg else (38, 41, 49, 255), outline=(255, 255, 255, 60) if raw_bg else (52, 56, 67, 255), width=1)
-            draw.text((px + 11, py + 7), p, font=font_pill, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+            draw_rounded_rect(draw, (px, py, px + pw, py + 30), radius=15, fill=(cr, cg, cb, 40) if raw_bg else (cr, cg, cb, 45), outline=(cr, cg, cb, 190) if raw_bg else (cr, cg, cb, 160), width=1)
+            draw_luminous_text(draw, (px + 12, py + 6), p_text, font=font_pill, fill=(cr, cg, cb, 255))
             pill_right = px - 10
 
-        # 2. Row 1: 5 Full-Horizon Metric Cards
+        # 2. Row 1: 5 Full-Horizon Metric Cards (Illuminated Typography)
         kpi_y = 104
         kpi_h = 76
         card_w = 190
         spacing = 13
         for idx, (label, val_num) in enumerate(kpi_metrics[:5]):
             cx = 38 + idx * (card_w + spacing)
-            if not raw_bg:
-                draw_rounded_rect(draw, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-            draw.text((cx + 16, kpi_y + 11), label.upper(), font=font_kpi_lbl, fill=lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
-            draw.text((cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
+            draw_luminous_text(draw, (cx + 16, kpi_y + 11), label.upper(), font=font_kpi_lbl, fill=(251, 191, 36, 255))
+            draw_luminous_text(draw, (cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255))
 
             # Status dot
             ix = cx + card_w - 22
@@ -1229,15 +1279,13 @@ class Activity(commands.Cog):
         right_w = W - 38 - right_x
 
         # Left Container: Personal 7-Day Chart
-        if not raw_bg:
-            draw_rounded_rect(draw, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-        draw.text((58, body_y + 16), "Personal 7-Day Activity Trend", font=font_box_title, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw_luminous_text(draw, (58, body_y + 16), "Personal 7-Day Activity Trend", font=font_box_title, fill=(255, 255, 255, 255))
 
         legend_text = "Messages"
         leg_bbox = font_axis.getbbox(legend_text)
         leg_x = 38 + left_w - 26 - (leg_bbox[2] - leg_bbox[0])
         draw.ellipse((leg_x - 14, body_y + 22, leg_x - 6, body_y + 30), fill=accent_color + (255,))
-        draw.text((leg_x, body_y + 19), legend_text, font=font_axis, fill=sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw_luminous_text(draw, (leg_x, body_y + 19), legend_text, font=font_axis, fill=(210, 230, 255, 255))
 
         plot_x = 94
         plot_y = body_y + 64
@@ -1254,9 +1302,9 @@ class Activity(commands.Cog):
         for step in range(4):
             val = int(max_y * (3 - step) / 3)
             gy = plot_y + int(plot_h * step / 3)
-            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 55) if raw_bg else (44, 48, 58, 255), width=1)
+            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 45) if raw_bg else (44, 48, 58, 255), width=1)
             val_str = f"{val:,}"
-            draw.text((plot_x - 48, gy - 7), val_str, font=font_axis, fill=axis_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+            draw_luminous_text(draw, (plot_x - 48, gy - 7), val_str, font=font_axis, fill=(186, 230, 253, 255))
 
         raw_points = []
         num_pts = len(chart_values)
@@ -1285,36 +1333,33 @@ class Activity(commands.Cog):
                 lbl = chart_labels[i]
                 l_bbox = font_axis.getbbox(lbl)
                 lw = l_bbox[2] - l_bbox[0]
-                draw.text((px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=axis_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                draw_luminous_text(draw, (px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=(186, 230, 253, 255))
 
         # Right Container: Top Channels (5 slots)
-        if not raw_bg:
-            draw_rounded_rect(draw, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-        draw.text((right_x + 20, body_y + 16), "Top Channels Chatted", font=font_box_title, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
-        draw.text((right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=sub_fill)
+        draw_luminous_text(draw, (right_x + 20, body_y + 16), "Top Channels Chatted", font=font_box_title, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=(200, 225, 255, 255))
 
         row_y = body_y + 54
         row_h = 58
         for slot in range(1, 6):
             ry = row_y + (slot - 1) * row_h
-            if not raw_bg:
-                draw_rounded_rect(draw, (right_x + 12, ry, right_x + right_w - 12, ry + 46), radius=10, fill=(29, 31, 38, 255))
             if slot <= len(top_channels):
                 name_str, count_val = top_channels[slot - 1]
-                draw.text((right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot <= 3 else (140, 145, 155, 255))
+                draw_luminous_text(draw, (right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot <= 3 else (186, 230, 253, 255))
                 clean_name = safe_channel_label(name_str, max_len=18)
                 c_name = clean_name if clean_name.startswith("#") else f"# {clean_name}"
-                draw.text((right_x + 52, ry + 13), c_name, font=font_list, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                draw_luminous_text(draw, (right_x + 52, ry + 13), c_name, font=font_list, fill=(255, 255, 255, 255))
                 c_str = f"{count_val:,} msgs"
                 c_bbox = font_list_badge.getbbox(c_str)
                 cw = (c_bbox[2] - c_bbox[0]) + 18
                 cx = right_x + right_w - 20 - cw
-                draw_rounded_rect(draw, (cx, ry + 8, cx + cw, ry + 38), radius=8, fill=(255, 255, 255, 35) if raw_bg else (38, 41, 50, 255))
-                draw.text((cx + 9, ry + 13), c_str, font=font_list_badge, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                ar, ag, ab = accent_color
+                draw_rounded_rect(draw, (cx, ry + 8, cx + cw, ry + 38), radius=8, fill=(ar, ag, ab, 35) if raw_bg else (38, 41, 50, 255), outline=(ar, ag, ab, 160) if raw_bg else (60, 65, 78, 255), width=1)
+                draw_luminous_text(draw, (cx + 9, ry + 13), c_str, font=font_list_badge, fill=(255, 255, 255, 255))
             else:
-                draw.text((right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
-                draw.text((right_x + 52, ry + 13), "# —", font=font_list, fill=(130, 135, 148, 255))
-                draw.text((right_x + right_w - 36, ry + 13), "—", font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 52, ry + 13), "# —", font=font_list, fill=(130, 135, 148, 255))
+                draw_luminous_text(draw, (right_x + right_w - 36, ry + 13), "—", font=font_list_badge, fill=(120, 125, 136, 255))
 
         # 4. Row 3: Level & XP Progression Ribbon + Telemetry
         ribbon_y = 582
@@ -1323,18 +1368,16 @@ class Activity(commands.Cog):
         # Left Ribbon: XP & Level Progress
         rx1 = 38
         rw1 = 540
-        if not raw_bg:
-            draw_rounded_rect(draw, (rx1, ribbon_y, rx1 + rw1, ribbon_y + ribbon_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-        draw.text((rx1 + 18, ribbon_y + 14), "LEVEL & XP PROGRESSION", font=font_ribbon_lbl, fill=ribbon_lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
-        draw.text((rx1 + 18, ribbon_y + 34), f"Level {level_num}", font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
-        draw.text((rx1 + 110, ribbon_y + 36), f"• {current_xp:,} / {required_xp:,} XP ({xp_percentage:.1f}%)", font=font_ribbon_sub, fill=ribbon_sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw_luminous_text(draw, (rx1 + 18, ribbon_y + 14), "LEVEL & XP PROGRESSION", font=font_ribbon_lbl, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (rx1 + 18, ribbon_y + 34), f"Level {level_num}", font=font_ribbon_val, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (rx1 + 110, ribbon_y + 36), f"• {current_xp:,} / {required_xp:,} XP ({xp_percentage:.1f}%)", font=font_ribbon_sub, fill=(186, 230, 253, 255))
 
         # Glowing Progress Bar (ADAPTIVE ACCENT COLOR!)
         bar_x = rx1 + 18
         bar_y = ribbon_y + 68
         bar_w = rw1 - 36
         bar_h = 18
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=9, fill=(0, 0, 0, 100) if raw_bg else (26, 28, 34, 255))
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=9, fill=(0, 0, 0, 110) if raw_bg else (26, 28, 34, 255), outline=accent_color + (80,) if raw_bg else (48, 52, 63, 255), width=1)
         fill_len = int(bar_w * (min(100.0, max(2.0, xp_percentage)) / 100.0))
         if fill_len > 0:
             draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_len, bar_y + bar_h), radius=9, fill=accent_color + (255,))
@@ -1342,32 +1385,23 @@ class Activity(commands.Cog):
         # Right Ribbon: Voice, Standing, Identity
         rx2 = 594
         rw2 = W - 38 - rx2
-        if not raw_bg:
-            draw_rounded_rect(draw, (rx2, ribbon_y, rx2 + rw2, ribbon_y + ribbon_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-        
-        draw.text((rx2 + 18, ribbon_y + 14), "VOICE TELEMETRY", font=font_ribbon_lbl, fill=ribbon_lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
-        draw.text((rx2 + 18, ribbon_y + 34), voice_str, font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
+        draw_luminous_text(draw, (rx2 + 18, ribbon_y + 14), "VOICE TELEMETRY", font=font_ribbon_lbl, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (rx2 + 18, ribbon_y + 34), voice_str, font=font_ribbon_val, fill=(255, 255, 255, 255))
         voice_sub_str = f"Voice Rank #{voice_rank_num} • Today: {voice_today_str}" if voice_rank_num > 0 else (f"Today: {voice_today_str}" if voice_today_str != "0s" else "Total recorded VC time")
-        draw.text((rx2 + 18, ribbon_y + 68), voice_sub_str, font=font_ribbon_sub, fill=ribbon_sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw_luminous_text(draw, (rx2 + 18, ribbon_y + 68), voice_sub_str, font=font_ribbon_sub, fill=(186, 230, 253, 255))
 
         col2_x = rx2 + 220
-        draw.text((col2_x, ribbon_y + 14), "SERVER STANDING", font=font_ribbon_lbl, fill=ribbon_lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
-        draw.text((col2_x, ribbon_y + 34), f"Msg #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
+        draw_luminous_text(draw, (col2_x, ribbon_y + 14), "SERVER STANDING", font=font_ribbon_lbl, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (col2_x, ribbon_y + 34), f"Msg #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(255, 255, 255, 255))
         top_pct = max(1, round((rank_num / max(1, total_chatters)) * 100)) if (rank_num > 0 and total_chatters > 0) else 0
         standing_sub = f"Top {top_pct}% of {total_chatters:,} chatters" if top_pct > 0 else f"Out of {total_chatters:,} chatters"
-        draw.text((col2_x, ribbon_y + 68), standing_sub, font=font_ribbon_sub, fill=ribbon_sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw_luminous_text(draw, (col2_x, ribbon_y + 68), standing_sub, font=font_ribbon_sub, fill=(186, 230, 253, 255))
 
-        # 5. Footer
+        # 5. Footer (Illuminated IST Telemetry)
         footer_y = H - 36
-        draw.text((38, footer_y), footer_left, font=font_footer, fill=(115, 120, 130, 255))
+        draw_luminous_text(draw, (38, footer_y), footer_left, font=font_footer, fill=(186, 230, 253, 255))
         fb = font_footer_bold.getbbox(footer_right)
-        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), footer_right, font=font_footer_bold, fill=(150, 155, 166, 255))
-
-        # 5. Footer
-        footer_y = H - 36
-        draw.text((38, footer_y), footer_left, font=font_footer, fill=(115, 120, 130, 255))
-        fb = font_footer_bold.getbbox(footer_right)
-        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), footer_right, font=font_footer_bold, fill=(150, 155, 166, 255))
+        draw_luminous_text(draw, (W - 38 - (fb[2] - fb[0]), footer_y), footer_right, font=font_footer_bold, fill=(200, 225, 255, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -1654,7 +1688,7 @@ class Activity(commands.Cog):
             chart_values=values,
             top_channels=top_channels,
             top_chatters=top_chatters,
-            footer_left=f"Server Demographics & Telemetry Matrix • Server ID: {guild.id} • Timezone: UTC",
+            footer_left=f"Server Demographics & Telemetry Matrix • Server ID: {guild.id} • Timezone: IST",
             footer_right="Powered by Friday",
             guild_id=guild.id
         )
@@ -1693,6 +1727,7 @@ class Activity(commands.Cog):
         created_str = member.created_at.strftime("%B %d, %Y") if member.created_at else "Unknown"
 
         top_role = member.top_role.name if (member.top_role and member.top_role.name != "@everyone") else "Member"
+        role_rgb = member.top_role.color.to_rgb() if (member.top_role and member.top_role.color.value != 0) else None
 
         # Level & XP Progression
         gid_str, uid_str = str(gid), str(uid)
@@ -1734,11 +1769,12 @@ class Activity(commands.Cog):
             chart_labels=labels,
             chart_values=values,
             top_channels=top_channels,
-            footer_left=f"Member Telemetry Matrix • Tag: @{clean_display_name(member.name)} • User ID: {member.id} • Timezone: UTC",
+            footer_left=f"Member Telemetry Matrix • Tag: @{clean_display_name(member.name)} • User ID: {member.id} • Timezone: IST",
             footer_right="Powered by Friday",
             voice_rank_num=voice_rank_num,
             voice_today_str=voice_today_str,
-            guild_id=guild.id
+            guild_id=guild.id,
+            role_rgb=role_rgb
         )
         return discord.File(fp=buf, filename=f"member_matrix_{member.id}.png")
 
@@ -1814,12 +1850,6 @@ class Activity(commands.Cog):
 
     @server_group.command(name="chat", description="View custom graphic analytics dashboard for server chat activity.")
     async def server_chat(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        file = await self.generate_server_card_file(interaction.guild, viewer=interaction.user)
-        await interaction.followup.send(file=file)
-
-    @activity_group.command(name="server", description="View custom graphic analytics dashboard for the server.")
-    async def activity_server(self, interaction: discord.Interaction):
         await interaction.response.defer()
         file = await self.generate_server_card_file(interaction.guild, viewer=interaction.user)
         await interaction.followup.send(file=file)

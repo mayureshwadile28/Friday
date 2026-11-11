@@ -34,6 +34,34 @@ except Exception:
     LOCAL_TZ = timezone(timedelta(hours=5, minutes=30), name="IST")
 from typing import List, Dict, Any, Optional
 
+def get_instant_time_response(text: str) -> Optional[str]:
+    """Provides deterministic, 100% accurate Indian Standard Time (IST / Kolkata, UTC+5:30) responses."""
+    t = text.strip().lower()
+    cleaned = re.sub(r'<@!?[0-9]+>', '', t)
+    cleaned = re.sub(r'^(?:hey|hi|hello)\s+', '', cleaned).strip()
+    cleaned = re.sub(r'\bfriday\b', '', cleaned).strip()
+    cleaned = re.sub(r'[?!.,]+$', '', cleaned).strip()
+
+    is_time = bool(re.search(r'\b(what(?:[\'’]s| is)? (?:the )?(?:current )?time|time kya (?:hai|hua|ho raha)|current time|tell me the time|aaj kya time|abhi kya time|whats the time|what time is it)\b', cleaned))
+    is_date = bool(re.search(r'\b(what(?:[\'’]s| is)? (?:the )?(?:current |today\'?s? )?date|aaj konsi tarikh|kya date hai|current date|today\'?s? date|date kya hai|whats the date)\b', cleaned))
+
+    if not is_time and not is_date:
+        return None
+    if re.search(r'\b(remind|schedule|timer|after|song|lyrics|alarm|video|play|search)\b', cleaned):
+        return None
+
+    now_local = datetime.now(LOCAL_TZ)
+    time_str = now_local.strftime("%I:%M %p IST").lstrip("0")
+    date_str = now_local.strftime("%A, %B %d, %Y")
+    day_str = now_local.strftime("%A")
+
+    if is_time and is_date:
+        return f"It is currently **{time_str}** on **{date_str}** (Indian Standard Time / Kolkata, UTC+5:30). ✨"
+    elif is_time:
+        return f"It is currently **{time_str}** on this lovely {day_str} (Indian Standard Time / Kolkata, UTC+5:30). ✨"
+    else:
+        return f"Today is **{date_str}** (Indian Standard Time, Kolkata). 🌸"
+
 from database import db
 from emoji_utils import replace_plain_emojis
 from cogs.announcements import is_announcement_dispatch_command
@@ -885,7 +913,7 @@ class AIChat(commands.Cog):
             f"- Current Day of Week: {day_str}",
             f"- Current Real-World Time: {time_str} (Indian Standard Time, Kolkata / Asia/Kolkata, UTC+5:30)",
             f"- Current Year: {year_str}",
-            "- Timezone Directive: Your home timezone is Indian Standard Time (IST / Asia/Kolkata). When asked about the current time or date, ALWAYS answer in Indian Standard Time (IST) unless the user explicitly requests another timezone.",
+            "- STRICT TIMEZONE MANDATE: Your server, creator, and home timezone is strictly Indian Standard Time (IST / Asia/Kolkata, UTC+5:30). When asked about current time, date, or schedule, ALWAYS answer in Indian Standard Time (IST). NEVER state UTC, GMT, or US timezones.",
         ]
 
         # Live Discord Server Environment & Statistics
@@ -1802,6 +1830,13 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         if not is_reply_to_friday_llm and (not clean_text or clean_lower in GREETING_WORDS):
             return
 
+        # Instant Indian Standard Time (IST / Kolkata) clock response
+        time_reply = get_instant_time_response(clean_text)
+        if time_reply:
+            sent = await message.reply(time_reply, mention_author=True)
+            self._record_llm_message(sent.id)
+            return
+
         # 5. Cooldown check (prevent spamming API, 1.5s cooldown per user)
         now = time.time()
         last_used = self.cooldowns.get(message.author.id, 0)
@@ -2092,6 +2127,12 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         if guardrail_hit:
             _violation, refusal_reply = guardrail_hit
             await interaction.followup.send(refusal_reply)
+            return
+
+        # Instant Indian Standard Time (IST / Kolkata) clock response
+        time_reply = get_instant_time_response(question)
+        if time_reply:
+            await interaction.followup.send(time_reply)
             return
 
         if is_announcement_draft_request(question):
