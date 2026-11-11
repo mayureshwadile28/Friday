@@ -17,7 +17,7 @@ if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 
 from database import db
-from emoji_utils import replace_plain_emojis, parse_btn
+from emoji_utils import replace_plain_emojis, parse_btn, format_embed_description
 
 # Load environment variables
 load_dotenv(os.path.join(PARENT_DIR, '.env'))
@@ -1476,18 +1476,44 @@ def create_reaction_panel(gid):
 
         p_title = replace_plain_emojis(title, bot_instance, guild_id=gid) if title else None
         p_desc = replace_plain_emojis(description, bot_instance, guild_id=gid) if description else None
+        if p_desc:
+            p_desc = format_embed_description(p_desc, target_width=50)
+
         embed = discord.Embed(title=p_title, description=p_desc, color=discord.Color(color_int))
-        panel_text = ""
-        for role, emoji_obj in roles_setup:
-            panel_text += f"{str(emoji_obj)} - {role.mention}\n\n"
-        embed.add_field(name="Available Roles", value=panel_text, inline=False)
         
         avatar_url = str(bot_instance.user.display_avatar.url) if bot_instance.user and bot_instance.user.display_avatar else None
         if show_thumbnail and avatar_url:
             embed.set_thumbnail(url=avatar_url)
 
+        panel_text = ""
+        for role, emoji_obj in roles_setup:
+            panel_text += f"{str(emoji_obj)} ─ {role.mention}\n"
+
         if footer_text:
-            embed.set_footer(text=footer_text, icon_url=avatar_url)
+            p_footer = replace_plain_emojis(footer_text, bot_instance, guild_id=gid)
+            has_custom_emoji = bool(re.search(r'<a?:[a-zA-Z0-9_]+:[0-9]+>', p_footer))
+            is_callout = p_footer.strip().startswith(">")
+
+            if has_custom_emoji or is_callout:
+                # Discord embed footers DO NOT support custom emojis or markdown (they render raw <a:name:id> strings).
+                # To display the true animated GIF/custom emoji and formatted blockquote, we embed it directly into the panel body:
+                callout_line = p_footer.strip()
+                if not callout_line.startswith(">"):
+                    callout_line = f"> {callout_line}"
+                panel_text += f"\n{callout_line}"
+
+                # In the native Discord footer bar, provide clean text without raw syntax:
+                clean_footer = re.sub(r'<a?:([a-zA-Z0-9_]+):[0-9]+>', r'', p_footer)
+                clean_footer = re.sub(r'^[>\s*#]+', '', clean_footer).strip()
+                clean_footer = re.sub(r'\*+', '', clean_footer).strip()
+                if clean_footer:
+                    embed.set_footer(text=clean_footer, icon_url=avatar_url)
+                elif avatar_url:
+                    embed.set_footer(text=guild.name, icon_url=avatar_url)
+            else:
+                embed.set_footer(text=p_footer, icon_url=avatar_url)
+
+        embed.add_field(name="Available Roles", value=panel_text, inline=False)
 
         msg = await channel.send(embed=embed)
         msg_id = str(msg.id)

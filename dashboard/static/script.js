@@ -17421,7 +17421,15 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
 
 
 
-    const targetEl = document.getElementById(targetId);
+    const targetEl = (typeof targetId === 'string') ? document.getElementById(targetId) : targetId;
+
+
+
+
+
+
+
+    const actualId = targetEl ? (targetEl.id || (typeof targetId === 'string' ? targetId : '')) : '';
 
 
 
@@ -17445,7 +17453,7 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
 
 
 
-        return document.getElementById(targetId + '_rich');
+        return document.getElementById(actualId + '_rich');
 
 
 
@@ -17493,7 +17501,7 @@ function attachRichEmojiEditor(targetId, isSingleLine = false) {
 
 
 
-    richEl.id = targetId + '_rich';
+    richEl.id = actualId + '_rich';
 
 
 
@@ -24296,19 +24304,7 @@ function addRrMappingRow(initialEmoji = '🎉', initialRoleId = '') {
 
     `;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    container.appendChild(row);
 
     const emojiBtn = row.querySelector(`#rrEmojiBtn_${rowId}`);
 
@@ -24615,14 +24611,6 @@ function addRrMappingRow(initialEmoji = '🎉', initialRoleId = '') {
 
 
 
-
-
-
-
-
-
-
-    container.appendChild(row);
 
 
 

@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import re
 from database import db
+from emoji_utils import replace_plain_emojis, format_embed_description
 
 class ReactionRoles(commands.Cog):
     def __init__(self, bot):
@@ -57,10 +58,15 @@ class ReactionRoles(commands.Cog):
             await interaction.followup.send("❌ Error: You must provide at least one valid role and emoji pair.")
             return
 
-        embed = discord.Embed(title=title, description=description, color=discord.Color.teal())
+        p_title = replace_plain_emojis(title, self.bot, guild=interaction.guild) if title else None
+        p_desc = replace_plain_emojis(description, self.bot, guild=interaction.guild) if description else None
+        if p_desc:
+            p_desc = format_embed_description(p_desc, target_width=50)
+
+        embed = discord.Embed(title=p_title, description=p_desc, color=discord.Color.teal())
         panel_text = ""
         for role, emoji in roles_setup:
-            panel_text += f"{str(emoji)} - {role.mention}\n\n"
+            panel_text += f"{str(emoji)} ─ {role.mention}\n"
             
         embed.add_field(name="Available Roles", value=panel_text, inline=False)
         embed.set_footer(text="React below to claim your roles!")

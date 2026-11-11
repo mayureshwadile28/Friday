@@ -175,3 +175,43 @@ def normalize_discord_markdown(text: str) -> str:
         out.append(line)
     return '\n'.join(out)
 
+
+def format_embed_description(desc: str, target_width: int = 50) -> str:
+    """
+    Formats embed description so long unbroken lines are cleanly wrapped at word boundaries,
+    preventing Discord desktop client from stretching the embed awkwardly wide.
+    Preserves markdown headers, quotes (╰, >), bullets, and indentation.
+    """
+    if not desc:
+        return desc
+    lines = str(desc).replace('\r\n', '\n').replace('\r', '\n').split('\n')
+    formatted = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or len(stripped) <= target_width or stripped.startswith('```'):
+            formatted.append(line)
+            continue
+
+        prefix = ''
+        m = re.match(r'^([╰>\-•*]\s*)', stripped)
+        if m:
+            prefix = m.group(1)
+            stripped = stripped[len(prefix):].strip()
+
+        words = stripped.split(' ')
+        indent = '  ' if prefix else ''
+        cur = prefix
+        for w in words:
+            if not w:
+                continue
+            test_line = (cur + ' ' + w) if (cur and cur.strip() and not cur.endswith(' ') and cur != indent) else (cur + w)
+            if len(test_line) > target_width and cur.strip() != prefix.strip():
+                formatted.append(cur)
+                cur = indent + w
+            else:
+                cur = test_line
+        if cur:
+            formatted.append(cur)
+    return '\n'.join(formatted)
+
+
