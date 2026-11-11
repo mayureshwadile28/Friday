@@ -15,12 +15,19 @@ class ReactionRoles(commands.Cog):
         role1="First Role to assign", emoji1="Emoji for Role 1",
         role2="Second Role to assign", emoji2="Emoji for Role 2",
         role3="Third Role to assign", emoji3="Emoji for Role 3",
-        exclusive="If True, members can only pick 1 role at a time (choosing another auto-cancels old role & reaction)"
+        exclusive="If True, members can only pick 1 role at a time (choosing another auto-cancels old role & reaction)",
+        thumbnail="Select thumbnail icon: No Avatar, Friday's Avatar, or Server Avatar"
     )
+    @app_commands.choices(thumbnail=[
+        app_commands.Choice(name="🚫 No Avatar", value="none"),
+        app_commands.Choice(name="🤖 Friday's Avatar", value="bot"),
+        app_commands.Choice(name="🌐 Server Avatar", value="server")
+    ])
     @app_commands.default_permissions(manage_roles=True)
     async def reaction_panel(self, interaction: discord.Interaction, channel: discord.TextChannel, title: str, description: str,
         role1: discord.Role, emoji1: str, role2: discord.Role = None, emoji2: str = None, role3: discord.Role = None, emoji3: str = None,
-        exclusive: bool = True
+        exclusive: bool = True,
+        thumbnail: app_commands.Choice[str] = None
     ):
         await interaction.response.defer(ephemeral=True)
         if not (interaction.user.guild_permissions.manage_roles or interaction.user.guild_permissions.administrator or interaction.user.id == interaction.guild.owner_id):
@@ -64,6 +71,13 @@ class ReactionRoles(commands.Cog):
             p_desc = format_embed_description(p_desc, target_width=50)
 
         embed = discord.Embed(title=p_title, description=p_desc, color=discord.Color.teal())
+
+        thumb_val = thumbnail.value if thumbnail else "none"
+        if thumb_val == "bot" and self.bot.user and self.bot.user.display_avatar:
+            embed.set_thumbnail(url=str(self.bot.user.display_avatar.url))
+        elif thumb_val == "server" and interaction.guild.icon:
+            embed.set_thumbnail(url=str(interaction.guild.icon.url))
+
         panel_text = ""
         for role, emoji in roles_setup:
             panel_text += f"{str(emoji)} ─ {role.mention}\n"

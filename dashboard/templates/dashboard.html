@@ -3224,10 +3224,21 @@
 
 <div style="display: flex; flex-direction: column; gap: 10px;">
 
-<label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
-    <label class="switch"><input id="rrThumbnailCheckbox" style="accent-color: var(--primary);" type="checkbox"/><span class="slider"></span></label>
-    <span>Include Friday Bot Avatar Thumbnail</span>
-</label>
+<div style="margin-bottom: 4px;">
+    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Embed Thumbnail Icon</label>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+        <button type="button" class="btn btn-secondary rr-thumb-opt active" data-mode="none" id="rrThumbOpt_none" style="padding: 7px 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>🚫</span> No Avatar
+        </button>
+        <button type="button" class="btn btn-secondary rr-thumb-opt" data-mode="bot" id="rrThumbOpt_bot" style="padding: 7px 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>🤖</span> Friday's Avatar
+        </button>
+        <button type="button" class="btn btn-secondary rr-thumb-opt" data-mode="server" id="rrThumbOpt_server" style="padding: 7px 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>🌐</span> Server Avatar
+        </button>
+    </div>
+    <input type="hidden" id="rrThumbnailMode" value="none"/>
+</div>
 
 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
     <label class="switch"><input id="rrExclusiveCheckbox" checked type="checkbox"/><span class="slider"></span></label>

@@ -7750,6 +7750,23 @@ select option:checked {
 
 
 
+.rr-thumb-opt {
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.rr-thumb-opt:hover {
+    border-color: var(--primary) !important;
+}
+
+.rr-thumb-opt.active {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    border-color: var(--primary) !important;
+    font-weight: 600;
+    box-shadow: 0 0 10px rgba(45, 212, 191, 0.25);
+}
+
 .emoji-input-wrap .rich-emoji-editor.single-line,
 
 .emoji-picker-container .rich-emoji-editor.single-line {

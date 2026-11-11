@@ -431,6 +431,7 @@ let currentRrColor = "#2dd4bf";
 
 
 let currentRrShowThumbnail = false;
+let currentRrThumbnailMode = 'none';
 
 
 
@@ -6321,55 +6322,18 @@ function setupEventListeners() {
 
 
 
-    const thumbCheckbox = document.getElementById('rrThumbnailCheckbox');
-
-
-
-
-
-
-
-    if (thumbCheckbox) {
-
-
-
-
-
-
-
-        thumbCheckbox.addEventListener('change', (e) => {
-
-
-
-
-
-
-
-            currentRrShowThumbnail = e.target.checked;
-
-
-
-
-
-
-
+    document.querySelectorAll('.rr-thumb-opt').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const mode = btn.dataset.mode;
+            currentRrThumbnailMode = mode;
+            currentRrShowThumbnail = (mode !== 'none');
+            document.querySelectorAll('.rr-thumb-opt').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const hidden = document.getElementById('rrThumbnailMode');
+            if (hidden) hidden.value = mode;
             updateRrEmbedPreview();
-
-
-
-
-
-
-
         });
-
-
-
-
-
-
-
-    }
+    });
 
 
 
@@ -24898,46 +24862,14 @@ function updateRrEmbedPreview() {
 
 
 
-        if (currentRrShowThumbnail && currentBotAvatar) {
-
-
-
-
-
-
-
+        if (currentRrThumbnailMode === 'bot' && currentBotAvatar) {
             simThumb.style.display = 'block';
-
-
-
-
-
-
-
             simThumbImg.src = currentBotAvatar;
-
-
-
-
-
-
-
+        } else if (currentRrThumbnailMode === 'server' && currentGuildIcon) {
+            simThumb.style.display = 'block';
+            simThumbImg.src = currentGuildIcon;
         } else {
-
-
-
-
-
-
-
             simThumb.style.display = 'none';
-
-
-
-
-
-
-
         }
 
 
@@ -26034,7 +25966,8 @@ async function deployReactionPanel() {
 
 
 
-                show_thumbnail: currentRrShowThumbnail,
+                show_thumbnail: currentRrThumbnailMode !== 'none',
+                thumbnail_mode: currentRrThumbnailMode,
                 exclusive: document.getElementById('rrExclusiveCheckbox')?.checked !== false,
                 footer: currentRrFooterText
 

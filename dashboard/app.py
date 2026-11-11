@@ -1482,8 +1482,11 @@ def create_reaction_panel(gid):
         embed = discord.Embed(title=p_title, description=p_desc, color=discord.Color(color_int))
         
         avatar_url = str(bot_instance.user.display_avatar.url) if bot_instance.user and bot_instance.user.display_avatar else None
-        if show_thumbnail and avatar_url:
+        thumbnail_mode = str(body.get("thumbnail_mode") or ("bot" if body.get("show_thumbnail") else "none")).lower()
+        if thumbnail_mode == "bot" and avatar_url:
             embed.set_thumbnail(url=avatar_url)
+        elif thumbnail_mode == "server" and guild.icon:
+            embed.set_thumbnail(url=str(guild.icon.url))
 
         panel_text = ""
         for role, emoji_obj in roles_setup:
