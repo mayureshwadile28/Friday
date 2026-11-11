@@ -187,8 +187,8 @@ class Leveling(commands.Cog):
                 crop_x = (new_w - W) // 2
                 crop_y = (new_h - H) // 2
                 raw_bg = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -212,8 +212,8 @@ class Leveling(commands.Cog):
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
         # Inner dark card container: subtle transparency when custom wallpaper is active
-        container_fill = (16, 18, 24, 160) if custom_bg else (18, 20, 26, 215)
-        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 38), width=1)
+        container_fill = (10, 12, 18, 55) if custom_bg else (18, 20, 26, 215)
+        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 60) if custom_bg else (255, 255, 255, 38), width=1)
         img = Image.alpha_composite(bg_img, overlay)
         draw = ImageDraw.Draw(img)
 
@@ -233,9 +233,9 @@ class Leveling(commands.Cog):
 
         # Member Info
         text_x = av_x + av_size + 20
-        draw.text((text_x, 38), clean_display_name(user.display_name, max_len=20), font=font_title, fill=(255, 255, 255, 255))
+        draw.text((text_x, 38), clean_display_name(user.display_name, max_len=20), font=font_title, fill=(255, 255, 255, 255), stroke_width=2 if custom_bg else 0, stroke_fill=(0, 0, 0, 200) if custom_bg else None)
         joined_str = user.joined_at.strftime("%B %d, %Y") if user.joined_at else "Unknown"
-        draw.text((text_x, 70), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(160, 165, 175, 255))
+        draw.text((text_x, 70), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(235, 240, 250, 240) if custom_bg else (160, 165, 175, 255), stroke_width=1 if custom_bg else 0, stroke_fill=(0, 0, 0, 180) if custom_bg else None)
 
         # Top-right Badges — accent badge adapts to wallpaper
         top_role = user.top_role.name if (user.top_role and user.top_role.name != "@everyone") else "Member"
@@ -249,8 +249,8 @@ class Leveling(commands.Cog):
             bbox = font_badge.getbbox(b_text)
             bw = (bbox[2] - bbox[0]) + 20
             bpx = bx - bw
-            draw_rounded_rect(draw, (bpx, 38, bpx + bw, 66), radius=10, fill=(24, 27, 36, 170), outline=b_col + (190,), width=1)
-            draw.text((bpx + 10, 45), b_text, font=font_badge, fill=b_col + (255,))
+            draw_rounded_rect(draw, (bpx, 38, bpx + bw, 66), radius=10, fill=(14, 16, 22, 60) if custom_bg else (24, 27, 36, 170), outline=b_col + (190,), width=1)
+            draw.text((bpx + 10, 45), b_text, font=font_badge, fill=b_col + (255,), stroke_width=1 if custom_bg else 0, stroke_fill=(0, 0, 0, 180) if custom_bg else None)
             bx = bpx - 8
 
         # Dynamic XP Progress Bar Section
@@ -259,13 +259,13 @@ class Leveling(commands.Cog):
         bar_w = W - 36 - bar_x
         bar_h = 20
 
-        draw.text((bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(tar, tag, tab, 220))
+        draw.text((bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(tar, tag, tab, 255), stroke_width=1 if custom_bg else 0, stroke_fill=(0, 0, 0, 180) if custom_bg else None)
         xp_str = f"{current_xp:,} / {next_xp:,} XP ({percentage:.1f}%)"
         xb = font_xp_num.getbbox(xp_str)
-        draw.text((bar_x + bar_w - (xb[2] - xb[0]), 90), xp_str, font=font_xp_num, fill=(255, 255, 255, 255))
+        draw.text((bar_x + bar_w - (xb[2] - xb[0]), 90), xp_str, font=font_xp_num, fill=(255, 255, 255, 255), stroke_width=1 if custom_bg else 0, stroke_fill=(0, 0, 0, 180) if custom_bg else None)
 
         # Background track
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(20, 23, 30, 200), outline=(tar, tag, tab, 60), width=1)
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(0, 0, 0, 100) if custom_bg else (20, 23, 30, 200), outline=(tar, tag, tab, 60), width=1)
         fill_w = int(bar_w * (percentage / 100.0))
         if fill_w > 0:
             # Gradient fill on progress bar using adaptive accent color
@@ -286,16 +286,16 @@ class Leveling(commands.Cog):
         god = ImageDraw.Draw(glass_overlay)
         for idx, (lbl, val, sub) in enumerate(stat_items):
             sx = bar_x + idx * (sw + 10)
-            draw_rounded_rect(god, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(12, 15, 22, 115), outline=(ar, ag, ab, 55), width=1)
+            draw_rounded_rect(god, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(14, 16, 22, 55) if custom_bg else (28, 30, 38, 255), outline=(255, 255, 255, 60) if custom_bg else (ar, ag, ab, 55), width=1)
         img = Image.alpha_composite(img, glass_overlay)
         draw = ImageDraw.Draw(img)
 
         # Draw text over glass containers — brighter labels + adaptive accent
         for idx, (lbl, val, sub) in enumerate(stat_items):
             sx = bar_x + idx * (sw + 10)
-            draw.text((sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(tar, tag, tab, 230))
-            draw.text((sx + 14, stat_y + 30), val, font=font_stat_val, fill=(255, 255, 255, 255))
-            draw.text((sx + 14, stat_y + 57), sub, font=font_sub, fill=(200, 205, 215, 255))
+            draw.text((sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(tar, tag, tab, 255), stroke_width=1 if custom_bg else 0, stroke_fill=(0, 0, 0, 180) if custom_bg else None)
+            draw.text((sx + 14, stat_y + 30), val, font=font_stat_val, fill=(255, 255, 255, 255), stroke_width=2 if custom_bg else 0, stroke_fill=(0, 0, 0, 200) if custom_bg else None)
+            draw.text((sx + 14, stat_y + 57), sub, font=font_sub, fill=(220, 225, 235, 240) if custom_bg else (200, 205, 215, 255), stroke_width=1 if custom_bg else 0, stroke_fill=(0, 0, 0, 180) if custom_bg else None)
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -592,8 +592,8 @@ class Leveling(commands.Cog):
                 cx = (nw - W) // 2
                 cy = (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -605,10 +605,9 @@ class Leveling(commands.Cog):
         # Outer Container with Frosted Glass when wallpaper is active
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        container_fill = (10, 12, 18, 55) if raw_bg else (28, 30, 36, 255)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
-        draw = ImageDraw.Draw(img)
 
         accent_color = self._extract_accent_color(raw_bg) if raw_bg else (129, 140, 248)
         import colorsys as _cs
@@ -619,8 +618,29 @@ class Leveling(commands.Cog):
             text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
         else:
             text_accent = (200, 205, 215)
-        card_item_fill = (25, 28, 36, 110) if raw_bg else (35, 38, 46, 255)
-        card_item_outline = (255, 255, 255, 30) if raw_bg else (48, 52, 63, 255)
+
+        # Pre-composite glassmorphic member rows layer so wallpaper shines through!
+        col_w = 460
+        col1_x = 38
+        col2_x = 522
+        start_y = 114
+        row_h = 80
+        spacing = 14
+
+        panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel_layer)
+        p_row_fill = (14, 16, 22, 55) if raw_bg else (35, 38, 46, 255)
+        p_row_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
+
+        for slot_idx in range(10):
+            col = 0 if slot_idx < 5 else 1
+            row = slot_idx % 5
+            cx = col1_x if col == 0 else col2_x
+            cy = start_y + row * (row_h + spacing)
+            draw_rounded_rect(pd, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=p_row_fill, outline=p_row_outline, width=1)
+
+        img = Image.alpha_composite(img, panel_layer)
+        draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = Font.poppins(variant="regular", size=13)
@@ -647,8 +667,8 @@ class Leveling(commands.Cog):
                 pass
 
         text_x = header_x + 74
-        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255))
-        draw.text((text_x, header_y + 34), "Server XP & Level Leaderboard", font=font_sub, fill=(142, 146, 155, 255))
+        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
+        draw.text((text_x, header_y + 34), "Server XP & Level Leaderboard", font=font_sub, fill=(235, 240, 250, 240) if raw_bg else (142, 146, 155, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         # Status pills
         pills = [
@@ -662,16 +682,9 @@ class Leveling(commands.Cog):
             pw = (bbox[2] - bbox[0]) + 24
             px = pill_right - pw
             py = header_y + 14
-            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
-            draw.text((px + 12, py + 8), p, font=font_pill, fill=(240, 242, 245, 255))
+            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(14, 16, 22, 60) if raw_bg else (38, 41, 49, 255), outline=(255, 255, 255, 60) if raw_bg else (52, 56, 67, 255), width=1)
+            draw.text((px + 12, py + 8), p, font=font_pill, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
             pill_right = px - 10
-
-        col_w = 460
-        col1_x = 38
-        col2_x = 522
-        start_y = 114
-        row_h = 80
-        spacing = 14
 
         m_dict = {m[0]: m for m in members_data}
         start_rank = (page - 1) * 10 + 1
@@ -683,7 +696,8 @@ class Leveling(commands.Cog):
             cx = col1_x if col == 0 else col2_x
             cy = start_y + row * (row_h + spacing)
 
-            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=card_item_fill, outline=card_item_outline, width=1)
+            if not raw_bg:
+                draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
 
             if current_rank in m_dict:
                 _, name_str, user_str, av_img, lvl_val, xp_val, req_val = m_dict[current_rank]
@@ -693,7 +707,7 @@ class Leveling(commands.Cog):
                 if fill_w > 0:
                     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
                     od = ImageDraw.Draw(overlay)
-                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=accent_color + (28,))
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=accent_color + (35,))
                     img = Image.alpha_composite(img, overlay)
                     draw = ImageDraw.Draw(img)
 
@@ -704,13 +718,13 @@ class Leveling(commands.Cog):
                 elif current_rank == 3:
                     r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
                 else:
-                    r_fill, r_out, r_txt = (20, 22, 30, 150) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 40) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
+                    r_fill, r_out, r_txt = (14, 16, 22, 100) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
 
                 draw_rounded_rect(draw, (cx + 12, cy + 24, cx + 48, cy + 56), radius=10, fill=r_fill, outline=r_out, width=1)
                 r_str = f"#{current_rank}"
                 rb = font_rank.getbbox(r_str)
                 rx = cx + 30 - (rb[2] - rb[0]) // 2
-                draw.text((rx, cy + 31), r_str, font=font_rank, fill=r_txt)
+                draw.text((rx, cy + 31), r_str, font=font_rank, fill=r_txt, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
                 # Avatar
                 av_x = cx + 58
@@ -724,21 +738,21 @@ class Leveling(commands.Cog):
 
                 # Name & Username
                 nx = av_x + 64
-                draw.text((nx, cy + 18), clean_display_name(name_str, max_len=14), font=font_name, fill=(255, 255, 255, 255))
-                draw.text((nx, cy + 42), f"Level {lvl_val}", font=font_lvl, fill=accent_color + (255,))
+                draw.text((nx, cy + 18), clean_display_name(name_str, max_len=14), font=font_name, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                draw.text((nx, cy + 42), f"Level {lvl_val}", font=font_lvl, fill=accent_color + (255,), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
                 # XP Count on right
                 c_str = f"{xp_val:,} XP"
                 cb = font_cnt.getbbox(c_str)
-                draw.text((cx + col_w - 20 - (cb[2] - cb[0]), cy + 28), c_str, font=font_cnt, fill=(255, 255, 255, 255))
+                draw.text((cx + col_w - 20 - (cb[2] - cb[0]), cy + 28), c_str, font=font_cnt, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
             else:
-                draw.text((cx + 20, cy + 28), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(90, 95, 105, 255))
+                draw.text((cx + 20, cy + 28), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(120, 125, 136, 255))
 
         # Footer
         footer_y = H - 36
-        draw.text((38, footer_y), "Server XP Leaderboard • Top Active Members", font=font_footer, fill=(115, 120, 130, 255))
+        draw.text((38, footer_y), "Server XP Leaderboard • Top Active Members", font=font_footer, fill=(180, 185, 195, 255) if raw_bg else (115, 120, 130, 255))
         fb = font_footer_bold.getbbox("Powered by Friday")
-        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(150, 155, 166, 255))
+        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 205, 215, 255) if raw_bg else (150, 155, 166, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)

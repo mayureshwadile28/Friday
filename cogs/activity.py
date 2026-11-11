@@ -720,8 +720,8 @@ class Activity(commands.Cog):
                 resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
                 cx, cy = (nw - W) // 2, (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -730,12 +730,71 @@ class Activity(commands.Cog):
         else:
             img = bg_img.copy()
 
-        # Outer rounded container (Frosted glass when custom wallpaper is set)
-        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        # Outer rounded container (True Frosted Glass when custom wallpaper is set)
+        container_fill = (10, 12, 18, 55) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
+
+        accent_color = extract_accent_color(raw_bg, default_rgb=(56, 189, 248)) if raw_bg else (56, 189, 248)
+        import colorsys as _cs
+        if raw_bg:
+            _ar, _ag, _ab = accent_color
+            _h, _s, _v = _cs.rgb_to_hsv(_ar/255, _ag/255, _ab/255)
+            _tr, _tg, _tb = _cs.hsv_to_rgb(_h, min(_s*1.2, 0.90), max(_v, 0.98))
+            text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
+        else:
+            text_accent = (200, 205, 215)
+
+        # ── Glassmorphic Inner Panels Layer (Alpha Composited so wallpaper shines through!) ──
+        panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel_layer)
+
+        p_fill = (14, 16, 22, 55) if raw_bg else (35, 38, 46, 255)
+        p_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
+        r_fill = (255, 255, 255, 18) if raw_bg else (29, 31, 38, 255)
+        b_fill = (255, 255, 255, 35) if raw_bg else (38, 41, 50, 255)
+
+        kpi_y = 104
+        kpi_h = 76
+        card_w = 190
+        spacing = 13
+        for idx in range(min(5, len(kpi_metrics))):
+            cx = 38 + idx * (card_w + spacing)
+            draw_rounded_rect(pd, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=p_fill, outline=p_outline, width=1)
+
+        body_y = 196
+        body_h = 370
+        left_w = 540
+        right_x = 594
+        right_w = W - 38 - right_x
+
+        # Chart container
+        draw_rounded_rect(pd, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=p_fill, outline=p_outline, width=1)
+        # Channels container
+        draw_rounded_rect(pd, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=p_fill, outline=p_outline, width=1)
+
+        ch_y = body_y + 48
+        ch_h = 42
+        for slot in range(1, 4):
+            sy = ch_y + (slot - 1) * ch_h
+            draw_rounded_rect(pd, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=r_fill)
+
+        chat_y = body_y + 184 + 44
+        for slot in range(1, 4):
+            sy = chat_y + (slot - 1) * ch_h
+            draw_rounded_rect(pd, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=r_fill)
+
+        ribbon_y = 582
+        ribbon_h = 114
+        rw_w = 238
+        rw_space = 18
+        for idx in range(4):
+            rx = 38 + idx * (rw_w + rw_space)
+            draw_rounded_rect(pd, (rx, ribbon_y, rx + rw_w, ribbon_y + ribbon_h), radius=14, fill=p_fill, outline=p_outline, width=1)
+
+        img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
@@ -753,25 +812,11 @@ class Activity(commands.Cog):
         font_footer = get_unicode_font(11)
         font_footer_bold = get_unicode_font(11, bold=True)
 
-        accent_color = extract_accent_color(raw_bg, default_rgb=(56, 189, 248)) if raw_bg else (56, 189, 248)
-        import colorsys as _cs
-        if raw_bg:
-            _ar, _ag, _ab = accent_color
-            _h, _s, _v = _cs.rgb_to_hsv(_ar/255, _ag/255, _ab/255)
-            _tr, _tg, _tb = _cs.hsv_to_rgb(_h, min(_s*1.2, 1.0), max(_v, 0.95))
-            text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
-        else:
-            text_accent = (200, 205, 215)
-        # Convenience: fills for inner boxes (glassmorphic when wallpaper active)
-        inner_fill = (25, 28, 36, 100) if raw_bg else (35, 38, 46, 255)
-        inner_outline = (255, 255, 255, 30) if raw_bg else (48, 52, 63, 255)
-        row_fill = (20, 22, 30, 80) if raw_bg else (29, 31, 38, 255)
-        badge_fill = (20, 22, 30, 80) if raw_bg else (38, 41, 50, 255)
-        lbl_fill = text_accent + (200,) if raw_bg else (155, 160, 169, 255)
-        sub_fill = text_accent + (160,) if raw_bg else (142, 146, 155, 255)
-        axis_fill = text_accent + (140,) if raw_bg else (115, 120, 131, 255)
-        ribbon_lbl_fill = text_accent + (190,) if raw_bg else (150, 155, 166, 255)
-        ribbon_sub_fill = text_accent + (150,) if raw_bg else (125, 130, 142, 255)
+        lbl_fill = text_accent + (255,) if raw_bg else (155, 160, 169, 255)
+        sub_fill = (240, 243, 250, 240) if raw_bg else (142, 146, 155, 255)
+        axis_fill = (230, 235, 245, 220) if raw_bg else (115, 120, 131, 255)
+        ribbon_lbl_fill = text_accent + (255,) if raw_bg else (150, 155, 166, 255)
+        ribbon_sub_fill = (220, 225, 235, 220) if raw_bg else (125, 130, 142, 255)
 
         # 1. Header
         header_x, header_y = 38, 30
@@ -813,9 +858,10 @@ class Activity(commands.Cog):
         spacing = 13
         for idx, (label, val_num) in enumerate(kpi_metrics[:5]):
             cx = 38 + idx * (card_w + spacing)
-            draw_rounded_rect(draw, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=inner_fill, outline=inner_outline, width=1)
+            if not raw_bg:
+                draw_rounded_rect(draw, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
             draw.text((cx + 16, kpi_y + 11), label.upper(), font=font_kpi_lbl, fill=lbl_fill)
-            draw.text((cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255))
+            draw.text((cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0, 160) if raw_bg else None)
 
             # Status dot
             ix = cx + card_w - 22
@@ -830,7 +876,8 @@ class Activity(commands.Cog):
         right_w = W - 38 - right_x
 
         # Left Container: 7-Day Spline Chart
-        draw_rounded_rect(draw, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=inner_fill, outline=inner_outline, width=1)
+        if not raw_bg:
+            draw_rounded_rect(draw, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
         draw.text((58, body_y + 16), "7-Day Server Message Volume Trend", font=font_box_title, fill=(255, 255, 255, 255))
 
         # Legend
@@ -856,7 +903,7 @@ class Activity(commands.Cog):
         for step in range(4):
             val = int(max_y * (3 - step) / 3)
             gy = plot_y + int(plot_h * step / 3)
-            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(44, 48, 58, 255), width=1)
+            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 55) if raw_bg else (44, 48, 58, 255), width=1)
             val_str = f"{val:,}"
             draw.text((plot_x - 48, gy - 7), val_str, font=font_axis, fill=axis_fill)
 
@@ -875,7 +922,7 @@ class Activity(commands.Cog):
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         poly_points = [(plot_x, baseline_y)] + spline_points + [(plot_x + plot_w, baseline_y)]
-        overlay_draw.polygon(poly_points, fill=accent_color + (36,))
+        overlay_draw.polygon(poly_points, fill=accent_color + (45,))
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
 
@@ -894,61 +941,64 @@ class Activity(commands.Cog):
                 draw.text((px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=axis_fill)
 
         # Right Container: Top Channels & Top Chatters
-        draw_rounded_rect(draw, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=inner_fill, outline=inner_outline, width=1)
+        if not raw_bg:
+            draw_rounded_rect(draw, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
         
         # Sub-header 1: Top Channels
         draw.text((right_x + 20, body_y + 16), "Top Active Channels", font=font_box_title, fill=(255, 255, 255, 255))
-        draw.text((right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=(110, 115, 126, 255))
+        draw.text((right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=sub_fill)
 
         ch_y = body_y + 48
         ch_h = 42
         for slot in range(1, 4):
             sy = ch_y + (slot - 1) * ch_h
-            draw_rounded_rect(draw, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=row_fill)
+            if not raw_bg:
+                draw_rounded_rect(draw, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=(29, 31, 38, 255))
             if slot <= len(top_channels):
                 c_name, c_cnt = top_channels[slot - 1]
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot == 1 else (150, 155, 166, 255))
+                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot == 1 else (190, 195, 206, 255))
                 clean_lbl = safe_channel_label(c_name, max_len=18)
                 c_text = clean_lbl if clean_lbl.startswith("#") else f"# {clean_lbl}"
-                draw.text((right_x + 52, sy + 8), c_text, font=font_list, fill=(235, 238, 242, 255))
+                draw.text((right_x + 52, sy + 8), c_text, font=font_list, fill=(255, 255, 255, 255))
                 cnt_str = f"{c_cnt:,}"
                 c_box = font_list_badge.getbbox(cnt_str)
                 cw = (c_box[2] - c_box[0]) + 18
                 cx = right_x + right_w - 20 - cw
-                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=badge_fill)
+                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=(255, 255, 255, 30) if raw_bg else (38, 41, 50, 255))
                 draw.text((cx + 9, sy + 8), cnt_str, font=font_list_badge, fill=(255, 255, 255, 255))
             else:
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(70, 75, 86, 255))
-                draw.text((right_x + 52, sy + 8), "# —", font=font_list, fill=(75, 80, 92, 255))
-                draw.text((right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(70, 75, 86, 255))
+                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
+                draw.text((right_x + 52, sy + 8), "# —", font=font_list, fill=(130, 135, 148, 255))
+                draw.text((right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(120, 125, 136, 255))
 
         # Divider
         div_y = body_y + 184
-        draw.line((right_x + 16, div_y, right_x + right_w - 16, div_y), fill=(46, 50, 60, 255), width=1)
+        draw.line((right_x + 16, div_y, right_x + right_w - 16, div_y), fill=(255, 255, 255, 45) if raw_bg else (46, 50, 60, 255), width=1)
 
         # Sub-header 2: Top Chatters
         draw.text((right_x + 20, div_y + 14), "Top Chatters Leaderboard", font=font_box_title, fill=(255, 255, 255, 255))
-        draw.text((right_x + right_w - 32, div_y + 14), "@", font=font_box_title, fill=(110, 115, 126, 255))
+        draw.text((right_x + right_w - 32, div_y + 14), "@", font=font_box_title, fill=sub_fill)
 
         chat_y = div_y + 44
         for slot in range(1, 4):
             sy = chat_y + (slot - 1) * ch_h
-            draw_rounded_rect(draw, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=row_fill)
+            if not raw_bg:
+                draw_rounded_rect(draw, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=(29, 31, 38, 255))
             if slot <= len(top_chatters):
                 m_name, m_cnt = top_chatters[slot - 1]
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(245, 158, 11, 255) if slot == 1 else (150, 155, 166, 255))
+                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(245, 158, 11, 255) if slot == 1 else (190, 195, 206, 255))
                 m_text = f"@{clean_display_name(m_name, max_len=18)}"
-                draw.text((right_x + 52, sy + 8), m_text, font=font_list, fill=(235, 238, 242, 255))
+                draw.text((right_x + 52, sy + 8), m_text, font=font_list, fill=(255, 255, 255, 255))
                 cnt_str = f"{m_cnt:,} msgs"
                 c_box = font_list_badge.getbbox(cnt_str)
                 cw = (c_box[2] - c_box[0]) + 18
                 cx = right_x + right_w - 20 - cw
-                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=badge_fill)
+                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=(255, 255, 255, 30) if raw_bg else (38, 41, 50, 255))
                 draw.text((cx + 9, sy + 8), cnt_str, font=font_list_badge, fill=(255, 255, 255, 255))
             else:
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(70, 75, 86, 255))
-                draw.text((right_x + 52, sy + 8), "@ —", font=font_list, fill=(75, 80, 92, 255))
-                draw.text((right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(70, 75, 86, 255))
+                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
+                draw.text((right_x + 52, sy + 8), "@ —", font=font_list, fill=(130, 135, 148, 255))
+                draw.text((right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(120, 125, 136, 255))
 
         # 4. Row 3: Server Demographics & Voice Telemetry Ribbon (4 Badges)
         ribbon_y = 582
@@ -965,9 +1015,10 @@ class Activity(commands.Cog):
 
         for idx, (head_t, val_t, sub_t) in enumerate(ribbon_cards):
             rx = 38 + idx * (rw_w + rw_space)
-            draw_rounded_rect(draw, (rx, ribbon_y, rx + rw_w, ribbon_y + ribbon_h), radius=14, fill=inner_fill, outline=inner_outline, width=1)
+            if not raw_bg:
+                draw_rounded_rect(draw, (rx, ribbon_y, rx + rw_w, ribbon_y + ribbon_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
             draw.text((rx + 16, ribbon_y + 14), head_t, font=font_ribbon_lbl, fill=ribbon_lbl_fill)
-            draw.text((rx + 16, ribbon_y + 36), val_t, font=font_ribbon_val, fill=(255, 255, 255, 255))
+            draw.text((rx + 16, ribbon_y + 36), val_t, font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0, 140) if raw_bg else None)
             draw.text((rx + 16, ribbon_y + 68), sub_t, font=font_ribbon_sub, fill=ribbon_sub_fill)
 
         # 5. Footer
@@ -1024,8 +1075,8 @@ class Activity(commands.Cog):
                 resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
                 cx, cy = (nw - W) // 2, (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -1034,12 +1085,67 @@ class Activity(commands.Cog):
         else:
             img = bg_img.copy()
 
-        # Outer rounded container (Frosted glass when custom wallpaper is set)
-        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        # Outer rounded container (True Frosted Glass when custom wallpaper is set)
+        container_fill = (10, 12, 18, 55) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
+
+        accent_color = extract_accent_color(raw_bg, default_rgb=(129, 140, 248)) if raw_bg else (129, 140, 248)
+        import colorsys as _cs
+        if raw_bg:
+            _ar, _ag, _ab = accent_color
+            _h, _s, _v = _cs.rgb_to_hsv(_ar/255, _ag/255, _ab/255)
+            _tr, _tg, _tb = _cs.hsv_to_rgb(_h, min(_s*1.2, 0.90), max(_v, 0.98))
+            text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
+        else:
+            text_accent = (200, 205, 215)
+
+        # ── Glassmorphic Inner Panels Layer (Alpha Composited so wallpaper shines through!) ──
+        panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel_layer)
+
+        p_fill = (14, 16, 22, 55) if raw_bg else (35, 38, 46, 255)
+        p_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
+        r_fill = (255, 255, 255, 18) if raw_bg else (29, 31, 38, 255)
+        b_fill = (255, 255, 255, 35) if raw_bg else (38, 41, 50, 255)
+
+        kpi_y = 104
+        kpi_h = 76
+        card_w = 190
+        spacing = 13
+        for idx in range(min(5, len(kpi_metrics))):
+            cx = 38 + idx * (card_w + spacing)
+            draw_rounded_rect(pd, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=p_fill, outline=p_outline, width=1)
+
+        body_y = 196
+        body_h = 370
+        left_w = 540
+        right_x = 594
+        right_w = W - 38 - right_x
+
+        # Left Container: Personal 7-Day Chart
+        draw_rounded_rect(pd, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=p_fill, outline=p_outline, width=1)
+        # Right Container: Top Channels
+        draw_rounded_rect(pd, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=p_fill, outline=p_outline, width=1)
+
+        row_y = body_y + 54
+        row_h = 58
+        for slot in range(1, 6):
+            ry = row_y + (slot - 1) * row_h
+            draw_rounded_rect(pd, (right_x + 12, ry, right_x + right_w - 12, ry + 46), radius=10, fill=r_fill)
+
+        ribbon_y = 582
+        ribbon_h = 114
+        rx1 = 38
+        rw1 = 540
+        draw_rounded_rect(pd, (rx1, ribbon_y, rx1 + rw1, ribbon_y + ribbon_h), radius=14, fill=p_fill, outline=p_outline, width=1)
+        rx2 = 594
+        rw2 = W - 38 - rx2
+        draw_rounded_rect(pd, (rx2, ribbon_y, rx2 + rw2, ribbon_y + ribbon_h), radius=14, fill=p_fill, outline=p_outline, width=1)
+
+        img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
@@ -1057,24 +1163,11 @@ class Activity(commands.Cog):
         font_footer = get_unicode_font(11)
         font_footer_bold = get_unicode_font(11, bold=True)
 
-        accent_color = extract_accent_color(raw_bg, default_rgb=(129, 140, 248)) if raw_bg else (129, 140, 248)
-        import colorsys as _cs
-        if raw_bg:
-            _ar, _ag, _ab = accent_color
-            _h, _s, _v = _cs.rgb_to_hsv(_ar/255, _ag/255, _ab/255)
-            _tr, _tg, _tb = _cs.hsv_to_rgb(_h, min(_s*1.2, 1.0), max(_v, 0.95))
-            text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
-        else:
-            text_accent = (200, 205, 215)
-        inner_fill = (25, 28, 36, 100) if raw_bg else (35, 38, 46, 255)
-        inner_outline = (255, 255, 255, 30) if raw_bg else (48, 52, 63, 255)
-        row_fill = (20, 22, 30, 80) if raw_bg else (29, 31, 38, 255)
-        badge_fill = (20, 22, 30, 80) if raw_bg else (38, 41, 50, 255)
-        lbl_fill = text_accent + (200,) if raw_bg else (155, 160, 169, 255)
-        sub_fill = text_accent + (160,) if raw_bg else (142, 146, 155, 255)
-        axis_fill = text_accent + (140,) if raw_bg else (115, 120, 131, 255)
-        ribbon_lbl_fill = text_accent + (190,) if raw_bg else (150, 155, 166, 255)
-        ribbon_sub_fill = text_accent + (150,) if raw_bg else (125, 130, 142, 255)
+        lbl_fill = text_accent + (255,) if raw_bg else (155, 160, 169, 255)
+        sub_fill = (240, 243, 250, 240) if raw_bg else (142, 146, 155, 255)
+        axis_fill = (230, 235, 245, 220) if raw_bg else (115, 120, 131, 255)
+        ribbon_lbl_fill = text_accent + (255,) if raw_bg else (150, 155, 166, 255)
+        ribbon_sub_fill = (220, 225, 235, 220) if raw_bg else (125, 130, 142, 255)
 
         # 1. Header
         header_x, header_y = 38, 30
@@ -1090,8 +1183,8 @@ class Activity(commands.Cog):
                 pass
 
         text_x = header_x + 74
-        draw.text((text_x, header_y + 4), clean_display_name(member_name, max_len=24), font=font_title, fill=(255, 255, 255, 255))
-        draw.text((text_x, header_y + 32), f"Joined {joined_str} • Account Created {created_str}", font=font_sub, fill=(142, 146, 155, 255))
+        draw.text((text_x, header_y + 4), clean_display_name(member_name, max_len=24), font=font_title, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
+        draw.text((text_x, header_y + 32), f"Joined {joined_str} • Account Created {created_str}", font=font_sub, fill=(235, 240, 250, 240) if raw_bg else (142, 146, 155, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         # Top-right status pills (Statbot-inspired richness: Level, Msg Rank, Voice Rank, Top Role)
         pills = [
@@ -1107,8 +1200,8 @@ class Activity(commands.Cog):
             pw = (bbox[2] - bbox[0]) + 22
             px = pill_right - pw
             py = header_y + 12
-            draw_rounded_rect(draw, (px, py, px + pw, py + 30), radius=15, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
-            draw.text((px + 11, py + 7), p, font=font_pill, fill=(240, 242, 245, 255))
+            draw_rounded_rect(draw, (px, py, px + pw, py + 30), radius=15, fill=(14, 16, 22, 60) if raw_bg else (38, 41, 49, 255), outline=(255, 255, 255, 60) if raw_bg else (52, 56, 67, 255), width=1)
+            draw.text((px + 11, py + 7), p, font=font_pill, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
             pill_right = px - 10
 
         # 2. Row 1: 5 Full-Horizon Metric Cards
@@ -1118,9 +1211,10 @@ class Activity(commands.Cog):
         spacing = 13
         for idx, (label, val_num) in enumerate(kpi_metrics[:5]):
             cx = 38 + idx * (card_w + spacing)
-            draw_rounded_rect(draw, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=inner_fill, outline=inner_outline, width=1)
-            draw.text((cx + 16, kpi_y + 11), label.upper(), font=font_kpi_lbl, fill=lbl_fill)
-            draw.text((cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255))
+            if not raw_bg:
+                draw_rounded_rect(draw, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+            draw.text((cx + 16, kpi_y + 11), label.upper(), font=font_kpi_lbl, fill=lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+            draw.text((cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
 
             # Status dot
             ix = cx + card_w - 22
@@ -1135,14 +1229,15 @@ class Activity(commands.Cog):
         right_w = W - 38 - right_x
 
         # Left Container: Personal 7-Day Chart
-        draw_rounded_rect(draw, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=inner_fill, outline=inner_outline, width=1)
-        draw.text((58, body_y + 16), "Personal 7-Day Activity Trend", font=font_box_title, fill=(255, 255, 255, 255))
+        if not raw_bg:
+            draw_rounded_rect(draw, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+        draw.text((58, body_y + 16), "Personal 7-Day Activity Trend", font=font_box_title, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         legend_text = "Messages"
         leg_bbox = font_axis.getbbox(legend_text)
         leg_x = 38 + left_w - 26 - (leg_bbox[2] - leg_bbox[0])
         draw.ellipse((leg_x - 14, body_y + 22, leg_x - 6, body_y + 30), fill=accent_color + (255,))
-        draw.text((leg_x, body_y + 19), legend_text, font=font_axis, fill=sub_fill)
+        draw.text((leg_x, body_y + 19), legend_text, font=font_axis, fill=sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         plot_x = 94
         plot_y = body_y + 64
@@ -1159,9 +1254,9 @@ class Activity(commands.Cog):
         for step in range(4):
             val = int(max_y * (3 - step) / 3)
             gy = plot_y + int(plot_h * step / 3)
-            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(44, 48, 58, 255), width=1)
+            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 55) if raw_bg else (44, 48, 58, 255), width=1)
             val_str = f"{val:,}"
-            draw.text((plot_x - 48, gy - 7), val_str, font=font_axis, fill=axis_fill)
+            draw.text((plot_x - 48, gy - 7), val_str, font=font_axis, fill=axis_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         raw_points = []
         num_pts = len(chart_values)
@@ -1176,7 +1271,7 @@ class Activity(commands.Cog):
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         overlay_draw = ImageDraw.Draw(overlay)
         poly_points = [(plot_x, baseline_y)] + spline_points + [(plot_x + plot_w, baseline_y)]
-        overlay_draw.polygon(poly_points, fill=accent_color + (36,))
+        overlay_draw.polygon(poly_points, fill=accent_color + (45,))
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
 
@@ -1190,34 +1285,36 @@ class Activity(commands.Cog):
                 lbl = chart_labels[i]
                 l_bbox = font_axis.getbbox(lbl)
                 lw = l_bbox[2] - l_bbox[0]
-                draw.text((px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=axis_fill)
+                draw.text((px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=axis_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         # Right Container: Top Channels (5 slots)
-        draw_rounded_rect(draw, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=inner_fill, outline=inner_outline, width=1)
-        draw.text((right_x + 20, body_y + 16), "Top Channels Chatted", font=font_box_title, fill=(255, 255, 255, 255))
-        draw.text((right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=(110, 115, 126, 255))
+        if not raw_bg:
+            draw_rounded_rect(draw, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+        draw.text((right_x + 20, body_y + 16), "Top Channels Chatted", font=font_box_title, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw.text((right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=sub_fill)
 
         row_y = body_y + 54
         row_h = 58
         for slot in range(1, 6):
             ry = row_y + (slot - 1) * row_h
-            draw_rounded_rect(draw, (right_x + 12, ry, right_x + right_w - 12, ry + 46), radius=10, fill=row_fill)
+            if not raw_bg:
+                draw_rounded_rect(draw, (right_x + 12, ry, right_x + right_w - 12, ry + 46), radius=10, fill=(29, 31, 38, 255))
             if slot <= len(top_channels):
                 name_str, count_val = top_channels[slot - 1]
                 draw.text((right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot <= 3 else (140, 145, 155, 255))
                 clean_name = safe_channel_label(name_str, max_len=18)
                 c_name = clean_name if clean_name.startswith("#") else f"# {clean_name}"
-                draw.text((right_x + 52, ry + 13), c_name, font=font_list, fill=(235, 238, 242, 255))
+                draw.text((right_x + 52, ry + 13), c_name, font=font_list, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
                 c_str = f"{count_val:,} msgs"
                 c_bbox = font_list_badge.getbbox(c_str)
                 cw = (c_bbox[2] - c_bbox[0]) + 18
                 cx = right_x + right_w - 20 - cw
-                draw_rounded_rect(draw, (cx, ry + 8, cx + cw, ry + 38), radius=8, fill=badge_fill)
-                draw.text((cx + 9, ry + 13), c_str, font=font_list_badge, fill=(255, 255, 255, 255))
+                draw_rounded_rect(draw, (cx, ry + 8, cx + cw, ry + 38), radius=8, fill=(255, 255, 255, 35) if raw_bg else (38, 41, 50, 255))
+                draw.text((cx + 9, ry + 13), c_str, font=font_list_badge, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
             else:
-                draw.text((right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(70, 75, 86, 255))
-                draw.text((right_x + 52, ry + 13), "# —", font=font_list, fill=(75, 80, 92, 255))
-                draw.text((right_x + right_w - 36, ry + 13), "—", font=font_list_badge, fill=(70, 75, 86, 255))
+                draw.text((right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
+                draw.text((right_x + 52, ry + 13), "# —", font=font_list, fill=(130, 135, 148, 255))
+                draw.text((right_x + right_w - 36, ry + 13), "—", font=font_list_badge, fill=(120, 125, 136, 255))
 
         # 4. Row 3: Level & XP Progression Ribbon + Telemetry
         ribbon_y = 582
@@ -1226,17 +1323,18 @@ class Activity(commands.Cog):
         # Left Ribbon: XP & Level Progress
         rx1 = 38
         rw1 = 540
-        draw_rounded_rect(draw, (rx1, ribbon_y, rx1 + rw1, ribbon_y + ribbon_h), radius=14, fill=inner_fill, outline=inner_outline, width=1)
-        draw.text((rx1 + 18, ribbon_y + 14), "LEVEL & XP PROGRESSION", font=font_ribbon_lbl, fill=ribbon_lbl_fill)
-        draw.text((rx1 + 18, ribbon_y + 34), f"Level {level_num}", font=font_ribbon_val, fill=(255, 255, 255, 255))
-        draw.text((rx1 + 110, ribbon_y + 36), f"• {current_xp:,} / {required_xp:,} XP ({xp_percentage:.1f}%)", font=font_ribbon_sub, fill=ribbon_sub_fill)
+        if not raw_bg:
+            draw_rounded_rect(draw, (rx1, ribbon_y, rx1 + rw1, ribbon_y + ribbon_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+        draw.text((rx1 + 18, ribbon_y + 14), "LEVEL & XP PROGRESSION", font=font_ribbon_lbl, fill=ribbon_lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw.text((rx1 + 18, ribbon_y + 34), f"Level {level_num}", font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
+        draw.text((rx1 + 110, ribbon_y + 36), f"• {current_xp:,} / {required_xp:,} XP ({xp_percentage:.1f}%)", font=font_ribbon_sub, fill=ribbon_sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         # Glowing Progress Bar (ADAPTIVE ACCENT COLOR!)
         bar_x = rx1 + 18
         bar_y = ribbon_y + 68
         bar_w = rw1 - 36
         bar_h = 18
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=9, fill=(26, 28, 34, 200) if raw_bg else (26, 28, 34, 255))
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=9, fill=(0, 0, 0, 100) if raw_bg else (26, 28, 34, 255))
         fill_len = int(bar_w * (min(100.0, max(2.0, xp_percentage)) / 100.0))
         if fill_len > 0:
             draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_len, bar_y + bar_h), radius=9, fill=accent_color + (255,))
@@ -1244,19 +1342,26 @@ class Activity(commands.Cog):
         # Right Ribbon: Voice, Standing, Identity
         rx2 = 594
         rw2 = W - 38 - rx2
-        draw_rounded_rect(draw, (rx2, ribbon_y, rx2 + rw2, ribbon_y + ribbon_h), radius=14, fill=inner_fill, outline=inner_outline, width=1)
+        if not raw_bg:
+            draw_rounded_rect(draw, (rx2, ribbon_y, rx2 + rw2, ribbon_y + ribbon_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
         
-        draw.text((rx2 + 18, ribbon_y + 14), "VOICE TELEMETRY", font=font_ribbon_lbl, fill=ribbon_lbl_fill)
-        draw.text((rx2 + 18, ribbon_y + 34), voice_str, font=font_ribbon_val, fill=(255, 255, 255, 255))
+        draw.text((rx2 + 18, ribbon_y + 14), "VOICE TELEMETRY", font=font_ribbon_lbl, fill=ribbon_lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw.text((rx2 + 18, ribbon_y + 34), voice_str, font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
         voice_sub_str = f"Voice Rank #{voice_rank_num} • Today: {voice_today_str}" if voice_rank_num > 0 else (f"Today: {voice_today_str}" if voice_today_str != "0s" else "Total recorded VC time")
-        draw.text((rx2 + 18, ribbon_y + 68), voice_sub_str, font=font_ribbon_sub, fill=ribbon_sub_fill)
+        draw.text((rx2 + 18, ribbon_y + 68), voice_sub_str, font=font_ribbon_sub, fill=ribbon_sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         col2_x = rx2 + 220
-        draw.text((col2_x, ribbon_y + 14), "SERVER STANDING", font=font_ribbon_lbl, fill=ribbon_lbl_fill)
-        draw.text((col2_x, ribbon_y + 34), f"Msg #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(255, 255, 255, 255))
+        draw.text((col2_x, ribbon_y + 14), "SERVER STANDING", font=font_ribbon_lbl, fill=ribbon_lbl_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        draw.text((col2_x, ribbon_y + 34), f"Msg #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
         top_pct = max(1, round((rank_num / max(1, total_chatters)) * 100)) if (rank_num > 0 and total_chatters > 0) else 0
         standing_sub = f"Top {top_pct}% of {total_chatters:,} chatters" if top_pct > 0 else f"Out of {total_chatters:,} chatters"
-        draw.text((col2_x, ribbon_y + 68), standing_sub, font=font_ribbon_sub, fill=ribbon_sub_fill)
+        draw.text((col2_x, ribbon_y + 68), standing_sub, font=font_ribbon_sub, fill=ribbon_sub_fill, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+
+        # 5. Footer
+        footer_y = H - 36
+        draw.text((38, footer_y), footer_left, font=font_footer, fill=(115, 120, 130, 255))
+        fb = font_footer_bold.getbbox(footer_right)
+        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), footer_right, font=font_footer_bold, fill=(150, 155, 166, 255))
 
         # 5. Footer
         footer_y = H - 36
@@ -1299,8 +1404,8 @@ class Activity(commands.Cog):
                 cx = (nw - W) // 2
                 cy = (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=5))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.78)
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -1310,12 +1415,11 @@ class Activity(commands.Cog):
             img = bg_img.copy()
 
         # Outer Container (Frosted glass when custom wallpaper is set)
-        container_fill = (20, 22, 28, 205) if raw_bg else (28, 30, 36, 255)
+        container_fill = (10, 12, 18, 55) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 38) if raw_bg else (42, 45, 54, 255), width=2)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
-        draw = ImageDraw.Draw(img)
 
         accent_color = extract_accent_color(raw_bg, default_rgb=(56, 189, 248)) if raw_bg else (56, 189, 248)
         import colorsys as _cs
@@ -1326,9 +1430,29 @@ class Activity(commands.Cog):
             text_accent = (int(_tr*255), int(_tg*255), int(_tb*255))
         else:
             text_accent = (200, 205, 215)
-        card_item_fill = (25, 28, 36, 110) if raw_bg else (35, 38, 46, 255)
-        card_item_outline = (255, 255, 255, 30) if raw_bg else (48, 52, 63, 255)
-        badge_count_fill = (20, 22, 30, 80) if raw_bg else (28, 30, 37, 255)
+
+        # Pre-composite glassmorphic member rows layer so wallpaper shines through!
+        col_w = 460
+        col1_x = 38
+        col2_x = 522
+        start_y = 114
+        row_h = 80
+        spacing = 14
+
+        panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel_layer)
+        p_row_fill = (14, 16, 22, 55) if raw_bg else (35, 38, 46, 255)
+        p_row_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
+
+        for slot_idx in range(10):
+            col = 0 if slot_idx < 5 else 1
+            row = slot_idx % 5
+            cx = col1_x if col == 0 else col2_x
+            cy = start_y + row * (row_h + spacing)
+            draw_rounded_rect(pd, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=p_row_fill, outline=p_row_outline, width=1)
+
+        img = Image.alpha_composite(img, panel_layer)
+        draw = ImageDraw.Draw(img)
 
         font_title = get_unicode_font(22, bold=True)
         font_sub = get_unicode_font(13)
@@ -1354,8 +1478,8 @@ class Activity(commands.Cog):
                 pass
 
         text_x = header_x + 74
-        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255))
-        draw.text((text_x, header_y + 34), f"Top Chatters Leaderboard • {timeframe_name}", font=font_sub, fill=(142, 146, 155, 255))
+        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
+        draw.text((text_x, header_y + 34), f"Top Chatters Leaderboard • {timeframe_name}", font=font_sub, fill=(235, 240, 250, 240) if raw_bg else (142, 146, 155, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
         # Status pills
         pills = [
@@ -1369,16 +1493,9 @@ class Activity(commands.Cog):
             pw = (bbox[2] - bbox[0]) + 24
             px = pill_right - pw
             py = header_y + 14
-            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
-            draw.text((px + 12, py + 8), p, font=font_pill, fill=(240, 242, 245, 255))
+            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(14, 16, 22, 60) if raw_bg else (38, 41, 49, 255), outline=(255, 255, 255, 60) if raw_bg else (52, 56, 67, 255), width=1)
+            draw.text((px + 12, py + 8), p, font=font_pill, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
             pill_right = px - 10
-
-        col_w = 460
-        col1_x = 38
-        col2_x = 522
-        start_y = 114
-        row_h = 80
-        spacing = 14
 
         m_dict = {m[0]: m for m in members_data}
         start_rank = (page - 1) * 10 + 1
@@ -1390,7 +1507,8 @@ class Activity(commands.Cog):
             cx = col1_x if col == 0 else col2_x
             cy = start_y + row * (row_h + spacing)
 
-            draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=card_item_fill, outline=card_item_outline, width=1)
+            if not raw_bg:
+                draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
 
             if current_rank in m_dict:
                 _, name_str, user_str, av_img, cnt = m_dict[current_rank]
@@ -1400,7 +1518,7 @@ class Activity(commands.Cog):
                 if fill_w > 0:
                     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
                     od = ImageDraw.Draw(overlay)
-                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=accent_color + (28,))
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=accent_color + (35,))
                     img = Image.alpha_composite(img, overlay)
                     draw = ImageDraw.Draw(img)
 
@@ -1411,13 +1529,13 @@ class Activity(commands.Cog):
                 elif current_rank == 3:
                     r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
                 else:
-                    r_fill, r_out, r_txt = (20, 22, 30, 150) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 40) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
+                    r_fill, r_out, r_txt = (14, 16, 22, 100) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
 
                 draw_rounded_rect(draw, (cx + 12, cy + 24, cx + 48, cy + 56), radius=10, fill=r_fill, outline=r_out, width=1)
                 r_str = f"#{current_rank}"
                 rb = font_rank.getbbox(r_str)
                 rw = rb[2] - rb[0]
-                draw.text((cx + 12 + (36 - rw) // 2, cy + 32), r_str, font=font_rank, fill=r_txt)
+                draw.text((cx + 12 + (36 - rw) // 2, cy + 32), r_str, font=font_rank, fill=r_txt, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
                 av_x = cx + 60
                 av_y = cy + 18
@@ -1438,22 +1556,22 @@ class Activity(commands.Cog):
                     draw.text((av_x + (44 - (ab[2] - ab[0])) // 2, av_y + 14), c_letter, font=font_pill, fill=(255, 255, 255, 255))
 
                 tx = av_x + 54
-                draw.text((tx, cy + 20), clean_display_name(name_str, max_len=16), font=font_name, fill=(255, 255, 255, 255))
-                draw.text((tx, cy + 44), f"@{clean_display_name(user_str, max_len=18)}", font=font_user, fill=text_accent + (160,) if raw_bg else (130, 135, 146, 255))
+                draw.text((tx, cy + 20), clean_display_name(name_str, max_len=16), font=font_name, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                draw.text((tx, cy + 44), f"@{clean_display_name(user_str, max_len=18)}", font=font_user, fill=(235, 240, 250, 220) if raw_bg else (130, 135, 146, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
 
                 cnt_str = f"{cnt:,} msgs"
                 cb = font_cnt.getbbox(cnt_str)
                 cw = (cb[2] - cb[0]) + 20
                 cpx = cx + col_w - 14 - cw
-                draw_rounded_rect(draw, (cpx, cy + 24, cpx + cw, cy + 56), radius=10, fill=badge_count_fill, outline=(255, 255, 255, 30) if raw_bg else (48, 52, 63, 255), width=1)
-                draw.text((cpx + 10, cy + 32), cnt_str, font=font_cnt, fill=(255, 255, 255, 255))
+                draw_rounded_rect(draw, (cpx, cy + 24, cpx + cw, cy + 56), radius=10, fill=(255, 255, 255, 35) if raw_bg else (28, 30, 37, 255), outline=(255, 255, 255, 60) if raw_bg else (48, 52, 63, 255), width=1)
+                draw.text((cpx + 10, cy + 32), cnt_str, font=font_cnt, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
             else:
-                draw.text((cx + 18, cy + 30), f"#{current_rank}  — No more recorded chatters —", font=font_sub, fill=(75, 80, 92, 255))
+                draw.text((cx + 18, cy + 30), f"#{current_rank}  — No more recorded chatters —", font=font_sub, fill=(120, 125, 136, 255))
 
         footer_y = H - 36
-        draw.text((38, footer_y), "Use the Previous and Next buttons below to navigate pages • Timezone: IST", font=font_footer, fill=(115, 120, 130, 255))
+        draw.text((38, footer_y), "Use the Previous and Next buttons below to navigate pages • Timezone: IST", font=font_footer, fill=(180, 185, 195, 255) if raw_bg else (115, 120, 130, 255))
         fb = font_footer_bold.getbbox("Powered by Friday")
-        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(150, 155, 166, 255))
+        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 205, 215, 255) if raw_bg else (150, 155, 166, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -1677,6 +1795,7 @@ class Activity(commands.Cog):
     # ────────────────────────── Slash Commands ──────────────────────────
 
     activity_group = app_commands.Group(name="activity", description="Inspect member and server chat activity, voice telemetry, and leaderboards.")
+    server_group = app_commands.Group(name="server", description="Server analytics, information, and chat volume.")
     my_group = app_commands.Group(name="my", description="Personal stats and shortcuts.")
 
     @activity_group.command(name="member", description="View custom graphic activity dashboard for a member (today, week, month, year, lifetime).")
@@ -1685,6 +1804,18 @@ class Activity(commands.Cog):
         await interaction.response.defer()
         target = member or interaction.user
         file = await self.generate_member_card_file(interaction.guild, target, viewer=interaction.user)
+        await interaction.followup.send(file=file)
+
+    @activity_group.command(name="chat", description="View custom graphic analytics dashboard for server chat activity.")
+    async def activity_chat(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        file = await self.generate_server_card_file(interaction.guild, viewer=interaction.user)
+        await interaction.followup.send(file=file)
+
+    @server_group.command(name="chat", description="View custom graphic analytics dashboard for server chat activity.")
+    async def server_chat(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        file = await self.generate_server_card_file(interaction.guild, viewer=interaction.user)
         await interaction.followup.send(file=file)
 
     @activity_group.command(name="server", description="View custom graphic analytics dashboard for the server.")

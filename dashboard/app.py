@@ -26,6 +26,9 @@ app = Flask(__name__)
 BOT_TOKEN = os.getenv('DISCORD_TOKEN')
 DISCORD_API = "https://discord.com/api/v10"
 
+RANK_BG_DIR = os.path.join(app.root_path, "static", "uploads", "rank_backgrounds")
+os.makedirs(RANK_BG_DIR, exist_ok=True)
+
 bot_instance = None
 
 def set_bot_instance(b):
