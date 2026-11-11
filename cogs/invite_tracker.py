@@ -471,17 +471,17 @@ class InviteTracker(commands.Cog):
                 stat = ImageStat.Stat(raw_bg.convert('L'))
                 mean_lum = stat.mean[0]
                 if mean_lum > 120:
-                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
-                    container_alpha = 185
-                    panel_alpha = 135
+                    dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0))
+                    container_alpha = 25
+                    panel_alpha = 48
                 elif mean_lum > 85:
-                    dim_factor = 0.76
-                    container_alpha = 160
-                    panel_alpha = 110
+                    dim_factor = 0.78
+                    container_alpha = 25
+                    panel_alpha = 45
                 else:
                     dim_factor = 0.90
-                    container_alpha = 135
-                    panel_alpha = 80
+                    container_alpha = 20
+                    panel_alpha = 40
                 bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
             except Exception:
                 raw_bg = bg_img = None
@@ -491,14 +491,14 @@ class InviteTracker(commands.Cog):
         else:
             img = bg_img.copy()
 
-        # Outer Container (Adaptive Frosted Dark Glass)
+        # Outer Container (True Frosted Glass - wallpaper shines clearly through!)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
         container_fill = (10, 12, 18, container_alpha) if raw_bg else (28, 30, 36, 255)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 75) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
 
-        accent_color = self._extract_accent_color(raw_bg) if raw_bg else (99, 102, 241)
+        accent_color = self._extract_accent_color(raw_bg) if raw_bg else (251, 191, 36)
         import colorsys as _cs
         if raw_bg:
             _ar, _ag, _ab = accent_color
@@ -518,8 +518,8 @@ class InviteTracker(commands.Cog):
 
         panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(panel_layer)
-        p_row_fill = (14, 16, 22, panel_alpha) if raw_bg else (35, 38, 46, 255)
-        p_row_outline = (255, 255, 255, 55) if raw_bg else (48, 52, 63, 255)
+        p_row_fill = (12, 15, 24, panel_alpha) if raw_bg else (35, 38, 46, 255)
+        p_row_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
 
         for slot_idx in range(10):
             col = 0 if slot_idx < 5 else 1
@@ -531,33 +531,34 @@ class InviteTracker(commands.Cog):
         img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
-        font_title = get_unicode_font(24, bold=True)
-        font_sub = get_unicode_font(13)
-        font_pill = get_unicode_font(12, bold=True)
-        font_name = get_unicode_font(14, bold=True)
-        font_user = get_unicode_font(11)
-        font_rank = get_unicode_font(13, bold=True)
-        font_cnt = get_unicode_font(13, bold=True)
-        font_breakdown = get_unicode_font(10, bold=True)
-        font_footer = get_unicode_font(11)
-        font_footer_bold = get_unicode_font(11, bold=True)
+        # Enlarged High-Impact Typography (Flawlessly legible at Discord embed scale!)
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14)
+        font_pill = get_unicode_font(14, bold=True)
+        font_name = get_unicode_font(17, bold=True)
+        font_user = get_unicode_font(13)
+        font_rank = get_unicode_font(15, bold=True)
+        font_cnt = get_unicode_font(16, bold=True)
+        font_breakdown = get_unicode_font(12, bold=True)
+        font_footer = get_unicode_font(12)
+        font_footer_bold = get_unicode_font(12, bold=True)
 
         # Header
-        header_x, header_y = 38, 34
+        header_x, header_y = 38, 30
         if guild_icon:
             try:
-                icon_resized = guild_icon.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
-                mask = Image.new("L", (60, 60), 0)
+                icon_resized = guild_icon.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (64, 64), 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                mask_draw.ellipse((0, 0, 64, 64), fill=255)
                 img.paste(icon_resized, (header_x, header_y), mask)
-                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+                draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=(55, 60, 72, 255), width=2)
             except Exception:
                 pass
 
-        text_x = header_x + 74
-        draw_luminous_text(draw, (text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255))
-        draw_luminous_text(draw, (text_x, header_y + 34), "Server Invites Leaderboard", font=font_sub, fill=(200, 225, 255, 255) if raw_bg else (160, 168, 182, 255))
+        text_x = header_x + 78
+        draw_luminous_text(draw, (text_x, header_y + 4), clean_display_name(guild_name, max_len=28), font=font_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (text_x, header_y + 36), "Server Invites Leaderboard", font=font_sub, fill=(186, 230, 253, 255))
 
         # Status pills (Frosted glass badges)
         pills = [
@@ -568,11 +569,11 @@ class InviteTracker(commands.Cog):
         pill_right = W - 38
         for p_label, (cr, cg, cb) in reversed(pills):
             bbox = font_pill.getbbox(p_label)
-            pw = (bbox[2] - bbox[0]) + 24
+            pw = (bbox[2] - bbox[0]) + 26
             px = pill_right - pw
             py = header_y + 14
-            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(cr, cg, cb, 40) if raw_bg else (cr, cg, cb, 45), outline=(cr, cg, cb, 190) if raw_bg else (cr, cg, cb, 160), width=1)
-            draw_luminous_text(draw, (px + 12, py + 8), p_label, font=font_pill, fill=(cr, cg, cb, 255))
+            draw_rounded_rect(draw, (px, py, px + pw, py + 34), radius=17, fill=(cr, cg, cb, 50) if raw_bg else (cr, cg, cb, 45), outline=(cr, cg, cb, 210) if raw_bg else (cr, cg, cb, 160), width=1)
+            draw_luminous_text(draw, (px + 13, py + 7), p_label, font=font_pill, fill=(cr, cg, cb, 255))
             pill_right = px - 10
 
         m_dict = {m[0]: m for m in members_data}
@@ -607,10 +608,10 @@ class InviteTracker(commands.Cog):
                 elif current_rank == 3:
                     r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
                 else:
-                    r_fill, r_out, r_txt = (14, 16, 22, 100) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (45, 48, 58, 255), text_accent if raw_bg else (130, 135, 148, 255)
+                    r_fill, r_out, r_txt = (14, 16, 22, 80) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (45, 48, 58, 255), text_accent if raw_bg else (130, 135, 148, 255)
 
-                rx, ry, rw, rh = cx + 12, cy + 18, 36, 44
-                draw_rounded_rect(draw, (rx, ry, rx + rw, ry + rh), radius=8, fill=r_fill, outline=r_out, width=1)
+                rx, ry, rw, rh = cx + 12, cy + 18, 38, 44
+                draw_rounded_rect(draw, (rx, ry, rx + rw, ry + rh), radius=10, fill=r_fill, outline=r_out, width=1)
                 r_str = f"#{current_rank}"
                 rb = font_rank.getbbox(r_str)
                 draw_luminous_text(draw, (rx + (rw - (rb[2] - rb[0])) // 2, ry + (rh - (rb[3] - rb[1])) // 2), r_str, font=font_rank, fill=r_txt)
@@ -627,20 +628,20 @@ class InviteTracker(commands.Cog):
                 nx = ax + asz + 12
                 clean_name = clean_display_name(name_str, max_len=18)
                 clean_handle = clean_display_name(user_str, max_len=16)
-                draw_luminous_text(draw, (nx, cy + 16), clean_name, font=font_name, fill=(255, 255, 255, 255))
-                draw_luminous_text(draw, (nx, cy + 36), f"@{clean_handle}", font=font_user, fill=(200, 225, 255, 255) if raw_bg else (140, 144, 155, 255))
+                draw_luminous_text(draw, (nx, cy + 16), clean_name, font=font_name, fill=(186, 230, 253, 255))
+                draw_luminous_text(draw, (nx, cy + 38), f"@{clean_handle}", font=font_user, fill=(125, 211, 252, 220) if raw_bg else (140, 144, 155, 255))
 
                 bd_text = f"+{reg_val} reg • +{bns_val} bns • -{left_val} left • -{fake_val} fake"
-                draw_luminous_text(draw, (nx, cy + 52), bd_text, font=font_breakdown, fill=(186, 230, 253, 255) if raw_bg else (148, 163, 184, 255))
+                draw_luminous_text(draw, (nx, cy + 54), bd_text, font=font_breakdown, fill=(125, 211, 252, 255) if raw_bg else (148, 163, 184, 255))
 
                 inv_str = f"{total_inv:,} invites" if total_inv != 1 else "1 invite"
                 tb = font_cnt.getbbox(inv_str)
-                tw = (tb[2] - tb[0]) + 18
+                tw = (tb[2] - tb[0]) + 22
                 tx = cx + col_w - tw - 12
-                ty = cy + 24
+                ty = cy + 22
                 ar, ag, ab = accent_color
-                draw_rounded_rect(draw, (tx, ty, tx + tw, ty + 30), radius=8, fill=(ar, ag, ab, 35) if raw_bg else (45, 48, 58, 255), outline=(ar, ag, ab, 160) if raw_bg else (62, 68, 82, 255), width=1)
-                draw_luminous_text(draw, (tx + 9, ty + 7), inv_str, font=font_cnt, fill=(255, 255, 255, 255))
+                draw_rounded_rect(draw, (tx, ty, tx + tw, ty + 36), radius=10, fill=(ar, ag, ab, 45) if raw_bg else (45, 48, 58, 255), outline=(ar, ag, ab, 180) if raw_bg else (62, 68, 82, 255), width=1)
+                draw_luminous_text(draw, (tx + 11, ty + 9), inv_str, font=font_cnt, fill=(253, 224, 71, 255))
             else:
                 draw_luminous_text(draw, (cx + 20, cy + (row_h // 2) - 8), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(130, 135, 148, 255))
 
@@ -722,23 +723,23 @@ class InviteTracker(commands.Cog):
                 stat = ImageStat.Stat(raw_bg.convert('L'))
                 mean_lum = stat.mean[0]
                 if mean_lum > 120:
-                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
-                    container_alpha = 185
-                    tile_alpha = 130
+                    dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0))
+                    container_alpha = 25
+                    tile_alpha = 48
                 elif mean_lum > 85:
-                    dim_factor = 0.76
-                    container_alpha = 160
-                    tile_alpha = 105
+                    dim_factor = 0.78
+                    container_alpha = 25
+                    tile_alpha = 45
                 else:
                     dim_factor = 0.90
-                    container_alpha = 135
-                    tile_alpha = 75
+                    container_alpha = 20
+                    tile_alpha = 40
                 bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
             except Exception:
                 raw_bg = bg_img = None
 
         # 2. Adaptive color extraction
-        accent_rgb = self._extract_accent_color(raw_bg) if raw_bg else (99, 102, 241)
+        accent_rgb = self._extract_accent_color(raw_bg) if raw_bg else (251, 191, 36)
         ar, ag, ab = accent_rgb
         # Boost for text vibrancy
         h_a, s_a, v_a = colorsys.rgb_to_hsv(ar / 255, ag / 255, ab / 255)
@@ -752,22 +753,22 @@ class InviteTracker(commands.Cog):
             d_bg.ellipse((-80, -80, 260, 260), fill=(ar, ag, ab, 35))
             d_bg.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(ar // 2, ag // 2, ab, 25))
 
-        # 3. Frosted Glass Container (Adaptive Dark Glass)
+        # 3. Frosted Glass Container (Wallpaper clearly visible through glass!)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
         container_fill = (10, 12, 18, container_alpha) if raw_bg else (18, 20, 26, 215)
-        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (255, 255, 255, 38), width=1)
+        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 75) if raw_bg else (255, 255, 255, 38), width=1)
         img = Image.alpha_composite(bg_img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # 4. Fonts
-        font_title = get_unicode_font(24, bold=True)
-        font_sub = get_unicode_font(13, bold=False)
-        font_badge = get_unicode_font(12, bold=True)
-        font_stat_lbl = get_unicode_font(12, bold=True)
-        font_stat_val = get_unicode_font(20, bold=True)
-        font_stat_sub = get_unicode_font(11, bold=False)
-        font_footer = get_unicode_font(11, bold=False)
+        # 4. Fonts (Large, bold, high-contrast)
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14, bold=False)
+        font_badge = get_unicode_font(13, bold=True)
+        font_stat_lbl = get_unicode_font(13, bold=True)
+        font_stat_val = get_unicode_font(24, bold=True)
+        font_stat_sub = get_unicode_font(12, bold=True)
+        font_footer = get_unicode_font(12, bold=False)
 
         # 5. Avatar (Left, 96x96)
         av_x, av_y, av_size = 32, 28, 96
@@ -778,11 +779,12 @@ class InviteTracker(commands.Cog):
         # 6. Member Info
         text_x = av_x + av_size + 18
         display_name = clean_display_name(target.display_name, max_len=18)
-        draw_luminous_text(draw, (text_x, 32), display_name, font=font_title, fill=(255, 255, 255, 255))
+        target_role_color = target.top_role.color.to_rgb() if (target.top_role and target.top_role.color.value != 0) else (252, 211, 77)
+        draw_luminous_text(draw, (text_x, 30), display_name, font=font_title, fill=target_role_color)
         
         joined_str = target.joined_at.strftime("%b %d, %Y") if target.joined_at else "Unknown"
         sub_text = f"@{clean_display_name(target.name, max_len=16)} • Joined {joined_str}"
-        draw_luminous_text(draw, (text_x, 62), sub_text, font=font_sub, fill=(200, 225, 255, 255) if raw_bg else (203, 213, 225, 255))
+        draw_luminous_text(draw, (text_x, 64), sub_text, font=font_sub, fill=(186, 230, 253, 255) if raw_bg else (203, 213, 225, 255))
 
         # 7. Top Right: Rank Badge & Net Invites Pill (Frosted glass badges)
         all_inviters = db.invite_counts.get(gid_str, {})
@@ -803,22 +805,22 @@ class InviteTracker(commands.Cog):
         badge_x = W - 32
         rank_text = f"INVITER #{inviter_rank}" if inviter_rank else "VERIFIED INVITER"
         bb_r = font_badge.getbbox(rank_text)
-        bw_r = (bb_r[2] - bb_r[0]) + 20
+        bw_r = (bb_r[2] - bb_r[0]) + 22
         bx_r = badge_x - bw_r
-        draw_rounded_rect(draw, (bx_r, 34, badge_x, 58), radius=12, fill=(tar, tag, tab, 40) if raw_bg else (tar, tag, tab, 35), outline=(tar, tag, tab, 190) if raw_bg else (tar, tag, tab, 180), width=1)
-        draw_luminous_text(draw, (bx_r + 10, 39), rank_text, font=font_badge, fill=(tar, tag, tab, 255))
+        draw_rounded_rect(draw, (bx_r, 32, badge_x, 60), radius=14, fill=(tar, tag, tab, 45) if raw_bg else (tar, tag, tab, 35), outline=(tar, tag, tab, 210) if raw_bg else (tar, tag, tab, 180), width=1)
+        draw_luminous_text(draw, (bx_r + 11, 38), rank_text, font=font_badge, fill=(tar, tag, tab, 255))
 
         # Net Total Pill next to badge
         net_text = f"✨ {stats['total']} NET INVITES"
         bb_n = font_badge.getbbox(net_text)
-        bw_n = (bb_n[2] - bb_n[0]) + 20
+        bw_n = (bb_n[2] - bb_n[0]) + 22
         bx_n = bx_r - bw_n - 10
-        draw_rounded_rect(draw, (bx_n, 34, bx_r - 10, 58), radius=12, fill=(16, 185, 129, 45), outline=(16, 185, 129, 200), width=1)
-        draw_luminous_text(draw, (bx_n + 10, 39), net_text, font=font_badge, fill=(52, 211, 153, 255))
+        draw_rounded_rect(draw, (bx_n, 32, bx_r - 10, 60), radius=14, fill=(16, 185, 129, 45), outline=(16, 185, 129, 210), width=1)
+        draw_luminous_text(draw, (bx_n + 11, 38), net_text, font=font_badge, fill=(52, 211, 153, 255))
 
         # 8. Mid separator
         line_y = 138
-        draw.line([(32, line_y), (W - 32, line_y)], fill=(255, 255, 255, 45) if raw_bg else (255, 255, 255, 30), width=1)
+        draw.line([(32, line_y), (W - 32, line_y)], fill=(255, 255, 255, 50) if raw_bg else (255, 255, 255, 30), width=1)
 
         # 9. Bottom: 4 Stat Tiles (TRUE GLASSMORPHISM with separate alpha layer)
         tile_y = 152
@@ -834,8 +836,8 @@ class InviteTracker(commands.Cog):
 
         tile_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         td = ImageDraw.Draw(tile_layer)
-        p_tile_fill = (14, 16, 22, tile_alpha) if raw_bg else (28, 30, 38, 255)
-        p_tile_outline = (255, 255, 255, 55) if raw_bg else (255, 255, 255, 30)
+        p_tile_fill = (12, 15, 24, tile_alpha) if raw_bg else (28, 30, 38, 255)
+        p_tile_outline = (255, 255, 255, 60) if raw_bg else (255, 255, 255, 30)
 
         for i, (lbl, val, val_col, sub_lbl) in enumerate(stat_configs):
             tx = 32 + i * (tile_w + 12)
@@ -848,8 +850,8 @@ class InviteTracker(commands.Cog):
             tx = 32 + i * (tile_w + 12)
             vr, vg, vb = val_col
             draw_rounded_rect(draw, (tx, tile_y, tx + tile_w, tile_y + 4), radius=2, fill=(vr, vg, vb, 220))
-            draw_luminous_text(draw, (tx + 12, tile_y + 10), lbl, font=font_stat_lbl, fill=(251, 191, 36, 255))
-            draw_luminous_text(draw, (tx + 12, tile_y + 28), val, font=font_stat_val, fill=(255, 255, 255, 255))
+            draw_luminous_text(draw, (tx + 12, tile_y + 10), lbl, font=font_stat_lbl, fill=(125, 211, 252, 255))
+            draw_luminous_text(draw, (tx + 12, tile_y + 28), val, font=font_stat_val, fill=(253, 224, 71, 255))
             draw_luminous_text(draw, (tx + 12, tile_y + 54), sub_lbl, font=font_stat_sub, fill=(186, 230, 253, 255) if raw_bg else (148, 163, 184, 200))
 
         # 10. Sub-Footer

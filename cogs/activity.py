@@ -726,8 +726,8 @@ class Activity(commands.Cog):
         raw_bg = None
         bg_img = None
         custom_bg = resolve_card_background(db.activity_card_backgrounds.get(str(guild_id))) if guild_id else None
-        container_alpha = 135
-        panel_alpha = 80
+        container_alpha = 25
+        panel_alpha = 48
         if custom_bg:
             try:
                 loaded = Image.open(custom_bg).convert("RGBA")
@@ -738,23 +738,14 @@ class Activity(commands.Cog):
                 resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
                 cx, cy = (nw - W) // 2, (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=4))
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
 
                 stat = ImageStat.Stat(raw_bg.convert('L'))
                 mean_lum = stat.mean[0]
-                if mean_lum > 120:
-                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
-                    container_alpha = 185
-                    panel_alpha = 135
-                elif mean_lum > 85:
-                    dim_factor = 0.76
-                    container_alpha = 160
-                    panel_alpha = 110
-                else:
-                    dim_factor = 0.90
-                    container_alpha = 135
-                    panel_alpha = 80
+                dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0)) if mean_lum > 120 else 0.85
                 bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
+                container_alpha = 25
+                panel_alpha = 48
             except Exception:
                 raw_bg = bg_img = None
 
@@ -764,13 +755,13 @@ class Activity(commands.Cog):
             img = bg_img.copy()
 
         # Outer rounded container (Adaptive Frosted Dark Glass)
-        container_fill = (10, 12, 18, container_alpha) if raw_bg else (28, 30, 36, 255)
+        container_fill = (10, 12, 18, 25) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 75) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
 
-        accent_color = extract_accent_color(raw_bg, default_rgb=(56, 189, 248)) if raw_bg else (56, 189, 248)
+        accent_color = extract_accent_color(raw_bg, default_rgb=(251, 191, 36)) if raw_bg else (251, 191, 36)
         import colorsys as _cs
         if raw_bg:
             _ar, _ag, _ab = accent_color
@@ -784,13 +775,12 @@ class Activity(commands.Cog):
         panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(panel_layer)
 
-        p_fill = (14, 16, 22, panel_alpha) if raw_bg else (35, 38, 46, 255)
-        p_outline = (255, 255, 255, 55) if raw_bg else (48, 52, 63, 255)
-        r_fill = (255, 255, 255, 20) if raw_bg else (29, 31, 38, 255)
-        b_fill = (255, 255, 255, 35) if raw_bg else (38, 41, 50, 255)
+        p_fill = (12, 15, 24, panel_alpha) if raw_bg else (35, 38, 46, 255)
+        p_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
+        r_fill = (255, 255, 255, 25) if raw_bg else (29, 31, 38, 255)
 
         kpi_y = 104
-        kpi_h = 76
+        kpi_h = 78
         card_w = 190
         spacing = 13
         for idx in range(min(5, len(kpi_metrics))):
@@ -830,76 +820,69 @@ class Activity(commands.Cog):
         img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
-        font_title = get_unicode_font(22, bold=True)
-        font_sub = get_unicode_font(13)
-        font_pill = get_unicode_font(11, bold=True)
-        font_kpi_lbl = get_unicode_font(11, bold=True)
-        font_kpi_val = get_unicode_font(26, bold=True)
-        font_box_title = get_unicode_font(15, bold=True)
-        font_axis = get_unicode_font(11)
-        font_list = get_unicode_font(13)
-        font_list_badge = get_unicode_font(12, bold=True)
-        font_ribbon_lbl = get_unicode_font(10, bold=True)
-        font_ribbon_val = get_unicode_font(16, bold=True)
-        font_ribbon_sub = get_unicode_font(11)
-        font_footer = get_unicode_font(11)
-        font_footer_bold = get_unicode_font(11, bold=True)
-
-        lbl_fill = text_accent + (255,) if raw_bg else (155, 160, 169, 255)
-        sub_fill = (240, 243, 250, 240) if raw_bg else (142, 146, 155, 255)
-        axis_fill = (230, 235, 245, 220) if raw_bg else (115, 120, 131, 255)
-        ribbon_lbl_fill = text_accent + (255,) if raw_bg else (150, 155, 166, 255)
-        ribbon_sub_fill = (220, 225, 235, 220) if raw_bg else (125, 130, 142, 255)
+        # Large High-Impact Typography (Easy to read directly in Discord feed)
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14)
+        font_pill = get_unicode_font(14, bold=True)
+        font_kpi_lbl = get_unicode_font(13, bold=True)
+        font_kpi_val = get_unicode_font(34, bold=True)
+        font_box_title = get_unicode_font(18, bold=True)
+        font_axis = get_unicode_font(14, bold=True)
+        font_list = get_unicode_font(15, bold=True)
+        font_list_badge = get_unicode_font(14, bold=True)
+        font_ribbon_lbl = get_unicode_font(13, bold=True)
+        font_ribbon_val = get_unicode_font(20, bold=True)
+        font_ribbon_sub = get_unicode_font(13)
+        font_footer = get_unicode_font(12)
+        font_footer_bold = get_unicode_font(12, bold=True)
 
         # 1. Header
-        header_x, header_y = 38, 30
+        header_x, header_y = 38, 28
         if guild_icon:
             try:
-                icon_resized = guild_icon.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
-                mask = Image.new("L", (60, 60), 0)
+                icon_resized = guild_icon.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (64, 64), 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                mask_draw.ellipse((0, 0, 64, 64), fill=255)
                 img.paste(icon_resized, (header_x, header_y), mask)
-                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+                draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=(accent_color[0], accent_color[1], accent_color[2], 220), width=2)
             except Exception:
                 pass
 
-        text_x = header_x + 74
-        draw.text((text_x, header_y + 4), clean_display_name(guild_name, max_len=26), font=font_title, fill=(255, 255, 255, 255))
-        draw.text((text_x, header_y + 32), f"Server Demographics Matrix • Owner: @{clean_display_name(owner_name, max_len=18)} • Created {created_date_str}", font=font_sub, fill=(142, 146, 155, 255))
+        text_x = header_x + 78
+        draw_luminous_text(draw, (text_x, header_y + 2), clean_display_name(guild_name, max_len=26), font=font_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (text_x, header_y + 36), f"Server Demographics Matrix • Owner: @{clean_display_name(owner_name, max_len=18)} • Created {created_date_str}", font=font_sub, fill=(186, 230, 253, 255))
 
         # Top-right status pills
         pills = [
-            f"Level {boost_tier} ({boost_count} Boosts)",
-            f"{member_count:,} Members ({humans_count}H / {bots_count}B)",
-            "SERVER MATRIX"
+            (f"Level {boost_tier} ({boost_count} Boosts)", (168, 85, 247)),
+            (f"{member_count:,} Members ({humans_count}H / {bots_count}B)", (56, 189, 248)),
+            ("SERVER MATRIX", (245, 158, 11))
         ]
         pill_right = W - 38
-        for p in reversed(pills):
-            bbox = font_pill.getbbox(p)
-            pw = (bbox[2] - bbox[0]) + 22
+        for p_label, (cr, cg, cb) in reversed(pills):
+            bbox = font_pill.getbbox(p_label)
+            pw = (bbox[2] - bbox[0]) + 26
             px = pill_right - pw
             py = header_y + 12
-            draw_rounded_rect(draw, (px, py, px + pw, py + 30), radius=15, fill=(38, 41, 49, 255), outline=(52, 56, 67, 255), width=1)
-            draw.text((px + 11, py + 7), p, font=font_pill, fill=(240, 242, 245, 255))
+            draw_rounded_rect(draw, (px, py, px + pw, py + 34), radius=17, fill=(cr, cg, cb, 50), outline=(cr, cg, cb, 210), width=1)
+            draw_luminous_text(draw, (px + 13, py + 7), p_label, font=font_pill, fill=(cr, cg, cb, 255))
             pill_right = px - 10
 
-        # 2. Row 1: 5 Full-Horizon Metric Cards (Today, Week, Month, Year, Lifetime)
+        # 2. Row 1: 5 Full-Horizon Metric Cards (Illuminated Sky Cyan & Gold - NO MORE WHITE)
         kpi_y = 104
-        kpi_h = 76
+        kpi_h = 78
         card_w = 190
         spacing = 13
         for idx, (label, val_num) in enumerate(kpi_metrics[:5]):
             cx = 38 + idx * (card_w + spacing)
-            if not raw_bg:
-                draw_rounded_rect(draw, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-            draw.text((cx + 16, kpi_y + 11), label.upper(), font=font_kpi_lbl, fill=lbl_fill)
-            draw.text((cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0, 160) if raw_bg else None)
+            draw_luminous_text(draw, (cx + 16, kpi_y + 10), label.upper(), font=font_kpi_lbl, fill=(125, 211, 252, 255))
+            draw_luminous_text(draw, (cx + 16, kpi_y + 30), f"{val_num:,}", font=font_kpi_val, fill=(253, 224, 71, 255))
 
             # Status dot
             ix = cx + card_w - 22
             iy = kpi_y + 16
-            draw.ellipse((ix, iy, ix + 6, iy + 6), fill=accent_color + (255,))
+            draw.ellipse((ix, iy, ix + 7, iy + 7), fill=accent_color + (255,))
 
         # 3. Row 2: Middle Section (Left: Trend Spline Chart | Right: Top Channels & Chatters)
         body_y = 196
@@ -909,16 +892,14 @@ class Activity(commands.Cog):
         right_w = W - 38 - right_x
 
         # Left Container: 7-Day Spline Chart
-        if not raw_bg:
-            draw_rounded_rect(draw, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-        draw.text((58, body_y + 16), "7-Day Server Message Volume Trend", font=font_box_title, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (58, body_y + 16), "7-Day Server Message Volume Trend", font=font_box_title, fill=(251, 191, 36, 255))
 
         # Legend
         legend_text = "Messages"
         leg_bbox = font_axis.getbbox(legend_text)
         leg_x = 38 + left_w - 26 - (leg_bbox[2] - leg_bbox[0])
         draw.ellipse((leg_x - 14, body_y + 22, leg_x - 6, body_y + 30), fill=accent_color + (255,))
-        draw.text((leg_x, body_y + 19), legend_text, font=font_axis, fill=sub_fill)
+        draw_luminous_text(draw, (leg_x, body_y + 19), legend_text, font=font_axis, fill=(186, 230, 253, 255))
 
         plot_x = 94
         plot_y = body_y + 64
@@ -936,9 +917,9 @@ class Activity(commands.Cog):
         for step in range(4):
             val = int(max_y * (3 - step) / 3)
             gy = plot_y + int(plot_h * step / 3)
-            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 55) if raw_bg else (44, 48, 58, 255), width=1)
+            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 50) if raw_bg else (44, 48, 58, 255), width=1)
             val_str = f"{val:,}"
-            draw.text((plot_x - 48, gy - 7), val_str, font=font_axis, fill=axis_fill)
+            draw_luminous_text(draw, (plot_x - 52, gy - 9), val_str, font=font_axis, fill=(186, 230, 253, 255))
 
         raw_points = []
         num_pts = len(chart_values)
@@ -961,77 +942,72 @@ class Activity(commands.Cog):
 
         # Spline stroke line
         for i in range(len(spline_points) - 1):
-            draw.line([spline_points[i], spline_points[i+1]], fill=accent_color + (255,), width=3)
+            draw.line([spline_points[i], spline_points[i+1]], fill=(251, 191, 36, 255), width=4)
 
         # Point markers & X date labels
         for i, (px, py) in enumerate(raw_points):
-            draw.ellipse((px - 5, py - 5, px + 5, py + 5), fill=(28, 30, 36, 255), outline=accent_color + (255,), width=2)
-            draw.ellipse((px - 2, py - 2, px + 2, py + 2), fill=(255, 255, 255, 255))
+            draw.ellipse((px - 5, py - 5, px + 5, py + 5), fill=(20, 22, 30, 255), outline=(251, 191, 36, 255), width=2)
+            draw.ellipse((px - 2, py - 2, px + 2, py + 2), fill=(253, 224, 71, 255))
             if i < len(chart_labels):
                 lbl = chart_labels[i]
                 l_bbox = font_axis.getbbox(lbl)
                 lw = l_bbox[2] - l_bbox[0]
-                draw.text((px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=axis_fill)
+                draw_luminous_text(draw, (px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=(186, 230, 253, 255))
 
         # Right Container: Top Channels & Top Chatters
-        if not raw_bg:
-            draw_rounded_rect(draw, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-        
         # Sub-header 1: Top Channels
-        draw.text((right_x + 20, body_y + 16), "Top Active Channels", font=font_box_title, fill=(255, 255, 255, 255))
-        draw.text((right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=sub_fill)
+        draw_luminous_text(draw, (right_x + 20, body_y + 16), "Top Active Channels", font=font_box_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=(186, 230, 253, 255))
 
         ch_y = body_y + 48
         ch_h = 42
         for slot in range(1, 4):
             sy = ch_y + (slot - 1) * ch_h
-            if not raw_bg:
-                draw_rounded_rect(draw, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=(29, 31, 38, 255))
             if slot <= len(top_channels):
                 c_name, c_cnt = top_channels[slot - 1]
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot == 1 else (190, 195, 206, 255))
+                draw_luminous_text(draw, (right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(251, 191, 36, 255) if slot == 1 else (186, 230, 253, 255))
                 clean_lbl = safe_channel_label(c_name, max_len=18)
                 c_text = clean_lbl if clean_lbl.startswith("#") else f"# {clean_lbl}"
-                draw.text((right_x + 52, sy + 8), c_text, font=font_list, fill=(255, 255, 255, 255))
+                draw_luminous_text(draw, (right_x + 52, sy + 8), c_text, font=font_list, fill=(186, 230, 253, 255))
                 cnt_str = f"{c_cnt:,}"
                 c_box = font_list_badge.getbbox(cnt_str)
                 cw = (c_box[2] - c_box[0]) + 18
                 cx = right_x + right_w - 20 - cw
-                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=(255, 255, 255, 30) if raw_bg else (38, 41, 50, 255))
-                draw.text((cx + 9, sy + 8), cnt_str, font=font_list_badge, fill=(255, 255, 255, 255))
+                ar, ag, ab = accent_color
+                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=(ar, ag, ab, 45) if raw_bg else (38, 41, 50, 255), outline=(ar, ag, ab, 180) if raw_bg else (60, 65, 78, 255), width=1)
+                draw_luminous_text(draw, (cx + 9, sy + 8), cnt_str, font=font_list_badge, fill=(253, 224, 71, 255))
             else:
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
-                draw.text((right_x + 52, sy + 8), "# —", font=font_list, fill=(130, 135, 148, 255))
-                draw.text((right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 52, sy + 8), "# —", font=font_list, fill=(130, 135, 148, 255))
+                draw_luminous_text(draw, (right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(120, 125, 136, 255))
 
         # Divider
         div_y = body_y + 184
         draw.line((right_x + 16, div_y, right_x + right_w - 16, div_y), fill=(255, 255, 255, 45) if raw_bg else (46, 50, 60, 255), width=1)
 
         # Sub-header 2: Top Chatters
-        draw.text((right_x + 20, div_y + 14), "Top Chatters Leaderboard", font=font_box_title, fill=(255, 255, 255, 255))
-        draw.text((right_x + right_w - 32, div_y + 14), "@", font=font_box_title, fill=sub_fill)
+        draw_luminous_text(draw, (right_x + 20, div_y + 14), "Top Chatters Leaderboard", font=font_box_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (right_x + right_w - 32, div_y + 14), "@", font=font_box_title, fill=(186, 230, 253, 255))
 
         chat_y = div_y + 44
         for slot in range(1, 4):
             sy = chat_y + (slot - 1) * ch_h
-            if not raw_bg:
-                draw_rounded_rect(draw, (right_x + 12, sy, right_x + right_w - 12, sy + 34), radius=9, fill=(29, 31, 38, 255))
             if slot <= len(top_chatters):
                 m_name, m_cnt = top_chatters[slot - 1]
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(245, 158, 11, 255) if slot == 1 else (190, 195, 206, 255))
+                draw_luminous_text(draw, (right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(245, 158, 11, 255) if slot == 1 else (186, 230, 253, 255))
                 m_text = f"@{clean_display_name(m_name, max_len=18)}"
-                draw.text((right_x + 52, sy + 8), m_text, font=font_list, fill=(255, 255, 255, 255))
+                draw_luminous_text(draw, (right_x + 52, sy + 8), m_text, font=font_list, fill=(186, 230, 253, 255))
                 cnt_str = f"{m_cnt:,} msgs"
                 c_box = font_list_badge.getbbox(cnt_str)
                 cw = (c_box[2] - c_box[0]) + 18
                 cx = right_x + right_w - 20 - cw
-                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=(255, 255, 255, 30) if raw_bg else (38, 41, 50, 255))
-                draw.text((cx + 9, sy + 8), cnt_str, font=font_list_badge, fill=(255, 255, 255, 255))
+                ar, ag, ab = accent_color
+                draw_rounded_rect(draw, (cx, sy + 4, cx + cw, sy + 30), radius=7, fill=(ar, ag, ab, 45) if raw_bg else (38, 41, 50, 255), outline=(ar, ag, ab, 180) if raw_bg else (60, 65, 78, 255), width=1)
+                draw_luminous_text(draw, (cx + 9, sy + 8), cnt_str, font=font_list_badge, fill=(253, 224, 71, 255))
             else:
-                draw.text((right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
-                draw.text((right_x + 52, sy + 8), "@ —", font=font_list, fill=(130, 135, 148, 255))
-                draw.text((right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 24, sy + 8), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 52, sy + 8), "@ —", font=font_list, fill=(130, 135, 148, 255))
+                draw_luminous_text(draw, (right_x + right_w - 36, sy + 8), "—", font=font_list_badge, fill=(120, 125, 136, 255))
 
         # 4. Row 3: Server Demographics & Voice Telemetry Ribbon (4 Badges)
         ribbon_y = 582
@@ -1040,25 +1016,23 @@ class Activity(commands.Cog):
         rw_space = 18
 
         ribbon_cards = [
-            ("VOICE TELEMETRY", f"{voice_hours:.1f} Total Hours", "Recorded voice room duration"),
-            ("SERVER CHANNELS", f"{text_count + voice_count} Channels", f"{text_count} Text • {voice_count} VC • {cat_count} Cat"),
-            ("DEMOGRAPHICS", f"{member_count:,} Members", f"{humans_count} Humans • {bots_count} Bots"),
-            ("CONFIGURATION", f"{roles_count} Roles Configured", f"Created {created_date_str}")
+            ("VOICE TELEMETRY", f"{voice_hours:.1f} Total Hours", "Recorded voice room duration", (216, 180, 254)),
+            ("SERVER CHANNELS", f"{text_count + voice_count} Channels", f"{text_count} Text • {voice_count} VC • {cat_count} Cat", (186, 230, 253)),
+            ("DEMOGRAPHICS", f"{member_count:,} Members", f"{humans_count} Humans • {bots_count} Bots", (251, 191, 36)),
+            ("CONFIGURATION", f"{roles_count} Roles Configured", f"Created {created_date_str}", (125, 211, 252))
         ]
 
-        for idx, (head_t, val_t, sub_t) in enumerate(ribbon_cards):
+        for idx, (head_t, val_t, sub_t, val_c) in enumerate(ribbon_cards):
             rx = 38 + idx * (rw_w + rw_space)
-            if not raw_bg:
-                draw_rounded_rect(draw, (rx, ribbon_y, rx + rw_w, ribbon_y + ribbon_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
-            draw.text((rx + 16, ribbon_y + 14), head_t, font=font_ribbon_lbl, fill=ribbon_lbl_fill)
-            draw.text((rx + 16, ribbon_y + 36), val_t, font=font_ribbon_val, fill=(255, 255, 255, 255), stroke_width=1, stroke_fill=(0, 0, 0, 140) if raw_bg else None)
-            draw.text((rx + 16, ribbon_y + 68), sub_t, font=font_ribbon_sub, fill=ribbon_sub_fill)
+            draw_luminous_text(draw, (rx + 16, ribbon_y + 14), head_t, font=font_ribbon_lbl, fill=(125, 211, 252, 255))
+            draw_luminous_text(draw, (rx + 16, ribbon_y + 36), val_t, font=font_ribbon_val, fill=val_c)
+            draw_luminous_text(draw, (rx + 16, ribbon_y + 68), sub_t, font=font_ribbon_sub, fill=(186, 230, 253, 255))
 
         # 5. Footer
         footer_y = H - 36
-        draw.text((38, footer_y), footer_left, font=font_footer, fill=(115, 120, 130, 255))
+        draw_luminous_text(draw, (38, footer_y), footer_left, font=font_footer, fill=(186, 230, 253, 255))
         fb = font_footer_bold.getbbox(footer_right)
-        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), footer_right, font=font_footer_bold, fill=(150, 155, 166, 255))
+        draw_luminous_text(draw, (W - 38 - (fb[2] - fb[0]), footer_y), footer_right, font=font_footer_bold, fill=(200, 225, 255, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -1116,17 +1090,17 @@ class Activity(commands.Cog):
                 stat = ImageStat.Stat(raw_bg.convert('L'))
                 mean_lum = stat.mean[0]
                 if mean_lum > 120:
-                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
-                    container_alpha = 185
-                    panel_alpha = 135
+                    dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0))
+                    container_alpha = 25
+                    panel_alpha = 48
                 elif mean_lum > 85:
-                    dim_factor = 0.76
-                    container_alpha = 160
-                    panel_alpha = 110
+                    dim_factor = 0.78
+                    container_alpha = 25
+                    panel_alpha = 45
                 else:
                     dim_factor = 0.90
-                    container_alpha = 135
-                    panel_alpha = 80
+                    container_alpha = 20
+                    panel_alpha = 40
                 bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
             except Exception:
                 raw_bg = bg_img = None
@@ -1136,14 +1110,14 @@ class Activity(commands.Cog):
         else:
             img = bg_img.copy()
 
-        # Outer rounded container (Adaptive Frosted Dark Glass)
+        # Outer rounded container (True Frosted Glass - wallpaper shines clearly through!)
         container_fill = (10, 12, 18, container_alpha) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 75) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
 
-        accent_color = extract_accent_color(raw_bg, default_rgb=(129, 140, 248)) if raw_bg else (129, 140, 248)
+        accent_color = extract_accent_color(raw_bg, default_rgb=(251, 191, 36)) if raw_bg else (251, 191, 36)
         import colorsys as _cs
         if raw_bg:
             _ar, _ag, _ab = accent_color
@@ -1153,16 +1127,16 @@ class Activity(commands.Cog):
         else:
             text_accent = (200, 205, 215)
 
-        # ── Glassmorphic Inner Panels Layer (Alpha Composited so wallpaper shines through!) ──
+        # ── Glassmorphic Inner Panels Layer (Wallpaper artwork fully visible!) ──
         panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(panel_layer)
 
-        p_fill = (14, 16, 22, panel_alpha) if raw_bg else (35, 38, 46, 255)
-        p_outline = (255, 255, 255, 55) if raw_bg else (48, 52, 63, 255)
-        r_fill = (255, 255, 255, 20) if raw_bg else (29, 31, 38, 255)
+        p_fill = (12, 15, 24, panel_alpha) if raw_bg else (35, 38, 46, 255)
+        p_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
+        r_fill = (255, 255, 255, 25) if raw_bg else (29, 31, 38, 255)
 
         kpi_y = 104
-        kpi_h = 76
+        kpi_h = 78
         card_w = 190
         spacing = 13
         for idx in range(min(5, len(kpi_metrics))):
@@ -1198,38 +1172,39 @@ class Activity(commands.Cog):
         img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
-        # Luminous Typography Fonts (Enlarged and bold for flawless readability)
-        font_title = get_unicode_font(24, bold=True)
-        font_sub = get_unicode_font(13)
-        font_pill = get_unicode_font(12, bold=True)
-        font_kpi_lbl = get_unicode_font(12, bold=True)
-        font_kpi_val = get_unicode_font(28, bold=True)
-        font_box_title = get_unicode_font(16, bold=True)
-        font_axis = get_unicode_font(12, bold=True)
-        font_list = get_unicode_font(14, bold=True)
-        font_list_badge = get_unicode_font(12, bold=True)
-        font_ribbon_lbl = get_unicode_font(11, bold=True)
-        font_ribbon_val = get_unicode_font(17, bold=True)
-        font_ribbon_sub = get_unicode_font(12)
-        font_footer = get_unicode_font(11)
-        font_footer_bold = get_unicode_font(11, bold=True)
+        # Large High-Impact Typography (Easy to read at thumbnail/feed size in Discord!)
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14)
+        font_pill = get_unicode_font(14, bold=True)
+        font_kpi_lbl = get_unicode_font(13, bold=True)
+        font_kpi_val = get_unicode_font(34, bold=True)
+        font_box_title = get_unicode_font(18, bold=True)
+        font_axis = get_unicode_font(14, bold=True)
+        font_list = get_unicode_font(16, bold=True)
+        font_list_badge = get_unicode_font(14, bold=True)
+        font_ribbon_lbl = get_unicode_font(13, bold=True)
+        font_ribbon_val = get_unicode_font(22, bold=True)
+        font_ribbon_sub = get_unicode_font(14, bold=True)
+        font_footer = get_unicode_font(12)
+        font_footer_bold = get_unicode_font(12, bold=True)
 
         # 1. Header
-        header_x, header_y = 38, 30
+        header_x, header_y = 38, 28
         if avatar_img:
             try:
-                icon_resized = avatar_img.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
-                mask = Image.new("L", (60, 60), 0)
+                icon_resized = avatar_img.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (64, 64), 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                mask_draw.ellipse((0, 0, 64, 64), fill=255)
                 img.paste(icon_resized, (header_x, header_y), mask)
-                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+                draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=(accent_color[0], accent_color[1], accent_color[2], 220), width=2)
             except Exception:
                 pass
 
-        text_x = header_x + 74
-        draw_luminous_text(draw, (text_x, header_y + 3), clean_display_name(member_name, max_len=24), font=font_title, fill=(255, 255, 255, 255))
-        draw_luminous_text(draw, (text_x, header_y + 32), f"Joined {joined_str} • Account Created {created_str}", font=font_sub, fill=(200, 225, 255, 255) if raw_bg else (160, 168, 182, 255))
+        text_x = header_x + 78
+        name_color = role_rgb if (role_rgb and role_rgb != (0, 0, 0)) else (252, 211, 77)
+        draw_luminous_text(draw, (text_x, header_y + 2), clean_display_name(member_name, max_len=24), font=font_title, fill=name_color)
+        draw_luminous_text(draw, (text_x, header_y + 36), f"Joined {joined_str} • Account Created {created_str}", font=font_sub, fill=(186, 230, 253, 255))
 
         # Top-right status pills: Level, Msg Rank, Voice Rank, and Discord Role Color! (NO BLACK BOXES)
         pill_items = []
@@ -1241,7 +1216,7 @@ class Activity(commands.Cog):
 
         role_label = clean_display_name(top_role_str, max_len=16)
         if role_label and role_label.lower() != "@everyone":
-            role_c = role_rgb if (role_rgb and role_rgb != (0, 0, 0)) else (52, 211, 153)
+            role_c = role_rgb if (role_rgb and role_rgb != (0, 0, 0)) else (251, 191, 36)
             pill_items.append({"text": role_label, "color": role_c})
 
         pill_right = W - 38
@@ -1249,27 +1224,27 @@ class Activity(commands.Cog):
             p_text = item["text"]
             cr, cg, cb = item["color"]
             bbox = font_pill.getbbox(p_text)
-            pw = (bbox[2] - bbox[0]) + 24
+            pw = (bbox[2] - bbox[0]) + 26
             px = pill_right - pw
             py = header_y + 12
-            draw_rounded_rect(draw, (px, py, px + pw, py + 30), radius=15, fill=(cr, cg, cb, 40) if raw_bg else (cr, cg, cb, 45), outline=(cr, cg, cb, 190) if raw_bg else (cr, cg, cb, 160), width=1)
-            draw_luminous_text(draw, (px + 12, py + 6), p_text, font=font_pill, fill=(cr, cg, cb, 255))
+            draw_rounded_rect(draw, (px, py, px + pw, py + 34), radius=17, fill=(cr, cg, cb, 50), outline=(cr, cg, cb, 210), width=1)
+            draw_luminous_text(draw, (px + 13, py + 7), p_text, font=font_pill, fill=(cr, cg, cb, 255))
             pill_right = px - 10
 
-        # 2. Row 1: 5 Full-Horizon Metric Cards (Illuminated Typography)
+        # 2. Row 1: 5 Full-Horizon Metric Cards (Illuminated Sky Cyan & Gold - NO MORE WHITE)
         kpi_y = 104
-        kpi_h = 76
+        kpi_h = 78
         card_w = 190
         spacing = 13
         for idx, (label, val_num) in enumerate(kpi_metrics[:5]):
             cx = 38 + idx * (card_w + spacing)
-            draw_luminous_text(draw, (cx + 16, kpi_y + 11), label.upper(), font=font_kpi_lbl, fill=(251, 191, 36, 255))
-            draw_luminous_text(draw, (cx + 16, kpi_y + 31), f"{val_num:,}", font=font_kpi_val, fill=(255, 255, 255, 255))
+            draw_luminous_text(draw, (cx + 16, kpi_y + 10), label.upper(), font=font_kpi_lbl, fill=(125, 211, 252, 255))
+            draw_luminous_text(draw, (cx + 16, kpi_y + 30), f"{val_num:,}", font=font_kpi_val, fill=(253, 224, 71, 255))
 
             # Status dot
             ix = cx + card_w - 22
             iy = kpi_y + 16
-            draw.ellipse((ix, iy, ix + 6, iy + 6), fill=accent_color + (255,))
+            draw.ellipse((ix, iy, ix + 7, iy + 7), fill=accent_color + (255,))
 
         # 3. Row 2: Middle Section (Left: Trend Spline Chart | Right: Top Channels)
         body_y = 196
@@ -1279,15 +1254,15 @@ class Activity(commands.Cog):
         right_w = W - 38 - right_x
 
         # Left Container: Personal 7-Day Chart
-        draw_luminous_text(draw, (58, body_y + 16), "Personal 7-Day Activity Trend", font=font_box_title, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (58, body_y + 16), "Personal 7-Day Activity Trend", font=font_box_title, fill=(251, 191, 36, 255))
 
         legend_text = "Messages"
         leg_bbox = font_axis.getbbox(legend_text)
         leg_x = 38 + left_w - 26 - (leg_bbox[2] - leg_bbox[0])
         draw.ellipse((leg_x - 14, body_y + 22, leg_x - 6, body_y + 30), fill=accent_color + (255,))
-        draw_luminous_text(draw, (leg_x, body_y + 19), legend_text, font=font_axis, fill=(210, 230, 255, 255))
+        draw_luminous_text(draw, (leg_x, body_y + 19), legend_text, font=font_axis, fill=(186, 230, 253, 255))
 
-        plot_x = 94
+        plot_x = 96
         plot_y = body_y + 64
         plot_w = left_w - 82
         plot_h = 230
@@ -1302,9 +1277,9 @@ class Activity(commands.Cog):
         for step in range(4):
             val = int(max_y * (3 - step) / 3)
             gy = plot_y + int(plot_h * step / 3)
-            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 45) if raw_bg else (44, 48, 58, 255), width=1)
+            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 50) if raw_bg else (44, 48, 58, 255), width=1)
             val_str = f"{val:,}"
-            draw_luminous_text(draw, (plot_x - 48, gy - 7), val_str, font=font_axis, fill=(186, 230, 253, 255))
+            draw_luminous_text(draw, (plot_x - 52, gy - 9), val_str, font=font_axis, fill=(186, 230, 253, 255))
 
         raw_points = []
         num_pts = len(chart_values)
@@ -1324,20 +1299,20 @@ class Activity(commands.Cog):
         draw = ImageDraw.Draw(img)
 
         for i in range(len(spline_points) - 1):
-            draw.line([spline_points[i], spline_points[i+1]], fill=accent_color + (255,), width=3)
+            draw.line([spline_points[i], spline_points[i+1]], fill=(251, 191, 36, 255), width=4)
 
         for i, (px, py) in enumerate(raw_points):
-            draw.ellipse((px - 5, py - 5, px + 5, py + 5), fill=(28, 30, 36, 255), outline=accent_color + (255,), width=2)
-            draw.ellipse((px - 2, py - 2, px + 2, py + 2), fill=(255, 255, 255, 255))
+            draw.ellipse((px - 5, py - 5, px + 5, py + 5), fill=(20, 22, 30, 255), outline=(251, 191, 36, 255), width=2)
+            draw.ellipse((px - 2, py - 2, px + 2, py + 2), fill=(253, 224, 71, 255))
             if i < len(chart_labels):
                 lbl = chart_labels[i]
                 l_bbox = font_axis.getbbox(lbl)
                 lw = l_bbox[2] - l_bbox[0]
                 draw_luminous_text(draw, (px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=(186, 230, 253, 255))
 
-        # Right Container: Top Channels (5 slots)
-        draw_luminous_text(draw, (right_x + 20, body_y + 16), "Top Channels Chatted", font=font_box_title, fill=(255, 255, 255, 255))
-        draw_luminous_text(draw, (right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=(200, 225, 255, 255))
+        # Right Container: Top Channels (5 slots - Illuminated Cyan & Radiant Gold)
+        draw_luminous_text(draw, (right_x + 20, body_y + 16), "Top Channels Chatted", font=font_box_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (right_x + right_w - 32, body_y + 16), "#", font=font_box_title, fill=(186, 230, 253, 255))
 
         row_y = body_y + 54
         row_h = 58
@@ -1345,21 +1320,21 @@ class Activity(commands.Cog):
             ry = row_y + (slot - 1) * row_h
             if slot <= len(top_channels):
                 name_str, count_val = top_channels[slot - 1]
-                draw_luminous_text(draw, (right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(255, 255, 255, 255) if slot <= 3 else (186, 230, 253, 255))
+                draw_luminous_text(draw, (right_x + 24, ry + 12), str(slot), font=font_list_badge, fill=(251, 191, 36, 255) if slot <= 3 else (186, 230, 253, 255))
                 clean_name = safe_channel_label(name_str, max_len=18)
                 c_name = clean_name if clean_name.startswith("#") else f"# {clean_name}"
-                draw_luminous_text(draw, (right_x + 52, ry + 13), c_name, font=font_list, fill=(255, 255, 255, 255))
+                draw_luminous_text(draw, (right_x + 52, ry + 12), c_name, font=font_list, fill=(186, 230, 253, 255))
                 c_str = f"{count_val:,} msgs"
                 c_bbox = font_list_badge.getbbox(c_str)
-                cw = (c_bbox[2] - c_bbox[0]) + 18
+                cw = (c_bbox[2] - c_bbox[0]) + 20
                 cx = right_x + right_w - 20 - cw
                 ar, ag, ab = accent_color
-                draw_rounded_rect(draw, (cx, ry + 8, cx + cw, ry + 38), radius=8, fill=(ar, ag, ab, 35) if raw_bg else (38, 41, 50, 255), outline=(ar, ag, ab, 160) if raw_bg else (60, 65, 78, 255), width=1)
-                draw_luminous_text(draw, (cx + 9, ry + 13), c_str, font=font_list_badge, fill=(255, 255, 255, 255))
+                draw_rounded_rect(draw, (cx, ry + 7, cx + cw, ry + 39), radius=9, fill=(ar, ag, ab, 45) if raw_bg else (38, 41, 50, 255), outline=(ar, ag, ab, 190) if raw_bg else (60, 65, 78, 255), width=1)
+                draw_luminous_text(draw, (cx + 10, ry + 12), c_str, font=font_list_badge, fill=(253, 224, 71, 255))
             else:
-                draw_luminous_text(draw, (right_x + 24, ry + 13), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
-                draw_luminous_text(draw, (right_x + 52, ry + 13), "# —", font=font_list, fill=(130, 135, 148, 255))
-                draw_luminous_text(draw, (right_x + right_w - 36, ry + 13), "—", font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 24, ry + 12), str(slot), font=font_list_badge, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (right_x + 52, ry + 12), "# —", font=font_list, fill=(130, 135, 148, 255))
+                draw_luminous_text(draw, (right_x + right_w - 36, ry + 12), "—", font=font_list_badge, fill=(120, 125, 136, 255))
 
         # 4. Row 3: Level & XP Progression Ribbon + Telemetry
         ribbon_y = 582
@@ -1368,31 +1343,31 @@ class Activity(commands.Cog):
         # Left Ribbon: XP & Level Progress
         rx1 = 38
         rw1 = 540
-        draw_luminous_text(draw, (rx1 + 18, ribbon_y + 14), "LEVEL & XP PROGRESSION", font=font_ribbon_lbl, fill=(251, 191, 36, 255))
-        draw_luminous_text(draw, (rx1 + 18, ribbon_y + 34), f"Level {level_num}", font=font_ribbon_val, fill=(255, 255, 255, 255))
-        draw_luminous_text(draw, (rx1 + 110, ribbon_y + 36), f"• {current_xp:,} / {required_xp:,} XP ({xp_percentage:.1f}%)", font=font_ribbon_sub, fill=(186, 230, 253, 255))
+        draw_luminous_text(draw, (rx1 + 18, ribbon_y + 12), "LEVEL & XP PROGRESSION", font=font_ribbon_lbl, fill=(125, 211, 252, 255))
+        draw_luminous_text(draw, (rx1 + 18, ribbon_y + 32), f"Level {level_num}", font=font_ribbon_val, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (rx1 + 130, ribbon_y + 36), f"• {current_xp:,} / {required_xp:,} XP ({xp_percentage:.1f}%)", font=font_ribbon_sub, fill=(186, 230, 253, 255))
 
         # Glowing Progress Bar (ADAPTIVE ACCENT COLOR!)
         bar_x = rx1 + 18
         bar_y = ribbon_y + 68
         bar_w = rw1 - 36
-        bar_h = 18
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=9, fill=(0, 0, 0, 110) if raw_bg else (26, 28, 34, 255), outline=accent_color + (80,) if raw_bg else (48, 52, 63, 255), width=1)
+        bar_h = 20
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(0, 0, 0, 120) if raw_bg else (26, 28, 34, 255), outline=accent_color + (140,) if raw_bg else (48, 52, 63, 255), width=1)
         fill_len = int(bar_w * (min(100.0, max(2.0, xp_percentage)) / 100.0))
         if fill_len > 0:
-            draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_len, bar_y + bar_h), radius=9, fill=accent_color + (255,))
+            draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_len, bar_y + bar_h), radius=10, fill=accent_color + (255,))
 
         # Right Ribbon: Voice, Standing, Identity
         rx2 = 594
         rw2 = W - 38 - rx2
-        draw_luminous_text(draw, (rx2 + 18, ribbon_y + 14), "VOICE TELEMETRY", font=font_ribbon_lbl, fill=(251, 191, 36, 255))
-        draw_luminous_text(draw, (rx2 + 18, ribbon_y + 34), voice_str, font=font_ribbon_val, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (rx2 + 18, ribbon_y + 12), "VOICE TELEMETRY", font=font_ribbon_lbl, fill=(125, 211, 252, 255))
+        draw_luminous_text(draw, (rx2 + 18, ribbon_y + 32), voice_str, font=font_ribbon_val, fill=(216, 180, 254, 255))
         voice_sub_str = f"Voice Rank #{voice_rank_num} • Today: {voice_today_str}" if voice_rank_num > 0 else (f"Today: {voice_today_str}" if voice_today_str != "0s" else "Total recorded VC time")
         draw_luminous_text(draw, (rx2 + 18, ribbon_y + 68), voice_sub_str, font=font_ribbon_sub, fill=(186, 230, 253, 255))
 
         col2_x = rx2 + 220
-        draw_luminous_text(draw, (col2_x, ribbon_y + 14), "SERVER STANDING", font=font_ribbon_lbl, fill=(251, 191, 36, 255))
-        draw_luminous_text(draw, (col2_x, ribbon_y + 34), f"Msg #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (col2_x, ribbon_y + 12), "SERVER STANDING", font=font_ribbon_lbl, fill=(125, 211, 252, 255))
+        draw_luminous_text(draw, (col2_x, ribbon_y + 32), f"Msg #{rank_num}" if rank_num > 0 else "Unranked", font=font_ribbon_val, fill=(251, 191, 36, 255))
         top_pct = max(1, round((rank_num / max(1, total_chatters)) * 100)) if (rank_num > 0 and total_chatters > 0) else 0
         standing_sub = f"Top {top_pct}% of {total_chatters:,} chatters" if top_pct > 0 else f"Out of {total_chatters:,} chatters"
         draw_luminous_text(draw, (col2_x, ribbon_y + 68), standing_sub, font=font_ribbon_sub, fill=(186, 230, 253, 255))
@@ -1439,7 +1414,10 @@ class Activity(commands.Cog):
                 cy = (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
                 _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
-                bg_img = ImageEnhance.Brightness(_blurred).enhance(0.92)
+                stat = ImageStat.Stat(raw_bg.convert('L'))
+                mean_lum = stat.mean[0]
+                dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0)) if mean_lum > 120 else 0.85
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
             except Exception:
                 raw_bg = bg_img = None
 
@@ -1449,13 +1427,13 @@ class Activity(commands.Cog):
             img = bg_img.copy()
 
         # Outer Container (Frosted glass when custom wallpaper is set)
-        container_fill = (10, 12, 18, 55) if raw_bg else (28, 30, 36, 255)
+        container_fill = (10, 12, 18, 25) if raw_bg else (28, 30, 36, 255)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 75) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
 
-        accent_color = extract_accent_color(raw_bg, default_rgb=(56, 189, 248)) if raw_bg else (56, 189, 248)
+        accent_color = extract_accent_color(raw_bg, default_rgb=(251, 191, 36)) if raw_bg else (251, 191, 36)
         import colorsys as _cs
         if raw_bg:
             _ar, _ag, _ab = accent_color
@@ -1475,7 +1453,7 @@ class Activity(commands.Cog):
 
         panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(panel_layer)
-        p_row_fill = (14, 16, 22, 55) if raw_bg else (35, 38, 46, 255)
+        p_row_fill = (12, 15, 24, 48) if raw_bg else (35, 38, 46, 255)
         p_row_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
 
         for slot_idx in range(10):
@@ -1488,32 +1466,32 @@ class Activity(commands.Cog):
         img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
-        font_title = get_unicode_font(22, bold=True)
-        font_sub = get_unicode_font(13)
-        font_pill = get_unicode_font(12, bold=True)
-        font_name = get_unicode_font(14, bold=True)
-        font_user = get_unicode_font(11)
-        font_rank = get_unicode_font(13, bold=True)
-        font_cnt = get_unicode_font(13, bold=True)
-        font_footer = get_unicode_font(11)
-        font_footer_bold = get_unicode_font(11, bold=True)
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14)
+        font_pill = get_unicode_font(14, bold=True)
+        font_name = get_unicode_font(17, bold=True)
+        font_user = get_unicode_font(13)
+        font_rank = get_unicode_font(15, bold=True)
+        font_cnt = get_unicode_font(16, bold=True)
+        font_footer = get_unicode_font(12)
+        font_footer_bold = get_unicode_font(12, bold=True)
 
         # Header
-        header_x, header_y = 38, 34
+        header_x, header_y = 38, 30
         if guild_icon:
             try:
-                icon_resized = guild_icon.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
-                mask = Image.new("L", (60, 60), 0)
+                icon_resized = guild_icon.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (64, 64), 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                mask_draw.ellipse((0, 0, 64, 64), fill=255)
                 img.paste(icon_resized, (header_x, header_y), mask)
-                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+                draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=(55, 60, 72, 255), width=2)
             except Exception:
                 pass
 
-        text_x = header_x + 74
-        draw.text((text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255), stroke_width=2 if raw_bg else 0, stroke_fill=(0, 0, 0, 200) if raw_bg else None)
-        draw.text((text_x, header_y + 34), f"Top Chatters Leaderboard • {timeframe_name}", font=font_sub, fill=(235, 240, 250, 240) if raw_bg else (142, 146, 155, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+        text_x = header_x + 78
+        draw_luminous_text(draw, (text_x, header_y + 4), clean_display_name(guild_name, max_len=28), font=font_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (text_x, header_y + 36), f"Top Chatters Leaderboard • {timeframe_name}", font=font_sub, fill=(186, 230, 253, 255))
 
         # Status pills
         pills = [
@@ -1524,11 +1502,11 @@ class Activity(commands.Cog):
         pill_right = W - 38
         for p in reversed(pills):
             bbox = font_pill.getbbox(p)
-            pw = (bbox[2] - bbox[0]) + 24
+            pw = (bbox[2] - bbox[0]) + 26
             px = pill_right - pw
             py = header_y + 14
-            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(14, 16, 22, 60) if raw_bg else (38, 41, 49, 255), outline=(255, 255, 255, 60) if raw_bg else (52, 56, 67, 255), width=1)
-            draw.text((px + 12, py + 8), p, font=font_pill, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+            draw_rounded_rect(draw, (px, py, px + pw, py + 34), radius=17, fill=(14, 16, 22, 60) if raw_bg else (38, 41, 49, 255), outline=(255, 255, 255, 75) if raw_bg else (52, 56, 67, 255), width=1)
+            draw_luminous_text(draw, (px + 13, py + 7), p, font=font_pill, fill=(255, 255, 255, 255))
             pill_right = px - 10
 
         m_dict = {m[0]: m for m in members_data}
@@ -1563,15 +1541,15 @@ class Activity(commands.Cog):
                 elif current_rank == 3:
                     r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
                 else:
-                    r_fill, r_out, r_txt = (14, 16, 22, 100) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
+                    r_fill, r_out, r_txt = (14, 16, 22, 80) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
 
-                draw_rounded_rect(draw, (cx + 12, cy + 24, cx + 48, cy + 56), radius=10, fill=r_fill, outline=r_out, width=1)
+                draw_rounded_rect(draw, (cx + 12, cy + 22, cx + 50, cy + 58), radius=10, fill=r_fill, outline=r_out, width=1)
                 r_str = f"#{current_rank}"
                 rb = font_rank.getbbox(r_str)
                 rw = rb[2] - rb[0]
-                draw.text((cx + 12 + (36 - rw) // 2, cy + 32), r_str, font=font_rank, fill=r_txt, stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                draw_luminous_text(draw, (cx + 12 + (38 - rw) // 2, cy + 30), r_str, font=font_rank, fill=r_txt)
 
-                av_x = cx + 60
+                av_x = cx + 62
                 av_y = cy + 18
                 if av_img:
                     try:
@@ -1587,25 +1565,25 @@ class Activity(commands.Cog):
                     draw.ellipse((av_x, av_y, av_x + 44, av_y + 44), fill=(88, 101, 242, 255))
                     c_letter = clean_display_name(name_str)[0].upper() if name_str else '?'
                     ab = font_pill.getbbox(c_letter)
-                    draw.text((av_x + (44 - (ab[2] - ab[0])) // 2, av_y + 14), c_letter, font=font_pill, fill=(255, 255, 255, 255))
+                    draw_luminous_text(draw, (av_x + (44 - (ab[2] - ab[0])) // 2, av_y + 14), c_letter, font=font_pill, fill=(255, 255, 255, 255))
 
                 tx = av_x + 54
-                draw.text((tx, cy + 20), clean_display_name(name_str, max_len=16), font=font_name, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
-                draw.text((tx, cy + 44), f"@{clean_display_name(user_str, max_len=18)}", font=font_user, fill=(235, 240, 250, 220) if raw_bg else (130, 135, 146, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                draw_luminous_text(draw, (tx, cy + 18), clean_display_name(name_str, max_len=16), font=font_name, fill=(186, 230, 253, 255))
+                draw_luminous_text(draw, (tx, cy + 44), f"@{clean_display_name(user_str, max_len=18)}", font=font_user, fill=(125, 211, 252, 220) if raw_bg else (130, 135, 146, 255))
 
                 cnt_str = f"{cnt:,} msgs"
                 cb = font_cnt.getbbox(cnt_str)
-                cw = (cb[2] - cb[0]) + 20
+                cw = (cb[2] - cb[0]) + 22
                 cpx = cx + col_w - 14 - cw
-                draw_rounded_rect(draw, (cpx, cy + 24, cpx + cw, cy + 56), radius=10, fill=(255, 255, 255, 35) if raw_bg else (28, 30, 37, 255), outline=(255, 255, 255, 60) if raw_bg else (48, 52, 63, 255), width=1)
-                draw.text((cpx + 10, cy + 32), cnt_str, font=font_cnt, fill=(255, 255, 255, 255), stroke_width=1 if raw_bg else 0, stroke_fill=(0, 0, 0, 180) if raw_bg else None)
+                draw_rounded_rect(draw, (cpx, cy + 22, cpx + cw, cy + 58), radius=10, fill=(accent_color[0], accent_color[1], accent_color[2], 45) if raw_bg else (28, 30, 37, 255), outline=(accent_color[0], accent_color[1], accent_color[2], 180) if raw_bg else (48, 52, 63, 255), width=1)
+                draw_luminous_text(draw, (cpx + 11, cy + 30), cnt_str, font=font_cnt, fill=(253, 224, 71, 255))
             else:
-                draw.text((cx + 18, cy + 30), f"#{current_rank}  — No more recorded chatters —", font=font_sub, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (cx + 18, cy + 30), f"#{current_rank}  — No more recorded chatters —", font=font_sub, fill=(120, 125, 136, 255))
 
         footer_y = H - 36
-        draw.text((38, footer_y), "Use the Previous and Next buttons below to navigate pages • Timezone: IST", font=font_footer, fill=(180, 185, 195, 255) if raw_bg else (115, 120, 130, 255))
+        draw_luminous_text(draw, (38, footer_y), "Use the Previous and Next buttons below to navigate pages • Timezone: IST", font=font_footer, fill=(186, 230, 253, 255))
         fb = font_footer_bold.getbbox("Powered by Friday")
-        draw.text((W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 205, 215, 255) if raw_bg else (150, 155, 166, 255))
+        draw_luminous_text(draw, (W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 225, 255, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)

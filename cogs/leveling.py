@@ -201,23 +201,23 @@ class Leveling(commands.Cog):
                 # Dynamic luminance adaptation: dims bright backdrops to keep text 100% readable
                 mean_lum = ImageStat.Stat(raw_bg.convert('L')).mean[0]
                 if mean_lum > 120:
-                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
-                    bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
-                    container_alpha = 185
-                    panel_alpha = 135
-                elif mean_lum < 50:
-                    bg_img = ImageEnhance.Brightness(_blurred).enhance(1.05)
-                    container_alpha = 120
-                    panel_alpha = 85
+                    dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0))
+                    container_alpha = 25
+                    panel_alpha = 48
+                elif mean_lum > 85:
+                    dim_factor = 0.78
+                    container_alpha = 25
+                    panel_alpha = 45
                 else:
-                    bg_img = ImageEnhance.Brightness(_blurred).enhance(0.85)
-                    container_alpha = 150
-                    panel_alpha = 110
+                    dim_factor = 0.90
+                    container_alpha = 20
+                    panel_alpha = 40
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
             except Exception:
                 raw_bg = bg_img = None
 
-        # Extract adaptive accent color from wallpaper (or fallback indigo)
-        accent_rgb = self._extract_accent_color(raw_bg) if raw_bg else (129, 140, 248)
+        # Extract adaptive accent color from wallpaper (or fallback gold)
+        accent_rgb = self._extract_accent_color(raw_bg) if raw_bg else (251, 191, 36)
         ar, ag, ab = accent_rgb
         # Boost for text legibility
         h_a, s_a, v_a = colorsys.rgb_to_hsv(ar / 255, ag / 255, ab / 255)
@@ -232,22 +232,22 @@ class Leveling(commands.Cog):
             d_bg.ellipse((-80, -80, 240, 240), fill=(ar, ag, ab, 35))
             d_bg.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(ar // 2, ag // 2, ab, 25))
 
-        # Frosted Glass Overlay (guarantees WCAG AAA contrast for all text & elements)
+        # Frosted Glass Overlay (True Frosted Glass - wallpaper shines clearly through!)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
         # Inner dark card container: dynamic luminance transparency
         container_fill = (10, 12, 18, container_alpha) if custom_bg else (18, 20, 26, 215)
-        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 60) if custom_bg else (255, 255, 255, 38), width=1)
+        draw_rounded_rect(od, (10, 10, W - 10, H - 10), radius=22, fill=container_fill, outline=(255, 255, 255, 75) if custom_bg else (255, 255, 255, 38), width=1)
         img = Image.alpha_composite(bg_img, overlay)
         draw = ImageDraw.Draw(img)
 
-        # Fonts - using hinted unicode fonts to ensure uniform kerning with zero letter gaps
-        font_title = get_unicode_font(24, bold=True)
-        font_sub = get_unicode_font(12, bold=False)
-        font_badge = get_unicode_font(11, bold=True)
-        font_xp_num = get_unicode_font(14, bold=True)
-        font_stat_val = get_unicode_font(16, bold=True)
-        font_stat_lbl = get_unicode_font(11, bold=True)
+        # Fonts - using enlarged unicode fonts so everything is instantly legible in Discord feed
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14, bold=False)
+        font_badge = get_unicode_font(13, bold=True)
+        font_xp_num = get_unicode_font(16, bold=True)
+        font_stat_val = get_unicode_font(22, bold=True)
+        font_stat_lbl = get_unicode_font(13, bold=True)
 
         # Avatar on left (100x100)
         av_x, av_y, av_size = 36, 36, 100
@@ -255,28 +255,28 @@ class Leveling(commands.Cog):
         img.paste(av_img, (av_x, av_y), av_img)
         draw.ellipse((av_x, av_y, av_x + av_size, av_y + av_size), outline=(tar, tag, tab, 255), width=3)
 
-        # Member Info (luminous typography with zero jagged stroke noise)
+        # Member Info (luminous typography with zero white text)
         text_x = av_x + av_size + 20
-        draw_luminous_text(draw, (text_x, 38), clean_display_name(user.display_name, max_len=20), font=font_title, fill=(255, 255, 255, 255))
+        role_rgb = user.top_role.color.to_rgb() if (user.top_role and user.top_role.color.value != 0) else (252, 211, 77)
+        draw_luminous_text(draw, (text_x, 34), clean_display_name(user.display_name, max_len=20), font=font_title, fill=role_rgb)
         joined_str = user.joined_at.strftime("%B %d, %Y") if user.joined_at else "Unknown"
-        draw_luminous_text(draw, (text_x, 70), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(235, 240, 250, 240) if custom_bg else (160, 165, 175, 255))
+        draw_luminous_text(draw, (text_x, 68), f"@{clean_display_name(user.name, max_len=16)} • Joined {joined_str}", font=font_sub, fill=(186, 230, 253, 255) if custom_bg else (160, 165, 175, 255))
 
         # Top-right Badges — role color and adaptive styling (NO black boxes!)
         top_role = user.top_role.name if (user.top_role and user.top_role.name != "@everyone") else "Member"
-        role_rgb = user.top_role.color.to_rgb() if (user.top_role and user.top_role.color.value != 0) else (tar, tag, tab)
         badges = [
-            (f"RANK #{rank_pos}", (245, 158, 11) if rank_pos <= 3 else (150, 155, 166)),
-            (f"LEVEL {current_level}", (tar, tag, tab)),
+            (f"RANK #{rank_pos}", (245, 158, 11) if rank_pos <= 3 else (186, 230, 253)),
+            (f"LEVEL {current_level}", (251, 191, 36)),
             (clean_display_name(top_role, max_len=14), role_rgb)
         ]
         bx = W - 36
         for b_text, b_col in reversed(badges):
             bbox = font_badge.getbbox(b_text)
-            bw = (bbox[2] - bbox[0]) + 20
+            bw = (bbox[2] - bbox[0]) + 22
             bpx = bx - bw
             cr, cg, cb = b_col
-            draw_rounded_rect(draw, (bpx, 38, bpx + bw, 66), radius=10, fill=(cr, cg, cb, 40), outline=(cr, cg, cb, 190), width=1)
-            draw_luminous_text(draw, (bpx + 10, 45), b_text, font=font_badge, fill=(cr, cg, cb, 255))
+            draw_rounded_rect(draw, (bpx, 34, bpx + bw, 64), radius=12, fill=(cr, cg, cb, 45), outline=(cr, cg, cb, 210), width=1)
+            draw_luminous_text(draw, (bpx + 11, 41), b_text, font=font_badge, fill=(cr, cg, cb, 255))
             bx = bpx - 8
 
         # Dynamic XP Progress Bar Section
@@ -285,13 +285,13 @@ class Leveling(commands.Cog):
         bar_w = W - 36 - bar_x
         bar_h = 20
 
-        draw_luminous_text(draw, (bar_x, 92), "EXP PROGRESSION", font=font_stat_lbl, fill=(tar, tag, tab, 255))
+        draw_luminous_text(draw, (bar_x, 90), "EXP PROGRESSION", font=font_stat_lbl, fill=(125, 211, 252, 255))
         xp_str = f"{current_xp:,} / {next_xp:,} XP ({percentage:.1f}%)"
         xb = font_xp_num.getbbox(xp_str)
-        draw_luminous_text(draw, (bar_x + bar_w - (xb[2] - xb[0]), 90), xp_str, font=font_xp_num, fill=(255, 255, 255, 255))
+        draw_luminous_text(draw, (bar_x + bar_w - (xb[2] - xb[0]), 88), xp_str, font=font_xp_num, fill=(253, 224, 71, 255))
 
         # Background track
-        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(10, 12, 18, 160) if custom_bg else (20, 23, 30, 200), outline=(tar, tag, tab, 80), width=1)
+        draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(10, 12, 18, 130) if custom_bg else (20, 23, 30, 200), outline=(tar, tag, tab, 120), width=1)
         fill_w = int(bar_w * (percentage / 100.0))
         if fill_w > 0:
             draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=10, fill=(ar, ag, ab, 255))
@@ -301,26 +301,26 @@ class Leveling(commands.Cog):
         stat_h = 86
         sw = (bar_w - 20) // 3
         stat_items = [
-            ("TOTAL MESSAGES", f"{total_messages:,} msgs", "Recorded chat volume"),
-            ("VOICE DURATION", voice_str, "Recorded voice time"),
-            ("SERVER STANDING", f"Top {max(1, round((rank_pos / max(1, total_members)) * 100))}%", f"Rank #{rank_pos} of {total_members}")
+            ("TOTAL MESSAGES", f"{total_messages:,} msgs", "Recorded chat volume", (253, 224, 71)),
+            ("VOICE DURATION", voice_str, "Recorded voice time", (216, 180, 254)),
+            ("SERVER STANDING", f"Top {max(1, round((rank_pos / max(1, total_members)) * 100))}%", f"Rank #{rank_pos} of {total_members}", (251, 191, 36))
         ]
 
         # Render glassmorphic translucent containers via alpha composite
         glass_overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         god = ImageDraw.Draw(glass_overlay)
-        for idx, (lbl, val, sub) in enumerate(stat_items):
+        for idx, (lbl, val, sub, val_c) in enumerate(stat_items):
             sx = bar_x + idx * (sw + 10)
-            draw_rounded_rect(god, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(14, 16, 22, panel_alpha) if custom_bg else (28, 30, 38, 255), outline=(tar, tag, tab, 120) if custom_bg else (ar, ag, ab, 55), width=1)
+            draw_rounded_rect(god, (sx, stat_y, sx + sw, stat_y + stat_h), radius=12, fill=(12, 15, 24, panel_alpha) if custom_bg else (28, 30, 38, 255), outline=(255, 255, 255, 60) if custom_bg else (ar, ag, ab, 55), width=1)
         img = Image.alpha_composite(img, glass_overlay)
         draw = ImageDraw.Draw(img)
 
-        # Draw text over glass containers — brighter labels + adaptive accent
-        for idx, (lbl, val, sub) in enumerate(stat_items):
+        # Draw text over glass containers — brighter luminous labels (NO MORE WHITE)
+        for idx, (lbl, val, sub, val_c) in enumerate(stat_items):
             sx = bar_x + idx * (sw + 10)
-            draw_luminous_text(draw, (sx + 14, stat_y + 12), lbl, font=font_stat_lbl, fill=(tar, tag, tab, 255))
-            draw_luminous_text(draw, (sx + 14, stat_y + 30), val, font=font_stat_val, fill=(255, 255, 255, 255))
-            draw_luminous_text(draw, (sx + 14, stat_y + 57), sub, font=font_sub, fill=(220, 225, 235, 240) if custom_bg else (200, 205, 215, 255))
+            draw_luminous_text(draw, (sx + 14, stat_y + 11), lbl, font=font_stat_lbl, fill=(125, 211, 252, 255))
+            draw_luminous_text(draw, (sx + 14, stat_y + 30), val, font=font_stat_val, fill=val_c + (255,))
+            draw_luminous_text(draw, (sx + 14, stat_y + 57), sub, font=font_sub, fill=(186, 230, 253, 240) if custom_bg else (200, 205, 215, 255))
 
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
@@ -623,19 +623,10 @@ class Leveling(commands.Cog):
                 
                 # Dynamic luminance adaptation: dims bright backdrops to keep text 100% readable
                 mean_lum = ImageStat.Stat(raw_bg.convert('L')).mean[0]
-                if mean_lum > 120:
-                    dim_factor = max(0.55, 0.90 - ((mean_lum - 120) / 180.0))
-                    bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
-                    container_alpha = 185
-                    panel_alpha = 135
-                elif mean_lum < 50:
-                    bg_img = ImageEnhance.Brightness(_blurred).enhance(1.05)
-                    container_alpha = 120
-                    panel_alpha = 85
-                else:
-                    bg_img = ImageEnhance.Brightness(_blurred).enhance(0.85)
-                    container_alpha = 150
-                    panel_alpha = 110
+                dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0)) if mean_lum > 120 else 0.85
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
+                container_alpha = 25
+                panel_alpha = 48
             except Exception:
                 raw_bg = bg_img = None
 
@@ -647,11 +638,11 @@ class Leveling(commands.Cog):
         # Outer Container with Frosted Glass when wallpaper is active
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         od = ImageDraw.Draw(overlay)
-        container_fill = (10, 12, 18, container_alpha) if raw_bg else (28, 30, 36, 255)
-        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 60) if raw_bg else (42, 45, 54, 255), width=2)
+        container_fill = (10, 12, 18, 25) if raw_bg else (28, 30, 36, 255)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 75) if raw_bg else (42, 45, 54, 255), width=2)
         img = Image.alpha_composite(img, overlay)
 
-        accent_color = self._extract_accent_color(raw_bg) if raw_bg else (129, 140, 248)
+        accent_color = self._extract_accent_color(raw_bg) if raw_bg else (251, 191, 36)
         import colorsys as _cs
         if raw_bg:
             _ar, _ag, _ab = accent_color
@@ -671,8 +662,8 @@ class Leveling(commands.Cog):
 
         panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
         pd = ImageDraw.Draw(panel_layer)
-        p_row_fill = (14, 16, 22, panel_alpha) if raw_bg else (35, 38, 46, 255)
-        p_row_outline = (text_accent[0], text_accent[1], text_accent[2], 120) if raw_bg else (48, 52, 63, 255)
+        p_row_fill = (12, 15, 24, 48) if raw_bg else (35, 38, 46, 255)
+        p_row_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
 
         for slot_idx in range(10):
             col = 0 if slot_idx < 5 else 1
@@ -684,48 +675,49 @@ class Leveling(commands.Cog):
         img = Image.alpha_composite(img, panel_layer)
         draw = ImageDraw.Draw(img)
 
-        font_title = get_unicode_font(22, bold=True)
-        font_sub = Font.poppins(variant="regular", size=13)
-        font_pill = Font.poppins(variant="bold", size=12)
-        font_name = get_unicode_font(14, bold=True)
-        font_user = Font.poppins(variant="regular", size=11)
-        font_rank = get_unicode_font(13, bold=True)
-        font_cnt = Font.poppins(variant="bold", size=13)
-        font_lvl = Font.poppins(variant="bold", size=11)
-        font_footer = Font.poppins(variant="regular", size=11)
-        font_footer_bold = Font.poppins(variant="bold", size=11)
+        # Enlarged High-Impact Typography (Flawlessly legible at Discord embed scale!)
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14)
+        font_pill = get_unicode_font(14, bold=True)
+        font_name = get_unicode_font(17, bold=True)
+        font_user = get_unicode_font(13)
+        font_rank = get_unicode_font(15, bold=True)
+        font_cnt = get_unicode_font(16, bold=True)
+        font_lvl = get_unicode_font(13, bold=True)
+        font_footer = get_unicode_font(12)
+        font_footer_bold = get_unicode_font(12, bold=True)
 
         # Header
-        header_x, header_y = 38, 34
+        header_x, header_y = 38, 30
         if guild_icon:
             try:
-                icon_resized = guild_icon.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS)
-                mask = Image.new("L", (60, 60), 0)
+                icon_resized = guild_icon.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (64, 64), 0)
                 mask_draw = ImageDraw.Draw(mask)
-                mask_draw.ellipse((0, 0, 60, 60), fill=255)
+                mask_draw.ellipse((0, 0, 64, 64), fill=255)
                 img.paste(icon_resized, (header_x, header_y), mask)
-                draw.ellipse((header_x, header_y, header_x + 60, header_y + 60), outline=(55, 60, 72, 255), width=2)
+                draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=(55, 60, 72, 255), width=2)
             except Exception:
                 pass
 
-        text_x = header_x + 74
-        draw_luminous_text(draw, (text_x, header_y + 6), clean_display_name(guild_name, max_len=28), font=font_title, fill=(255, 255, 255, 255))
-        draw_luminous_text(draw, (text_x, header_y + 34), "Server XP & Level Leaderboard", font=font_sub, fill=(235, 240, 250, 240) if raw_bg else (142, 146, 155, 255))
+        text_x = header_x + 78
+        draw_luminous_text(draw, (text_x, header_y + 4), clean_display_name(guild_name, max_len=28), font=font_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (text_x, header_y + 36), "Server XP & Level Leaderboard", font=font_sub, fill=(186, 230, 253, 255))
 
-        # Status pills
+        # Status pills (Frosted glass badges)
         pills = [
-            f"PAGE {page} OF {total_pages}",
-            f"{total_members:,} Active Members",
-            "XP RANKINGS"
+            (f"PAGE {page} OF {total_pages}", (56, 189, 248)),
+            (f"{total_members:,} Active Members", (245, 158, 11)),
+            ("XP RANKINGS", (168, 85, 247))
         ]
         pill_right = W - 38
-        for p in reversed(pills):
-            bbox = font_pill.getbbox(p)
-            pw = (bbox[2] - bbox[0]) + 24
+        for p_label, (cr, cg, cb) in reversed(pills):
+            bbox = font_pill.getbbox(p_label)
+            pw = (bbox[2] - bbox[0]) + 26
             px = pill_right - pw
             py = header_y + 14
-            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(14, 16, 22, 100) if raw_bg else (38, 41, 49, 255), outline=(255, 255, 255, 100) if raw_bg else (52, 56, 67, 255), width=1)
-            draw_luminous_text(draw, (px + 12, py + 8), p, font=font_pill, fill=(255, 255, 255, 255))
+            draw_rounded_rect(draw, (px, py, px + pw, py + 34), radius=17, fill=(cr, cg, cb, 50) if raw_bg else (cr, cg, cb, 45), outline=(cr, cg, cb, 210) if raw_bg else (cr, cg, cb, 160), width=1)
+            draw_luminous_text(draw, (px + 13, py + 7), p_label, font=font_pill, fill=(cr, cg, cb, 255))
             pill_right = px - 10
 
         m_dict = {m[0]: m for m in members_data}
@@ -760,39 +752,46 @@ class Leveling(commands.Cog):
                 elif current_rank == 3:
                     r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
                 else:
-                    r_fill, r_out, r_txt = (14, 16, 22, 100) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
+                    r_fill, r_out, r_txt = (14, 16, 22, 80) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (46, 50, 60, 255), text_accent if raw_bg else (150, 155, 166, 255)
 
-                draw_rounded_rect(draw, (cx + 12, cy + 24, cx + 48, cy + 56), radius=10, fill=r_fill, outline=r_out, width=1)
+                rx, ry, rw, rh = cx + 12, cy + 18, 38, 44
+                draw_rounded_rect(draw, (rx, ry, rx + rw, ry + rh), radius=10, fill=r_fill, outline=r_out, width=1)
                 r_str = f"#{current_rank}"
                 rb = font_rank.getbbox(r_str)
-                rx = cx + 30 - (rb[2] - rb[0]) // 2
-                draw_luminous_text(draw, (rx, cy + 31), r_str, font=font_rank, fill=r_txt)
+                draw_luminous_text(draw, (rx + (rw - (rb[2] - rb[0])) // 2, ry + (rh - (rb[3] - rb[1])) // 2), r_str, font=font_rank, fill=r_txt)
 
                 # Avatar
-                av_x = cx + 58
-                av_y = cy + 14
+                av_x = rx + rw + 12
+                av_y = cy + 15
+                asz = 50
                 if av_img:
                     try:
-                        img.paste(av_img, (av_x, av_y), av_img)
-                        draw.ellipse((av_x, av_y, av_x + 52, av_y + 52), outline=(55, 60, 72, 255), width=2)
+                        av_thumb = av_img.convert("RGBA").resize((asz, asz), Image.Resampling.LANCZOS)
+                        img.paste(av_thumb, (av_x, av_y), av_thumb)
+                        draw.ellipse((av_x, av_y, av_x + asz, av_y + asz), outline=(52, 56, 68, 255), width=2)
                     except Exception:
                         pass
 
-                # Name & Username
-                nx = av_x + 64
-                draw_luminous_text(draw, (nx, cy + 18), clean_display_name(name_str, max_len=14), font=font_name, fill=(255, 255, 255, 255))
-                draw_luminous_text(draw, (nx, cy + 42), f"Level {lvl_val}", font=font_lvl, fill=accent_color + (255,))
+                # Name & Level
+                nx = av_x + asz + 12
+                clean_name = clean_display_name(name_str, max_len=16)
+                draw_luminous_text(draw, (nx, cy + 16), clean_name, font=font_name, fill=(186, 230, 253, 255))
+                draw_luminous_text(draw, (nx, cy + 42), f"Level {lvl_val}", font=font_lvl, fill=(168, 85, 247, 255))
 
-                # XP Count on right
+                # XP Count on right in glowing badge
                 c_str = f"{xp_val:,} XP"
                 cb = font_cnt.getbbox(c_str)
-                draw_luminous_text(draw, (cx + col_w - 20 - (cb[2] - cb[0]), cy + 28), c_str, font=font_cnt, fill=(255, 255, 255, 255))
+                tw = (cb[2] - cb[0]) + 22
+                tx = cx + col_w - tw - 12
+                ty = cy + 22
+                draw_rounded_rect(draw, (tx, ty, tx + tw, ty + 36), radius=10, fill=(245, 158, 11, 45) if raw_bg else (45, 48, 58, 255), outline=(245, 158, 11, 180) if raw_bg else (62, 68, 82, 255), width=1)
+                draw_luminous_text(draw, (tx + 11, ty + 9), c_str, font=font_cnt, fill=(253, 224, 71, 255))
             else:
-                draw_luminous_text(draw, (cx + 20, cy + 28), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(120, 125, 136, 255))
+                draw_luminous_text(draw, (cx + 20, cy + (row_h // 2) - 8), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(130, 135, 148, 255))
 
         # Footer
-        footer_y = H - 36
-        draw_luminous_text(draw, (38, footer_y), "Server XP Leaderboard • Top Active Members • Timezone: IST", font=font_footer, fill=(180, 185, 195, 255) if raw_bg else (115, 120, 130, 255))
+        footer_y = H - 34
+        draw_luminous_text(draw, (38, footer_y), f"Server XP Leaderboard • Page {page} of {total_pages} • Timezone: IST", font=font_footer, fill=(186, 230, 253, 255))
         fb = font_footer_bold.getbbox("Powered by Friday")
         draw_luminous_text(draw, (W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 205, 215, 255) if raw_bg else (150, 155, 166, 255))
 
