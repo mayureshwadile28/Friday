@@ -1804,7 +1804,8 @@ const tabTitles = {
 
     'giveawaysSection': 'Giveaways Studio & Hub',
     'birthdaysSection': 'Birthday Studio & Tracker',
-    'inviteTrackerSection': 'Invite Tracker & Analytics'
+    'inviteTrackerSection': 'Invite Tracker & Analytics',
+    'boosterSection': 'Server Booster Perks & Celebration Cards'
 
 
 
@@ -10779,6 +10780,9 @@ async function loadCoreData() {
         if (typeof populateAppSelects === 'function') {
             try { populateAppSelects(); } catch (e) {}
         }
+        if (typeof populateBoosterChannelsAndRoles === 'function') {
+            try { populateBoosterChannelsAndRoles(); } catch (e) {}
+        }
 
 
 
@@ -11953,6 +11957,7 @@ async function loadDataForActiveTab() {
     else if (activeTab === 'giveawaysSection') await loadGiveawaysData();
     else if (activeTab === 'birthdaysSection') await loadBirthdayData();
     else if (activeTab === 'inviteTrackerSection') await loadInviteTrackerSettings();
+    else if (activeTab === 'boosterSection') await loadBoosterSettings();
     else if (activeTab === 'announcementsSection') await loadScheduledAnnouncements();
 
 
@@ -70293,3 +70298,399 @@ function switchProgressionSubtab(tab) {
     }
 }
 
+
+
+// ───────────────────── MODULE: SERVER BOOSTER PERKS & CARDS ─────────────────────
+
+let currentBoosterConfig = null;
+
+function populateBoosterChannelsAndRoles(savedChanId, savedRoleId) {
+    const chanSelect = document.getElementById('boosterChannelSelect');
+    const roleSelect = document.getElementById('boosterRewardRoleSelect');
+
+    const chans = (typeof currentGuildChannels !== 'undefined' && Array.isArray(currentGuildChannels)) ? currentGuildChannels : [];
+    const roles = (typeof currentGuildRoles !== 'undefined' && Array.isArray(currentGuildRoles)) ? currentGuildRoles : [];
+
+    const targetChanId = String(savedChanId !== undefined && savedChanId !== null ? savedChanId : (chanSelect ? chanSelect.value : '')).trim();
+    const targetRoleId = String(savedRoleId !== undefined && savedRoleId !== null ? savedRoleId : (roleSelect ? roleSelect.value : '')).trim();
+
+    if (chanSelect) {
+        let chanHtml = '<option value="">Select a channel...</option>';
+        let chanMatched = false;
+        chans.forEach(c => {
+            const isSel = targetChanId && String(c.id) === targetChanId;
+            if (isSel) chanMatched = true;
+            chanHtml += `<option value="${c.id}" ${isSel ? 'selected' : ''}># ${escapeHtml(c.name)}</option>`;
+        });
+        if (targetChanId && !chanMatched) {
+            chanHtml += `<option value="${targetChanId}" selected># channel (${targetChanId})</option>`;
+        }
+        chanSelect.innerHTML = chanHtml;
+    }
+
+    if (roleSelect) {
+        let roleHtml = '<option value="">No automatic role</option>';
+        let roleMatched = false;
+        roles.forEach(r => {
+            if (r.name !== '@everyone') {
+                const isSel = targetRoleId && String(r.id) === targetRoleId;
+                if (isSel) roleMatched = true;
+                roleHtml += `<option value="${r.id}" ${isSel ? 'selected' : ''}>${escapeHtml(r.name)}</option>`;
+            }
+        });
+        if (targetRoleId && !roleMatched) {
+            roleHtml += `<option value="${targetRoleId}" selected>Role (${targetRoleId})</option>`;
+        }
+        roleSelect.innerHTML = roleHtml;
+    }
+}
+
+async function loadBoosterSettings() {
+    if (!currentGuildId) return;
+
+    // Ensure channels & roles are available from API if not yet loaded
+    if ((!currentGuildChannels || currentGuildChannels.length === 0) && currentGuildId) {
+        try {
+            const cResp = await fetch(`/api/guild/${currentGuildId}/channels`);
+            const cData = await cResp.json();
+            if (Array.isArray(cData) && cData.length) currentGuildChannels = cData;
+        } catch (e) {}
+    }
+    if ((!currentGuildRoles || currentGuildRoles.length === 0) && currentGuildId) {
+        try {
+            const rResp = await fetch(`/api/guild/${currentGuildId}/roles`);
+            const rData = await rResp.json();
+            if (Array.isArray(rData) && rData.length) currentGuildRoles = rData;
+        } catch (e) {}
+    }
+
+    try {
+        const res = await fetch(`/api/guild/${currentGuildId}/booster`);
+        const data = await res.json();
+        if (!data.success) return;
+
+        const cfg = data.config || {};
+        currentBoosterConfig = cfg;
+
+        // Telemetry
+        const boosts = data.current_boosts || 0;
+        const tier = data.current_tier || 0;
+        const statsLabel = document.getElementById('boosterLiveStatsLabel');
+        if (statsLabel) {
+            statsLabel.textContent = `${boosts} Boosts • Tier ${tier}`;
+        }
+        const tierBadge = document.getElementById('boosterLiveCardTierBadge');
+        if (tierBadge) {
+            tierBadge.textContent = tier > 0 ? `TIER ${tier}` : `TIER 0`;
+        }
+
+        // Toggle
+        const enableToggle = document.getElementById('boosterEnableToggle');
+        if (enableToggle) enableToggle.checked = (cfg.enabled !== false);
+
+        // Populate selects
+        populateBoosterChannelsAndRoles(cfg.channel_id, cfg.reward_role_id);
+
+        // Revoke on unboost
+        const revokeToggle = document.getElementById('boosterRevokeOnUnboostToggle');
+        if (revokeToggle) revokeToggle.checked = (cfg.remove_role_on_unboost !== false);
+
+        // Mode
+        const modeSelect = document.getElementById('boosterModeSelect');
+        if (modeSelect) modeSelect.value = cfg.mode || 'both';
+
+        // Messages
+        const annMsg = document.getElementById('boosterAnnouncementMsg');
+        if (annMsg) {
+            annMsg.value = cfg.announcement_message || "🚀 Huge thank you to {user} for boosting **{guild}**! You unlocked {reward_role} perks! ✨";
+        }
+
+        const dmToggle = document.getElementById('boosterDmEnableToggle');
+        if (dmToggle) dmToggle.checked = (cfg.dm_enabled !== false);
+
+        const dmMsg = document.getElementById('boosterDmMsg');
+        if (dmMsg) {
+            dmMsg.value = cfg.dm_message || "💜 Huge thank you for boosting **{guild}**, {user}!\nYou've unlocked exclusive booster perks and our deepest appreciation! ✨";
+        }
+
+        // Wallpaper preview
+        updateBoosterWallpaperDisplay(data.wallpaper_url);
+
+        // Attach rich emoji pickers to both textareas
+        const annEmojiBtn = document.getElementById('boosterAnnouncementEmojiBtn');
+        if (annEmojiBtn && !annEmojiBtn.dataset.bound) {
+            annEmojiBtn.dataset.bound = "true";
+            annEmojiBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (typeof openEmojiPickerForInput === 'function') {
+                    openEmojiPickerForInput(annMsg);
+                } else if (typeof openEmojiPickerForTarget === 'function') {
+                    openEmojiPickerForTarget(annMsg);
+                }
+            });
+        }
+        const dmEmojiBtn = document.getElementById('boosterDmEmojiBtn');
+        if (dmEmojiBtn && !dmEmojiBtn.dataset.bound) {
+            dmEmojiBtn.dataset.bound = "true";
+            dmEmojiBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (typeof openEmojiPickerForInput === 'function') {
+                    openEmojiPickerForInput(dmMsg);
+                } else if (typeof openEmojiPickerForTarget === 'function') {
+                    openEmojiPickerForTarget(dmMsg);
+                }
+            });
+        }
+
+        updateBoosterLivePreview();
+    } catch (e) {
+        console.error("Failed to load booster settings:", e);
+    }
+}
+
+function updateBoosterWallpaperDisplay(url) {
+    const thumb = document.getElementById('boosterWallpaperThumb');
+    const placeholder = document.getElementById('boosterWallpaperPlaceholder');
+    const mockCard = document.getElementById('boosterLiveCardMock');
+
+    if (url) {
+        if (thumb) {
+            thumb.src = url;
+            thumb.style.display = 'block';
+        }
+        if (placeholder) placeholder.style.display = 'none';
+        if (mockCard) {
+            mockCard.style.backgroundImage = `linear-gradient(135deg, rgba(10, 12, 18, 0.75), rgba(15, 23, 42, 0.85)), url('${url}')`;
+            mockCard.style.backgroundSize = 'cover';
+            mockCard.style.backgroundPosition = 'center';
+        }
+    } else {
+        if (thumb) {
+            thumb.src = '';
+            thumb.style.display = 'none';
+        }
+        if (placeholder) placeholder.style.display = 'block';
+        if (mockCard) {
+            mockCard.style.backgroundImage = 'linear-gradient(135deg, rgba(244, 127, 255, 0.08), rgba(15, 23, 42, 0.95))';
+        }
+    }
+}
+
+async function saveBoosterSettings(showToast = true) {
+    if (!currentGuildId) return;
+
+    const statusEl = document.getElementById('boosterSaveStatus');
+    if (statusEl) {
+        statusEl.textContent = "Saving booster settings...";
+        statusEl.style.color = "#f47fff";
+    }
+
+    const payload = {
+        enabled: document.getElementById('boosterEnableToggle')?.checked ?? true,
+        channel_id: document.getElementById('boosterChannelSelect')?.value || "",
+        reward_role_id: document.getElementById('boosterRewardRoleSelect')?.value || "",
+        remove_role_on_unboost: document.getElementById('boosterRevokeOnUnboostToggle')?.checked ?? true,
+        mode: document.getElementById('boosterModeSelect')?.value || "both",
+        announcement_message: document.getElementById('boosterAnnouncementMsg')?.value || "",
+        dm_enabled: document.getElementById('boosterDmEnableToggle')?.checked ?? true,
+        dm_message: document.getElementById('boosterDmMsg')?.value || "",
+        embed_color: "#f47fff"
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/booster`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            currentBoosterConfig = data.config;
+            if (statusEl) {
+                statusEl.textContent = "✅ Booster settings saved successfully!";
+                statusEl.style.color = "#10b981";
+                setTimeout(() => {
+                    statusEl.textContent = "Make sure to click Save to apply changes.";
+                    statusEl.style.color = "#94a3b8";
+                }, 3000);
+            }
+            if (showToast && typeof showNotification === 'function') {
+                showNotification("Booster settings saved successfully!", "success");
+            }
+        } else {
+            throw new Error(data.error || "Save failed");
+        }
+    } catch (e) {
+        if (statusEl) {
+            statusEl.textContent = `❌ Error: ${e.message}`;
+            statusEl.style.color = "#ef4444";
+        }
+        if (showToast && typeof showNotification === 'function') {
+            showNotification(`Error: ${e.message}`, "error");
+        }
+    }
+}
+
+async function uploadBoosterWallpaper(inputEl) {
+    if (!currentGuildId || !inputEl || !inputEl.files || !inputEl.files[0]) return;
+    const file = inputEl.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const statusEl = document.getElementById('boosterWallpaperStatus');
+    if (statusEl) {
+        statusEl.textContent = "Uploading wallpaper...";
+        statusEl.style.color = "#f47fff";
+        statusEl.style.display = "block";
+    }
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/booster/wallpaper`, {
+            method: 'POST',
+            body: formData
+        });
+        const data = await resp.json();
+        if (data.success) {
+            updateBoosterWallpaperDisplay(data.url);
+            if (statusEl) {
+                statusEl.textContent = "✅ Custom booster wallpaper uploaded!";
+                statusEl.style.color = "#10b981";
+                setTimeout(() => { statusEl.style.display = "none"; }, 3000);
+            }
+            if (typeof showNotification === 'function') {
+                showNotification("Custom booster wallpaper updated!", "success");
+            }
+        } else {
+            throw new Error(data.error || "Upload failed");
+        }
+    } catch (e) {
+        if (statusEl) {
+            statusEl.textContent = `❌ ${e.message}`;
+            statusEl.style.color = "#ef4444";
+        }
+    }
+    inputEl.value = "";
+}
+
+async function resetBoosterWallpaper() {
+    if (!currentGuildId) return;
+    if (!confirm("Are you sure you want to reset the booster card wallpaper to the default dark celestial theme?")) return;
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/booster/wallpaper/reset`, {
+            method: 'POST'
+        });
+        const data = await resp.json();
+        if (data.success) {
+            updateBoosterWallpaperDisplay("");
+            if (typeof showNotification === 'function') {
+                showNotification("Booster card wallpaper reset to default!", "success");
+            }
+        }
+    } catch (e) {
+        console.error("Reset wallpaper failed:", e);
+    }
+}
+
+async function sendBoosterTest() {
+    if (!currentGuildId) return;
+    const testBtn = document.getElementById('boosterSendTestBtn');
+    const chanSelect = document.getElementById('boosterChannelSelect');
+    const targetChanId = chanSelect ? chanSelect.value : "";
+
+    if (!targetChanId) {
+        alert("Please select an Announcement Channel before sending a test card!");
+        if (chanSelect) chanSelect.focus();
+        return;
+    }
+
+    if (testBtn) {
+        testBtn.disabled = true;
+        testBtn.innerHTML = "⏳ Sending Test to Server...";
+    }
+
+    const payload = {
+        channel_id: targetChanId,
+        reward_role_id: document.getElementById('boosterRewardRoleSelect')?.value || "",
+        mode: document.getElementById('boosterModeSelect')?.value || "both",
+        announcement_message: document.getElementById('boosterAnnouncementMsg')?.value || ""
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/booster/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            if (typeof showNotification === 'function') {
+                showNotification(`🚀 Test booster card sent to #${data.channel_name}!`, "success");
+            } else {
+                alert(`🚀 Test booster card sent to #${data.channel_name}!`);
+            }
+        } else {
+            throw new Error(data.error || "Failed to send test card");
+        }
+    } catch (e) {
+        if (typeof showNotification === 'function') {
+            showNotification(`Failed to send test: ${e.message}`, "error");
+        } else {
+            alert(`Failed to send test: ${e.message}`);
+        }
+    } finally {
+        if (testBtn) {
+            testBtn.disabled = false;
+            testBtn.innerHTML = "🚀 Send Live Test to Server";
+        }
+    }
+}
+
+function insertBoosterVar(val, targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const start = el.selectionStart || 0;
+    const end = el.selectionEnd || 0;
+    const text = el.value || "";
+    el.value = text.substring(0, start) + val + text.substring(end);
+    el.focus();
+    el.selectionStart = el.selectionEnd = start + val.length;
+    updateBoosterLivePreview();
+}
+
+function updateBoosterLivePreview() {
+    const rawMsg = document.getElementById('boosterAnnouncementMsg')?.value || "";
+    const previewEl = document.getElementById('boosterLiveMessageText');
+    const cardContainer = document.getElementById('boosterLiveCardContainer');
+    const mode = document.getElementById('boosterModeSelect')?.value || "both";
+
+    if (cardContainer) {
+        cardContainer.style.display = (mode === 'text') ? 'none' : 'block';
+    }
+
+    if (previewEl) {
+        if (mode === 'image') {
+            previewEl.style.display = 'none';
+        } else {
+            previewEl.style.display = 'block';
+            let txt = rawMsg || "🚀 Huge thank you to {user} for boosting **{guild}**! You unlocked {reward_role} perks! ✨";
+            const roleSelect = document.getElementById('boosterRewardRoleSelect');
+            let roleName = "@Booster";
+            if (roleSelect && roleSelect.selectedIndex > 0) {
+                roleName = "@" + (roleSelect.options[roleSelect.selectedIndex].text || "Booster");
+            }
+            txt = txt.replace(/{user}/g, "@Mayuresh.exe")
+                     .replace(/{username}/g, "mayuresh_wadile28")
+                     .replace(/{guild}/g, "Friday Hub")
+                     .replace(/{boosts}/g, "6")
+                     .replace(/{tier}/g, "1")
+                     .replace(/{reward_role}/g, roleName);
+            
+            if (typeof renderDiscordMarkdown === 'function') {
+                previewEl.innerHTML = renderDiscordMarkdown(txt);
+            } else {
+                previewEl.textContent = txt;
+            }
+        }
+    }
+}

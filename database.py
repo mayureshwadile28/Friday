@@ -74,6 +74,10 @@ class Database:
         self.invite_counts = inv_cnt if isinstance(inv_cnt, dict) else {}
         inv_hist = self.data.get("invite_history")
         self.invite_history = inv_hist if isinstance(inv_hist, dict) else {}
+        bp = self.data.get("booster_perks")
+        self.booster_perks = bp if isinstance(bp, dict) else {}
+        bb = self.data.get("booster_backgrounds")
+        self.booster_backgrounds = bb if isinstance(bb, dict) else {}
 
     def load_data(self):
         try:
@@ -130,7 +134,9 @@ class Database:
                 "leaderboard_card_backgrounds": {},
                 "invite_tracker": {},
                 "invite_counts": {},
-                "invite_history": {}
+                "invite_history": {},
+                "booster_perks": {},
+                "booster_backgrounds": {}
             }
 
     def reload(self):

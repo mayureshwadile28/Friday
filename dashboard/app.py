@@ -738,6 +738,8 @@ def upload_rank_background(gid):
             db.activity_card_backgrounds[gid_str] = save_path
         elif card_type == "leaderboard":
             db.leaderboard_card_backgrounds[gid_str] = save_path
+        elif card_type == "booster":
+            db.booster_backgrounds[gid_str] = save_path
         else:
             db.rank_card_backgrounds[gid_str] = save_path
         db.save_data()
@@ -759,10 +761,185 @@ def reset_rank_background(gid):
         del db.activity_card_backgrounds[gid_str]
     elif card_type == "leaderboard" and gid_str in db.leaderboard_card_backgrounds:
         del db.leaderboard_card_backgrounds[gid_str]
+    elif card_type == "booster" and gid_str in db.booster_backgrounds:
+        del db.booster_backgrounds[gid_str]
     elif gid_str in db.rank_card_backgrounds:
         del db.rank_card_backgrounds[gid_str]
     db.save_data()
     return jsonify({"success": True, "card_type": card_type})
+
+# ───────────────────── API: Booster Perks & Announcements ─────────────────────
+
+BOOSTER_BG_DIR = os.path.join(app.root_path, "static", "uploads", "booster_backgrounds")
+os.makedirs(BOOSTER_BG_DIR, exist_ok=True)
+
+@app.route('/api/guild/<gid>/booster', methods=['GET'])
+def get_booster_settings(gid):
+    gid_str = str(gid)
+    cfg = db.booster_perks.get(gid_str, {
+        "enabled": True,
+        "channel_id": "",
+        "reward_role_id": "",
+        "remove_role_on_unboost": True,
+        "mode": "both",
+        "announcement_message": "🚀 Huge thank you to {user} for boosting **{guild}**! You unlocked {reward_role} perks! ✨",
+        "dm_enabled": True,
+        "dm_message": "💜 Huge thank you for boosting **{guild}**, {user}!\nYou've unlocked exclusive booster perks and our deepest appreciation! ✨",
+        "embed_color": "#f47fff"
+    })
+    
+    current_boosts = 0
+    current_tier = 0
+    if bot_instance and gid_str.isdigit():
+        g = bot_instance.get_guild(int(gid_str))
+        if g:
+            current_boosts = getattr(g, "premium_subscription_count", 0) or 0
+            current_tier = getattr(g, "premium_tier", 0) or 0
+
+    bg_path = db.booster_backgrounds.get(gid_str)
+    wallpaper_url = resolve_card_bg_url(bg_path) if bg_path else ""
+
+    return jsonify({
+        "success": True,
+        "config": cfg,
+        "current_boosts": current_boosts,
+        "current_tier": current_tier,
+        "wallpaper_url": wallpaper_url
+    })
+
+@app.route('/api/guild/<gid>/booster', methods=['POST'])
+def save_booster_settings(gid):
+    gid_str = str(gid)
+    body = flask_request.json or {}
+    
+    cfg = db.booster_perks.get(gid_str, {})
+    cfg["enabled"] = bool(body.get("enabled", True))
+    cfg["channel_id"] = str(body.get("channel_id", "")).strip()
+    cfg["reward_role_id"] = str(body.get("reward_role_id", "")).strip()
+    cfg["remove_role_on_unboost"] = bool(body.get("remove_role_on_unboost", True))
+    cfg["mode"] = str(body.get("mode", "both")).strip()
+    cfg["announcement_message"] = str(body.get("announcement_message", "")).strip()
+    cfg["dm_enabled"] = bool(body.get("dm_enabled", True))
+    cfg["dm_message"] = str(body.get("dm_message", "")).strip()
+    cfg["embed_color"] = str(body.get("embed_color", "#f47fff")).strip()
+
+    db.booster_perks[gid_str] = cfg
+    db.save_data()
+    return jsonify({"success": True, "config": cfg})
+
+@app.route('/api/guild/<gid>/booster/test', methods=['POST'])
+def test_booster_announcement(gid):
+    gid_str = str(gid)
+    body = flask_request.json or {}
+    cfg = db.booster_perks.get(gid_str, {})
+
+    channel_id = body.get("channel_id") or cfg.get("channel_id")
+    if not channel_id:
+        return jsonify({"success": False, "error": "Please configure or select an announcement channel first."}), 400
+
+    if not bot_instance or not bot_instance.loop:
+        return jsonify({"success": False, "error": "Friday bot is not connected to Discord right now."}), 503
+
+    try:
+        g = bot_instance.get_guild(int(gid_str)) if gid_str.isdigit() else None
+        if not g:
+            return jsonify({"success": False, "error": "Server guild not found or Friday is not connected to it."}), 404
+
+        chan = g.get_channel(int(channel_id))
+        if not chan:
+            return jsonify({"success": False, "error": f"Channel ID {channel_id} not found in {g.name}."}), 404
+
+        booster_cog = bot_instance.get_cog("BoosterPerks")
+        if not booster_cog:
+            return jsonify({"success": False, "error": "BoosterPerks cog is not loaded on Friday bot."}), 500
+
+        # Pick test booster member
+        test_member = g.me or bot_instance.user
+        if g.members:
+            boosters = [m for m in g.members if m.premium_since is not None]
+            if boosters:
+                test_member = boosters[0]
+            elif g.owner:
+                test_member = g.owner
+
+        mode = body.get("mode") or cfg.get("mode", "both")
+        msg_template = body.get("announcement_message") or cfg.get("announcement_message") or (
+            "🚀 Huge thank you to {user} for boosting **{guild}**! You unlocked {reward_role} perks! ✨"
+        )
+
+        role_str = "@Booster"
+        reward_role_id = body.get("reward_role_id") or cfg.get("reward_role_id")
+        if reward_role_id:
+            try:
+                r = g.get_role(int(reward_role_id))
+                if r:
+                    role_str = r.mention
+            except Exception:
+                pass
+
+        formatted_msg = msg_template.replace("{user}", test_member.mention) \
+                                    .replace("{username}", test_member.name) \
+                                    .replace("{guild}", g.name) \
+                                    .replace("{boosts}", str(g.premium_subscription_count or 0)) \
+                                    .replace("{tier}", str(g.premium_tier or 0)) \
+                                    .replace("{reward_role}", role_str)
+
+        formatted_msg = replace_plain_emojis(formatted_msg, bot_instance, guild_id=gid, guild=g)
+
+        card_file = None
+        if mode in ("both", "image"):
+            card_fut = asyncio.run_coroutine_threadsafe(
+                booster_cog.generate_booster_card(test_member, g),
+                bot_instance.loop
+            )
+            card_file = card_fut.result(timeout=10)
+
+        # Dispatch
+        async def do_send():
+            if mode == "image" and card_file:
+                return await chan.send(file=card_file)
+            elif mode == "both" and card_file:
+                return await chan.send(content=formatted_msg, file=card_file)
+            else:
+                return await chan.send(content=formatted_msg)
+
+        fut = asyncio.run_coroutine_threadsafe(do_send(), bot_instance.loop)
+        fut.result(timeout=10)
+
+        return jsonify({"success": True, "channel_name": chan.name})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/booster/wallpaper', methods=['POST'])
+def upload_booster_wallpaper(gid):
+    gid_str = str(gid)
+    try:
+        os.makedirs(BOOSTER_BG_DIR, exist_ok=True)
+        file = flask_request.files.get('file') or flask_request.files.get('background_file') or flask_request.files.get('background')
+        if not file or not file.filename:
+            return jsonify({"success": False, "error": "No file uploaded."}), 400
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ['.png', '.jpg', '.jpeg', '.webp']:
+            return jsonify({"success": False, "error": "Unsupported format. Please upload PNG, JPG, or WebP."}), 400
+        safe_filename = f"booster_bg_{gid_str}_{uuid.uuid4().hex[:8]}{ext}"
+        save_path = os.path.join(BOOSTER_BG_DIR, safe_filename)
+        file.save(save_path)
+        
+        db.booster_backgrounds[gid_str] = save_path
+        db.save_data()
+        
+        rel_url = f"/static/uploads/booster_backgrounds/{safe_filename}"
+        return jsonify({"success": True, "url": rel_url, "path": save_path})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/guild/<gid>/booster/wallpaper/reset', methods=['POST'])
+def reset_booster_wallpaper(gid):
+    gid_str = str(gid)
+    if gid_str in db.booster_backgrounds:
+        del db.booster_backgrounds[gid_str]
+        db.save_data()
+    return jsonify({"success": True})
 
 # ───────────────────── API: Invite Tracker ─────────────────────
 
