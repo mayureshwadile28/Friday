@@ -26,21 +26,18 @@ class AFKCog(commands.Cog, name="AFK"):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="afk", description="Set your AFK status with an optional reason.")
-    @app_commands.describe(reason="Why are you stepping away? (e.g. Studying, Lunch, Sleeping)")
-    async def afk(self, interaction: discord.Interaction, reason: str = "AFK"):
-        if not interaction.guild:
-            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
-            return
+    async def set_afk_status(self, guild: discord.Guild, member: discord.Member, reason: str = "AFK") -> discord.Embed:
+        """Sets a member's AFK status, updates their nickname, and returns the confirmation embed."""
+        gid = str(guild.id)
+        uid = str(member.id)
 
-        gid = str(interaction.guild.id)
-        uid = str(interaction.user.id)
+        if not hasattr(db, "afk_data") or not isinstance(db.afk_data, dict):
+            db.afk_data = {}
 
         if gid not in db.afk_data:
             db.afk_data[gid] = {}
 
         now = time.time()
-        member = interaction.user
         original_nick = member.nick  # None if no custom guild nickname
 
         nick_changed = False
@@ -79,15 +76,50 @@ class AFKCog(commands.Cog, name="AFK"):
         if member.display_avatar:
             embed.set_thumbnail(url=member.display_avatar.url)
 
+        return embed
+
+    @app_commands.command(name="afk", description="Set your AFK status with an optional reason.")
+    @app_commands.describe(reason="Why are you stepping away? (e.g. Studying, Lunch, Sleeping)")
+    async def afk(self, interaction: discord.Interaction, reason: str = "AFK"):
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.response.send_message("This command can only be used in a server.", ephemeral=True)
+            return
+
+        embed = await self.set_afk_status(interaction.guild, interaction.user, reason=reason)
         await interaction.response.send_message(embed=embed)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild:
+        if message.author.bot or not message.guild or not isinstance(message.author, discord.Member):
             return
 
         gid = str(message.guild.id)
         author_id = str(message.author.id)
+
+        # ───────── 0. PREFIX COMMAND: !afk [reason] (EVERYONE CAN USE) ─────────
+        prefix = getattr(db, "custom_prefixes", {}).get(gid, "!")
+        content = message.content.strip()
+
+        triggered_prefix = None
+        if prefix and content.startswith(prefix):
+            triggered_prefix = prefix
+        elif content.startswith("!"):
+            triggered_prefix = "!"
+
+        if triggered_prefix:
+            cmd_body = content[len(triggered_prefix):].strip()
+            if cmd_body.lower() == "afk" or cmd_body.lower().startswith("afk "):
+                parts = cmd_body.split(None, 1)
+                reason = parts[1].strip() if len(parts) > 1 and parts[1].strip() else "AFK"
+                embed = await self.set_afk_status(message.guild, message.author, reason=reason)
+                try:
+                    await message.reply(embed=embed, mention_author=False)
+                except Exception:
+                    try:
+                        await message.channel.send(embed=embed)
+                    except Exception as e:
+                        print(f"[AFK] Error sending prefix response: {e}")
+                return
         afk_dict = getattr(db, "afk_data", {}).get(gid, {})
 
         # ───────── 1. RETURN DETECTION (Author was AFK) ─────────

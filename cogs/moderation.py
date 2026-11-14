@@ -1636,34 +1636,57 @@ class Moderation(commands.Cog):
         if cmd_name not in allowed_prefix_cmds:
             return
 
-        # 1. Ironclad Whitelist & Permission Check
-        is_owner = (message.author.id == message.guild.owner_id)
+        # 1. Ironclad Whitelist & In-Server Permission Check
+        author = message.author
+        guild = message.guild
+        channel = message.channel
+
+        is_owner = (author.id == guild.owner_id)
         is_bot_owner = False
         try:
-            is_bot_owner = await self.bot.is_owner(message.author)
+            is_bot_owner = await self.bot.is_owner(author)
         except Exception:
             pass
+
+        perms = getattr(author, "guild_permissions", None)
+        is_admin = bool(perms and perms.administrator)
 
         wl = db.prefix_whitelist.get(gid, {})
         wl_users = [int(u) for u in wl.get("members", []) if str(u).isdigit()]
         wl_roles = [int(r) for r in wl.get("roles", []) if str(r).isdigit()]
-        author_roles = getattr(message.author, "roles", [])
+        author_roles = getattr(author, "roles", [])
         has_role = any(r.id in wl_roles for r in author_roles)
-        is_user_whitelisted = message.author.id in wl_users
+        is_user_whitelisted = author.id in wl_users
 
-        # If author is NOT server owner, bot owner, or explicitly whitelisted -> SILENT IGNORE
-        if not (is_owner or is_bot_owner or is_user_whitelisted or has_role):
+        # Check native in-server Discord permissions specifically required for each command
+        chan_perms = channel.permissions_for(author) if hasattr(channel, "permissions_for") else perms
+        has_native_perm = False
+
+        if is_admin:
+            has_native_perm = True
+        elif cmd_name == "purge":
+            # Requires Manage Messages ("manage chat / delete permission")
+            has_native_perm = bool((chan_perms and chan_perms.manage_messages) or (perms and perms.manage_messages))
+        elif cmd_name in ("lock", "unlock"):
+            # Requires Manage Channels
+            has_native_perm = bool((chan_perms and chan_perms.manage_channels) or (perms and perms.manage_channels))
+        elif cmd_name == "ban":
+            # Requires Ban Members
+            has_native_perm = bool(perms and perms.ban_members)
+        elif cmd_name == "tm":
+            # Requires Moderate Members (Timeout)
+            has_native_perm = bool(perms and perms.moderate_members)
+
+        # If author is NOT server owner, bot owner, admin, dashboard whitelisted, or natively permitted -> SILENT IGNORE
+        if not (is_owner or is_bot_owner or is_admin or is_user_whitelisted or has_role or has_native_perm):
             return
 
-        # 2. Check if specific command is enabled
+        # 2. Check if specific command is enabled in whitelist configuration
         cmd_toggles = wl.get("commands", {"purge": True, "lock": True, "unlock": True, "ban": True, "tm": True})
         if not cmd_toggles.get(cmd_name, True):
             return
 
         args = parts[1:]
-        author = message.author
-        channel = message.channel
-        guild = message.guild
 
         # ── 1. PURGE: !purge <count> or !purge @user <count> ──
         if cmd_name == "purge":

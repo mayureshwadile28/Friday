@@ -70910,17 +70910,17 @@ function updateMediaLivePreview() {
     if (!previewEl || !msgEl) return;
 
     let txt = msgEl.value || "{user} just shared a new image/video in {channel}! Go check it out! ✨";
-    let chName = "#media-channel";
+    let chName = "media-channel";
     if (chSelect && chSelect.selectedIndex > 0) {
-        chName = "#" + (chSelect.options[chSelect.selectedIndex].text || "media-channel").replace(/^#/, "");
+        chName = (chSelect.options[chSelect.selectedIndex].text || "media-channel").replace(/^#/, "");
     }
 
-    // Replace variables with realistic Discord simulator pills
+    // Replace variables with Discord markdown syntax so renderDiscordMarkdown escapes safely and formats realistic pills
     let previewFormatted = txt
-        .replace(/{user}/g, '<span style="color: #c9cdfb; background: rgba(88, 101, 242, 0.2); padding: 1px 5px; border-radius: 3px; font-weight: 500;">@Mayuresh</span>')
+        .replace(/{user}/g, '<@Mayuresh>')
         .replace(/{user_name}/g, 'Mayuresh')
-        .replace(/{channel}/g, `<span style="color: #c9cdfb; background: rgba(88, 101, 242, 0.2); padding: 1px 5px; border-radius: 3px; font-weight: 500;">${chName}</span>`)
-        .replace(/{channel_name}/g, chName.replace(/^#/, ''));
+        .replace(/{channel}/g, `<#${chName}>`)
+        .replace(/{channel_name}/g, chName);
 
     if (typeof renderDiscordMarkdown === 'function') {
         previewEl.innerHTML = renderDiscordMarkdown(previewFormatted);
