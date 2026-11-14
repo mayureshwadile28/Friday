@@ -471,7 +471,11 @@ class GiveawayApprovalView(discord.ui.View):
             await interaction.response.send_message("⚠️ This giveaway request has already been processed.", ephemeral=True)
             return
 
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
 
         guild = interaction.guild
         cfg = get_giveaway_config(guild.id)
@@ -657,6 +661,12 @@ class GiveawayApprovalView(discord.ui.View):
             await interaction.response.send_message("⚠️ This giveaway request has already been processed.", ephemeral=True)
             return
 
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
         req["status"] = "rejected"
         req["rejected_by"] = interaction.user.id
         db.save_data()
@@ -711,7 +721,10 @@ class GiveawayApprovalView(discord.ui.View):
         except Exception as e:
             print(f"[Giveaways] Failed to send rejection log: {e}")
 
-        await interaction.response.send_message(f"❌ Giveaway request for **{req['prize']}** was rejected.", ephemeral=True)
+        if interaction.response.is_done():
+            await interaction.followup.send(f"❌ Giveaway request for **{req['prize']}** was rejected.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ Giveaway request for **{req['prize']}** was rejected.", ephemeral=True)
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1487,6 +1500,23 @@ class Giveaways(commands.Cog):
             await interaction.response.send_message("This command can only be used inside a server.", ephemeral=True)
             return
 
+        # Immediate acknowledgment so Discord NEVER times out ("The application did not respond")
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception as e:
+                print(f"[Giveaways] Defer warning in gcreate: {e}", flush=True)
+
+        async def reply(**kwargs):
+            kwargs.setdefault("ephemeral", True)
+            try:
+                if interaction.response.is_done():
+                    return await interaction.followup.send(**kwargs)
+                else:
+                    return await interaction.response.send_message(**kwargs)
+            except Exception as e:
+                print(f"[Giveaways] Failed to send interaction reply in gcreate: {e}", flush=True)
+
         # ── 1. First-Time Setup Guard ──
         if not is_giveaway_configured(guild.id, guild):
             is_admin = interaction.user.guild_permissions.manage_guild or interaction.user.guild_permissions.administrator or interaction.user.id == guild.owner_id
@@ -1502,20 +1532,18 @@ class Giveaways(commands.Cog):
                     ),
                     color=discord.Color.gold()
                 )
-                await interaction.response.send_message(embed=embed, view=LaunchSetupButtonView(), ephemeral=True)
+                await reply(embed=embed, view=LaunchSetupButtonView())
             else:
-                await interaction.response.send_message(
-                    "⚠️ The giveaway system has not been configured by server administrators yet. Please ask a server admin to run `/gsetup`!",
-                    ephemeral=True
+                await reply(
+                    content="⚠️ The giveaway system has not been configured by server administrators yet. Please ask a server admin to run `/gsetup`!"
                 )
             return
 
         # ── 2. Validate Duration & Winners ──
         duration_sec = parse_duration(duration)
         if not duration_sec or duration_sec < 10:
-            await interaction.response.send_message(
-                "❌ Invalid duration format! Please use formats like `10m`, `1h`, `2d`, `1w`, or `1h 30m` (minimum 10 seconds).",
-                ephemeral=True
+            await reply(
+                content="❌ Invalid duration format! Please use formats like `10m`, `1h`, `2d`, `1w`, or `1h 30m` (minimum 10 seconds)."
             )
             return
 
@@ -1528,9 +1556,8 @@ class Giveaways(commands.Cog):
         )
 
         if not target_channel:
-            await interaction.response.send_message(
-                "❌ Giveaway broadcast channel is not configured or not found. An administrator must run `/gsetup` or configure it in the dashboard!",
-                ephemeral=True
+            await reply(
+                content="❌ Giveaway broadcast channel is not configured or not found. An administrator must run `/gsetup` or configure it in the dashboard!"
             )
             return
 
@@ -1559,9 +1586,8 @@ class Giveaways(commands.Cog):
                 app_ch = await resolve_channel(guild, self.bot, log_ch_id) or guild.system_channel or target_channel
 
             if not app_ch:
-                await interaction.response.send_message(
-                    "❌ Staff approval channel is not configured. Please notify a server administrator.",
-                    ephemeral=True
+                await reply(
+                    content="❌ Staff approval channel is not configured. Please notify a server administrator."
                 )
                 return
 
@@ -1628,7 +1654,7 @@ class Giveaways(commands.Cog):
                 .replace("{channel}", app_ch.mention)
                 .replace("{server}", guild.name)
             )
-            await interaction.response.send_message(sub_msg, ephemeral=True)
+            await reply(content=sub_msg)
             return
 
         # ── 4. Branch: Administrator Direct Launch ──
@@ -1767,17 +1793,17 @@ class Giveaways(commands.Cog):
                     color=discord.Color.blue(),
                     timestamp=datetime.now(timezone.utc)
                 )
-                if valid_img:
-                    log_embed.set_thumbnail(url=valid_img)
+                thumb_url = final_banner_url if (final_banner_url and not final_banner_url.startswith("attachment://")) else (guild.icon.url if guild.icon else None)
+                if thumb_url:
+                    log_embed.set_thumbnail(url=thumb_url)
                 if guild.icon:
                     log_embed.set_footer(text="Friday Giveaway Engine • Audit Log", icon_url=guild.icon.url)
                 await log_channel.send(embed=log_embed)
         except Exception as e:
             print(f"[Giveaways] Error logging giveaway creation: {e}")
 
-        await interaction.response.send_message(
-            f"🎉 Giveaway for **{prize}** created successfully in {target_channel.mention}!\n[Click here to view]({gw_msg.jump_url})",
-            ephemeral=True
+        await reply(
+            content=f"🎉 Giveaway for **{prize}** created successfully in {target_channel.mention}!\n[Click here to view]({gw_msg.jump_url})"
         )
 
     @app_commands.command(name="gstart", description="Alias for /gcreate to quickly launch a giveaway")
@@ -1815,7 +1841,12 @@ class Giveaways(commands.Cog):
             await interaction.response.send_message(f"❌ Active giveaway with message ID `{clean_id}` was not found.", ephemeral=True)
             return
 
-        await interaction.response.defer(ephemeral=True)
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
         await self.conclude_giveaway(key, gw)
         await interaction.followup.send(f"✅ Successfully ended the giveaway for **{gw.get('prize')}** early!", ephemeral=True)
 
@@ -1843,6 +1874,12 @@ class Giveaways(commands.Cog):
         if not entries:
             await interaction.response.send_message("❌ This giveaway has 0 entries, so it cannot be rerolled.", ephemeral=True)
             return
+
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
 
         count = max(1, min(winners or 1, len(entries)))
         new_winners = random.sample(entries, k=count)
@@ -1930,7 +1967,10 @@ class Giveaways(commands.Cog):
         except Exception as e:
             print(f"[Giveaways] Failed to send reroll log: {e}")
 
-        await interaction.response.send_message(f"✅ Rerolled {count} new winner(s) for **{prize}**!", ephemeral=True)
+        if interaction.response.is_done():
+            await interaction.followup.send(f"✅ Rerolled {count} new winner(s) for **{prize}**!", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"✅ Rerolled {count} new winner(s) for **{prize}**!", ephemeral=True)
 
     @app_commands.command(name="gcancel", description="Cancel an active giveaway without picking winners")
     @app_commands.describe(message_id="The Discord Message ID of the giveaway")
@@ -1949,6 +1989,12 @@ class Giveaways(commands.Cog):
             await interaction.response.send_message(f"❌ Active giveaway with message ID `{clean_id}` was not found.", ephemeral=True)
             return
 
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
         gw["status"] = "cancelled"
         db.save_data()
 
@@ -1966,7 +2012,10 @@ class Giveaways(commands.Cog):
             except Exception:
                 pass
 
-        await interaction.response.send_message(f"❌ Successfully cancelled the giveaway for **{gw.get('prize')}**.", ephemeral=True)
+        if interaction.response.is_done():
+            await interaction.followup.send(f"❌ Successfully cancelled the giveaway for **{gw.get('prize')}**.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"❌ Successfully cancelled the giveaway for **{gw.get('prize')}**.", ephemeral=True)
 
     @app_commands.command(name="glist", description="List all active giveaways running in this server")
     async def glist(self, interaction: discord.Interaction):
