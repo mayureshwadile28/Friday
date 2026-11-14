@@ -179,15 +179,26 @@ class Security(commands.Cog):
         return False
 
     def member_has_embed_permission(self, member, channel) -> bool:
-        """Check if a member explicitly has embed_links or attach_files via role.
-        NOTE: Administrator does NOT count here — admins are still subject to anti-gif/anti-link rules
-        unless they are explicitly whitelisted. manage_guild / manage_messages also do NOT exempt."""
+        """Check if a member has embed_links or attach_files permission directly, via channel, or via any role."""
         if not isinstance(member, discord.Member):
             return False
+
+        # 1. Administrator always has permission
+        if getattr(member.guild_permissions, "administrator", False):
+            return True
+
+        # 2. Check guild-level permissions
         gp = member.guild_permissions
-        # Only explicit embed/attach bits grant bypass — NOT administrator or manage_guild.
         if gp.embed_links or gp.attach_files:
             return True
+
+        # 3. Check role-level permissions directly on all member roles (bypasses channel overrides)
+        for r in getattr(member, "roles", []):
+            perms = getattr(r, "permissions", None)
+            if perms and (perms.embed_links or perms.attach_files):
+                return True
+
+        # 4. Check channel-level computed permissions
         if hasattr(channel, "permissions_for"):
             try:
                 cp = channel.permissions_for(member)
@@ -195,6 +206,7 @@ class Security(commands.Cog):
                     return True
             except Exception:
                 pass
+
         return False
 
     async def safe_delete_violating_message(self, message: discord.Message, violation_label: str = "violation") -> bool:
@@ -1476,9 +1488,10 @@ class Security(commands.Cog):
                             non_gif_links = []
 
                         # A member can send GIF links without being deleted by anti-link if:
-                        # 1. They are explicitly GIF-whitelisted (or immune) — completely bypassing the allow_gifs toggle!
-                        # 2. OR the member has in-server Discord embed/attach permissions enabled!
-                        is_gif_permitted = is_gif_whitelisted or has_embed_perm or (allow_gifs and has_embed_perm)
+                        # 1. They are explicitly GIF-whitelisted (or immune)
+                        # 2. OR the member has in-server Discord embed/attach permissions enabled
+                        # 3. OR the allow_gifs switch is enabled
+                        is_gif_permitted = is_gif_whitelisted or has_embed_perm or allow_gifs
 
                         if is_gif_permitted and (gif_links or self.has_gif_content(message)) and not non_gif_links:
                             pass  # GIF is authorized, do NOT delete as external link!
