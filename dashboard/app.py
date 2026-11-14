@@ -1739,13 +1739,16 @@ def create_reaction_panel(gid):
             bot_instance.add_view(view)
 
             db.reaction_roles[msg_id] = {str(e): r.id for r, e in roles_setup}
-            db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+            db.reaction_roles[temp_id] = db.reaction_roles[msg_id]
+            meta_payload = {
                 "exclusive": exclusive,
                 "channel_id": str(channel_id),
                 "guild_id": str(gid),
                 "panel_type": "select",
                 "options": stored_opts
             }
+            db.data.setdefault("reaction_roles_meta", {})[msg_id] = meta_payload
+            db.data.setdefault("reaction_roles_meta", {})[temp_id] = meta_payload
         else:
             msg = await channel.send(embed=embed)
             msg_id = str(msg.id)

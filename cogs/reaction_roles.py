@@ -20,27 +20,92 @@ class ReactionRoleSelect(discord.ui.Select):
         self.exclusive = exclusive
 
     async def callback(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        selected_val = self.values[0]
+        # Delegate immediately to centralized processor
+        cog = interaction.client.get_cog("ReactionRoles")
+        if cog:
+            await cog.process_role_selection(interaction, self.values[0] if self.values else None, self.panel_id)
+
+
+class ReactionRoleSelectView(discord.ui.View):
+    def __init__(self, options: list[discord.SelectOption], panel_id: str, exclusive: bool = True):
+        super().__init__(timeout=None)
+        self.add_item(ReactionRoleSelect(options=options, panel_id=panel_id, exclusive=exclusive))
+
+
+class ReactionRoles(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self._processing = set()
+
+    async def process_role_selection(self, interaction: discord.Interaction, selected_val: Optional[str], panel_id: Optional[str] = None):
+        """Unified, 24/7 atomic role assigner for self-role dropdowns.
+        Works across bot restarts, missing DB records, and raw component interactions."""
+        if not selected_val:
+            return
+
+        # Always ensure interaction is acknowledged immediately so Discord never times out
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
         guild = interaction.guild
         member = interaction.user
 
         if not guild or not isinstance(member, discord.Member):
-            await interaction.followup.send("❌ Error: Could not verify server member.", ephemeral=True)
+            try:
+                await interaction.followup.send("❌ Error: Could not verify server member.", ephemeral=True)
+            except Exception:
+                pass
             return
 
-        # Extract all role IDs from options
+        msg = interaction.message
+        msg_id = str(msg.id) if msg else None
+        p_id = str(panel_id) if panel_id else (msg_id or "")
+
+        # Extract all role IDs across database AND message components directly
         all_role_ids = set()
-        for opt in self.options:
-            if opt.value != "clear" and opt.value.isdigit():
-                all_role_ids.add(int(opt.value))
 
-        panel_roles_map = db.reaction_roles.get(self.panel_id, {})
-        for r_id in panel_roles_map.values():
-            if isinstance(r_id, int):
-                all_role_ids.add(r_id)
+        # 1. From database mappings
+        for pid_candidate in (p_id, msg_id):
+            if pid_candidate:
+                p_map = db.reaction_roles.get(pid_candidate, {})
+                if isinstance(p_map, dict):
+                    for r_id in p_map.values():
+                        if isinstance(r_id, int):
+                            all_role_ids.add(r_id)
+                        elif isinstance(r_id, str) and r_id.isdigit():
+                            all_role_ids.add(int(r_id))
 
-        # 1. Clear / Remove role
+                meta = db.data.get("reaction_roles_meta", {}).get(pid_candidate, {})
+                if isinstance(meta, dict):
+                    for opt in meta.get("options", []):
+                        val = opt.get("value")
+                        if val and str(val).isdigit():
+                            all_role_ids.add(int(val))
+
+        # 2. Directly from Discord message components (100% resilient even if DB has no record)
+        if msg and hasattr(msg, "components"):
+            for comp in msg.components:
+                children = getattr(comp, "children", [comp])
+                for child in children:
+                    if hasattr(child, "options"):
+                        for opt in child.options:
+                            val = getattr(opt, "value", None)
+                            if val and str(val).isdigit():
+                                all_role_ids.add(int(val))
+
+        # Determine exclusive mode (default True)
+        meta_exclusive = True
+        for pid_candidate in (p_id, msg_id):
+            if pid_candidate:
+                m = db.data.get("reaction_roles_meta", {}).get(pid_candidate)
+                if isinstance(m, dict) and "exclusive" in m:
+                    meta_exclusive = bool(m.get("exclusive", True))
+                    break
+
+        # Case A: Clear / Remove Role
         if selected_val == "clear":
             roles_to_remove = [r for r in member.roles if r.id in all_role_ids]
             if roles_to_remove:
@@ -49,11 +114,17 @@ class ReactionRoleSelect(discord.ui.Select):
                     await interaction.followup.send("🗑️ Successfully removed your role from this panel.", ephemeral=True)
                 except discord.Forbidden:
                     await interaction.followup.send("❌ Friday lacks permission or role hierarchy to modify your roles.", ephemeral=True)
+                except Exception as e:
+                    await interaction.followup.send(f"❌ Error removing role: {e}", ephemeral=True)
             else:
                 await interaction.followup.send("ℹ️ You do not currently have any roles from this panel.", ephemeral=True)
             return
 
-        # 2. Assign selected role
+        # Case B: Assign Selected Role
+        if not selected_val.isdigit():
+            await interaction.followup.send("❌ Invalid role selection.", ephemeral=True)
+            return
+
         target_role_id = int(selected_val)
         target_role = guild.get_role(target_role_id)
         if not target_role:
@@ -61,7 +132,10 @@ class ReactionRoleSelect(discord.ui.Select):
             return
 
         if target_role >= guild.me.top_role:
-            await interaction.followup.send(f"❌ Error: Friday's highest role is not high enough to assign **{target_role.name}**.", ephemeral=True)
+            await interaction.followup.send(
+                f"❌ Error: Friday's highest role is not high enough to assign **{target_role.name}**. Please move Friday's role higher in Server Settings > Roles.",
+                ephemeral=True
+            )
             return
 
         if target_role in member.roles:
@@ -69,7 +143,7 @@ class ReactionRoleSelect(discord.ui.Select):
             return
 
         roles_to_remove = []
-        if self.exclusive:
+        if meta_exclusive:
             for r in member.roles:
                 if r.id in all_role_ids and r.id != target_role_id:
                     roles_to_remove.append(r)
@@ -84,17 +158,40 @@ class ReactionRoleSelect(discord.ui.Select):
         except Exception as e:
             await interaction.followup.send(f"❌ Error modifying roles: {e}", ephemeral=True)
 
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Global interaction listener: catches any self-role dropdown 24/7 even across restarts."""
+        if interaction.type != discord.InteractionType.component:
+            return
 
-class ReactionRoleSelectView(discord.ui.View):
-    def __init__(self, options: list[discord.SelectOption], panel_id: str, exclusive: bool = True):
-        super().__init__(timeout=None)
-        self.add_item(ReactionRoleSelect(options=options, panel_id=panel_id, exclusive=exclusive))
+        custom_id = str(interaction.data.get("custom_id", ""))
+        if not custom_id.startswith("rr_sel:"):
+            return
 
+        # Acknowledge immediately within milliseconds to prevent Discord "didn't respond in time" error
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
 
-class ReactionRoles(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
-        self._processing = set()
+        values = interaction.data.get("values", [])
+        if not values:
+            return
+
+        selected_val = str(values[0])
+        panel_id = custom_id.split("rr_sel:", 1)[1] if "rr_sel:" in custom_id else ""
+
+        # Lock key to prevent duplicate simultaneous executions
+        msg_id_val = getattr(interaction.message, "id", panel_id)
+        lock_key = (interaction.user.id, msg_id_val)
+        if lock_key in self._processing:
+            return
+        self._processing.add(lock_key)
+        try:
+            await self.process_role_selection(interaction, selected_val, panel_id)
+        finally:
+            self._processing.discard(lock_key)
 
     async def cog_load(self):
         """Restore persistent dropdown views across bot restarts."""
@@ -251,13 +348,16 @@ class ReactionRoles(commands.Cog):
                 self.bot.add_view(view)
 
                 db.reaction_roles[msg_id] = {str(e): r.id for r, e in roles_setup}
-                db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+                db.reaction_roles[temp_id] = db.reaction_roles[msg_id]
+                meta_payload = {
                     "exclusive": exclusive,
                     "channel_id": str(channel.id),
                     "guild_id": str(interaction.guild.id),
                     "panel_type": "select",
                     "options": stored_opts
                 }
+                db.data.setdefault("reaction_roles_meta", {})[msg_id] = meta_payload
+                db.data.setdefault("reaction_roles_meta", {})[temp_id] = meta_payload
                 db.save_data()
                 await interaction.followup.send(f"✅ Dropdown Role Panel deployed successfully in {channel.mention}.")
             else:
