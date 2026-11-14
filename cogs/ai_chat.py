@@ -32,7 +32,7 @@ try:
     LOCAL_TZ = ZoneInfo("Asia/Kolkata")
 except Exception:
     LOCAL_TZ = timezone(timedelta(hours=5, minutes=30), name="IST")
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 def get_instant_time_response(text: str) -> Optional[str]:
     """Provides deterministic, 100% accurate Indian Standard Time (IST / Kolkata, UTC+5:30) responses."""
@@ -124,15 +124,20 @@ DATE_TIME_QUERY_REGEX = re.compile(
 # Broad real-time intent detection for web news, space, sports, world events, and live lookups
 SEARCH_INTENT_REGEX = re.compile(
     r'\b('
-    # General news & updates
+    # Real-time status, updates, and happenings
+    r'current status|latest status|present status|live status|status kya hai|kya status hai|status of|status batao|'
+    r'latest update|latest updates|recent update|recent updates|new update|kya update hai|kya update|koi update|'
+    r'what is happening with|what is happening|what happened with|what happened to|what happened today|what\'?s up with|what\'?s going on|'
+    r'kya chal raha hai duniya me|kya chal raha hai|kya chal raha|kya hua|kya haal hai|'
+    # General news & headlines
     r'news|headlines|breaking news|breaking|taza khabar|samachar|aaj ki news|aaj ka news|current events|'
-    r'world news|latest update|latest updates|recent update|recent news|today\'s news|tech news|market update|live update|aaj ke samachar|kya khabar|'
+    r'world news|today\'s news|tech news|market update|live update|aaj ke samachar|kya khabar|'
     # Web search triggers & commands
     r'search google|google it|google pe dekho|google pe search|google karo|google pe|search online|search internet|'
     r'internet pe dekho|use internet|use internet ji|internet use karo|browse internet|check web|check on google|google this|look it up|check online|search web|'
-    r'kya chal raha hai duniya me|what is happening with|what happened with|what happened today|tell me about|whatever you know about|'
+    r'tell me about|whatever you know about|'
     # Space & Aerospace (Starship, SpaceX, NASA, ISRO)
-    r'starship|spacex|falcon 9|falcon heavy|super heavy|artemis|isro|nasa|chandrayaan|gaganyaan|space launch|rocket launch|'
+    r'starship|spacex|falcon 9|falcon heavy|super heavy|artemis|isro|nasa|chandrayaan|gaganyaan|blue origin|space launch|rocket launch|'
     r'orbit|space mission|space flight|flight test|launch date|launch time|next launch|'
     # Movies, Cinema, Marvel, DC, MCU, Pop Culture & Gaming
     r'marv[ae]l|mcu|av[ae]ngers?|doomes?day|secret wars|superhero|batman|superman|spider-?man|deadpool|wolverine|'
@@ -143,10 +148,10 @@ SEARCH_INTENT_REGEX = re.compile(
     r'live score|cricket score|football score|match score|ipl score|ipl match|world cup|fifa|champions league|'
     r'premier league|formula 1|f1 race|f1 qualifying|grand prix|who won the match|who won today|match result|today\'s match|'
     # Finance, Economy & Crypto
-    r'stock price|share price|crypto price|bitcoin price|ethereum price|sensex|nifty|gold rate|silver rate|dollar rate|rupee rate|'
-    # Entertainment & Tech
-    r'box office collection|movie release date|trailer release|iphone release|samsung release|nvidia gpu|'
-    r'weather|weather today|weather forecast'
+    r'stock price|share price|crypto price|bitcoin price|ethereum price|sensex|nifty|gold rate|gold price|silver rate|dollar rate|rupee rate|'
+    # AI, Tech & Gadgets
+    r'deepseek|openai|chatgpt|grok|gemini|rtx 5090|iphone 17|samsung s25|'
+    r'weather in|weather today|weather forecast'
     r')\b',
     re.IGNORECASE
 )
@@ -254,58 +259,94 @@ HINGLISH_INDICATORS = re.compile(
 SAFE_ALLOWED_MENTIONS = discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=True)
 
 def strip_llm_reasoning(text: str) -> str:
-    """Strips chain-of-thought, thinking blocks, reasoning tags, and model self-deliberation."""
+    """Strips chain-of-thought, thinking blocks, reasoning tags, and model self-deliberation/self-questioning."""
     if not text:
         return ""
 
-    # 1. Strip explicit xml/markdown style thought/reasoning tags
+    # 1. Strip explicit XML / markdown style thought & reasoning tags
     text = re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
     text = re.sub(r'<thought>[\s\S]*?</thought>', '', text, flags=re.IGNORECASE)
     text = re.sub(r'<reasoning>[\s\S]*?</reasoning>', '', text, flags=re.IGNORECASE)
     text = re.sub(r'```(?:thought|thinking|reasoning)[\s\S]*?```', '', text, flags=re.IGNORECASE)
 
-    # 2. Handle unclosed opening tag like <think> with no closing tag (often when response was truncated)
+    # 2. Handle unclosed opening tags (when response was truncated by max_tokens)
     if "<think>" in text.lower():
         text = re.sub(r'<think>[\s\S]*', '', text, flags=re.IGNORECASE)
     if "<thought>" in text.lower():
         text = re.sub(r'<thought>[\s\S]*', '', text, flags=re.IGNORECASE)
+    if "<reasoning>" in text.lower():
+        text = re.sub(r'<reasoning>[\s\S]*', '', text, flags=re.IGNORECASE)
 
-    # 3. Strip labeled reasoning blocks like "Thought:\n...", "Thinking Process:\n...", "Reasoning:\n..."
-    text = re.sub(r'^(?:thought|thinking|thinking process|reasoning|internal reasoning):\s*[\s\S]*?(?=\n\n|\Z)', '', text, flags=re.IGNORECASE).strip()
+    # 3. Transition markers: If output has a clear 'Final Answer:', 'Response:', 'Here is the response:'
+    transition_match = re.search(
+        r'\n+(?:\*{0,2}(?:final\s+)?(?:answer|response|reply)|here\s+(?:is|\'?s)\s+(?:the\s+)?(?:response|answer|reply)|actual\s+response)\s*:\s*\*{0,2}\s*\n*',
+        text,
+        re.IGNORECASE
+    )
+    if transition_match:
+        before_trans = text[:transition_match.start()].lower()
+        if any(w in before_trans for w in ('think', 'user is', 'user wants', 'wait,', 'let me', 'reasoning', 'plan', 'step', 'analyze')):
+            text = text[transition_match.end():]
 
-    # 4. Detect multi-paragraph internal deliberation (like DeepSeek R1 / Qwen thinking output leaking into plain text)
+    # 4. Strip labeled reasoning blocks like "**Thinking Process:**\n...", "Thought:\n...", etc.
+    text = re.sub(
+        r'^\s*(?:\*{0,2}#{0,3}\s*)?(?:thought|thinking|thinking process|reasoning|internal reasoning|analysis)(?:\s*process)?(?:\s*:\s*|\s*\*{0,2}\s*\n)[\s\S]*?(?=\n\n[A-Z0-9#\*\<\"]|\Z)',
+        '',
+        text,
+        flags=re.IGNORECASE
+    ).strip()
+
+    # 5. Multi-paragraph self-questioning / internal deliberation filter
     paragraphs = text.split("\n\n")
     cleaned_paras = []
     in_reasoning_header = True
 
-    reasoning_starters = (
-        "we need to ", "let's consider", "let's think", "let's reconstruct",
-        "initial:", "assume ", "we can just respond", "the user is asking",
-        "the user is playing", "we should follow style", "style:", "tone:",
-        "thinking:", "reasoning:", "analysis:", "internal note:"
+    deliberation_starters = (
+        "thinking:", "reasoning:", "analysis:", "plan:", "approach:", "initial:", "style:", "tone:",
+        "**thinking", "## thinking", "### thinking", "*thinking",
+        "let me think", "let's think", "lets think", "let me check", "let's check", "lets check",
+        "let me see", "let's see if", "let me analyze", "let's analyze", "let me formulate",
+        "first, let", "first, we", "first, i will", "firstly,",
+        "okay, so the user", "ok, so the user", "so the user is", "so the user wants",
+        "i need to respond", "i should respond", "i need to answer", "i should answer",
+        "we need to respond", "we should answer", "we need to provide",
+        "the user is asking", "the user asked", "the user wants", "the user said",
+        "user prompt:", "user query:", "user's query:",
+        "1. analyze", "1. **analyze", "step 1:", "step 2:"
     )
 
     for p in paragraphs:
         p_stripped = p.strip()
         p_lower = p_stripped.lower()
+
         if in_reasoning_header:
-            if any(p_lower.startswith(starter) for starter in reasoning_starters):
+            # Check for definite reasoning starters
+            if any(p_lower.startswith(starter) for starter in deliberation_starters):
                 continue
-            if "we need to respond" in p_lower or "let's consider board" in p_lower or "we need to " in p_lower or "given black just played" in p_lower or "let's think" in p_lower:
+
+            # Check for self-questioning "Wait, ..." or "Hmm, ..." with deliberation context
+            if p_lower.startswith(("wait,", "wait ", "wait...")):
+                if any(w in p_lower for w in ("let", "user", "think", "check", "should", "need", "is", "what", "how", "answer")):
+                    continue
+            if p_lower.startswith(("hmm,", "hmm...", "hmm ")):
+                if any(w in p_lower for w in ("let", "user", "think", "check", "should", "need", "see", "answer")):
+                    continue
+
+            # Check for generic self-talk
+            if "we need to respond" in p_lower or "let's consider" in p_lower or "let me think" in p_lower:
                 continue
+
             in_reasoning_header = False
             cleaned_paras.append(p_stripped)
         else:
-            # Also catch trailing reasoning or thoughts in later paragraphs
-            if any(p_lower.startswith(starter) for starter in ("assume ", "initial:", "we can just respond", "given black", "sequence:")):
+            # Trailing deliberation checks in later paragraphs
+            if any(p_lower.startswith(starter) for starter in ("assume ", "initial:", "internal note:", "sequence:")):
                 continue
             cleaned_paras.append(p_stripped)
 
     if cleaned_paras:
         text = "\n\n".join(cleaned_paras)
     else:
-        # Every single paragraph was internal reasoning/deliberation!
-        # Do NEVER leak raw chain-of-thought to Discord.
         text = ""
 
     return text.strip()
@@ -445,8 +486,46 @@ def format_and_clean_announcement(text: str) -> str:
     return clean.strip()
 
 
+def fetch_ddg_html(query: str, max_items: int = 4) -> List[Dict[str, str]]:
+    """Fetch factual snippets directly from DuckDuckGo HTML endpoint."""
+    try:
+        clean_q = query.strip()
+        url = 'https://html.duckduckgo.com/html/?q=' + quote_plus(clean_q)
+        req = urllib.request.Request(
+            url,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5'
+            }
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            content = resp.read().decode('utf-8', errors='ignore')
+
+        results = re.findall(
+            r'<h2 class=[\x22\x27]result__title[\x22\x27]>.*?<a[^>]*>(.*?)</a>.*?</h2>.*?<a[^>]*class=[\x22\x27]result__snippet[\x22\x27][^>]*>(.*?)</a>',
+            content,
+            re.DOTALL
+        )
+        items = []
+        for t, s in results[:max_items]:
+            clean_t = html.unescape(re.sub(r'<[^>]+>', '', t)).strip()
+            clean_s = html.unescape(re.sub(r'<[^>]+>', '', s)).strip()
+            if clean_s and len(clean_s) > 20:
+                items.append({
+                    "title": clean_t or "Live Web Update",
+                    "link": "",
+                    "pubDate": "Live Web",
+                    "summary": clean_s
+                })
+        return items
+    except Exception as e:
+        print(f"[AIChat] DDG HTML search exception: {e}")
+        return []
+
+
 def fetch_ddg_lite(query: str, max_items: int = 4) -> List[Dict[str, str]]:
-    """Fetch live factual web snippets, movie releases, mission specs, and wiki info from DuckDuckGo."""
+    """Fetch live factual web snippets, movie releases, mission specs, and wiki info from DuckDuckGo Lite."""
     try:
         clean_q = query.strip()
         url = 'https://lite.duckduckgo.com/lite/'
@@ -475,22 +554,35 @@ def fetch_ddg_lite(query: str, max_items: int = 4) -> List[Dict[str, str]]:
                 })
         return items
     except Exception as e:
-        print(f"[AIChat] DDG search exception: {e}")
+        print(f"[AIChat] DDG Lite search exception: {e}")
         return []
 
 
 def fetch_live_web_data(query: str, max_items: int = 6) -> List[Dict[str, str]]:
-    """Dual-engine live real-time search combining DuckDuckGo factual web snippets and Google News RSS."""
+    """Multi-engine live real-time search combining DuckDuckGo HTML/Lite snippets and Google News RSS."""
     results = []
-    # 1. Fetch factual snippets (release dates, movie announcements, launch details, tech)
-    ddg_items = fetch_ddg_lite(query, max_items=3)
+
+    # 1. Primary: DuckDuckGo HTML web results
+    ddg_items = fetch_ddg_html(query, max_items=4)
+    if not ddg_items:
+        # Fallback to DDG Lite if HTML returned no results
+        ddg_items = fetch_ddg_lite(query, max_items=3)
     results.extend(ddg_items)
 
-    # 2. Fetch live news articles (breaking news, recent headlines)
+    # 2. Live Google News RSS articles for recent news headlines & events
     news_items = fetch_live_google_news(query, max_items=3)
     results.extend(news_items)
 
-    return results[:max_items] if results else news_items
+    # Deduplicate results by summary signature
+    seen = set()
+    deduped = []
+    for item in results:
+        sig = item.get("summary", "")[:50].lower()
+        if sig and sig not in seen:
+            seen.add(sig)
+            deduped.append(item)
+
+    return deduped[:max_items] if deduped else results[:max_items]
 
 
 def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str]]:
@@ -960,22 +1052,25 @@ class AIChat(commands.Cog):
         has_verb = bool(ACTION_COMMAND_VERBS.search(text))
         return has_action and (has_verb or len(text.split()) <= 6)
 
-    def _detect_and_extract_search_query(self, text: str, history: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
-        """Detect if the query asks for news or live Google facts, strictly excluding date/time questions.
-        Supports multi-turn context carry-over when user issues follow-ups (e.g. 'abi karo', 'do it', 'batao')."""
-        # 1. If asking about date or time without explicitly asking for news, NEVER trigger web search!
-        if DATE_TIME_QUERY_REGEX.search(text) and not re.search(r'\b(news|khabar|samachar|headline)\b', text, re.IGNORECASE):
-            return None
+    def _thinking_wall_evaluate_search(self, text: str, history: Optional[List[Dict[str, str]]] = None) -> Tuple[bool, Optional[str]]:
+        """Thinking Wall: Evaluates whether the incoming query requires real-time Google/web search or not."""
+        clean_text = text.strip()
+        if not clean_text:
+            return False, None
 
-        # 2. Conversational follow-up: user is prompting Friday to execute a web/internet/google search on previous topic
+        # 1. Exclude instant clock/date questions unless asking about release date, movie, launch, or events
+        is_release_or_event_query = bool(re.search(r'\b(release|launch|movie|film|trailer|teaser|game|episode|season|coming out|kab aayegi|kab aayega|status)\b', clean_text, re.IGNORECASE))
+        if not is_release_or_event_query and (get_instant_time_response(clean_text) is not None or (DATE_TIME_QUERY_REGEX.search(clean_text) and not re.search(r'\b(news|khabar|samachar|headline|match|score|launch|event|game|update|status)\b', clean_text, re.IGNORECASE))):
+            return False, None
+
+        # 2. Conversational follow-ups in multi-turn history (e.g. 'kya status hai', 'use internet ji', 'google it', 'batao na')
         is_pure_search_command = bool(re.search(
-            r'^(?:use internet(?:\s+ji)?|internet use karo|search online|search internet|google it|look it up|check online|search karo|karo|kardo|karo na|do it|tell me|batao|batao na|check now|show me|search it|check it|please do|plz do|kar do|ha tho|ha toh|yes please|ha|yes|kya hua|say it)[!.\s?]*$',
-            text.strip(),
+            r'^(?:use internet(?:\s+ji)?|internet use karo|search online|search internet|google it|look it up|check online|search karo|karo|kardo|karo na|do it|tell me|batao|batao na|check now|show me|search it|check it|please do|plz do|kar do|ha tho|ha toh|yes please|ha|yes|kya hua|say it|kya status hai|status kya hai|update kya hai|latest kya hai|current status kya hai)[!.\s?]*$',
+            clean_text,
             re.IGNORECASE
         ))
         if history:
-            # 2a. Direct search command follow-up (e.g. "use internet ji", "google it", "batao na")
-            if is_pure_search_command or re.search(r'\b(use internet|internet use karo|google it|check online)\b', text, re.IGNORECASE):
+            if is_pure_search_command or re.search(r'\b(use internet|internet use karo|google it|check online)\b', clean_text, re.IGNORECASE):
                 for msg in reversed(history):
                     if msg.get("role") == "user":
                         prev_text = msg.get("content", "")
@@ -985,28 +1080,39 @@ class AIChat(commands.Cog):
                         ).strip()
                         cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
                         if len(cleaned) >= 3 and not re.search(r'^(?:use internet|google it|check online)$', cleaned, re.IGNORECASE):
-                            return cleaned
+                            if re.search(r'\bstarship\b', cleaned, re.IGNORECASE) and not re.search(r'\bspacex\b', cleaned, re.IGNORECASE):
+                                cleaned = f"SpaceX {cleaned}"
+                            return True, f"{cleaned} latest status updates"
 
-            # 2b. Conversational debate on dates/releases (e.g. "i think it's 17th dec 2026", "but 27 mei toh secret wars aayegi", "Dec 2027 not may")
-            date_conjecture = bool(re.search(r'\b(202[4-9]|2030|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}(?:st|nd|rd|th)?|release|aayegi|aayega|coming)\b', text, re.IGNORECASE))
+            # Conversational debate on dates/releases
+            date_conjecture = bool(re.search(r'\b(202[4-9]|2030|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}(?:st|nd|rd|th)?|release|aayegi|aayega|coming)\b', clean_text, re.IGNORECASE))
             if date_conjecture:
                 for msg in reversed(history):
                     c = msg.get("content", "")
                     match = re.search(r'\b(avengers(?:\s+doomsday)?|doomsday|secret wars|starship(?:\s+\d+\w*)?|spacex|gta\s*6|marvel|mcu)\b', c, re.IGNORECASE)
                     if match:
                         topic = match.group(0)
-                        return f"{topic} release date"
+                        return True, f"{topic} release date"
 
-        # 3. Direct search intent keywords in current query
-        if SEARCH_INTENT_REGEX.search(text):
+        # 3. Direct real-time and search intent check
+        if SEARCH_INTENT_REGEX.search(clean_text):
             cleaned = re.sub(
                 r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?|ah so|so|can you tell me|whatever you know about|tell me whatever you know about|tell me about|use internet|use internet ji|internet use karo|search online|search internet|google it|look it up|check online)\b',
-                '', text, flags=re.IGNORECASE
+                '', clean_text, flags=re.IGNORECASE
             ).strip()
             cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
-            return cleaned if len(cleaned) >= 3 else text
+            query_to_use = cleaned if len(cleaned) >= 3 else clean_text
+            # Enrich SpaceX Starship queries for precision
+            if re.search(r'\bstarship\b', query_to_use, re.IGNORECASE) and not re.search(r'\bspacex\b', query_to_use, re.IGNORECASE):
+                query_to_use = f"SpaceX {query_to_use}"
+            return True, query_to_use
 
-        return None
+        return False, None
+
+    def _detect_and_extract_search_query(self, text: str, history: Optional[List[Dict[str, str]]] = None) -> Optional[str]:
+        """Backwards-compatible wrapper around _thinking_wall_evaluate_search."""
+        needs_search, search_query = self._thinking_wall_evaluate_search(text, history=history)
+        return search_query if needs_search else None
 
     async def _fetch_reply_chain(self, message: discord.Message, max_depth: int = 6) -> List[Dict[str, str]]:
         """Walk up the Discord reply chain to rebuild exact conversational context with resolved mentions."""
@@ -1064,7 +1170,7 @@ class AIChat(commands.Cog):
             f"- Current Real-World Time: {time_str} (Indian Standard Time, Kolkata / Asia/Kolkata, UTC+5:30)",
             f"- Current Year: {year_str}",
             "- STRICT TIMEZONE MANDATE: Your server, creator, and home timezone is strictly Indian Standard Time (IST / Asia/Kolkata, UTC+5:30). When asked about current time, date, or schedule, ALWAYS answer in Indian Standard Time (IST). NEVER state UTC, GMT, or US timezones.",
-            "- CRITICAL OUTPUT INTEGRITY: Output ONLY your direct conversational dialogue. NEVER output internal reasoning, planning, chain-of-thought, or self-instructions (e.g. 'We need to...', 'Let's consider...', 'Initial:'). Any deliberation must be completely silent.",
+            "- ZERO THINKING LEAKAGE / SILENT DELIBERATION (CRITICAL): Output ONLY your direct, final conversational dialogue! NEVER output internal thoughts, self-questioning, reasoning steps, drafting notes, or meta-commentary in chat. NEVER start your message with: 'Wait, let me see...', 'Thinking Process:', 'Let me think...', 'Hmm...', 'The user is asking...', 'I should answer...', 'Let's check...', 'Okay, so...'. Any deliberation must be 100% completely silent!",
         ]
 
         # Live Discord Server Environment & Statistics
@@ -1193,20 +1299,21 @@ ANNOUNCEMENT, GUIDELINES & DIRECT BROADCAST MODE (CRITICAL - HIGHEST PRIORITY):
      - Each item must have a bold header, followed by a clear, well-spaced description.
      - Never compress points into a dense single-spaced block. Ensure clean visual breathing room for Discord!
 """
-        elif is_research_mode and search_context:
+        elif is_research_mode:
+            search_block_text = search_context if search_context else "Live search completed; synthesize official current facts gracefully and clarify that specific upcoming dates or windows are still pending official confirmation."
             mode_instructions = f"""
 LIVE REAL-TIME GOOGLE SEARCH & NEWS RESULTS:
-{search_context}
+{search_block_text}
 
-CRITICAL FORMATTING & LENGTH DIRECTIVE (RESEARCH & NEWS MODE - 15 TO 20 LINES):
-- Because the user explicitly asked about live news, updates, or a topic requiring Google search data:
-- Expand your answer into a comprehensive, beautifully structured briefing of approximately 15 to 20 lines!
+CRITICAL FORMATTING & LENGTH DIRECTIVE (RESEARCH & NEWS MODE):
+- Because the user asked about live news, updates, or a topic requiring Google/web search data:
+- Deliver a clear, informative, beautifully structured briefing!
 - Format cleanly and elegantly using Discord markdown:
   1. **Charming Opening Headline**: Start with a welcoming, witty lady intro with 1 or 2 emojis (✨🌸).
-  2. **Organized Sections**: Use bold section titles (e.g. `**🔥 Key Highlights & Breaking Updates**`, `**📌 Deep Dive & Key Takeaways**`, `**🌐 Sources & Perspectives**`). Do NOT use `#` headers.
-  3. **Clear Bullet Points**: Use `• ` bullet points detailing facts, dates, numbers, and reputable sources (e.g., Reuters, BBC, AP, Yahoo Finance).
+  2. **Organized Sections**: Use bold section titles (e.g. `**🔥 Key Highlights & Breaking Updates**`, `**📌 Current Status & Details**`, `**🌐 Perspectives & Official Sources**`). Do NOT use `#` headers.
+  3. **Clear Bullet Points**: Use `• ` bullet points detailing facts, dates, numbers, and reputable sources (e.g., SpaceX official, Reuters, BBC, AP).
   4. **Thoughtful Conclusion**: Wrap up with a charming closing remark or a single engaging question for the user.
-- NEVER truncate or give a short 2-line answer when in Research Mode—deliver a rich, properly formatted 15-20 line briefing!
+- CRITICAL: You HAVE active live web access! NEVER say "I don't have internet access" or "I cannot search the web".
 """
         else:
             mode_instructions = """
@@ -1438,6 +1545,7 @@ HUMAN EMOTIONAL DYNAMICS & MOOD SWINGS (CRITICAL):
 {search_block}
 CONVERSATION STYLE:
 - Keep replies concise and punchy: 2 to 5 lines. Never write boring essays.
+- ZERO THINKING LEAKAGE: Output ONLY your direct dialogue to {nickname}. NEVER output internal thoughts, self-questioning, or deliberation like "Wait, let me see...", "Thinking Process:", "Hmm...".
 - Be funny, witty, engaging, and friendly.
 - Use 1 or 2 tasteful emojis that match your mood (✨, 💅, 😜, ☕, 🎭).
 - Fluent in English, Hindi, and Hinglish (always use respectful 'Aap' if Hinglish/Hindi).
@@ -1849,12 +1957,12 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
         history.append({"role": "user", "content": content})
 
-        # Live Real-Time Search / News intent detection with multi-turn history awareness
-        search_query = self._detect_and_extract_search_query(content, history=history)
+        # Thinking Wall: Live Real-Time Search / News intent evaluation with multi-turn history awareness
+        needs_search, search_query = self._thinking_wall_evaluate_search(content, history=history)
         live_search_context = ""
         is_research_mode = False
 
-        if search_query:
+        if needs_search and search_query:
             try:
                 search_items = await asyncio.to_thread(fetch_live_web_data, search_query, 6)
                 if search_items:
@@ -1862,17 +1970,20 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                     formatted_items = []
                     for i, item in enumerate(search_items, 1):
                         formatted_items.append(
-                            f"{i}. **{item['title']}** (Published: {item['pubDate']})\n   Summary: {item['summary']}"
+                            f"{i}. **{item['title']}** (Published: {item.get('pubDate', 'Live Web')})\n   Summary: {item['summary']}"
                         )
                     live_search_context = (
-                        f"Live Google Search & News Results for query '{search_query}':\n" +
+                        f"Live Google Search & Web Results for query '{search_query}':\n" +
                         "\n".join(formatted_items)
                     )
-                    # Cache last search context for multi-turn conversational follow-ups
-                    vip_data["last_search_context"] = live_search_context
-                    vip_data["last_search_time"] = time.time()
-                    vip_data["last_search_query"] = search_query
-                    db.save_data()
+                else:
+                    is_research_mode = True
+                    live_search_context = f"Topic requested: '{search_query}'. Live search completed with no new official breaking schedules confirmed yet."
+                # Cache last search context for multi-turn conversational follow-ups
+                vip_data["last_search_context"] = live_search_context
+                vip_data["last_search_time"] = time.time()
+                vip_data["last_search_query"] = search_query
+                db.save_data()
             except Exception as search_err:
                 print(f"[AIChat VIP DM Search] Exception: {search_err}")
         elif vip_data.get("last_search_context") and (time.time() - vip_data.get("last_search_time", 0) < 900):
@@ -2159,13 +2270,13 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                         for turn in recent[-4:]:
                             llm_messages.append({"role": turn["role"], "content": turn["content"]})
 
-                # 10. Check if live Google Search / News lookup is needed (ignoring date/time queries)
-                # Multi-turn history aware: captures follow-up prompts ('abi karo', 'batao', 'do it')
-                search_query = self._detect_and_extract_search_query(resolved_user_text, history=llm_messages)
+                # 10. Thinking Wall: Check whether query requires Google Search / Web research or not
+                # Multi-turn history aware: captures follow-up prompts ('abi karo', 'batao', 'do it', 'status kya hai')
+                needs_search, search_query = self._thinking_wall_evaluate_search(resolved_user_text, history=llm_messages)
                 live_search_context = ""
                 is_research_mode = False
 
-                if search_query:
+                if needs_search and search_query:
                     try:
                         search_items = await asyncio.to_thread(fetch_live_web_data, search_query, 6)
                         if search_items:
@@ -2173,12 +2284,15 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                             formatted_items = []
                             for i, item in enumerate(search_items, 1):
                                 formatted_items.append(
-                                    f"{i}. **{item['title']}** (Published: {item['pubDate']})\n   Summary: {item['summary']}"
+                                    f"{i}. **{item['title']}** (Published: {item.get('pubDate', 'Live Web')})\n   Summary: {item['summary']}"
                                 )
                             live_search_context = (
-                                f"Live Google Search & News Results for query '{search_query}':\n" +
+                                f"Live Google Search & Web Results for query '{search_query}':\n" +
                                 "\n".join(formatted_items)
                             )
+                        else:
+                            is_research_mode = True
+                            live_search_context = f"Topic requested: '{search_query}'. Live search completed with no new official breaking schedules confirmed yet."
                     except Exception as search_err:
                         print(f"[AIChat Search] Exception: {search_err}")
 
@@ -2328,12 +2442,12 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
         is_action = self._is_action_request(resolved_question)
 
-        # Check search intent (excluding date/time queries)
-        search_query = self._detect_and_extract_search_query(resolved_question)
+        # Thinking Wall: Check whether question requires Google Search / Web research or not
+        needs_search, search_query = self._thinking_wall_evaluate_search(resolved_question)
         live_search_context = ""
         is_research_mode = False
 
-        if search_query:
+        if needs_search and search_query:
             try:
                 search_items = await asyncio.to_thread(fetch_live_web_data, search_query, 6)
                 if search_items:
@@ -2341,12 +2455,15 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                     formatted_items = []
                     for i, item in enumerate(search_items, 1):
                         formatted_items.append(
-                            f"{i}. **{item['title']}** (Published: {item['pubDate']})\n   Summary: {item['summary']}"
+                            f"{i}. **{item['title']}** (Published: {item.get('pubDate', 'Live Web')})\n   Summary: {item['summary']}"
                         )
                     live_search_context = (
-                        f"Live Google Search & News Results for query '{search_query}':\n" +
+                        f"Live Google Search & Web Results for query '{search_query}':\n" +
                         "\n".join(formatted_items)
                     )
+                else:
+                    is_research_mode = True
+                    live_search_context = f"Topic requested: '{search_query}'. Live search completed with no new official breaking schedules confirmed yet."
             except Exception as search_err:
                 print(f"[AIChat Search] Exception: {search_err}")
 
