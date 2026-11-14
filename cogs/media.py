@@ -12,9 +12,64 @@ if PARENT_DIR not in sys.path:
 from database import db
 
 MEDIA_EXTENSIONS = (
-    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg',
-    '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv'
+    # Images
+    '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.heic', '.heif',
+    '.dng', '.raw', '.cr2', '.nef', '.tiff', '.tif', '.jfif', '.pjpeg', '.pjp',
+    '.avif', '.apng', '.ico',
+    # Videos
+    '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.wmv', '.flv', '.3gp',
+    '.ogv', '.ogg', '.qt', '.ts', '.m2ts', '.mts', '.vob', '.divx', '.asf',
+    # Audio / Voice clips (media)
+    '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac', '.opus', '.wma'
 )
+
+MEDIA_DOMAINS = (
+    "tenor.com", "giphy.com", "imgur.com", "gfycat.com", "redgifs.com",
+    "cdn.discordapp.com", "media.discordapp.net", "youtube.com", "youtu.be",
+    "tiktok.com", "instagram.com", "twitter.com", "x.com", "streamable.com",
+    "pinterest.com", "reddit.com", "vimeo.com"
+)
+
+
+def has_media_content(message: discord.Message) -> bool:
+    """Checks whether a message contains images, videos, audio, GIFs, stickers, or media links."""
+    # 1. Check attachments (uploaded files)
+    if message.attachments:
+        for att in message.attachments:
+            # If Discord identified image/video dimensions
+            if getattr(att, "width", None) is not None or getattr(att, "height", None) is not None:
+                return True
+            ctype = (att.content_type or "").lower()
+            if ctype.startswith(("image/", "video/", "audio/")):
+                return True
+            fname = (att.filename or "").lower()
+            if any(fname.endswith(ext) for ext in MEDIA_EXTENSIONS):
+                return True
+            if "." in fname and any(ext in fname for ext in ('.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mov', '.webp', '.heic')):
+                return True
+            # Any attachment uploaded by user counts as media in a media channel
+            if fname:
+                return True
+
+    # 2. Check stickers (Discord animated or static stickers)
+    if hasattr(message, "stickers") and message.stickers:
+        return True
+
+    # 3. Check embeds (GIFs, images, or video embeds from links)
+    if hasattr(message, "embeds") and message.embeds:
+        for emb in message.embeds:
+            if emb.type in ("image", "video", "gifv", "article"):
+                if getattr(emb, "image", None) or getattr(emb, "video", None) or getattr(emb, "thumbnail", None):
+                    return True
+
+    # 4. Check links in content pointing to media domains or media files
+    content = message.content.lower()
+    if any(ext in content for ext in ('.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mov', '.webm', '.webp', '.heic')):
+        return True
+    if any(domain in content for domain in MEDIA_DOMAINS):
+        return True
+
+    return False
 
 class MediaChannel(commands.Cog):
     def __init__(self, bot):
@@ -413,20 +468,8 @@ class MediaChannel(commands.Cog):
         if self.is_user_immune(message):
             return
 
-        # Check if the message contains valid image or video attachments
-        has_valid_media = False
-        if message.attachments:
-            for att in message.attachments:
-                ctype = (att.content_type or "").lower()
-                fname = att.filename.lower()
-                if ctype.startswith("image/") or ctype.startswith("video/"):
-                    has_valid_media = True
-                    break
-                if any(fname.endswith(ext) for ext in MEDIA_EXTENSIONS):
-                    has_valid_media = True
-                    break
-
-        if not has_valid_media:
+        # Check if the message contains valid media (attachments, stickers, embeds, or media links)
+        if not has_media_content(message):
             try:
                 await message.delete()
             except Exception as e:
@@ -435,7 +478,7 @@ class MediaChannel(commands.Cog):
 
             warning = (
                 f"⚠️ {message.author.mention}, {message.channel.mention} is a **Media-Only Channel**.\n"
-                f"You can only post images or videos here. (Text captions with media files are allowed, but pure text/links are not)."
+                f"Only images, videos, GIFs, and media files are allowed here. Pure text chatting is prohibited."
             )
             try:
                 await message.channel.send(warning, delete_after=6)

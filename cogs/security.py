@@ -1416,11 +1416,15 @@ class Security(commands.Cog):
                 await self.log_security_event(guild, "audit-antispam", embed)
                 return
 
+        # Designated media-only channel check
+        media_channels = [str(x) for x in getattr(db, "media_channels", {}).get(gid, [])]
+        is_media_channel = str(message.channel.id) in media_channels
+
         # 2. Detect Only: Anti GIF (Auto-Delete & Log)
         # Note: has_gif_content checks attachments, URL text, AND embeds (e.g. Tenor GIFs from Discord picker).
         # anti_gif_cfg.enabled must be True (default is False — admin must enable it in dashboard).
         anti_gif_cfg = cfg.get("detect", {}).get("anti_gif", {})
-        if anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
+        if not is_media_channel and anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
             # Members who have Discord in-server embed/attach permissions, or are explicitly whitelisted/immune, can send GIFs!
             has_embed_perm = self.member_has_embed_permission(author, message.channel)
             can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif") or has_embed_perm
@@ -1451,7 +1455,13 @@ class Security(commands.Cog):
             if all_links:
                 non_invite_links = [l for l in all_links if not self.invite_regex.search(l)]
                 if non_invite_links:
-                    can_send_all_links = is_immune or self.is_whitelisted(guild, author, feature="anti_link")
+                    media_exts = ('.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mov', '.webm', '.webp', '.heic', '.mkv', '.avi')
+                    media_hosts = ("tenor.com", "giphy.com", "imgur.com", "cdn.discordapp.com", "media.discordapp.net", "youtube.com", "youtu.be", "tiktok.com", "streamable.com")
+                    is_all_media_links = is_media_channel and all(
+                        any(ext in l.lower() for ext in media_exts) or any(host in l.lower() for host in media_hosts)
+                        for l in non_invite_links
+                    )
+                    can_send_all_links = is_immune or is_all_media_links or self.is_whitelisted(guild, author, feature="anti_link")
                     if not can_send_all_links:
                         is_gif_whitelisted = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
                         has_embed_perm = self.member_has_embed_permission(author, message.channel)
