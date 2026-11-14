@@ -286,15 +286,22 @@ def strip_llm_reasoning(text: str) -> str:
         if in_reasoning_header:
             if any(p_lower.startswith(starter) for starter in reasoning_starters):
                 continue
-            if "we need to respond" in p_lower or "let's consider board" in p_lower:
+            if "we need to respond" in p_lower or "let's consider board" in p_lower or "we need to " in p_lower or "given black just played" in p_lower or "let's think" in p_lower:
                 continue
             in_reasoning_header = False
             cleaned_paras.append(p_stripped)
         else:
+            # Also catch trailing reasoning or thoughts in later paragraphs
+            if any(p_lower.startswith(starter) for starter in ("assume ", "initial:", "we can just respond", "given black", "sequence:")):
+                continue
             cleaned_paras.append(p_stripped)
 
     if cleaned_paras:
         text = "\n\n".join(cleaned_paras)
+    else:
+        # Every single paragraph was internal reasoning/deliberation!
+        # Do NEVER leak raw chain-of-thought to Discord.
+        text = ""
 
     return text.strip()
 
@@ -2138,6 +2145,8 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
                 # Clean out any chain of thought or reasoning artifacts
                 ai_reply = strip_llm_reasoning(ai_reply)
+                if not ai_reply or not ai_reply.strip():
+                    ai_reply = "A momentary glitch caught my thoughts, darling. Say that again? ✨"
 
                 # If in announcement/guidelines mode, clean and format (guarantees # heading, topic spacing, and strips preambles/outros)
                 if is_announcement_mode:
