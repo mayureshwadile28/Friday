@@ -1845,6 +1845,10 @@ def create_reaction_panel(gid):
                 "panel_type": "select",
                 "options": stored_opts
             }
+            if not hasattr(db, "reaction_roles_meta") or not isinstance(db.reaction_roles_meta, dict):
+                db.reaction_roles_meta = {}
+            db.reaction_roles_meta[msg_id] = meta_payload
+            db.reaction_roles_meta[temp_id] = meta_payload
             db.data.setdefault("reaction_roles_meta", {})[msg_id] = meta_payload
             db.data.setdefault("reaction_roles_meta", {})[temp_id] = meta_payload
         else:
@@ -1855,14 +1859,24 @@ def create_reaction_panel(gid):
 
             for role, emoji_obj in roles_setup:
                 await msg.add_reaction(emoji_obj)
+                # Store under multiple identifier formats so lookup is 100% resilient
                 db.reaction_roles[msg_id][str(emoji_obj)] = role.id
+                if hasattr(emoji_obj, "id") and emoji_obj.id:
+                    db.reaction_roles[msg_id][str(emoji_obj.id)] = role.id
+                if hasattr(emoji_obj, "name") and emoji_obj.name:
+                    db.reaction_roles[msg_id][emoji_obj.name] = role.id
+                    db.reaction_roles[msg_id][f":{emoji_obj.name}:"] = role.id
 
-            db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+            meta_rx_payload = {
                 "exclusive": exclusive,
                 "channel_id": str(channel_id),
                 "guild_id": str(gid),
                 "panel_type": "reaction"
             }
+            if not hasattr(db, "reaction_roles_meta") or not isinstance(db.reaction_roles_meta, dict):
+                db.reaction_roles_meta = {}
+            db.reaction_roles_meta[msg_id] = meta_rx_payload
+            db.data.setdefault("reaction_roles_meta", {})[msg_id] = meta_rx_payload
 
         # Auto-save current configuration as saved draft so refresh never wipes out the 10 roles
         if not hasattr(db, "saved_reaction_roles") or not isinstance(db.saved_reaction_roles, dict):

@@ -8,6 +8,55 @@ from database import db
 from emoji_utils import replace_plain_emojis, format_embed_description
 
 
+def find_role_for_emoji(panel_roles: dict, emoji: Union[discord.PartialEmoji, discord.Emoji, str]) -> Optional[int]:
+    """Universal robust emoji-to-role resolver matching across raw strings, snowflake IDs, names, and Unicode."""
+    if not isinstance(panel_roles, dict) or not emoji:
+        return None
+
+    e_str = str(emoji).strip()
+    e_id = str(getattr(emoji, "id", "") or "")
+    e_name = str(getattr(emoji, "name", "") or "").strip(":")
+
+    # 1. Direct match with str(emoji)
+    if e_str in panel_roles:
+        val = panel_roles[e_str]
+        return int(val) if str(val).isdigit() else None
+
+    # 2. Match by custom snowflake ID (highest precision for custom emojis)
+    if e_id and e_id != "None":
+        if e_id in panel_roles:
+            val = panel_roles[e_id]
+            return int(val) if str(val).isdigit() else None
+        for k, val in panel_roles.items():
+            k_str = str(k)
+            if k_str == e_id or f":{e_id}>" in k_str or f":{e_id}" in k_str:
+                return int(val) if str(val).isdigit() else None
+
+    # 3. Match by emoji name (:name:)
+    if e_name:
+        if e_name in panel_roles:
+            val = panel_roles[e_name]
+            return int(val) if str(val).isdigit() else None
+        if f":{e_name}:" in panel_roles:
+            val = panel_roles[f":{e_name}:"]
+            return int(val) if str(val).isdigit() else None
+        for k, val in panel_roles.items():
+            k_str = str(k).strip(":")
+            if k_str.lower() == e_name.lower():
+                return int(val) if str(val).isdigit() else None
+            m = re.match(r'<a?:([a-zA-Z0-9_]+):[0-9]+>', str(k))
+            if m and m.group(1).lower() == e_name.lower():
+                return int(val) if str(val).isdigit() else None
+
+    # 4. Unicode match without variation selectors (e.g. \ufe0f)
+    clean_u = e_str.replace('\ufe0f', '').strip()
+    for k, val in panel_roles.items():
+        if str(k).replace('\ufe0f', '').strip() == clean_u:
+            return int(val) if str(val).isdigit() else None
+
+    return None
+
+
 class ReactionRoleSelect(discord.ui.Select):
     def __init__(self, options: list[discord.SelectOption], panel_id: str, exclusive: bool = True):
         super().__init__(
@@ -21,25 +70,19 @@ class ReactionRoleSelect(discord.ui.Select):
         self.exclusive = exclusive
 
     async def callback(self, interaction: discord.Interaction):
-        # Atomic per-interaction guard: prevents duplicate execution between View callback and global listener
-        cog = interaction.client.get_cog("ReactionRoles")
-        if getattr(interaction, "_rr_processed", False):
-            return
-        if cog and interaction.id in cog._processed_interaction_ids:
-            return
-        setattr(interaction, "_rr_processed", True)
-        if cog:
-            cog._processed_interaction_ids.add(interaction.id)
-            if len(cog._processed_interaction_ids) > 2000:
-                cog._processed_interaction_ids.clear()
-
-        # Immediate deferral to guarantee Discord never displays "Friday didn't respond in time"
+        # 1. Immediate acknowledgment so Discord NEVER times out ("Friday didn't respond in time")
         if not interaction.response.is_done():
             try:
                 await interaction.response.defer(ephemeral=True)
             except Exception:
                 pass
 
+        # 2. Atomic per-interaction guard: prevents duplicate execution between View callback and global listener
+        if getattr(interaction, "_rr_handled", False):
+            return
+        setattr(interaction, "_rr_handled", True)
+
+        cog = interaction.client.get_cog("ReactionRoles")
         if cog:
             selected = self.values[0] if self.values else (interaction.data.get("values", [None])[0] if interaction.data else None)
             await cog.process_role_selection(interaction, selected, self.panel_id)
@@ -48,23 +91,19 @@ class ReactionRoleSelect(discord.ui.Select):
 class ReactionRoleSelectView(discord.ui.View):
     def __init__(self, options: list[discord.SelectOption], panel_id: str, exclusive: bool = True):
         super().__init__(timeout=None)
-        self.add_item(ReactionRoleSelect(options=options, panel_id=panel_id, exclusive=exclusive))
+        self.panel_id = panel_id
+        self.select_item = ReactionRoleSelect(options=options, panel_id=panel_id, exclusive=exclusive)
+        self.add_item(self.select_item)
 
 
 class ReactionRoles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._processing = set()
-        self._processed_interaction_ids = set()
 
     async def process_role_selection(self, interaction: discord.Interaction, selected_val: Optional[str], panel_id: Optional[str] = None):
         """Unified, 24/7 atomic role assigner for self-role dropdowns.
         Works across bot restarts, missing DB records, and raw component interactions."""
-        # Atomic guard: ensure this interaction is never handled twice
-        if getattr(interaction, "_rr_handled", False):
-            return
-        setattr(interaction, "_rr_handled", True)
-
         # Always ensure interaction is acknowledged immediately so Discord never times out
         if not interaction.response.is_done():
             try:
@@ -95,7 +134,7 @@ class ReactionRoles(commands.Cog):
         # 1. From database mappings
         for pid_candidate in (p_id, msg_id):
             if pid_candidate:
-                p_map = db.reaction_roles.get(pid_candidate, {})
+                p_map = getattr(db, "reaction_roles", {}).get(pid_candidate, {})
                 if isinstance(p_map, dict):
                     for r_id in p_map.values():
                         if isinstance(r_id, int):
@@ -103,7 +142,7 @@ class ReactionRoles(commands.Cog):
                         elif isinstance(r_id, str) and r_id.isdigit():
                             all_role_ids.add(int(r_id))
 
-                meta = db.data.get("reaction_roles_meta", {}).get(pid_candidate, {})
+                meta = getattr(db, "reaction_roles_meta", {}).get(pid_candidate, {})
                 if isinstance(meta, dict):
                     for opt in meta.get("options", []):
                         val = opt.get("value")
@@ -125,7 +164,7 @@ class ReactionRoles(commands.Cog):
         meta_exclusive = True
         for pid_candidate in (p_id, msg_id):
             if pid_candidate:
-                m = db.data.get("reaction_roles_meta", {}).get(pid_candidate)
+                m = getattr(db, "reaction_roles_meta", {}).get(pid_candidate)
                 if isinstance(m, dict) and "exclusive" in m:
                     meta_exclusive = bool(m.get("exclusive", True))
                     break
@@ -179,7 +218,7 @@ class ReactionRoles(commands.Cog):
             await member.add_roles(target_role, reason="Reaction Role: Claimed role via dropdown")
             await interaction.followup.send(f"✅ Successfully assigned the **@{target_role.name}** role!", ephemeral=True)
         except discord.Forbidden:
-            await interaction.followup.send("❌ Friday lacks permission or role hierarchy to assign this role.", ephemeral=True)
+            await interaction.followup.send("❌ Friday lacks permission or role hierarchy to assign this role. Please ensure Friday's role is above the target role.", ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f"❌ Error modifying roles: {e}", ephemeral=True)
 
@@ -193,23 +232,17 @@ class ReactionRoles(commands.Cog):
         if not custom_id.startswith("rr_sel:"):
             return
 
-        if getattr(interaction, "_rr_processed", False):
-            return
-        if interaction.id in self._processed_interaction_ids:
-            return
-
-        # Mark processed immediately before ANY await so callback and listener never double-execute
-        setattr(interaction, "_rr_processed", True)
-        self._processed_interaction_ids.add(interaction.id)
-        if len(self._processed_interaction_ids) > 2000:
-            self._processed_interaction_ids.clear()
-
         # Acknowledge immediately within milliseconds to prevent Discord "didn't respond in time" error
         if not interaction.response.is_done():
             try:
                 await interaction.response.defer(ephemeral=True)
             except Exception:
                 pass
+
+        # Atomic per-interaction guard: if already processed by View callback, return immediately
+        if getattr(interaction, "_rr_handled", False):
+            return
+        setattr(interaction, "_rr_handled", True)
 
         values = interaction.data.get("values", []) if interaction.data else []
         if not values:
@@ -218,22 +251,13 @@ class ReactionRoles(commands.Cog):
         selected_val = str(values[0])
         panel_id = custom_id.split("rr_sel:", 1)[1] if "rr_sel:" in custom_id else ""
 
-        # Lock key to prevent duplicate simultaneous executions
-        msg_id_val = getattr(interaction.message, "id", panel_id)
-        lock_key = (interaction.user.id, msg_id_val)
-        if lock_key in self._processing:
-            return
-        self._processing.add(lock_key)
-        try:
-            await self.process_role_selection(interaction, selected_val, panel_id)
-        finally:
-            self._processing.discard(lock_key)
+        await self.process_role_selection(interaction, selected_val, panel_id)
 
     async def cog_load(self):
         """Restore persistent dropdown views across bot restarts."""
-        meta_dict = db.data.get("reaction_roles_meta", {})
+        meta_dict = getattr(db, "reaction_roles_meta", {})
         for msg_id, meta in list(meta_dict.items()):
-            if meta.get("panel_type") == "select" or meta.get("mode") == "select":
+            if isinstance(meta, dict) and (meta.get("panel_type") == "select" or meta.get("mode") == "select"):
                 saved_opts = meta.get("options", [])
                 if saved_opts:
                     opts = []
@@ -254,7 +278,7 @@ class ReactionRoles(commands.Cog):
                         ))
                     if opts:
                         exclusive = meta.get("exclusive", True)
-                        self.bot.add_view(ReactionRoleSelectView(options=opts, panel_id=msg_id, exclusive=exclusive))
+                        self.bot.add_view(ReactionRoleSelectView(options=opts, panel_id=str(msg_id), exclusive=exclusive))
 
     @app_commands.command(name="reaction_panel", description="Create an interactive role assignment panel (Dropdown or Reactions).")
     @app_commands.describe(
@@ -379,7 +403,6 @@ class ReactionRoles(commands.Cog):
                 view = ReactionRoleSelectView(options=select_options, panel_id=temp_id, exclusive=exclusive)
                 msg = await channel.send(embed=embed, view=view)
                 msg_id = str(msg.id)
-                # Re-link with actual message id
                 view.panel_id = msg_id
                 self.bot.add_view(view)
 
@@ -392,6 +415,10 @@ class ReactionRoles(commands.Cog):
                     "panel_type": "select",
                     "options": stored_opts
                 }
+                if not hasattr(db, "reaction_roles_meta") or not isinstance(db.reaction_roles_meta, dict):
+                    db.reaction_roles_meta = {}
+                db.reaction_roles_meta[msg_id] = meta_payload
+                db.reaction_roles_meta[temp_id] = meta_payload
                 db.data.setdefault("reaction_roles_meta", {})[msg_id] = meta_payload
                 db.data.setdefault("reaction_roles_meta", {})[temp_id] = meta_payload
                 db.save_data()
@@ -399,18 +426,28 @@ class ReactionRoles(commands.Cog):
             else:
                 msg = await channel.send(embed=embed)
                 msg_id = str(msg.id)
-                db.reaction_roles[msg_id] = {}
+                if msg_id not in db.reaction_roles:
+                    db.reaction_roles[msg_id] = {}
                 
                 for role, emoji_obj in roles_setup:
                     await msg.add_reaction(emoji_obj) 
                     db.reaction_roles[msg_id][str(emoji_obj)] = role.id
+                    if hasattr(emoji_obj, "id") and emoji_obj.id:
+                        db.reaction_roles[msg_id][str(emoji_obj.id)] = role.id
+                    if hasattr(emoji_obj, "name") and emoji_obj.name:
+                        db.reaction_roles[msg_id][emoji_obj.name] = role.id
+                        db.reaction_roles[msg_id][f":{emoji_obj.name}:"] = role.id
                     
-                db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+                meta_rx = {
                     "exclusive": exclusive,
                     "channel_id": str(channel.id),
                     "guild_id": str(interaction.guild.id),
                     "panel_type": "reaction"
                 }
+                if not hasattr(db, "reaction_roles_meta") or not isinstance(db.reaction_roles_meta, dict):
+                    db.reaction_roles_meta = {}
+                db.reaction_roles_meta[msg_id] = meta_rx
+                db.data.setdefault("reaction_roles_meta", {})[msg_id] = meta_rx
                 db.save_data()
                 await interaction.followup.send(f"✅ Reaction panel deployed successfully in {channel.mention}.")
             
@@ -421,19 +458,9 @@ class ReactionRoles(commands.Cog):
             await interaction.followup.send(f"❌ Error creating panel: {e}")
 
     @commands.Cog.listener()
-    async def on_raw_reaction_add(self, payload):
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        """Handles role assignment for emoji reactions with universal emoji resolution and exclusive deletion."""
         if payload.member and payload.member.bot:
-            return
-            
-        msg_id = str(payload.message_id)
-        if msg_id not in db.reaction_roles:
-            return
-
-        panel_roles = db.reaction_roles[msg_id]
-        emoji_key = str(payload.emoji)
-        role_id = panel_roles.get(emoji_key)
-        
-        if not role_id:
             return
 
         guild = self.bot.get_guild(payload.guild_id)
@@ -444,56 +471,119 @@ class ReactionRoles(commands.Cog):
         if not member or member.bot:
             return
 
-        # Atomic lock key per member per message to prevent concurrency storms
+        msg_id = str(payload.message_id)
+
+        # Look up panel in db.reaction_roles
+        panel_roles = getattr(db, "reaction_roles", {}).get(msg_id)
+        if not panel_roles and hasattr(db, "reaction_roles"):
+            panel_roles = db.reaction_roles.get(int(payload.message_id))
+        
+        if not panel_roles or not isinstance(panel_roles, dict):
+            return
+
+        role_id = find_role_for_emoji(panel_roles, payload.emoji)
+        if not role_id:
+            return
+
+        target_role = guild.get_role(role_id)
+        if not target_role:
+            return
+
+        # Check exclusive mode
+        meta = getattr(db, "reaction_roles_meta", {}).get(msg_id, {})
+        if not meta and hasattr(db, "reaction_roles_meta"):
+            meta = db.reaction_roles_meta.get(int(payload.message_id), {})
+        is_exclusive = meta.get("exclusive", True) if isinstance(meta, dict) else True
+
+        # Concurrency guard per member per message
         lock_key = (payload.user_id, payload.message_id)
         if lock_key in self._processing:
             return
         self._processing.add(lock_key)
 
         try:
-            meta = db.data.get("reaction_roles_meta", {}).get(msg_id, {})
-            is_exclusive = meta.get("exclusive", True)
-
             if is_exclusive:
+                # 1. Remove any other roles granted by this panel from the member
                 roles_to_remove = []
-                for other_e_key, other_r_id in panel_roles.items():
-                    if other_e_key != emoji_key and other_r_id != role_id:
-                        other_r = guild.get_role(other_r_id)
+                for other_k, other_r_id in panel_roles.items():
+                    if str(other_r_id).isdigit() and int(other_r_id) != target_role.id:
+                        other_r = guild.get_role(int(other_r_id))
                         if other_r and other_r in member.roles:
                             roles_to_remove.append(other_r)
 
                 if roles_to_remove:
                     try:
-                        await member.remove_roles(*roles_to_remove, reason="Reaction Role: Exclusive single role")
+                        await member.remove_roles(*roles_to_remove, reason="Reaction Role: Exclusive role swap")
                     except Exception as e:
-                        print(f"[ReactionRoles] Remove error: {e}")
+                        print(f"[ReactionRoles] Error removing old roles: {e}")
 
-            target_role = guild.get_role(role_id)
-            if target_role and target_role not in member.roles:
+                # 2. CRITICAL: Remove the user's previous reaction emojis from the Discord message
+                channel = guild.get_channel(payload.channel_id)
+                if channel:
+                    try:
+                        msg = await channel.fetch_message(payload.message_id)
+                        curr_eid = str(getattr(payload.emoji, "id", "") or "")
+
+                        for rxn in msg.reactions:
+                            rxn_eid = str(getattr(rxn.emoji, "id", "") or "")
+                            
+                            is_same = False
+                            if curr_eid and rxn_eid and curr_eid == rxn_eid:
+                                is_same = True
+                            elif not curr_eid and not rxn_eid and str(rxn.emoji) == str(payload.emoji):
+                                is_same = True
+
+                            if not is_same:
+                                # Only remove if this reaction is part of the panel
+                                if find_role_for_emoji(panel_roles, rxn.emoji):
+                                    try:
+                                        await msg.remove_reaction(rxn.emoji, member)
+                                    except Exception:
+                                        pass
+                    except Exception as e:
+                        print(f"[ReactionRoles] Error cleaning exclusive reactions: {e}")
+
+            # Assign target role
+            if target_role not in member.roles:
                 try:
-                    await member.add_roles(target_role, reason="Reaction Role: Claimed role")
+                    await member.add_roles(target_role, reason="Reaction Role: Claimed role via emoji")
                 except discord.Forbidden:
-                    pass
+                    print(f"[ReactionRoles] Forbidden assigning role {target_role.name} to {member.name}")
+                except Exception as e:
+                    print(f"[ReactionRoles] Error assigning role: {e}")
         finally:
             self._processing.discard(lock_key)
 
     @commands.Cog.listener()
-    async def on_raw_reaction_remove(self, payload):
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+        """Removes the associated role when a member un-reacts from a panel."""
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+
+        member = guild.get_member(payload.user_id)
+        if not member or member.bot:
+            return
+
         msg_id = str(payload.message_id)
-        if msg_id in db.reaction_roles:
-            emoji_key = str(payload.emoji)
-            role_id = db.reaction_roles[msg_id].get(emoji_key)
-            
-            if role_id:
-                guild = self.bot.get_guild(payload.guild_id)
-                role = guild.get_role(role_id)
-                member = guild.get_member(payload.user_id)
-                
-                if role and member and not member.bot:
-                    try:
-                        await member.remove_roles(role, reason="Reaction Role: Removed reaction")
-                    except discord.Forbidden:
-                        pass
+        panel_roles = getattr(db, "reaction_roles", {}).get(msg_id)
+        if not panel_roles and hasattr(db, "reaction_roles"):
+            panel_roles = db.reaction_roles.get(int(payload.message_id))
+        
+        if not panel_roles or not isinstance(panel_roles, dict):
+            return
+
+        role_id = find_role_for_emoji(panel_roles, payload.emoji)
+        if not role_id:
+            return
+
+        role = guild.get_role(role_id)
+        if role and role in member.roles:
+            try:
+                await member.remove_roles(role, reason="Reaction Role: Removed emoji reaction")
+            except Exception as e:
+                print(f"[ReactionRoles] Error removing role on reaction remove: {e}")
+
 
 async def setup(bot):
     await bot.add_cog(ReactionRoles(bot))

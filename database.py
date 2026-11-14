@@ -19,6 +19,8 @@ class Database:
         self.level_channels = self.data.get("level_channels", {})
         self.level_messages = self.data.get("level_messages", {})
         self.reaction_roles = self.data.get("reaction_roles", {})
+        rrm = self.data.get("reaction_roles_meta")
+        self.reaction_roles_meta = rrm if isinstance(rrm, dict) else {}
         self.ignored_private = self.data.get("ignored_private", {})
         self.lockdown_active = self.data.get("lockdown_active", {})
         self.announcement_channels = self.data.get("announcement_channels", {})
@@ -104,6 +106,7 @@ class Database:
                 "level_channels": {},
                 "level_messages": {},
                 "reaction_roles": {},
+                "reaction_roles_meta": {},
                 "ignored_private": {},
                 "lockdown_active": {},
                 "announcement_channels": {},
