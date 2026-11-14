@@ -21,8 +21,15 @@ class ReactionRoleSelect(discord.ui.Select):
         self.exclusive = exclusive
 
     async def callback(self, interaction: discord.Interaction):
-        # Handled centrally by the on_interaction listener to prevent duplicate execution & double pop-ups
-        pass
+        # Atomic per-interaction guard: prevents duplicate execution between View callback and global listener
+        if getattr(interaction, "_rr_processed", False):
+            return
+        setattr(interaction, "_rr_processed", True)
+
+        cog = interaction.client.get_cog("ReactionRoles")
+        if cog:
+            selected = self.values[0] if self.values else None
+            await cog.process_role_selection(interaction, selected, self.panel_id)
 
 
 class ReactionRoleSelectView(discord.ui.View):
@@ -169,16 +176,15 @@ class ReactionRoles(commands.Cog):
         if interaction.type != discord.InteractionType.component:
             return
 
-        custom_id = str(interaction.data.get("custom_id", ""))
+        if getattr(interaction, "_rr_processed", False):
+            return
+
+        custom_id = str(interaction.data.get("custom_id", "") if interaction.data else "")
         if not custom_id.startswith("rr_sel:"):
             return
 
-        # Deduplicate interaction synchronously before any await to eliminate race conditions
-        if interaction.id in self._processed_interaction_ids:
-            return
-        self._processed_interaction_ids.add(interaction.id)
-        if len(self._processed_interaction_ids) > 2000:
-            self._processed_interaction_ids.clear()
+        # Mark processed immediately so callback and listener never double-execute
+        setattr(interaction, "_rr_processed", True)
 
         # Acknowledge immediately within milliseconds to prevent Discord "didn't respond in time" error
         if not interaction.response.is_done():
@@ -187,7 +193,7 @@ class ReactionRoles(commands.Cog):
             except Exception:
                 pass
 
-        values = interaction.data.get("values", [])
+        values = interaction.data.get("values", []) if interaction.data else []
         if not values:
             return
 
