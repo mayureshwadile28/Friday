@@ -22,13 +22,26 @@ class ReactionRoleSelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction):
         # Atomic per-interaction guard: prevents duplicate execution between View callback and global listener
+        cog = interaction.client.get_cog("ReactionRoles")
         if getattr(interaction, "_rr_processed", False):
             return
+        if cog and interaction.id in cog._processed_interaction_ids:
+            return
         setattr(interaction, "_rr_processed", True)
-
-        cog = interaction.client.get_cog("ReactionRoles")
         if cog:
-            selected = self.values[0] if self.values else None
+            cog._processed_interaction_ids.add(interaction.id)
+            if len(cog._processed_interaction_ids) > 2000:
+                cog._processed_interaction_ids.clear()
+
+        # Immediate deferral to guarantee Discord never displays "Friday didn't respond in time"
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
+        if cog:
+            selected = self.values[0] if self.values else (interaction.data.get("values", [None])[0] if interaction.data else None)
             await cog.process_role_selection(interaction, selected, self.panel_id)
 
 
@@ -47,9 +60,6 @@ class ReactionRoles(commands.Cog):
     async def process_role_selection(self, interaction: discord.Interaction, selected_val: Optional[str], panel_id: Optional[str] = None):
         """Unified, 24/7 atomic role assigner for self-role dropdowns.
         Works across bot restarts, missing DB records, and raw component interactions."""
-        if not selected_val:
-            return
-
         # Atomic guard: ensure this interaction is never handled twice
         if getattr(interaction, "_rr_handled", False):
             return
@@ -61,6 +71,9 @@ class ReactionRoles(commands.Cog):
                 await interaction.response.defer(ephemeral=True)
             except Exception:
                 pass
+
+        if not selected_val:
+            return
 
         guild = interaction.guild
         member = interaction.user
@@ -176,15 +189,20 @@ class ReactionRoles(commands.Cog):
         if interaction.type != discord.InteractionType.component:
             return
 
-        if getattr(interaction, "_rr_processed", False):
-            return
-
         custom_id = str(interaction.data.get("custom_id", "") if interaction.data else "")
         if not custom_id.startswith("rr_sel:"):
             return
 
-        # Mark processed immediately so callback and listener never double-execute
+        if getattr(interaction, "_rr_processed", False):
+            return
+        if interaction.id in self._processed_interaction_ids:
+            return
+
+        # Mark processed immediately before ANY await so callback and listener never double-execute
         setattr(interaction, "_rr_processed", True)
+        self._processed_interaction_ids.add(interaction.id)
+        if len(self._processed_interaction_ids) > 2000:
+            self._processed_interaction_ids.clear()
 
         # Acknowledge immediately within milliseconds to prevent Discord "didn't respond in time" error
         if not interaction.response.is_done():
