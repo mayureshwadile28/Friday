@@ -1471,8 +1471,7 @@ class Giveaways(commands.Cog):
         prize="The item, role, or gift to give away",
         duration="Duration of the giveaway (e.g. 10m, 1h, 2d, 1w)",
         winners="Number of winners to pick (default: 1)",
-        description="Optional detailed description or rules",
-        image="Optional image or GIF banner URL for the embed"
+        description="Optional detailed description or rules"
     )
     async def gcreate(
         self,
@@ -1480,8 +1479,7 @@ class Giveaways(commands.Cog):
         prize: str,
         duration: str,
         winners: Optional[int] = 1,
-        description: Optional[str] = None,
-        image: Optional[str] = None
+        description: Optional[str] = None
     ):
         """Creates a giveaway. Admins launch instantly; regular members submit for staff approval."""
         guild = interaction.guild
@@ -1568,7 +1566,7 @@ class Giveaways(commands.Cog):
                 return
 
             request_id = str(uuid.uuid4())[:8]
-            banner_url = image.strip() if image else ""
+            banner_url = str(cfg.get("default_banner") or "").strip()
             req_data = {
                 "request_id": request_id,
                 "sponsor_id": interaction.user.id,
@@ -1644,7 +1642,7 @@ class Giveaways(commands.Cog):
         now = time.time()
         end_time = now + duration_sec
         end_timestamp = int(end_time)
-        image_url = (image.strip() if image else None) or cfg.get("default_banner")
+        image_url = cfg.get("default_banner")
         final_banner_url, banner_file = resolve_giveaway_banner_file(image_url)
 
         dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
