@@ -279,6 +279,17 @@
 
                 </a>
 
+                <a class="nav-item" data-tab="mediaChannelsSection" href="#">
+                    <div class="nav-icon-wrap" style="color: #38bdf8;">
+                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16">
+                            <rect height="18" rx="2" ry="2" width="18" x="3" y="3"></rect>
+                            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                            <polyline points="21 15 16 10 5 21"></polyline>
+                        </svg>
+                    </div>
+                    Media Channels & Alerts
+                </a>
+
 <a class="nav-item" data-tab="ticketsSection" href="#">
 
 <div class="nav-icon-wrap">
@@ -4045,6 +4056,129 @@ We are excited to introduce seamless broadcast capability.
     </div>
 </div>
 
+</div>
+
+<!-- ======================= MEDIA CHANNELS & ALERTS SECTION ======================= -->
+<div class="tab-content" id="mediaChannelsSection" style="display:none;">
+    <div class="section-header">
+        <h1 class="section-title">Media Channels & Upload Alerts</h1>
+        <p class="section-desc">Manage designated media-only channels and configure automatic cross-channel notifications whenever a member posts images, GIFs, or videos.</p>
+    </div>
+
+    <!-- Card 1: Media Upload Cross-Channel Announcement -->
+    <div class="card" style="margin-bottom: 24px; border-left: 4px solid #38bdf8;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px; margin-bottom: 16px;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Cross-Channel Media Announcements</h3>
+                    <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 600; padding: 2px 8px; border-radius: 6px; font-size: 11px;">Automatic Alert</span>
+                </div>
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+                    When enabled, Friday will automatically announce in your selected channel whenever a member shares photos, videos, or media in any media-only channel.
+                </p>
+            </div>
+            <label class="switch" style="cursor: pointer;">
+                <input type="checkbox" id="mediaAnnounceToggle">
+                <span class="slider round"></span>
+            </label>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-bottom: 18px;">
+            <div>
+                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">
+                    Destination Announcement Channel
+                </label>
+                <select id="mediaAnnounceChannelSelect" class="form-control" style="width: 100%; background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                    <option value="">-- Select Channel --</option>
+                </select>
+                <span style="font-size: 11px; color: var(--text-muted); display: block; margin-top: 4px;">Friday will send the upload alert message into this channel.</span>
+            </div>
+        </div>
+
+        <!-- Custom Message Editor -->
+        <div style="margin-bottom: 18px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin: 0;">
+                    Announcement Message Template
+                </label>
+                <button type="button" id="mediaEmojiPickerBtn" class="btn btn-sm btn-secondary" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; border-radius: 6px;">
+                    <span>😊</span>
+                    <span>Server Emojis</span>
+                </button>
+            </div>
+            <textarea id="mediaAnnounceMessage" class="form-control" rows="3" style="width: 100%; background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; font-family: inherit; font-size: 13px; resize: vertical;" placeholder="{user} just shared a new image/video in {channel}! Go check it out! ✨"></textarea>
+
+            <!-- Variable Chips -->
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+                <span style="font-size: 11px; color: var(--text-muted);">Insert Variables:</span>
+                <button type="button" class="btn-variable-chip" onclick="insertMediaVar('{user}')" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #38bdf8; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">{user} (Mention)</button>
+                <button type="button" class="btn-variable-chip" onclick="insertMediaVar('{channel}')" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #a78bfa; border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">{channel} (Channel)</button>
+                <button type="button" class="btn-variable-chip" onclick="insertMediaVar('{user_name}')" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">{user_name}</button>
+                <button type="button" class="btn-variable-chip" onclick="insertMediaVar('{channel_name}')" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary); border-radius: 4px; padding: 2px 8px; font-size: 11px; cursor: pointer;">{channel_name}</button>
+            </div>
+            <div style="margin-top: 6px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; gap: 6px;">
+                <span>🛡️</span>
+                <span><strong>Admin/Owner Safety:</strong> Friday strictly verifies the attachment. Pure text sent by admins or server owners is completely ignored and will NEVER trigger announcements!</span>
+            </div>
+        </div>
+
+        <!-- Live Discord Simulator Preview -->
+        <div style="margin-bottom: 20px;">
+            <label style="display: block; font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">
+                Live Discord Message Preview
+            </label>
+            <div style="background: #313338; border-radius: 8px; padding: 14px 16px; border: 1px solid rgba(255,255,255,0.07); display: flex; gap: 14px; align-items: flex-start;">
+                <img src="/static/friday_avatar.png" onerror="this.src='https://cdn.discordapp.com/embed/avatars/0.png'" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" alt="Friday">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                        <span style="font-size: 14px; font-weight: 600; color: #ffffff;">Friday</span>
+                        <span style="background: #5865f2; color: #fff; font-size: 10px; font-weight: 700; padding: 1px 4px; border-radius: 3px;">APP</span>
+                        <span style="font-size: 11px; color: #949ba4;">Today at 2:30 PM</span>
+                    </div>
+                    <div id="mediaLivePreviewText" style="font-size: 14px; color: #dbdee1; line-height: 1.45; word-break: break-word;">
+                        <span style="color: #c9cdfb; background: rgba(88, 101, 242, 0.15); padding: 1px 4px; border-radius: 3px; font-weight: 500;">@User</span> just shared a new image/video in <span style="color: #c9cdfb; background: rgba(88, 101, 242, 0.15); padding: 1px 4px; border-radius: 3px; font-weight: 500;">#media-only</span>! Go check it out! ✨
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" id="saveMediaAnnouncementBtn" class="btn btn-action-primary" style="display: inline-flex; align-items: center; gap: 8px; padding: 10px 22px; font-weight: 600;">
+                <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                Save Announcement Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- Card 2: Designated Media-Only Channels Manager -->
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 14px; margin-bottom: 16px;">
+            <div>
+                <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0 0 4px 0;">Designated Media-Only Channels</h3>
+                <p style="font-size: 13px; color: var(--text-secondary); margin: 0;">
+                    Text chatting is blocked for non-immune members in these channels. Only images, videos, GIFs, and media uploads are permitted.
+                </p>
+            </div>
+        </div>
+
+        <!-- Add Media Channel Form -->
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; background: rgba(255,255,255,0.02); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+            <select id="mediaNewChannelSelect" class="form-control" style="flex: 1; min-width: 220px; background: var(--bg-secondary); color: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 9px 12px;">
+                <option value="">-- Choose Channel to make Media-Only --</option>
+            </select>
+            <button type="button" id="addMediaChannelBtn" class="btn btn-action-secondary" style="display: inline-flex; align-items: center; gap: 6px; padding: 9px 18px; font-weight: 600;">
+                <span>➕</span>
+                <span>Set as Media-Only</span>
+            </button>
+        </div>
+
+        <!-- Channels List -->
+        <div id="mediaChannelsListContainer" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px;">
+                Loading media channels...
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- ======================= TICKETS SECTION ======================= -->

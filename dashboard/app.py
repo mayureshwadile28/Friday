@@ -1588,6 +1588,104 @@ def update_custom_responses(gid):
     return jsonify({"success": True})
 
 
+# ───────────────────── API: Media Channels & Announcements ─────────────────────
+
+@app.route('/api/guild/<gid>/media-announcements', methods=['GET'])
+def get_media_announcements(gid):
+    gid_str = str(gid)
+    if not hasattr(db, "media_announcements") or not isinstance(db.media_announcements, dict):
+        db.media_announcements = {}
+    cfg = db.media_announcements.get(gid_str, {})
+
+    # Fetch media-only channel objects
+    media_ids = [str(x) for x in db.media_channels.get(gid_str, [])]
+    media_list = []
+    all_channels = []
+
+    if bot_instance:
+        guild = bot_instance.get_guild(int(gid))
+        if guild:
+            for c in guild.channels:
+                if c.type in (discord.ChannelType.text, discord.ChannelType.news):
+                    c_id = str(c.id)
+                    item = {"id": c_id, "name": c.name}
+                    all_channels.append(item)
+                    if c_id in media_ids:
+                        media_list.append(item)
+
+    if not media_list and media_ids:
+        media_list = [{"id": cid, "name": f"channel-{cid}"} for cid in media_ids]
+
+    return jsonify({
+        "success": True,
+        "enabled": bool(cfg.get("enabled", False)),
+        "channel_id": str(cfg.get("channel_id", "")),
+        "message": cfg.get("message", "{user} just shared a new image/video in {channel}! Go check it out! ✨"),
+        "media_channels": media_list,
+        "all_channels": all_channels
+    })
+
+
+@app.route('/api/guild/<gid>/media-announcements', methods=['POST'])
+def save_media_announcements(gid):
+    gid_str = str(gid)
+    if not hasattr(db, "media_announcements") or not isinstance(db.media_announcements, dict):
+        db.media_announcements = {}
+
+    body = flask_request.json or {}
+    enabled = bool(body.get("enabled", False))
+    channel_id = str(body.get("channel_id", "")).strip()
+    msg = str(body.get("message", "")).strip() or "{user} just shared a new image/video in {channel}! Go check it out! ✨"
+
+    db.media_announcements[gid_str] = {
+        "enabled": enabled,
+        "channel_id": channel_id,
+        "message": msg
+    }
+    db.save_data()
+    return jsonify({"success": True})
+
+
+@app.route('/api/guild/<gid>/media-channels/add', methods=['POST'])
+def add_media_channel(gid):
+    gid_str = str(gid)
+    if not hasattr(db, "media_channels") or not isinstance(db.media_channels, dict):
+        db.media_channels = {}
+
+    body = flask_request.json or {}
+    channel_id = str(body.get("channel_id", "")).strip()
+    if not channel_id:
+        return jsonify({"success": False, "error": "No channel specified."})
+
+    ch_list = [str(x) for x in db.media_channels.get(gid_str, [])]
+    if channel_id not in ch_list:
+        ch_list.append(channel_id)
+        db.media_channels[gid_str] = ch_list
+        db.save_data()
+
+    return jsonify({"success": True, "media_channels": ch_list})
+
+
+@app.route('/api/guild/<gid>/media-channels/remove', methods=['POST'])
+def remove_media_channel(gid):
+    gid_str = str(gid)
+    if not hasattr(db, "media_channels") or not isinstance(db.media_channels, dict):
+        db.media_channels = {}
+
+    body = flask_request.json or {}
+    channel_id = str(body.get("channel_id", "")).strip()
+    if not channel_id:
+        return jsonify({"success": False, "error": "No channel specified."})
+
+    ch_list = [str(x) for x in db.media_channels.get(gid_str, [])]
+    if channel_id in ch_list:
+        ch_list.remove(channel_id)
+        db.media_channels[gid_str] = ch_list
+        db.save_data()
+
+    return jsonify({"success": True, "media_channels": ch_list})
+
+
 # ───────────────────── API: Reaction Roles ─────────────────────
 
 @app.route('/api/guild/<gid>/reaction_roles/create', methods=['POST'])

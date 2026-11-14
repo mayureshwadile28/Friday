@@ -1729,6 +1729,7 @@ const tabTitles = {
 
 
     'announcementsSection': 'Announcements Dispatcher',
+    'mediaChannelsSection': 'Media Channels & Upload Alerts',
 
 
 
@@ -11927,6 +11928,7 @@ async function loadDataForActiveTab() {
 
 
     else if (activeTab === 'announcementsSection') await loadAnnouncementsSettings();
+    else if (activeTab === 'mediaChannelsSection') await loadMediaAnnouncementsSettings();
 
 
 
@@ -70886,3 +70888,236 @@ function updateBoosterLivePreview() {
         }
     }
 }
+
+// ───────────────────── Media Channels & Cross-Channel Alerts ─────────────────────
+
+window.insertMediaVar = function(tag) {
+    const msgEl = document.getElementById('mediaAnnounceMessage');
+    if (!msgEl) return;
+    const start = msgEl.selectionStart || 0;
+    const end = msgEl.selectionEnd || 0;
+    const val = msgEl.value || "";
+    msgEl.value = val.substring(0, start) + tag + val.substring(end);
+    msgEl.focus();
+    msgEl.selectionStart = msgEl.selectionEnd = start + tag.length;
+    updateMediaLivePreview();
+};
+
+function updateMediaLivePreview() {
+    const previewEl = document.getElementById('mediaLivePreviewText');
+    const msgEl = document.getElementById('mediaAnnounceMessage');
+    const chSelect = document.getElementById('mediaAnnounceChannelSelect');
+    if (!previewEl || !msgEl) return;
+
+    let txt = msgEl.value || "{user} just shared a new image/video in {channel}! Go check it out! ✨";
+    let chName = "#media-channel";
+    if (chSelect && chSelect.selectedIndex > 0) {
+        chName = "#" + (chSelect.options[chSelect.selectedIndex].text || "media-channel").replace(/^#/, "");
+    }
+
+    // Replace variables with realistic Discord simulator pills
+    let previewFormatted = txt
+        .replace(/{user}/g, '<span style="color: #c9cdfb; background: rgba(88, 101, 242, 0.2); padding: 1px 5px; border-radius: 3px; font-weight: 500;">@Mayuresh</span>')
+        .replace(/{user_name}/g, 'Mayuresh')
+        .replace(/{channel}/g, `<span style="color: #c9cdfb; background: rgba(88, 101, 242, 0.2); padding: 1px 5px; border-radius: 3px; font-weight: 500;">${chName}</span>`)
+        .replace(/{channel_name}/g, chName.replace(/^#/, ''));
+
+    if (typeof renderDiscordMarkdown === 'function') {
+        previewEl.innerHTML = renderDiscordMarkdown(previewFormatted);
+    } else {
+        previewEl.textContent = previewFormatted;
+    }
+}
+
+async function loadMediaAnnouncementsSettings() {
+    const gid = currentGuildId;
+    if (!gid) return;
+
+    const listContainer = document.getElementById('mediaChannelsListContainer');
+    const chSelect = document.getElementById('mediaAnnounceChannelSelect');
+    const newChSelect = document.getElementById('mediaNewChannelSelect');
+    const toggle = document.getElementById('mediaAnnounceToggle');
+    const msgEl = document.getElementById('mediaAnnounceMessage');
+
+    try {
+        const res = await fetch(`/api/guild/${gid}/media-announcements`);
+        const data = await res.json();
+        if (!data.success) return;
+
+        // Toggle state
+        if (toggle) toggle.checked = !!data.enabled;
+
+        // Message
+        if (msgEl) {
+            msgEl.value = data.message || "{user} just shared a new image/video in {channel}! Go check it out! ✨";
+        }
+
+        // Channel dropdowns
+        if (chSelect) {
+            chSelect.innerHTML = '<option value="">-- Select Channel --</option>';
+            (data.all_channels || []).forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = '#' + c.name;
+                if (c.id === data.channel_id) opt.selected = true;
+                chSelect.appendChild(opt);
+            });
+        }
+
+        if (newChSelect) {
+            newChSelect.innerHTML = '<option value="">-- Choose Channel to make Media-Only --</option>';
+            const existingIds = new Set((data.media_channels || []).map(m => m.id));
+            (data.all_channels || []).forEach(c => {
+                if (!existingIds.has(c.id)) {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = '#' + c.name;
+                    newChSelect.appendChild(opt);
+                }
+            });
+        }
+
+        // Render Media Channels list
+        if (listContainer) {
+            if (!data.media_channels || data.media_channels.length === 0) {
+                listContainer.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px;">No media-only channels configured yet. Select a channel above to add one!</div>';
+            } else {
+                listContainer.innerHTML = data.media_channels.map(ch => `
+                    <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="color: #38bdf8; font-size: 16px;">📸</span>
+                            <span style="font-weight: 600; color: #fff;">#${ch.name}</span>
+                            <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">(${ch.id})</span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-danger" onclick="removeMediaChannel('${ch.id}')" style="padding: 4px 10px; font-size: 12px; border-radius: 6px;">
+                            Remove
+                        </button>
+                    </div>
+                `).join('');
+            }
+        }
+
+        updateMediaLivePreview();
+    } catch (err) {
+        console.error("Failed to load media announcements settings:", err);
+    }
+}
+
+async function removeMediaChannel(chId) {
+    const gid = currentGuildId;
+    if (!gid || !chId) return;
+    try {
+        const res = await fetch(`/api/guild/${gid}/media-channels/remove`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ channel_id: chId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast("Removed channel from media-only list.", "success");
+            loadMediaAnnouncementsSettings();
+        } else {
+            if (typeof showToast === 'function') showToast(data.error || "Failed to remove channel.", "error");
+        }
+    } catch (err) {
+        console.error("Failed to remove media channel:", err);
+    }
+}
+
+function initMediaAnnouncementsUI() {
+    const saveBtn = document.getElementById('saveMediaAnnouncementBtn');
+    const addChBtn = document.getElementById('addMediaChannelBtn');
+    const emojiBtn = document.getElementById('mediaEmojiPickerBtn');
+    const msgEl = document.getElementById('mediaAnnounceMessage');
+    const chSelect = document.getElementById('mediaAnnounceChannelSelect');
+
+    if (msgEl) {
+        msgEl.addEventListener('input', updateMediaLivePreview);
+    }
+    if (chSelect) {
+        chSelect.addEventListener('change', updateMediaLivePreview);
+    }
+
+    if (emojiBtn) {
+        emojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof openEmojiPicker === 'function') {
+                openEmojiPicker(emojiBtn, (val) => {
+                    window.insertMediaVar(val);
+                });
+            }
+        });
+    }
+
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async () => {
+            const gid = currentGuildId;
+            if (!gid) return;
+
+            const toggle = document.getElementById('mediaAnnounceToggle');
+            const chSelect = document.getElementById('mediaAnnounceChannelSelect');
+            const msgEl = document.getElementById('mediaAnnounceMessage');
+
+            const payload = {
+                enabled: toggle ? toggle.checked : false,
+                channel_id: chSelect ? chSelect.value : "",
+                message: msgEl ? msgEl.value.trim() : ""
+            };
+
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<span>Saving...</span>';
+
+            try {
+                const res = await fetch(`/api/guild/${gid}/media-announcements`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast("Media announcement settings saved successfully! ✨", "success");
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to save settings.", "error");
+                }
+            } catch (err) {
+                console.error("Save media announcements error:", err);
+                if (typeof showToast === 'function') showToast("Network error saving settings.", "error");
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = `<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg> Save Announcement Settings`;
+            }
+        });
+    }
+
+    if (addChBtn) {
+        addChBtn.addEventListener('click', async () => {
+            const gid = currentGuildId;
+            const newChSelect = document.getElementById('mediaNewChannelSelect');
+            if (!gid || !newChSelect || !newChSelect.value) {
+                if (typeof showToast === 'function') showToast("Please select a channel first.", "warning");
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/guild/${gid}/media-channels/add`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel_id: newChSelect.value })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast("Channel added to media-only list! 📸", "success");
+                    loadMediaAnnouncementsSettings();
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to add channel.", "error");
+                }
+            } catch (err) {
+                console.error("Add media channel error:", err);
+            }
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initMediaAnnouncementsUI();
+});

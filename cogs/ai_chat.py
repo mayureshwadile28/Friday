@@ -25,7 +25,7 @@ import asyncio
 import urllib.request
 import xml.etree.ElementTree as ET
 import html
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 from datetime import datetime, timezone, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -134,6 +134,11 @@ SEARCH_INTENT_REGEX = re.compile(
     # Space & Aerospace (Starship, SpaceX, NASA, ISRO)
     r'starship|spacex|falcon 9|falcon heavy|super heavy|artemis|isro|nasa|chandrayaan|gaganyaan|space launch|rocket launch|'
     r'orbit|space mission|space flight|flight test|launch date|launch time|next launch|'
+    # Movies, Cinema, Marvel, DC, MCU, Pop Culture & Gaming
+    r'marv[ae]l|mcu|av[ae]ngers?|doomes?day|secret wars|superhero|batman|superman|spider-?man|deadpool|wolverine|'
+    r'gta\s*6|grand theft auto|trailer release|teaser release|movie release|release date|kab release|kab aayegi|kab aayega|'
+    r'is coming|coming out|release ho rahi|release hone|release date kya|'
+    r'box office collection|box office|movie|film|cinema|anime|'
     # Sports & Scores
     r'live score|cricket score|football score|match score|ipl score|ipl match|world cup|fifa|champions league|'
     r'premier league|formula 1|f1 race|f1 qualifying|grand prix|who won the match|who won today|match result|today\'s match|'
@@ -438,6 +443,54 @@ def format_and_clean_announcement(text: str) -> str:
     clean = re.sub(r'([^\n])\n(#{2,3}\s+)', r'\1\n\n\2', clean)
     clean = re.sub(r'\n{3,}', '\n\n', clean)
     return clean.strip()
+
+
+def fetch_ddg_lite(query: str, max_items: int = 4) -> List[Dict[str, str]]:
+    """Fetch live factual web snippets, movie releases, mission specs, and wiki info from DuckDuckGo."""
+    try:
+        clean_q = query.strip()
+        url = 'https://lite.duckduckgo.com/lite/'
+        data = urlencode({'q': clean_q}).encode('utf-8')
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)',
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        )
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            raw = resp.read().decode('utf-8', errors='ignore')
+
+        snippets = re.findall(r'<td class=[\x22\x27]result-snippet[\x22\x27]>(.*?)</td>', raw, re.DOTALL)
+        items = []
+        for s in snippets[:max_items]:
+            clean_text = html.unescape(re.sub(r'<[^>]+>', '', s)).strip()
+            if clean_text and len(clean_text) > 20:
+                items.append({
+                    "title": "Verified Web Data",
+                    "link": "",
+                    "pubDate": "Live Web",
+                    "summary": clean_text
+                })
+        return items
+    except Exception as e:
+        print(f"[AIChat] DDG search exception: {e}")
+        return []
+
+
+def fetch_live_web_data(query: str, max_items: int = 6) -> List[Dict[str, str]]:
+    """Dual-engine live real-time search combining DuckDuckGo factual web snippets and Google News RSS."""
+    results = []
+    # 1. Fetch factual snippets (release dates, movie announcements, launch details, tech)
+    ddg_items = fetch_ddg_lite(query, max_items=3)
+    results.extend(ddg_items)
+
+    # 2. Fetch live news articles (breaking news, recent headlines)
+    news_items = fetch_live_google_news(query, max_items=3)
+    results.extend(news_items)
+
+    return results[:max_items] if results else news_items
 
 
 def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str]]:
@@ -920,17 +973,29 @@ class AIChat(commands.Cog):
             text.strip(),
             re.IGNORECASE
         ))
-        if (is_pure_search_command or re.search(r'\b(use internet|internet use karo|google it|check online)\b', text, re.IGNORECASE)) and history:
-            for msg in reversed(history):
-                if msg.get("role") == "user":
-                    prev_text = msg.get("content", "")
-                    cleaned = re.sub(
-                        r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?|ah so|so|can you tell me|whatever you know about|tell me whatever you know about|tell me about)\b',
-                        '', prev_text, flags=re.IGNORECASE
-                    ).strip()
-                    cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
-                    if len(cleaned) >= 3 and not re.search(r'^(?:use internet|google it|check online)$', cleaned, re.IGNORECASE):
-                        return cleaned
+        if history:
+            # 2a. Direct search command follow-up (e.g. "use internet ji", "google it", "batao na")
+            if is_pure_search_command or re.search(r'\b(use internet|internet use karo|google it|check online)\b', text, re.IGNORECASE):
+                for msg in reversed(history):
+                    if msg.get("role") == "user":
+                        prev_text = msg.get("content", "")
+                        cleaned = re.sub(
+                            r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?|ah so|so|can you tell me|whatever you know about|tell me whatever you know about|tell me about)\b',
+                            '', prev_text, flags=re.IGNORECASE
+                        ).strip()
+                        cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
+                        if len(cleaned) >= 3 and not re.search(r'^(?:use internet|google it|check online)$', cleaned, re.IGNORECASE):
+                            return cleaned
+
+            # 2b. Conversational debate on dates/releases (e.g. "i think it's 17th dec 2026", "but 27 mei toh secret wars aayegi", "Dec 2027 not may")
+            date_conjecture = bool(re.search(r'\b(202[4-9]|2030|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?|\d{1,2}(?:st|nd|rd|th)?|release|aayegi|aayega|coming)\b', text, re.IGNORECASE))
+            if date_conjecture:
+                for msg in reversed(history):
+                    c = msg.get("content", "")
+                    match = re.search(r'\b(avengers(?:\s+doomsday)?|doomsday|secret wars|starship(?:\s+\d+\w*)?|spacex|gta\s*6|marvel|mcu)\b', c, re.IGNORECASE)
+                    if match:
+                        topic = match.group(0)
+                        return f"{topic} release date"
 
         # 3. Direct search intent keywords in current query
         if SEARCH_INTENT_REGEX.search(text):
@@ -1157,8 +1222,14 @@ Real-Time Temporal Awareness & Live Context:
 - When asked about today's date, current year, day of the week, or time, ALWAYS answer with this exact live real-world date ({date_str}) and time. You are NEVER stuck in the past.
 
 LIVE WEB SEARCH & REAL-WORLD AWARENESS (CRITICAL):
-- You have live internet search and real-time Google News capabilities active!
+- You have live internet search and real-time web capabilities active!
 - You MUST NEVER state or claim "I don't have internet access", "I cannot browse the live web", "I am strictly an offline companion", or "I lack real-time data".
+- STRICT FACTUAL ACCURACY MANDATE:
+  1. Base your answers strictly on the verified facts from the live search results provided above.
+  2. NEVER invent, hallucinate, or extrapolate facts, flight mechanics, or fictional timeline states.
+     (For example: For Starship missions, only state verified flight status from the search context; NEVER claim it is 'in the 14th orbit heading towards 15th' or make up unconfirmed flight numbers).
+  3. For upcoming films like Avengers: Doomsday (officially scheduled for December 18, 2026; previously May 1, 2026) and Avengers: Secret Wars (May 7, 2027), state the official release dates confirmed in the search data directly and clearly.
+  4. If someone debates a date (e.g. 'Dec 2027 not may'), explain clearly what the official date is based on the search results.
 - When live search results or news context are provided above, synthesize them gracefully with facts, dates, sources, and charming lady insight.
 - If a user asks about any real-world event, launch, match, score, or news, discuss it using the real-time context provided. If specific upcoming details have not been officially announced yet, state gracefully that official schedules or launch windows are still being finalized by the organizers/authorities, without claiming you lack internet access!
 
@@ -1785,7 +1856,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
         if search_query:
             try:
-                search_items = await asyncio.to_thread(fetch_live_google_news, search_query, 5)
+                search_items = await asyncio.to_thread(fetch_live_web_data, search_query, 6)
                 if search_items:
                     is_research_mode = True
                     formatted_items = []
@@ -2096,7 +2167,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
                 if search_query:
                     try:
-                        search_items = await asyncio.to_thread(fetch_live_google_news, search_query, 5)
+                        search_items = await asyncio.to_thread(fetch_live_web_data, search_query, 6)
                         if search_items:
                             is_research_mode = True
                             formatted_items = []
@@ -2264,7 +2335,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
         if search_query:
             try:
-                search_items = await asyncio.to_thread(fetch_live_google_news, search_query, 5)
+                search_items = await asyncio.to_thread(fetch_live_web_data, search_query, 6)
                 if search_items:
                     is_research_mode = True
                     formatted_items = []

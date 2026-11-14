@@ -31,6 +31,7 @@ class Database:
         self.autoresponder = self.data.get("autoresponder", {})
         self.media_channels = self.data.get("media_channels", {})
         self.media_whitelist = self.data.get("media_whitelist", {})
+        self.media_announcements = self.data.get("media_announcements", {})
         self.liked_songs = self.data.get("liked_songs", {})
         self.warnings = self.data.get("warnings", {})
         self.first_welcome = self.data.get("first_welcome", {})
@@ -115,6 +116,7 @@ class Database:
                 "autoresponder": {},
                 "media_channels": {},
                 "media_whitelist": {},
+                "media_announcements": {},
                 "liked_songs": {},
                 "warnings": {},
                 "first_welcome": {},

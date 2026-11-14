@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import os
 import sys
+import time
 
 # Ensure parent directory is in sys.path
 PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -71,9 +72,51 @@ def has_media_content(message: discord.Message) -> bool:
 
     return False
 
+
+def has_actual_media(message: discord.Message) -> bool:
+    """Strictly checks if the message contains an actual image, video, sticker, or media link.
+    Returns False for pure text messages even if sent by server owner or administrators."""
+    # 1. Attachments: image or video file
+    if message.attachments:
+        for att in message.attachments:
+            if getattr(att, "width", None) is not None or getattr(att, "height", None) is not None:
+                return True
+            ctype = (att.content_type or "").lower()
+            if ctype.startswith(("image/", "video/")):
+                return True
+            fname = (att.filename or "").lower()
+            if any(fname.endswith(ext) for ext in (
+                '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg', '.heic', '.heif',
+                '.jfif', '.avif', '.mp4', '.mov', '.webm', '.mkv', '.avi', '.m4v', '.3gp'
+            )):
+                return True
+
+    # 2. Stickers
+    if hasattr(message, "stickers") and message.stickers:
+        return True
+
+    # 3. Embeds: image, video, gifv
+    if hasattr(message, "embeds") and message.embeds:
+        for emb in message.embeds:
+            if emb.type in ("image", "video", "gifv"):
+                return True
+            if getattr(emb, "image", None) or getattr(emb, "video", None):
+                return True
+
+    # 4. Media links in message content
+    content = message.content.lower()
+    if any(domain in content for domain in ("tenor.com", "giphy.com", "imgur.com", "gfycat.com", "cdn.discordapp.com", "media.discordapp.net")):
+        return True
+    if any(ext in content for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.mp4', '.mov', '.webm')):
+        return True
+
+    return False
+
+
 class MediaChannel(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._announcement_cooldowns = {}
 
     def _get_wl(self, gid: str) -> dict:
         """Safely fetch and normalize media whitelist dict for a guild."""
@@ -464,26 +507,73 @@ class MediaChannel(commands.Cog):
         if cid not in [str(x) for x in media_channels]:
             return
 
-        # Immunity check: Owner, Admins, Manage Channels, Whitelisted Users/Roles
-        if self.is_user_immune(message):
-            return
+        # 1. Immunity check & non-media deletion for regular members
+        is_immune = self.is_user_immune(message)
+        if not is_immune:
+            if not has_media_content(message):
+                try:
+                    await message.delete()
+                except Exception as e:
+                    print(f"[MediaChannel] Unable to delete non-media message in {message.channel.id}: {e}")
+                    return
 
-        # Check if the message contains valid media (attachments, stickers, embeds, or media links)
-        if not has_media_content(message):
-            try:
-                await message.delete()
-            except Exception as e:
-                print(f"[MediaChannel] Unable to delete non-media message in {message.channel.id}: {e}")
+                warning = (
+                    f"⚠️ {message.author.mention}, {message.channel.mention} is a **Media-Only Channel**.\n"
+                    f"Only images, videos, GIFs, and media files are allowed here. Pure text chatting is prohibited."
+                )
+                try:
+                    await message.channel.send(warning, delete_after=6)
+                except Exception:
+                    pass
                 return
 
-            warning = (
-                f"⚠️ {message.author.mention}, {message.channel.mention} is a **Media-Only Channel**.\n"
-                f"Only images, videos, GIFs, and media files are allowed here. Pure text chatting is prohibited."
+        # 2. Cross-Channel Media Announcement / Notification
+        # ONLY announce if the message actually contains an image or video! Pure text from anyone (including Admin/Owner) is NOT announced.
+        if not has_actual_media(message):
+            return
+
+        ann_cfg = getattr(db, "media_announcements", {}).get(gid, {})
+        if not ann_cfg or not ann_cfg.get("enabled", False):
+            return
+
+        target_ch_id = ann_cfg.get("channel_id")
+        if not target_ch_id or str(target_ch_id) == cid:
+            return
+
+        target_channel = message.guild.get_channel(int(target_ch_id))
+        if not target_channel or not isinstance(target_channel, (discord.TextChannel, discord.Thread)):
+            return
+
+        # Cooldown: 15s per author in that media channel to avoid spamming when posting multiple files
+        cooldown_key = (message.author.id, message.channel.id)
+        now = time.time()
+        if cooldown_key in self._announcement_cooldowns:
+            if (now - self._announcement_cooldowns[cooldown_key]) < 15:
+                return
+        self._announcement_cooldowns[cooldown_key] = now
+
+        # Format message template
+        raw_tmpl = ann_cfg.get("message", "").strip() or "{user} just shared a new image/video in {channel}! Go check it out! ✨"
+        rendered = raw_tmpl
+        rendered = rendered.replace("{user}", message.author.mention)
+        rendered = rendered.replace("{user_name}", message.author.display_name)
+        rendered = rendered.replace("{channel}", message.channel.mention)
+        rendered = rendered.replace("{channel_name}", message.channel.name)
+
+        # Replace server emoji placeholders like <:name:id> or :name:
+        try:
+            from emoji_utils import replace_plain_emojis
+            rendered = replace_plain_emojis(rendered, message.guild)
+        except Exception:
+            pass
+
+        try:
+            await target_channel.send(
+                rendered,
+                allowed_mentions=discord.AllowedMentions(everyone=False, roles=False, users=True)
             )
-            try:
-                await message.channel.send(warning, delete_after=6)
-            except Exception:
-                pass
+        except Exception as e:
+            print(f"[MediaChannel] Failed to post media announcement in {target_channel.id}: {e}")
 
 async def setup(bot):
     await bot.add_cog(MediaChannel(bot))
