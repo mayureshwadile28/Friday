@@ -3727,6 +3727,8 @@ def save_guild_giveaway_config(gid):
                 cfg[text_key] = val
 
     db.giveaways_config[gid_str] = cfg
+    if hasattr(db, "data") and isinstance(db.data, dict):
+        db.data.setdefault("giveaways_config", {})[gid_str] = cfg
     db.save_data()
     return jsonify({"success": True, "config": cfg})
 

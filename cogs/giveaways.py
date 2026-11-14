@@ -6,7 +6,7 @@ import time
 import random
 import re
 import uuid
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from database import db
 
@@ -67,21 +67,84 @@ def format_duration(seconds: int) -> str:
 
 
 def get_giveaway_config(guild_id: int) -> dict:
-    """Fetches giveaway configuration for a guild."""
+    """Fetches giveaway configuration for a guild with multi-type, db.data, and disk-reload fallbacks."""
     gid_str = str(guild_id)
     if not isinstance(getattr(db, "giveaways_config", None), dict):
         db.giveaways_config = {}
-    cfg = db.giveaways_config.get(gid_str, {})
+    cfg = db.giveaways_config.get(gid_str)
+    if not isinstance(cfg, dict):
+        cfg = db.giveaways_config.get(int(guild_id))
+    if not isinstance(cfg, dict) and hasattr(db, "data") and isinstance(db.data, dict):
+        gw_cfg_data = db.data.get("giveaways_config", {})
+        if isinstance(gw_cfg_data, dict):
+            cfg = gw_cfg_data.get(gid_str) or gw_cfg_data.get(int(guild_id))
+    if not isinstance(cfg, dict):
+        try:
+            db.reload()
+            if isinstance(getattr(db, "giveaways_config", None), dict):
+                cfg = db.giveaways_config.get(gid_str) or db.giveaways_config.get(int(guild_id))
+        except Exception:
+            pass
     if not isinstance(cfg, dict):
         cfg = {}
-        db.giveaways_config[gid_str] = cfg
+    db.giveaways_config[gid_str] = cfg
     return cfg
 
 
-def is_giveaway_configured(guild_id: int) -> bool:
-    """Checks whether giveaway channels (broadcast, approvals, logs) are set up."""
+def is_giveaway_configured(guild_id: int, guild: Optional[discord.Guild] = None) -> bool:
+    """Checks whether giveaway channels are set up.
+    Broad channel detection supports broadcast channel config and auto-discovery."""
     cfg = get_giveaway_config(guild_id)
-    return bool(cfg.get("giveaway_channel") and cfg.get("approval_channel") and cfg.get("log_channel"))
+    if cfg.get("giveaway_channel"):
+        return True
+    if guild and hasattr(guild, "channels"):
+        for ch in guild.channels:
+            if isinstance(ch, (discord.TextChannel, discord.NewsChannel)):
+                if ch.name.lower() in ("giveaways", "giveaway", "gw", "announcements", "gw-announcements", "giveaway-announcements"):
+                    return True
+    return False
+
+
+async def resolve_channel(guild: Optional[discord.Guild], bot: Optional[discord.Client], ch_id_or_str: Any, name_keywords: tuple = ()) -> Optional[discord.abc.GuildChannel]:
+    """Robustly resolves a Discord channel across IDs, strings, cache, bot fetch, and keyword fallback.
+    Supports TextChannel, NewsChannel (announcements), StageChannel, and Threads."""
+    if not guild and not bot:
+        return None
+    ch = None
+    if ch_id_or_str is not None:
+        try:
+            cid = int(str(ch_id_or_str).strip())
+            if guild:
+                ch = guild.get_channel(cid) or (getattr(guild, "get_thread", lambda x: None)(cid))
+            if not ch and bot:
+                ch = bot.get_channel(cid)
+            if not ch and bot:
+                try:
+                    ch = await bot.fetch_channel(cid)
+                except Exception:
+                    ch = None
+        except (ValueError, TypeError):
+            ch = None
+
+    if ch:
+        return ch
+
+    # Keyword fallback across guild channels (text, news/announcement, threads)
+    if guild and name_keywords:
+        all_channels = []
+        if hasattr(guild, "channels"):
+            all_channels.extend(guild.channels)
+        if hasattr(guild, "threads"):
+            all_channels.extend(guild.threads)
+
+        for kw in name_keywords:
+            kw_clean = str(kw).strip().lower()
+            for c in all_channels:
+                if isinstance(c, (discord.TextChannel, discord.NewsChannel, discord.Thread)):
+                    c_name = c.name.lower()
+                    if c_name == kw_clean or kw_clean in c_name:
+                        return c
+    return None
 
 
 async def resolve_giveaway_log_channel(bot, guild, cfg: dict = None) -> Optional[discord.TextChannel]:
@@ -91,23 +154,10 @@ async def resolve_giveaway_log_channel(bot, guild, cfg: dict = None) -> Optional
     if cfg is None:
         cfg = get_giveaway_config(guild.id)
     log_ch_id = cfg.get("log_channel") if isinstance(cfg, dict) else None
-    ch = None
-    if log_ch_id:
-        try:
-            cid = int(str(log_ch_id).strip())
-            ch = guild.get_channel(cid)
-            if not ch and bot:
-                ch = bot.get_channel(cid)
-            if not ch and bot:
-                ch = await bot.fetch_channel(cid)
-        except Exception:
-            ch = None
-    if not ch and hasattr(guild, "text_channels"):
-        for name in ("giveaway-logs", "giveaways-log", "gw-logs", "giveaway-log", "gw_logs", "giveaways_log"):
-            ch = discord.utils.get(guild.text_channels, name=name)
-            if ch:
-                break
-    return ch
+    return await resolve_channel(
+        guild, bot, log_ch_id,
+        ("giveaway-logs", "giveaways-log", "gw-logs", "giveaway-log", "gw_logs", "giveaways_log")
+    )
 
 
 from urllib.parse import urlparse
@@ -120,18 +170,22 @@ def resolve_giveaway_banner_file(image_url: Optional[str]) -> tuple[Optional[str
     if not url or url.lower() in ("none", "null", "undefined"):
         return None, None
 
-    if "/static/uploads/giveaway_banners/" in url or "giveaway_banners" in url:
-        banner_name = os.path.basename(url)
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        local_path = os.path.join(base_dir, "dashboard", "static", "uploads", "giveaway_banners", banner_name)
-        if os.path.exists(local_path):
-            safe_filename = f"giveaway_banner_{banner_name}"
-            return f"attachment://{safe_filename}", discord.File(local_path, filename=safe_filename)
+    clean_url = url.split("?")[0].split("#")[0].replace("\\", "/")
+    banner_name = os.path.basename(clean_url)
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    if os.path.isabs(url) and os.path.exists(url):
-        b_name = os.path.basename(url)
-        safe_filename = f"giveaway_banner_{b_name}"
-        return f"attachment://{safe_filename}", discord.File(url, filename=safe_filename)
+    candidate_paths = [
+        os.path.join(base_dir, "dashboard", "static", "uploads", "giveaway_banners", banner_name),
+        os.path.join(os.getcwd(), "dashboard", "static", "uploads", "giveaway_banners", banner_name),
+        os.path.join(base_dir, "dashboard", "static", "uploads", banner_name),
+        clean_url if os.path.isabs(clean_url) else None,
+        url if os.path.isabs(url) else None
+    ]
+
+    for p in candidate_paths:
+        if p and os.path.isfile(p):
+            safe_filename = f"giveaway_banner_{banner_name}"
+            return f"attachment://{safe_filename}", discord.File(p, filename=safe_filename)
 
     valid_url = validate_image_url(url)
     if valid_url:
@@ -422,10 +476,10 @@ class GiveawayApprovalView(discord.ui.View):
         guild = interaction.guild
         cfg = get_giveaway_config(guild.id)
         gw_channel_id = cfg.get("giveaway_channel")
-        gw_channel = guild.get_channel(gw_channel_id) if gw_channel_id else None
+        gw_channel = await resolve_channel(guild, self.bot, gw_channel_id, ("giveaways", "giveaway", "gw", "announcements", "gw-announcements", "giveaway-announcements"))
 
         if not gw_channel:
-            await interaction.followup.send("❌ Configured giveaway channel not found. Please re-run `/gsetup`.", ephemeral=True)
+            await interaction.followup.send("❌ Configured giveaway channel not found. Please re-run `/gsetup` or configure it in the dashboard.", ephemeral=True)
             return
 
         # Launch the giveaway
@@ -812,10 +866,10 @@ class CategorySelectStepView(discord.ui.View):
             await interaction.followup.send("❌ Category not found. Please try again.", ephemeral=True)
             return
 
-        text_channels = [c for c in category.text_channels if isinstance(c, discord.TextChannel)]
+        text_channels = [c for c in category.channels if isinstance(c, (discord.TextChannel, discord.NewsChannel))]
         if not text_channels:
             embed = self.get_embed()
-            embed.description += f"\n\n⚠️ **Notice:** No text channels found in **{category.name}**. Please choose another category."
+            embed.description += f"\n\n⚠️ **Notice:** No text or announcement channels found in **{category.name}**. Please choose another category."
             await interaction.edit_original_response(embed=embed, view=self)
             return
 
@@ -826,10 +880,10 @@ class CategorySelectStepView(discord.ui.View):
     @discord.ui.button(label="🌐  Uncategorized Channels", style=discord.ButtonStyle.secondary, row=1)
     async def uncat_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        uncat_channels = [c for c in interaction.guild.text_channels if c.category is None]
+        uncat_channels = [c for c in interaction.guild.channels if c.category is None and isinstance(c, (discord.TextChannel, discord.NewsChannel))]
         if not uncat_channels:
             embed = self.get_embed()
-            embed.description += "\n\n⚠️ **Notice:** No uncategorized text channels found on this server."
+            embed.description += "\n\n⚠️ **Notice:** No uncategorized text or announcement channels found on this server."
             await interaction.edit_original_response(embed=embed, view=self)
             return
 
@@ -904,6 +958,8 @@ class ChannelInCatStepView(discord.ui.View):
         cfg = get_giveaway_config(interaction.guild.id)
         cfg[self.role_type] = str(ch_id)
         db.giveaways_config[str(interaction.guild.id)] = cfg
+        if hasattr(db, "data") and isinstance(db.data, dict):
+            db.data.setdefault("giveaways_config", {})[str(interaction.guild.id)] = cfg
         db.save_data()
 
         next_role = self.meta.get("next")
@@ -942,10 +998,10 @@ class DirectChannelPickView(discord.ui.View):
         self.role_type = role_type
         self.meta = GW_ROLE_METADATA.get(role_type, GW_ROLE_METADATA["giveaway_channel"])
         self.ch_select = discord.ui.ChannelSelect(
-            placeholder="Select a text channel…",
+            placeholder="Select a text or announcement channel…",
             min_values=1,
             max_values=1,
-            channel_types=[discord.ChannelType.text],
+            channel_types=[discord.ChannelType.text, discord.ChannelType.news],
             row=0
         )
         self.ch_select.callback = self.ch_callback
@@ -958,6 +1014,8 @@ class DirectChannelPickView(discord.ui.View):
         cfg = get_giveaway_config(interaction.guild.id)
         cfg[self.role_type] = str(ch_id)
         db.giveaways_config[str(interaction.guild.id)] = cfg
+        if hasattr(db, "data") and isinstance(db.data, dict):
+            db.data.setdefault("giveaways_config", {})[str(interaction.guild.id)] = cfg
         db.save_data()
 
         next_role = self.meta.get("next")
@@ -1225,11 +1283,8 @@ class Giveaways(commands.Cog):
         gw["ended_at"] = ended_timestamp
         db.save_data()
 
-        guild = self.bot.get_guild(guild_id)
-        if not guild:
-            return
-
-        channel = guild.get_channel(channel_id)
+        guild = self.bot.get_guild(guild_id) if guild_id else None
+        channel = await resolve_channel(guild, self.bot, channel_id, ("giveaways", "giveaway", "gw", "announcements"))
         if not channel:
             return
 
@@ -1435,7 +1490,7 @@ class Giveaways(commands.Cog):
             return
 
         # ── 1. First-Time Setup Guard ──
-        if not is_giveaway_configured(guild.id):
+        if not is_giveaway_configured(guild.id, guild):
             is_admin = interaction.user.guild_permissions.manage_guild or interaction.user.guild_permissions.administrator or interaction.user.id == guild.owner_id
             if is_admin:
                 embed = discord.Embed(
@@ -1469,12 +1524,10 @@ class Giveaways(commands.Cog):
         winners_count = max(1, min(winners or 1, 25))
         cfg = get_giveaway_config(guild.id)
         gw_cid = cfg.get("giveaway_channel")
-        target_channel = guild.get_channel(int(gw_cid)) if gw_cid else None
-        if not target_channel:
-            for ch in guild.text_channels:
-                if ch.name.lower() in ("giveaways", "giveaway", "gw"):
-                    target_channel = ch
-                    break
+        target_channel = await resolve_channel(
+            guild, self.bot, gw_cid,
+            ("giveaways", "giveaway", "gw", "announcements", "gw-announcements", "giveaway-announcements")
+        )
 
         if not target_channel:
             await interaction.response.send_message(
@@ -1482,6 +1535,13 @@ class Giveaways(commands.Cog):
                 ephemeral=True
             )
             return
+
+        if not gw_cid:
+            cfg["giveaway_channel"] = str(target_channel.id)
+            db.giveaways_config[str(guild.id)] = cfg
+            if hasattr(db, "data") and isinstance(db.data, dict):
+                db.data.setdefault("giveaways_config", {})[str(guild.id)] = cfg
+            db.save_data()
 
         is_admin_or_owner = (
             interaction.user.guild_permissions.manage_guild or
@@ -1492,18 +1552,13 @@ class Giveaways(commands.Cog):
         # ── 3. Branch: Regular Member Submission (Approval Queue) ──
         if not is_admin_or_owner:
             app_ch_id = cfg.get("approval_channel")
-            app_ch = None
-            if app_ch_id:
-                try:
-                    cid = int(str(app_ch_id).strip())
-                    app_ch = guild.get_channel(cid) or self.bot.get_channel(cid)
-                except Exception:
-                    app_ch = None
-            if not app_ch and hasattr(guild, "text_channels"):
-                for name in ("giveaway-approvals", "giveaways-approvals", "giveaway-approval", "gw-approvals"):
-                    app_ch = discord.utils.get(guild.text_channels, name=name)
-                    if app_ch:
-                        break
+            app_ch = await resolve_channel(
+                guild, self.bot, app_ch_id,
+                ("giveaway-approvals", "giveaways-approvals", "giveaway-approval", "gw-approvals", "approvals", "staff", "staff-chat")
+            )
+            if not app_ch:
+                log_ch_id = cfg.get("log_channel")
+                app_ch = await resolve_channel(guild, self.bot, log_ch_id) or guild.system_channel or target_channel
 
             if not app_ch:
                 await interaction.response.send_message(
@@ -1796,7 +1851,7 @@ class Giveaways(commands.Cog):
         gw["winners"] = new_winners
         db.save_data()
 
-        channel = interaction.guild.get_channel(gw.get("channel_id"))
+        channel = await resolve_channel(interaction.guild, self.bot, gw.get("channel_id"), ("giveaways", "giveaway", "gw", "announcements"))
         prize = gw.get("prize", "the prize")
 
         if channel:
@@ -1899,7 +1954,7 @@ class Giveaways(commands.Cog):
         gw["status"] = "cancelled"
         db.save_data()
 
-        channel = interaction.guild.get_channel(gw.get("channel_id"))
+        channel = await resolve_channel(interaction.guild, self.bot, gw.get("channel_id"), ("giveaways", "giveaway", "gw", "announcements"))
         if channel:
             try:
                 msg = await channel.fetch_message(int(clean_id))
