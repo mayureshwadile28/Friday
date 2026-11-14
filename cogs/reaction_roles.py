@@ -21,10 +21,8 @@ class ReactionRoleSelect(discord.ui.Select):
         self.exclusive = exclusive
 
     async def callback(self, interaction: discord.Interaction):
-        # Delegate immediately to centralized processor
-        cog = interaction.client.get_cog("ReactionRoles")
-        if cog:
-            await cog.process_role_selection(interaction, self.values[0] if self.values else None, self.panel_id)
+        # Handled centrally by the on_interaction listener to prevent duplicate execution & double pop-ups
+        pass
 
 
 class ReactionRoleSelectView(discord.ui.View):
@@ -37,12 +35,18 @@ class ReactionRoles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self._processing = set()
+        self._processed_interaction_ids = set()
 
     async def process_role_selection(self, interaction: discord.Interaction, selected_val: Optional[str], panel_id: Optional[str] = None):
         """Unified, 24/7 atomic role assigner for self-role dropdowns.
         Works across bot restarts, missing DB records, and raw component interactions."""
         if not selected_val:
             return
+
+        # Atomic guard: ensure this interaction is never handled twice
+        if getattr(interaction, "_rr_handled", False):
+            return
+        setattr(interaction, "_rr_handled", True)
 
         # Always ensure interaction is acknowledged immediately so Discord never times out
         if not interaction.response.is_done():
@@ -168,6 +172,13 @@ class ReactionRoles(commands.Cog):
         custom_id = str(interaction.data.get("custom_id", ""))
         if not custom_id.startswith("rr_sel:"):
             return
+
+        # Deduplicate interaction synchronously before any await to eliminate race conditions
+        if interaction.id in self._processed_interaction_ids:
+            return
+        self._processed_interaction_ids.add(interaction.id)
+        if len(self._processed_interaction_ids) > 2000:
+            self._processed_interaction_ids.clear()
 
         # Acknowledge immediately within milliseconds to prevent Discord "didn't respond in time" error
         if not interaction.response.is_done():
