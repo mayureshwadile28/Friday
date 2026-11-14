@@ -70,22 +70,8 @@ class ReactionRoleSelect(discord.ui.Select):
         self.exclusive = exclusive
 
     async def callback(self, interaction: discord.Interaction):
-        # 1. Immediate acknowledgment so Discord NEVER times out ("Friday didn't respond in time")
-        if not interaction.response.is_done():
-            try:
-                await interaction.response.defer(ephemeral=True)
-            except Exception:
-                pass
-
-        # 2. Atomic per-interaction guard: prevents duplicate execution between View callback and global listener
-        if getattr(interaction, "_rr_handled", False):
-            return
-        setattr(interaction, "_rr_handled", True)
-
-        cog = interaction.client.get_cog("ReactionRoles")
-        if cog:
-            selected = self.values[0] if self.values else (interaction.data.get("values", [None])[0] if interaction.data else None)
-            await cog.process_role_selection(interaction, selected, self.panel_id)
+        # Handled centrally by on_interaction to prevent race conditions and duplicate executions
+        pass
 
 
 class ReactionRoleSelectView(discord.ui.View):
@@ -108,11 +94,24 @@ class ReactionRoles(commands.Cog):
         if not interaction.response.is_done():
             try:
                 await interaction.response.defer(ephemeral=True)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[ReactionRoles] Defer warning: {e}", flush=True)
+
+        async def reply(text: str):
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(text, ephemeral=True)
+                else:
+                    await interaction.response.send_message(text, ephemeral=True)
+                print(f"[ReactionRoles] Reply delivered: {text}", flush=True)
+            except Exception as e:
+                print(f"[ReactionRoles] Failed to deliver reply: {e}", flush=True)
 
         if not selected_val:
+            print("[ReactionRoles] Warning: selected_val is empty, aborting.", flush=True)
             return
+
+        print(f"[ReactionRoles] Processing role selection: val='{selected_val}', panel='{panel_id}', user='{interaction.user}'", flush=True)
 
         try:
             guild = interaction.guild
@@ -127,10 +126,7 @@ class ReactionRoles(commands.Cog):
                         member = None
 
             if not guild or not isinstance(member, discord.Member):
-                try:
-                    await interaction.followup.send("❌ Error: Could not verify server member.", ephemeral=True)
-                except Exception:
-                    pass
+                await reply("❌ Error: Could not verify server member.")
                 return
 
             msg = interaction.message
@@ -185,36 +181,33 @@ class ReactionRoles(commands.Cog):
                 if roles_to_remove:
                     try:
                         await member.remove_roles(*roles_to_remove, reason="Reaction Role: Cleared self-role selection")
-                        await interaction.followup.send("🗑️ Successfully removed your role from this panel.", ephemeral=True)
+                        await reply("🗑️ Successfully removed your role from this panel.")
                     except discord.Forbidden:
-                        await interaction.followup.send("❌ Friday lacks permission or role hierarchy to modify your roles.", ephemeral=True)
+                        await reply("❌ Friday lacks permission or role hierarchy to modify your roles.")
                     except Exception as e:
-                        await interaction.followup.send(f"❌ Error removing role: {e}", ephemeral=True)
+                        await reply(f"❌ Error removing role: {e}")
                 else:
-                    await interaction.followup.send("ℹ️ You do not currently have any roles from this panel.", ephemeral=True)
+                    await reply("ℹ️ You do not currently have any roles from this panel.")
                 return
 
             # Case B: Assign Selected Role
             if not str(selected_val).isdigit():
-                await interaction.followup.send("❌ Invalid role selection.", ephemeral=True)
+                await reply("❌ Invalid role selection.")
                 return
 
             target_role_id = int(selected_val)
             target_role = guild.get_role(target_role_id)
             if not target_role:
-                await interaction.followup.send("❌ Error: The selected role no longer exists on this server.", ephemeral=True)
+                await reply("❌ Error: The selected role no longer exists on this server.")
                 return
 
             bot_member = guild.me or guild.get_member(self.bot.user.id)
             if bot_member and target_role >= bot_member.top_role:
-                await interaction.followup.send(
-                    f"❌ Error: Friday's highest role is not high enough to assign **{target_role.name}**. Please move Friday's role higher in Server Settings > Roles.",
-                    ephemeral=True
-                )
+                await reply(f"❌ Error: Friday's highest role is not high enough to assign **{target_role.name}**. Please move Friday's role higher in Server Settings > Roles.")
                 return
 
             if target_role in member.roles:
-                await interaction.followup.send(f"ℹ️ You already have the **@{target_role.name}** role.", ephemeral=True)
+                await reply(f"ℹ️ You already have the **@{target_role.name}** role.")
                 return
 
             roles_to_remove = []
@@ -228,23 +221,18 @@ class ReactionRoles(commands.Cog):
                 if roles_to_remove:
                     await member.remove_roles(*roles_to_remove, reason="Reaction Role: Swapped role selection")
                 await member.add_roles(target_role, reason="Reaction Role: Claimed role via dropdown")
-                await interaction.followup.send(f"✅ Successfully assigned the **@{target_role.name}** role!", ephemeral=True)
+                await reply(f"✅ Successfully assigned the **@{target_role.name}** role!")
+                print(f"[ReactionRoles] Successfully assigned role {target_role.name} ({target_role.id}) to {member.name}", flush=True)
             except discord.Forbidden:
-                await interaction.followup.send("❌ Friday lacks permission or role hierarchy to assign this role. Please ensure Friday's role is above the target role.", ephemeral=True)
+                await reply("❌ Friday lacks permission or role hierarchy to assign this role. Please ensure Friday's role is above the target role.")
             except Exception as e:
-                await interaction.followup.send(f"❌ Error modifying roles: {e}", ephemeral=True)
+                await reply(f"❌ Error modifying roles: {e}")
 
         except Exception as e:
             import traceback
             print(f"[ReactionRoles] Unexpected error in process_role_selection: {e}", flush=True)
             traceback.print_exc()
-            try:
-                if interaction.response.is_done():
-                    await interaction.followup.send(f"❌ Error processing role selection: {e}", ephemeral=True)
-                else:
-                    await interaction.response.send_message(f"❌ Error processing role selection: {e}", ephemeral=True)
-            except Exception:
-                pass
+            await reply(f"❌ Error processing role selection: {e}")
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
@@ -256,20 +244,18 @@ class ReactionRoles(commands.Cog):
         if not custom_id.startswith("rr_sel:"):
             return
 
+        print(f"[ReactionRoles] on_interaction received! custom_id='{custom_id}' user='{interaction.user}'", flush=True)
+
         # Acknowledge immediately within milliseconds to prevent Discord "didn't respond in time" error
         if not interaction.response.is_done():
             try:
                 await interaction.response.defer(ephemeral=True)
-            except Exception:
-                pass
-
-        # Atomic per-interaction guard: if already processed by View callback, return immediately
-        if getattr(interaction, "_rr_handled", False):
-            return
-        setattr(interaction, "_rr_handled", True)
+            except Exception as e:
+                print(f"[ReactionRoles] on_interaction defer warning: {e}", flush=True)
 
         values = interaction.data.get("values", []) if interaction.data else []
         if not values:
+            print("[ReactionRoles] on_interaction values empty!", flush=True)
             return
 
         selected_val = str(values[0])
