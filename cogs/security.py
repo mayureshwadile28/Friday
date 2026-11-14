@@ -132,21 +132,35 @@ class Security(commands.Cog):
         return False
 
     def is_gif_url(self, url: str) -> bool:
-        """Check if a URL points to a GIF or GIF service (Tenor, Giphy, Gfycat, Discord, Imgur)."""
+        """Check if a URL points to a GIF or GIF service (Tenor, Giphy, Gfycat, Discord, Imgur, RedGIFs, etc.)."""
         if not url:
             return False
-        # Common GIF providers (including subdomains and shortlinks like tenor.co, gph.is, media.tenor.com, c.tenor.com, i.giphy.com)
-        if re.search(r'(?:tenor\.(?:com|co)|giphy\.com|gph\.is|gfycat\.com)', url, re.IGNORECASE):
+        # Clean leading/trailing formatting characters like <, >, (, ), commas, dots
+        clean = re.sub(r'^[<\(\[\{]+|[>,\)\]\}\.!?:;]+$', '', url.strip()).lower()
+        if not clean:
+            return False
+
+        # 1. Major GIF platforms and services (including subdomains and shortlinks)
+        gif_hosts = (
+            "tenor.com", "tenor.co", "giphy.com", "gph.is", "gfycat.com", "redgifs.com",
+            "imgur.com", "kliph.com", "wifflegif.com", "gifs.com", "makeagif.com", "gifbin.com"
+        )
+        if any(h in clean for h in gif_hosts):
             return True
-        # Direct .gif or .gifv extensions or imgur gifv with optional query parameters/fragments
-        if re.search(r'\.(?:gif|gifv)(?:[?&#/].*)?$', url, re.IGNORECASE) or re.search(r'\.(?:gif|gifv)\b', url, re.IGNORECASE):
+
+        # 2. Discord CDN, media, and external image proxy GIF assets
+        if any(h in clean for h in ("cdn.discordapp.com", "media.discordapp.net", "images-ext-1.discordapp.net", "images-ext-2.discordapp.net")):
+            if any(ext in clean for ext in (".gif", ".gifv", "/emojis/", "/stickers/")):
+                return True
+
+        # 3. Direct .gif or .gifv extensions anywhere in the URL (with optional query parameters or hashes)
+        if re.search(r'\.(?:gif|gifv)(?:[?&#/].*)?$', clean, re.IGNORECASE) or re.search(r'\.(?:gif|gifv)\b', clean, re.IGNORECASE):
             return True
-        # Discord attachments/media links ending in .gif or .gifv
-        if re.search(r'(?:cdn|media)\.discordapp\.(?:com|net)/attachments/.*\.(?:gif|gifv)', url, re.IGNORECASE):
+
+        # 4. URL path slugs containing GIF identifiers (e.g., /gifs/, /gif/, -gif-, _gif_)
+        if re.search(r'(?:/gif/|/gifs/|/gifv/|-gif-|_gif_)', clean, re.IGNORECASE):
             return True
-        # Imgur image / gif links
-        if re.search(r'imgur\.com/.*\.(?:gif|gifv)', url, re.IGNORECASE):
-            return True
+
         return False
 
     def is_gif_attachment(self, attachment: discord.Attachment) -> bool:
@@ -162,17 +176,20 @@ class Security(commands.Cog):
         for att in getattr(message, "attachments", []):
             if self.is_gif_attachment(att):
                 return True
-        for link in self.link_regex.findall(getattr(message, "content", "")):
-            if self.is_gif_url(link):
+        for raw_link in self.link_regex.findall(getattr(message, "content", "")):
+            if self.is_gif_url(raw_link):
                 return True
         for emb in getattr(message, "embeds", []):
             if getattr(emb, "type", "") == "gifv":
+                return True
+            p_name = getattr(getattr(emb, "provider", None), "name", "")
+            if p_name and p_name.lower() in ("tenor", "giphy", "imgur", "redgifs", "gfycat"):
                 return True
             if emb.url and self.is_gif_url(emb.url):
                 return True
             if emb.image and emb.image.url and self.is_gif_url(emb.image.url):
                 return True
-            if emb.video and emb.video.url and self.is_gif_url(emb.video.url):
+            if emb.video and emb.video.url and (self.is_gif_url(emb.video.url) or (p_name and p_name.lower() in ("tenor", "giphy"))):
                 return True
             if emb.thumbnail and emb.thumbnail.url and self.is_gif_url(emb.thumbnail.url):
                 return True
@@ -180,14 +197,30 @@ class Security(commands.Cog):
 
     def member_has_embed_permission(self, member, channel) -> bool:
         """Check if a member has embed_links or attach_files permission directly, via channel, or via any role."""
-        if not isinstance(member, discord.Member):
+        if not member:
             return False
 
-        # 1. Administrator always has permission
-        if getattr(member.guild_permissions, "administrator", False):
+        # Resolve User object to full Member object from guild if necessary
+        guild = getattr(channel, "guild", None) or getattr(member, "guild", None)
+        if not isinstance(member, discord.Member):
+            if guild:
+                cached_m = guild.get_member(member.id)
+                if cached_m:
+                    member = cached_m
+                elif member.id == guild.owner_id:
+                    return True
+                else:
+                    if self.is_whitelisted(guild, member):
+                        return True
+                    return False
+            else:
+                return False
+
+        # 1. Administrator or Server Owner always has permission
+        if member.id == guild.owner_id or getattr(member.guild_permissions, "administrator", False):
             return True
 
-        # 2. Check guild-level permissions
+        # 2. Check guild-level permissions (Embed Links or Attach Files)
         gp = member.guild_permissions
         if gp.embed_links or gp.attach_files:
             return True
@@ -206,6 +239,13 @@ class Security(commands.Cog):
                     return True
             except Exception:
                 pass
+
+        # 5. Check @everyone role default permissions in guild
+        everyone_role = getattr(guild, "default_role", None)
+        if everyone_role:
+            ep = getattr(everyone_role, "permissions", None)
+            if ep and (ep.embed_links or ep.attach_files):
+                return True
 
         return False
 
@@ -1399,6 +1439,12 @@ class Security(commands.Cog):
         gid = str(guild.id)
         author = message.author
 
+        # Resolve author to Member if uncached
+        if not isinstance(author, discord.Member) and guild:
+            cached_author = guild.get_member(author.id)
+            if cached_author:
+                author = cached_author
+
         if not db.antinuke_active.get(gid, True): return
         cfg = self.get_security_config(gid)
 
@@ -1439,7 +1485,8 @@ class Security(commands.Cog):
         if not is_media_channel and anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
             # Members who have Discord in-server embed/attach permissions, or are explicitly whitelisted/immune, can send GIFs!
             has_embed_perm = self.member_has_embed_permission(author, message.channel)
-            can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif") or has_embed_perm
+            allow_gifs = cfg.get("detect", {}).get("anti_link", {}).get("allow_gifs", True)
+            can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif") or has_embed_perm or allow_gifs
             if not can_send_gif:
                 deleted = await self.safe_delete_violating_message(message, violation_label="GIF Content")
                 try:
@@ -1463,9 +1510,15 @@ class Security(commands.Cog):
         # 3. Detect Only: Anti Link (Auto-Delete & Log)
         anti_link_cfg = cfg.get("detect", {}).get("anti_link", {})
         if anti_link_cfg.get("enabled", True):
-            all_links = self.link_regex.findall(message.content)
-            if all_links:
-                non_invite_links = [l for l in all_links if not self.invite_regex.search(l)]
+            raw_links = self.link_regex.findall(message.content)
+            if raw_links:
+                cleaned_links = []
+                for rl in raw_links:
+                    cl = re.sub(r'^[<\(\[\{`"\']+|[>,\)\]\}\.!?:;`"\']+$', '', rl.strip())
+                    if cl:
+                        cleaned_links.append(cl)
+
+                non_invite_links = [l for l in cleaned_links if not self.invite_regex.search(l)]
                 if non_invite_links:
                     media_exts = ('.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mov', '.webm', '.webp', '.heic', '.mkv', '.avi')
                     media_hosts = ("tenor.com", "giphy.com", "imgur.com", "cdn.discordapp.com", "media.discordapp.net", "youtube.com", "youtu.be", "tiktok.com", "streamable.com")
@@ -1482,8 +1535,10 @@ class Security(commands.Cog):
                         gif_links = [l for l in non_invite_links if self.is_gif_url(l)]
                         non_gif_links = [l for l in non_invite_links if not self.is_gif_url(l)]
 
-                        # If Discord resolved a GIF embed/attachment and there is only 1 link, it's definitely the GIF
-                        if self.has_gif_content(message) and len(non_invite_links) == 1 and not gif_links:
+                        # If Discord resolved a GIF embed/attachment or message has GIF content and all non-invite links are GIF related:
+                        if (self.has_gif_content(message) or len(gif_links) > 0) and not non_gif_links:
+                            pass
+                        elif self.has_gif_content(message) and len(non_invite_links) == 1:
                             gif_links = non_invite_links
                             non_gif_links = []
 
@@ -1539,7 +1594,7 @@ class Security(commands.Cog):
                 await self.execute_punishment(guild, author, punishment, f"Anti-Mention: Exceeded mass mention limit ({total_mentions} mentions).", log_channel="audit-antispam", timeout_mins=tm, feature="mention")
                 return
 
-        # 4. Anti-Spam Rate Flood & Duplicates
+        # 5. Anti-Spam Rate Flood & Duplicates
         antispam = cfg.get("antispam", {})
         if antispam.get("enabled", True):
             now = time.time()
@@ -1555,7 +1610,15 @@ class Security(commands.Cog):
             if uid not in self.message_tracker[gid]:
                 self.message_tracker[gid][uid] = []
 
-            self.message_tracker[gid][uid].append((now, message.content.strip().lower()))
+            # Deduplicate by message ID so that re-evaluations never double-count
+            msg_id = getattr(message, "id", None)
+            already_tracked = False
+            if msg_id:
+                already_tracked = any(len(entry) > 2 and entry[2] == msg_id for entry in self.message_tracker[gid][uid])
+
+            if not already_tracked:
+                self.message_tracker[gid][uid].append((now, message.content.strip().lower(), msg_id))
+
             self.message_tracker[gid][uid] = [entry for entry in self.message_tracker[gid][uid] if now - entry[0] <= window]
 
             entries = self.message_tracker[gid][uid]
@@ -1613,12 +1676,24 @@ class Security(commands.Cog):
             embed.set_footer(text=f"Author ID: {after.author.id} • Message ID: {after.id}")
             await self.log_security_event(after.guild, "audit-edits", embed)
 
-        # 2. Re-run security checks (e.g. Tenor/Giphy GIF picker embed appended or links inserted)
+        # 2. Re-run security checks only on real human edits (content or attachments changed)
         content_changed = before.content != after.content
         attachment_changed = len(before.attachments) != len(after.attachments)
-        embed_added = len(after.embeds) > len(before.embeds)  # Discord appended a GIF embed
-        if content_changed or attachment_changed or embed_added:
+        embed_added = len(after.embeds) > len(before.embeds)
+
+        if content_changed or attachment_changed:
             await self.on_message(after)
+        elif embed_added:
+            # Automated Discord link/GIF embed unfurl:
+            # Never re-run anti-spam, anti-mention, or rate limits on automated unfurls.
+            # Only enforce Anti-GIF if Anti-GIF is enabled AND member lacks embed permission.
+            cfg = self.get_security_config(str(after.guild.id))
+            anti_gif_cfg = cfg.get("detect", {}).get("anti_gif", {})
+            if anti_gif_cfg.get("enabled", False) and self.has_gif_content(after):
+                has_embed_perm = self.member_has_embed_permission(after.author, after.channel)
+                is_immune = (after.author.id == after.guild.owner_id or after.author.id == self.bot.user.id or self.is_whitelisted(after.guild, after.author, feature="anti_gif"))
+                if not is_immune and not has_embed_perm:
+                    await self.safe_delete_violating_message(after, violation_label="GIF Content")
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
