@@ -121,9 +121,28 @@ DATE_TIME_QUERY_REGEX = re.compile(
     re.IGNORECASE
 )
 
-# Strict intent detection for web news and Google search lookups
+# Broad real-time intent detection for web news, space, sports, world events, and live lookups
 SEARCH_INTENT_REGEX = re.compile(
-    r'\b(news|headlines|breaking news|breaking|taza khabar|samachar|aaj ki news|aaj ka news|current events|live score|cricket score|football score|match score|stock price|share price|crypto price|bitcoin price|search google|google it|google pe dekho|search online|search internet|internet pe dekho|kya chal raha hai duniya me|world news|latest update|latest updates|recent update|recent news|today\'s news|tech news|space news|space tech news|market update|weather|check today|live update|aaj ke samachar|kya khabar|what is happening with)\b',
+    r'\b('
+    # General news & updates
+    r'news|headlines|breaking news|breaking|taza khabar|samachar|aaj ki news|aaj ka news|current events|'
+    r'world news|latest update|latest updates|recent update|recent news|today\'s news|tech news|market update|live update|aaj ke samachar|kya khabar|'
+    # Web search triggers & commands
+    r'search google|google it|google pe dekho|google pe search|google karo|google pe|search online|search internet|'
+    r'internet pe dekho|use internet|use internet ji|internet use karo|browse internet|check web|check on google|google this|look it up|check online|search web|'
+    r'kya chal raha hai duniya me|what is happening with|what happened with|what happened today|tell me about|whatever you know about|'
+    # Space & Aerospace (Starship, SpaceX, NASA, ISRO)
+    r'starship|spacex|falcon 9|falcon heavy|super heavy|artemis|isro|nasa|chandrayaan|gaganyaan|space launch|rocket launch|'
+    r'orbit|space mission|space flight|flight test|launch date|launch time|next launch|'
+    # Sports & Scores
+    r'live score|cricket score|football score|match score|ipl score|ipl match|world cup|fifa|champions league|'
+    r'premier league|formula 1|f1 race|f1 qualifying|grand prix|who won the match|who won today|match result|today\'s match|'
+    # Finance, Economy & Crypto
+    r'stock price|share price|crypto price|bitcoin price|ethereum price|sensex|nifty|gold rate|silver rate|dollar rate|rupee rate|'
+    # Entertainment & Tech
+    r'box office collection|movie release date|trailer release|iphone release|samsung release|nvidia gpu|'
+    r'weather|weather today|weather forecast'
+    r')\b',
     re.IGNORECASE
 )
 
@@ -417,7 +436,8 @@ def format_and_clean_announcement(text: str) -> str:
 def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str]]:
     """Fetch live real-time Google News and search data for news, current events, and topics."""
     try:
-        encoded = quote_plus(query.strip())
+        clean_q = query.strip()
+        encoded = quote_plus(clean_q)
         url = f"https://news.google.com/rss/search?q={encoded}&hl=en-US&gl=US&ceid=US:en"
         req = urllib.request.Request(
             url,
@@ -441,6 +461,14 @@ def fetch_live_google_news(query: str, max_items: int = 5) -> List[Dict[str, str
                     "pubDate": pub_date,
                     "summary": clean_desc
                 })
+
+        # If 0 items and query is long, try relaxing conversational filler words
+        if not items and len(clean_q.split()) > 3:
+            stop_words = {"what", "is", "the", "about", "tell", "me", "latest", "update", "know", "whatever", "you", "so", "ah"}
+            relaxed_q = " ".join([w for w in clean_q.split() if w.lower() not in stop_words][:4])
+            if relaxed_q and relaxed_q.lower() != clean_q.lower():
+                return fetch_live_google_news(relaxed_q, max_items=max_items)
+
         return items
     except Exception as e:
         print(f"[AIChat] Google search fetch exception: {e}")
@@ -879,32 +907,32 @@ class AIChat(commands.Cog):
         if DATE_TIME_QUERY_REGEX.search(text) and not re.search(r'\b(news|khabar|samachar|headline)\b', text, re.IGNORECASE):
             return None
 
-        # 2. Direct search intent keywords in current query
+        # 2. Conversational follow-up: user is prompting Friday to execute a web/internet/google search on previous topic
+        is_pure_search_command = bool(re.search(
+            r'^(?:use internet(?:\s+ji)?|internet use karo|search online|search internet|google it|look it up|check online|search karo|karo|kardo|karo na|do it|tell me|batao|batao na|check now|show me|search it|check it|please do|plz do|kar do|ha tho|ha toh|yes please|ha|yes|kya hua|say it)[!.\s?]*$',
+            text.strip(),
+            re.IGNORECASE
+        ))
+        if (is_pure_search_command or re.search(r'\b(use internet|internet use karo|google it|check online)\b', text, re.IGNORECASE)) and history:
+            for msg in reversed(history):
+                if msg.get("role") == "user":
+                    prev_text = msg.get("content", "")
+                    cleaned = re.sub(
+                        r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?|ah so|so|can you tell me|whatever you know about|tell me whatever you know about|tell me about)\b',
+                        '', prev_text, flags=re.IGNORECASE
+                    ).strip()
+                    cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
+                    if len(cleaned) >= 3 and not re.search(r'^(?:use internet|google it|check online)$', cleaned, re.IGNORECASE):
+                        return cleaned
+
+        # 3. Direct search intent keywords in current query
         if SEARCH_INTENT_REGEX.search(text):
             cleaned = re.sub(
-                r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?)\b',
+                r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?|ah so|so|can you tell me|whatever you know about|tell me whatever you know about|tell me about|use internet|use internet ji|internet use karo|search online|search internet|google it|look it up|check online)\b',
                 '', text, flags=re.IGNORECASE
             ).strip()
             cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
             return cleaned if len(cleaned) >= 3 else text
-
-        # 3. Conversational follow-up: user is prompting Friday to execute a previously requested search/news query
-        followup_match = re.search(
-            r'\b(karo|kardo|karo na|abi karo|abhi karo|do it|tell me|batao|batao na|check now|show me|search it|check it|please do|plz do|kar do|ha tho|ha toh|yes please|ha|yes|kya hua|say it)\b',
-            text, re.IGNORECASE
-        )
-        if followup_match and history:
-            for msg in reversed(history):
-                if msg.get("role") == "user":
-                    prev_text = msg.get("content", "")
-                    if SEARCH_INTENT_REGEX.search(prev_text):
-                        cleaned = re.sub(
-                            r'\b(friday|hey friday|hi friday|please|plz|can you|batao|tell me|search|google|search on google|google pe dekho|kya aap|mujhe|about|regarding|requesting|check|check for me|i want to stay updated|i want to be stay updated|stay updated|aaj ki|aaj ka|today\'?s?)\b',
-                            '', prev_text, flags=re.IGNORECASE
-                        ).strip()
-                        cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
-                        if len(cleaned) >= 3:
-                            return cleaned
 
         return None
 
@@ -1120,6 +1148,12 @@ Real-Time Temporal Awareness & Live Context:
 {realtime_block}
 - You are fully present in the current moment ({date_str}).
 - When asked about today's date, current year, day of the week, or time, ALWAYS answer with this exact live real-world date ({date_str}) and time. You are NEVER stuck in the past.
+
+LIVE WEB SEARCH & REAL-WORLD AWARENESS (CRITICAL):
+- You have live internet search and real-time Google News capabilities active!
+- You MUST NEVER state or claim "I don't have internet access", "I cannot browse the live web", "I am strictly an offline companion", or "I lack real-time data".
+- When live search results or news context are provided above, synthesize them gracefully with facts, dates, sources, and charming lady insight.
+- If a user asks about any real-world event, launch, match, score, or news, discuss it using the real-time context provided. If specific upcoming details have not been officially announced yet, state gracefully that official schedules or launch windows are still being finalized by the organizers/authorities, without claiming you lack internet access!
 
 DIRECT ANSWER DIRECTIVE (CRITICAL):
 - Always answer ONLY what the user asked.
