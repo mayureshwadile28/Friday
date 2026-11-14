@@ -39,6 +39,7 @@ GREETINGS = load_greetings()
 class Expressions(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.emoji_rate_tracker = {}  # guild_id -> list of float timestamps in last 3600s
 
         self.steal_sticker_menu = app_commands.ContextMenu(
             name="Steal Sticker",
@@ -64,39 +65,83 @@ class Expressions(commands.Cog):
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
-            
+
+        # ── 1. Discord 50 Emojis / Hour Rate Limit Guard ──
+        gid = interaction.guild.id
+        now = time.time()
+        recent_timestamps = [t for t in self.emoji_rate_tracker.get(gid, []) if now - t < 3600]
+        self.emoji_rate_tracker[gid] = recent_timestamps
+
+        max_hourly_quota = 50
+        used_quota = len(recent_timestamps)
+        remaining_quota = max(0, max_hourly_quota - used_quota)
+
+        if remaining_quota <= 0:
+            embed = discord.Embed(
+                title="⚠️ Discord Rate Limit Reached",
+                description="Discord enforces a hard server rate limit of **50 emojis created per hour**.\n\n"
+                            f"This server has already added **{used_quota}/50** emojis in the last hour. "
+                            "Please wait for the hourly cooldown before adding more emojis to avoid API bans.",
+                color=0xfaad14
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        to_process = matches[:remaining_quota]
+        excess_count = len(matches) - len(to_process)
+
         added = []
         failed = 0
-        async with aiohttp.ClientSession() as session:
-            for animated, name, emoji_id in matches:
+        rate_limit_tripped = False
+
+        timeout = aiohttp.ClientTimeout(total=8)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            for animated, name, emoji_id in to_process:
                 ext = "gif" if animated else "png"
                 url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}"
                 
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        img_bytes = await resp.read()
-                        try:
-                            new_emoji = await interaction.guild.create_custom_emoji(name=name, image=img_bytes)
-                            emoji_format = f"<{'a' if animated else ''}:{new_emoji.name}:{new_emoji.id}>"
-                            added.append(emoji_format)
-                        except discord.Forbidden:
-                            embed = discord.Embed(
-                                title="✖ Missing Permissions",
-                                description="I lack permissions to manage emojis in this server.",
-                                color=0x2b2d31
-                            )
-                            await interaction.followup.send(embed=embed, ephemeral=True)
-                            return
-                        except discord.HTTPException:
-                            failed += 1 
+                try:
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            img_bytes = await resp.read()
+                            try:
+                                new_emoji = await interaction.guild.create_custom_emoji(name=name, image=img_bytes)
+                                emoji_format = f"<{'a' if animated else ''}:{new_emoji.name}:{new_emoji.id}>"
+                                added.append(emoji_format)
+                                self.emoji_rate_tracker[gid].append(time.time())
+                            except discord.Forbidden:
+                                embed = discord.Embed(
+                                    title="✖ Missing Permissions",
+                                    description="Friday lacks the **Manage Expressions** permission in this server.",
+                                    color=0x2b2d31
+                                )
+                                await interaction.followup.send(embed=embed, ephemeral=True)
+                                return
+                            except discord.HTTPException as http_err:
+                                failed += 1
+                                if getattr(http_err, "status", 0) == 429 or "rate" in str(http_err).lower():
+                                    rate_limit_tripped = True
+                                    break
+                except Exception:
+                    failed += 1
                             
         embed = discord.Embed(
             title="✔ Emojis Added",
-            description=f"Successfully stole **{len(added)}** emojis: {' '.join(added)}",
+            description=f"Successfully added **{len(added)}** emojis: {' '.join(added)}",
             color=0x2b2d31
         )
         if failed > 0:
-            embed.description += f"\n✖ Failed to add {failed} emojis (server slots may be full)."
+            embed.description += f"\n✖ Failed to add {failed} emojis (server slots may be full or image format error)."
+
+        if excess_count > 0 or rate_limit_tripped:
+            skipped_total = excess_count + (len(to_process) - len(added) - failed if rate_limit_tripped else 0)
+            embed.description += (
+                f"\n\n⚠️ **Discord Rate Limit Warning:**\n"
+                f"Discord strictly caps creation at **50 emojis per hour**. "
+                f"**{max(1, skipped_total)}** emoji(s) were deferred to protect your server from Discord rate limit penalties. "
+                f"Please wait an hour before adding the remaining emojis."
+            )
+
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @app_commands.default_permissions(manage_expressions=True)

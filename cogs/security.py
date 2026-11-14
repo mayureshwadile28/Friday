@@ -1421,9 +1421,9 @@ class Security(commands.Cog):
         # anti_gif_cfg.enabled must be True (default is False — admin must enable it in dashboard).
         anti_gif_cfg = cfg.get("detect", {}).get("anti_gif", {})
         if anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
-            # ONLY Server Owner and explicitly whitelisted users bypass anti-gif.
-            # Administrators, staff roles, etc. do NOT get automatic immunity.
-            can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
+            # Members who have Discord in-server embed/attach permissions, or are explicitly whitelisted/immune, can send GIFs!
+            has_embed_perm = self.member_has_embed_permission(author, message.channel)
+            can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif") or has_embed_perm
             if not can_send_gif:
                 deleted = await self.safe_delete_violating_message(message, violation_label="GIF Content")
                 try:
@@ -1467,8 +1467,8 @@ class Security(commands.Cog):
 
                         # A member can send GIF links without being deleted by anti-link if:
                         # 1. They are explicitly GIF-whitelisted (or immune) — completely bypassing the allow_gifs toggle!
-                        # 2. OR the server allows GIFs (allow_gifs is True) AND the member has embed permission.
-                        is_gif_permitted = is_gif_whitelisted or (allow_gifs and has_embed_perm)
+                        # 2. OR the member has in-server Discord embed/attach permissions enabled!
+                        is_gif_permitted = is_gif_whitelisted or has_embed_perm or (allow_gifs and has_embed_perm)
 
                         if is_gif_permitted and (gif_links or self.has_gif_content(message)) and not non_gif_links:
                             pass  # GIF is authorized, do NOT delete as external link!

@@ -229,6 +229,56 @@ HINGLISH_INDICATORS = re.compile(
 # Safe allowed mentions to prevent any @everyone, @here, or role pings
 SAFE_ALLOWED_MENTIONS = discord.AllowedMentions(everyone=False, roles=False, users=True, replied_user=True)
 
+def strip_llm_reasoning(text: str) -> str:
+    """Strips chain-of-thought, thinking blocks, reasoning tags, and model self-deliberation."""
+    if not text:
+        return ""
+
+    # 1. Strip explicit xml/markdown style thought/reasoning tags
+    text = re.sub(r'<think>[\s\S]*?</think>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<thought>[\s\S]*?</thought>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'<reasoning>[\s\S]*?</reasoning>', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'```(?:thought|thinking|reasoning)[\s\S]*?```', '', text, flags=re.IGNORECASE)
+
+    # 2. Handle unclosed opening tag like <think> with no closing tag (often when response was truncated)
+    if "<think>" in text.lower():
+        text = re.sub(r'<think>[\s\S]*', '', text, flags=re.IGNORECASE)
+    if "<thought>" in text.lower():
+        text = re.sub(r'<thought>[\s\S]*', '', text, flags=re.IGNORECASE)
+
+    # 3. Strip labeled reasoning blocks like "Thought:\n...", "Thinking Process:\n...", "Reasoning:\n..."
+    text = re.sub(r'^(?:thought|thinking|thinking process|reasoning|internal reasoning):\s*[\s\S]*?(?=\n\n|\Z)', '', text, flags=re.IGNORECASE).strip()
+
+    # 4. Detect multi-paragraph internal deliberation (like DeepSeek R1 / Qwen thinking output leaking into plain text)
+    paragraphs = text.split("\n\n")
+    cleaned_paras = []
+    in_reasoning_header = True
+
+    reasoning_starters = (
+        "we need to ", "let's consider", "let's think", "let's reconstruct",
+        "initial:", "assume ", "we can just respond", "the user is asking",
+        "the user is playing", "we should follow style", "style:", "tone:",
+        "thinking:", "reasoning:", "analysis:", "internal note:"
+    )
+
+    for p in paragraphs:
+        p_stripped = p.strip()
+        p_lower = p_stripped.lower()
+        if in_reasoning_header:
+            if any(p_lower.startswith(starter) for starter in reasoning_starters):
+                continue
+            if "we need to respond" in p_lower or "let's consider board" in p_lower:
+                continue
+            in_reasoning_header = False
+            cleaned_paras.append(p_stripped)
+        else:
+            cleaned_paras.append(p_stripped)
+
+    if cleaned_paras:
+        text = "\n\n".join(cleaned_paras)
+
+    return text.strip()
+
 def sanitize_ai_mentions(text: str) -> str:
     """Zero-width space escape for @everyone and @here so Discord never renders blue mention chips or pings."""
     if not text:
@@ -914,6 +964,7 @@ class AIChat(commands.Cog):
             f"- Current Real-World Time: {time_str} (Indian Standard Time, Kolkata / Asia/Kolkata, UTC+5:30)",
             f"- Current Year: {year_str}",
             "- STRICT TIMEZONE MANDATE: Your server, creator, and home timezone is strictly Indian Standard Time (IST / Asia/Kolkata, UTC+5:30). When asked about current time, date, or schedule, ALWAYS answer in Indian Standard Time (IST). NEVER state UTC, GMT, or US timezones.",
+            "- CRITICAL OUTPUT INTEGRITY: Output ONLY your direct conversational dialogue. NEVER output internal reasoning, planning, chain-of-thought, or self-instructions (e.g. 'We need to...', 'Let's consider...', 'Initial:'). Any deliberation must be completely silent.",
         ]
 
         # Live Discord Server Environment & Statistics
@@ -1473,7 +1524,9 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             for engine in engines:
                 result = await engine()
                 if result:
-                    return result
+                    clean_res = strip_llm_reasoning(result)
+                    if clean_res:
+                        return clean_res
 
         if daily_limit_hit:
             return (
@@ -1729,6 +1782,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         if not ai_reply:
             ai_reply = "A momentary glitch caught my thoughts, darling. Say that again? ✨"
 
+        ai_reply = strip_llm_reasoning(ai_reply)
         ai_reply = self._verify_output_safety(content, ai_reply, "dm", message.author.display_name)
         ai_reply = sanitize_ai_mentions(ai_reply)
         sent = await message.channel.send(ai_reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
@@ -2048,6 +2102,9 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                     max_tokens=max_tokens_to_use
                 )
 
+                # Clean out any chain of thought or reasoning artifacts
+                ai_reply = strip_llm_reasoning(ai_reply)
+
                 # If in announcement/guidelines mode, clean and format (guarantees # heading, topic spacing, and strips preambles/outros)
                 if is_announcement_mode:
                     ai_reply = format_and_clean_announcement(ai_reply)
@@ -2216,6 +2273,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             await asyncio.sleep(0.5)
 
         now = time.time()
+        reply = strip_llm_reasoning(reply)
         if session_key not in self.sessions:
             self.sessions[session_key] = []
         self.sessions[session_key].append({"role": "user", "content": user_prompt, "time": now})

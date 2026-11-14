@@ -1,6 +1,7 @@
 import discord
 import re
 import aiohttp
+import time
 from discord.ext import commands
 from discord import app_commands
 import datetime
@@ -233,6 +234,123 @@ class Moderation(commands.Cog):
         except discord.HTTPException:
             await reply_box(interaction, "Discord restricts bots from bulk-deleting messages older than 14 days.", title="PURGE RESTRICTION", status="warning", ephemeral=True)
 
+    async def execute_channel_lock(self, target, user, reason: str = "Channel locked by staff.") -> tuple[bool, str, list[int]]:
+        """Ironclad persistent channel lock: locks @everyone and all member roles that have send_messages=True."""
+        if isinstance(target, discord.Thread):
+            if target.locked:
+                return False, "This thread is already locked.", []
+            try:
+                await target.edit(locked=True, reason=f"Thread locked by {user}: {reason}")
+                db.data.setdefault("locked_channels", {})[str(target.id)] = {
+                    "is_thread": True,
+                    "guild_id": str(target.guild.id),
+                    "locked_by": user.id,
+                    "timestamp": time.time(),
+                    "roles": []
+                }
+                db.save_data()
+                return True, "Thread locked.", []
+            except discord.Forbidden:
+                return False, "Friday lacks permission to lock this thread.", []
+
+        default_role = target.guild.default_role
+        current_ow = target.overwrites_for(default_role)
+        current_ow.send_messages = False
+        current_ow.add_reactions = False
+        if hasattr(current_ow, "send_messages_in_threads"):
+            current_ow.send_messages_in_threads = False
+        if hasattr(current_ow, "create_public_threads"):
+            current_ow.create_public_threads = False
+        if hasattr(current_ow, "create_private_threads"):
+            current_ow.create_private_threads = False
+
+        try:
+            await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel locked by {user}: {reason}")
+        except discord.Forbidden:
+            return False, "Friday lacks Manage Channels permission to modify channel overwrites.", []
+
+        affected_roles = []
+        # In Discord, role overwrites override @everyone. Check existing overwrites to deny non-staff member roles
+        for target_obj, ow in list(target.overwrites.items()):
+            if isinstance(target_obj, discord.Role) and target_obj != default_role:
+                # Do NOT lock staff roles with administrative/mod powers
+                if not (target_obj.permissions.administrator or target_obj.permissions.manage_guild or target_obj.permissions.manage_channels):
+                    if ow.send_messages is True:
+                        ow.send_messages = False
+                        if hasattr(ow, "send_messages_in_threads") and ow.send_messages_in_threads is True:
+                            ow.send_messages_in_threads = False
+                        if hasattr(ow, "create_public_threads") and ow.create_public_threads is True:
+                            ow.create_public_threads = False
+                        if hasattr(ow, "create_private_threads") and ow.create_private_threads is True:
+                            ow.create_private_threads = False
+                        try:
+                            await target.set_permissions(target_obj, overwrite=ow, reason=f"Channel locked by {user}: {reason}")
+                            affected_roles.append(target_obj.id)
+                        except Exception:
+                            pass
+
+        db.data.setdefault("locked_channels", {})[str(target.id)] = {
+            "is_thread": False,
+            "guild_id": str(target.guild.id),
+            "locked_by": user.id,
+            "timestamp": time.time(),
+            "roles": affected_roles
+        }
+        db.save_data()
+        return True, "Channel locked.", affected_roles
+
+    async def execute_channel_unlock(self, target, user, reason: str = "Channel unlocked by staff.") -> tuple[bool, str, int]:
+        """Unlocks channel and restores permissions for @everyone and previously denied member roles."""
+        if isinstance(target, discord.Thread):
+            if not target.locked:
+                return False, "This thread is already unlocked.", 0
+            try:
+                await target.edit(locked=False, reason=f"Thread unlocked by {user}: {reason}")
+                db.data.setdefault("locked_channels", {}).pop(str(target.id), None)
+                db.save_data()
+                return True, "Thread unlocked.", 0
+            except discord.Forbidden:
+                return False, "Friday lacks permission to unlock this thread.", 0
+
+        default_role = target.guild.default_role
+        current_ow = target.overwrites_for(default_role)
+        current_ow.send_messages = None
+        current_ow.add_reactions = None
+        if hasattr(current_ow, "send_messages_in_threads"):
+            current_ow.send_messages_in_threads = None
+        if hasattr(current_ow, "create_public_threads"):
+            current_ow.create_public_threads = None
+        if hasattr(current_ow, "create_private_threads"):
+            current_ow.create_private_threads = None
+
+        try:
+            await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel unlocked by {user}: {reason}")
+        except discord.Forbidden:
+            return False, "Friday lacks Manage Channels permission to modify channel overwrites.", 0
+
+        stored_info = db.data.setdefault("locked_channels", {}).pop(str(target.id), None)
+        restored_count = 0
+        if stored_info and isinstance(stored_info, dict):
+            for r_id in stored_info.get("roles", []):
+                role_obj = target.guild.get_role(int(r_id))
+                if role_obj:
+                    ow = target.overwrites_for(role_obj)
+                    ow.send_messages = True
+                    if hasattr(ow, "send_messages_in_threads"):
+                        ow.send_messages_in_threads = None
+                    if hasattr(ow, "create_public_threads"):
+                        ow.create_public_threads = None
+                    if hasattr(ow, "create_private_threads"):
+                        ow.create_private_threads = None
+                    try:
+                        await target.set_permissions(role_obj, overwrite=ow, reason=f"Channel unlocked by {user}: {reason}")
+                        restored_count += 1
+                    except Exception:
+                        pass
+
+        db.save_data()
+        return True, "Channel unlocked.", restored_count
+
     @app_commands.command(name="lock", description="Lock a text or voice channel chat to prevent regular members from chatting.")
     @app_commands.describe(
         channel="The text or voice channel to lock (leave empty for current channel)",
@@ -259,7 +377,7 @@ class Moderation(commands.Cog):
 
         channel_type_name = "Voice Chat" if isinstance(target, discord.VoiceChannel) else ("Stage Chat" if isinstance(target, discord.StageChannel) else ("Thread" if isinstance(target, discord.Thread) else "Channel"))
 
-        # Check if channel is already locked
+        # Check if already locked
         if isinstance(target, discord.Thread):
             if target.locked:
                 await reply_box(interaction, f"This thread ({target.mention}) is already locked.", title="ALREADY LOCKED", status="info", ephemeral=True)
@@ -267,27 +385,13 @@ class Moderation(commands.Cog):
         else:
             default_role = interaction.guild.default_role
             current_ow = target.overwrites_for(default_role)
-            if current_ow.send_messages is False:
+            if current_ow.send_messages is False and str(target.id) in db.data.get("locked_channels", {}):
                 await reply_box(interaction, f"This {channel_type_name.lower()} ({target.mention}) is already locked.", title="ALREADY LOCKED", status="info", ephemeral=True)
                 return
 
-        try:
-            if isinstance(target, discord.Thread):
-                await target.edit(locked=True, reason=f"Thread locked by {interaction.user}: {reason}")
-            else:
-                default_role = interaction.guild.default_role
-                current_ow = target.overwrites_for(default_role)
-                current_ow.send_messages = False
-                current_ow.add_reactions = False
-                if hasattr(current_ow, "send_messages_in_threads"):
-                    current_ow.send_messages_in_threads = False
-                if hasattr(current_ow, "create_public_threads"):
-                    current_ow.create_public_threads = False
-                if hasattr(current_ow, "create_private_threads"):
-                    current_ow.create_private_threads = False
-                await target.set_permissions(default_role, overwrite=current_ow, reason=f"{channel_type_name} locked by {interaction.user}: {reason}")
-        except discord.Forbidden:
-            await reply_box(interaction, f"Failed to lock {channel_type_name.lower()} due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
+        success, err_msg, affected = await self.execute_channel_lock(target, interaction.user, reason=reason)
+        if not success:
+            await reply_box(interaction, err_msg, title="LOCK FAILED", status="error", ephemeral=True)
             return
 
         lock_embed = make_box_embed(
@@ -335,27 +439,13 @@ class Moderation(commands.Cog):
         else:
             default_role = interaction.guild.default_role
             current_ow = target.overwrites_for(default_role)
-            if current_ow.send_messages is not False:
+            if current_ow.send_messages is not False and str(target.id) not in db.data.get("locked_channels", {}):
                 await reply_box(interaction, f"This {channel_type_name.lower()} ({target.mention}) is already unlocked.", title="ALREADY UNLOCKED", status="info", ephemeral=True)
                 return
 
-        try:
-            if isinstance(target, discord.Thread):
-                await target.edit(locked=False, reason=f"Thread unlocked by {interaction.user}: {reason}")
-            else:
-                default_role = interaction.guild.default_role
-                current_ow = target.overwrites_for(default_role)
-                current_ow.send_messages = None
-                current_ow.add_reactions = None
-                if hasattr(current_ow, "send_messages_in_threads"):
-                    current_ow.send_messages_in_threads = None
-                if hasattr(current_ow, "create_public_threads"):
-                    current_ow.create_public_threads = None
-                if hasattr(current_ow, "create_private_threads"):
-                    current_ow.create_private_threads = None
-                await target.set_permissions(default_role, overwrite=current_ow, reason=f"{channel_type_name} unlocked by {interaction.user}: {reason}")
-        except discord.Forbidden:
-            await reply_box(interaction, f"Failed to unlock {channel_type_name.lower()} due to insufficient permissions.", title="PERMISSION FAULT", status="error", ephemeral=True)
+        success, err_msg, restored = await self.execute_channel_unlock(target, interaction.user, reason=reason)
+        if not success:
+            await reply_box(interaction, err_msg, title="UNLOCK FAILED", status="error", ephemeral=True)
             return
 
         unlock_embed = make_box_embed(
@@ -363,6 +453,11 @@ class Moderation(commands.Cog):
             description=f"🔓 This {channel_type_name.lower()} has been unlocked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Members may now send messages and participate in chat.*",
             status="success"
         )
+        if target.id == interaction.channel_id:
+            await interaction.response.send_message(embed=unlock_embed)
+        else:
+            await target.send(embed=unlock_embed)
+            await reply_box(interaction, f"Successfully unlocked {target.mention}.", title=f"{channel_type_name.upper()} UNLOCKED", status="success", ephemeral=True)
         if target.id == interaction.channel_id:
             await interaction.response.send_message(embed=unlock_embed)
         else:
@@ -1487,6 +1582,271 @@ class Moderation(commands.Cog):
                 await reply_box(interaction, f"Discord error while setting role emoji: {e}", title="DISCORD API ERROR", status="error", ephemeral=True)
         except Exception as e:
             await reply_box(interaction, f"Failed to set role emoji: {e}", title="EXECUTION ERROR", status="error", ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
+        """Reinforce channel lock if permissions are altered by category sync or external bots."""
+        if not hasattr(after, "id") or not hasattr(after, "guild"):
+            return
+        chan_id_str = str(after.id)
+        locked_channels = db.data.get("locked_channels", {})
+        if chan_id_str not in locked_channels:
+            return
+        try:
+            default_role = after.guild.default_role
+            ow = after.overwrites_for(default_role)
+            if ow.send_messages is not False:
+                ow.send_messages = False
+                await after.set_permissions(default_role, overwrite=ow, reason="Friday Lock Reinforcement: Locked channel permission restored.")
+        except Exception:
+            pass
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Custom Prefix Engine exclusively for Server Owner and whitelisted staff members/roles.
+        Supported prefix commands: purge, lock, unlock, ban, tm (timeout).
+        Normal members cannot invoke these commands."""
+        if not message.guild or message.author.bot:
+            return
+
+        gid = str(message.guild.id)
+        prefix = db.custom_prefixes.get(gid, "!")
+        content = message.content.strip()
+        if not content.startswith(prefix):
+            return
+
+        cmd_raw = content[len(prefix):].strip()
+        if not cmd_raw:
+            return
+
+        parts = cmd_raw.split()
+        cmd_name = parts[0].lower()
+
+        # Strict set of essential staff prefix commands
+        allowed_prefix_cmds = {"purge", "lock", "unlock", "ban", "tm"}
+        if cmd_name not in allowed_prefix_cmds:
+            return
+
+        # 1. Ironclad Whitelist & Permission Check
+        is_owner = (message.author.id == message.guild.owner_id)
+        is_bot_owner = False
+        try:
+            is_bot_owner = await self.bot.is_owner(message.author)
+        except Exception:
+            pass
+
+        wl = db.prefix_whitelist.get(gid, {})
+        wl_users = [int(u) for u in wl.get("members", []) if str(u).isdigit()]
+        wl_roles = [int(r) for r in wl.get("roles", []) if str(r).isdigit()]
+        author_roles = getattr(message.author, "roles", [])
+        has_role = any(r.id in wl_roles for r in author_roles)
+        is_user_whitelisted = message.author.id in wl_users
+
+        # If author is NOT server owner, bot owner, or explicitly whitelisted -> SILENT IGNORE
+        if not (is_owner or is_bot_owner or is_user_whitelisted or has_role):
+            return
+
+        # 2. Check if specific command is enabled
+        cmd_toggles = wl.get("commands", {"purge": True, "lock": True, "unlock": True, "ban": True, "tm": True})
+        if not cmd_toggles.get(cmd_name, True):
+            return
+
+        args = parts[1:]
+        author = message.author
+        channel = message.channel
+        guild = message.guild
+
+        # ── 1. PURGE: !purge <count> or !purge @user <count> ──
+        if cmd_name == "purge":
+            if not channel.permissions_for(guild.me).manage_messages:
+                m = await channel.send("❌ Friday lacks **Manage Messages** permission in this channel.")
+                await m.delete(delay=4)
+                return
+
+            count = 10
+            target_user = None
+            if message.mentions:
+                target_user = message.mentions[0]
+                for a in args:
+                    if a.isdigit():
+                        count = int(a)
+                        break
+            elif args and args[0].isdigit():
+                count = int(args[0])
+
+            count = max(1, min(count, 100))
+            try:
+                await message.delete()
+            except Exception:
+                pass
+
+            try:
+                if target_user:
+                    deleted = await channel.purge(limit=count, check=lambda m: m.author.id == target_user.id)
+                else:
+                    deleted = await channel.purge(limit=count)
+                confirm = await channel.send(f"🗑️ Purged **{len(deleted)}** message(s).")
+                await confirm.delete(delay=3)
+            except Exception as e:
+                err_m = await channel.send(f"❌ Purge error: {e}")
+                await err_m.delete(delay=5)
+
+        # ── 2. LOCK: !lock [reason] or !lock #channel [reason] ──
+        elif cmd_name == "lock":
+            target_chan = channel
+            reason_words = list(args)
+            if message.channel_mentions:
+                target_chan = message.channel_mentions[0]
+                reason_words = [w for w in reason_words if not (w.startswith("<#") and w.endswith(">"))]
+            elif args and args[0].isdigit():
+                found_ch = guild.get_channel(int(args[0]))
+                if found_ch:
+                    target_chan = found_ch
+                    reason_words = args[1:]
+
+            reason = " ".join(reason_words).strip() or "Channel locked by staff."
+            success, msg_text, _ = await self.execute_channel_lock(target_chan, author, reason=reason)
+            if success:
+                lock_embed = make_box_embed(
+                    title="CHANNEL LOCKED",
+                    description=f"🔒 {target_chan.mention} has been locked by {author.mention}.\n\n**Reason:** {reason}\n*Regular members cannot send messages until unlocked by staff.*",
+                    status="error"
+                )
+                if target_chan.id == channel.id:
+                    await channel.send(embed=lock_embed)
+                else:
+                    await target_chan.send(embed=lock_embed)
+                    await channel.send(f"🔒 Successfully locked {target_chan.mention}.")
+            else:
+                await channel.send(f"ℹ️ {msg_text}")
+
+        # ── 3. UNLOCK: !unlock or !unlock #channel [reason] ──
+        elif cmd_name == "unlock":
+            target_chan = channel
+            reason_words = list(args)
+            if message.channel_mentions:
+                target_chan = message.channel_mentions[0]
+                reason_words = [w for w in reason_words if not (w.startswith("<#") and w.endswith(">"))]
+            elif args and args[0].isdigit():
+                found_ch = guild.get_channel(int(args[0]))
+                if found_ch:
+                    target_chan = found_ch
+                    reason_words = args[1:]
+
+            reason = " ".join(reason_words).strip() or "Channel unlocked by staff."
+            success, msg_text, _ = await self.execute_channel_unlock(target_chan, author, reason=reason)
+            if success:
+                unlock_embed = make_box_embed(
+                    title="CHANNEL UNLOCKED",
+                    description=f"🔓 {target_chan.mention} has been unlocked by {author.mention}.\n\n**Reason:** {reason}\n*Members may now resume chatting.*",
+                    status="success"
+                )
+                if target_chan.id == channel.id:
+                    await channel.send(embed=unlock_embed)
+                else:
+                    await target_chan.send(embed=unlock_embed)
+                    await channel.send(f"🔓 Successfully unlocked {target_chan.mention}.")
+            else:
+                await channel.send(f"ℹ️ {msg_text}")
+
+        # ── 4. BAN: !ban @user [reason] or !ban <id> [reason] ──
+        elif cmd_name == "ban":
+            target_member = None
+            reason_words = list(args)
+            if message.mentions:
+                target_member = message.mentions[0]
+                reason_words = [w for w in reason_words if not (w.startswith("<@") and w.endswith(">"))]
+            elif args and args[0].isdigit():
+                target_member = guild.get_member(int(args[0]))
+                if not target_member:
+                    try:
+                        target_member = await guild.fetch_member(int(args[0]))
+                    except Exception:
+                        pass
+                reason_words = args[1:]
+
+            if not target_member:
+                await channel.send(f"❌ Usage: `{prefix}ban @user [reason]`")
+                return
+
+            reason = " ".join(reason_words).strip() or "Banned by staff via prefix command."
+            if not is_owner and author.top_role <= target_member.top_role:
+                await channel.send("❌ You cannot ban someone with a higher or equal role hierarchy.")
+                return
+            if target_member.top_role >= guild.me.top_role and target_member != guild.owner:
+                await channel.send("❌ Friday's role hierarchy is not high enough to ban this user.")
+                return
+
+            try:
+                await target_member.ban(reason=f"{author} via prefix: {reason}")
+                ban_embed = make_box_embed(
+                    title="BAN EXECUTED",
+                    description=f"🔨 Successfully banned {target_member.mention} (`{target_member.name}`).\n\n**Staff:** {author.mention}\n**Reason:** {reason}",
+                    status="danger"
+                )
+                await channel.send(embed=ban_embed)
+            except discord.Forbidden:
+                await channel.send("❌ Failed to ban: Friday lacks Ban Members permission.")
+            except Exception as e:
+                await channel.send(f"❌ Error banning member: {e}")
+
+        # ── 5. TM: !tm @user <duration> [reason] ── (Specifically named tm!)
+        elif cmd_name == "tm":
+            target_member = None
+            reason_words = list(args)
+            if message.mentions:
+                target_member = message.mentions[0]
+                reason_words = [w for w in reason_words if not (w.startswith("<@") and w.endswith(">"))]
+            elif args and args[0].isdigit():
+                target_member = guild.get_member(int(args[0]))
+                reason_words = args[1:]
+
+            if not target_member or not reason_words:
+                await channel.send(f"❌ Usage: `{prefix}tm @user <duration> [reason]` (e.g. `{prefix}tm @user 10m` or `{prefix}tm @user 1h spamming`)")
+                return
+
+            raw_dur = reason_words[0].lower()
+            dur_reason = " ".join(reason_words[1:]).strip() or "Timed out by staff via prefix command."
+
+            # Parse duration: 10m, 1h, 1d, 30s, or integer (default minutes)
+            seconds = 600
+            m_dur = re.match(r'^(\d+)([smhd]?)$', raw_dur)
+            if m_dur:
+                val = int(m_dur.group(1))
+                unit = m_dur.group(2) or "m"
+                if unit == "s": seconds = val
+                elif unit == "m": seconds = val * 60
+                elif unit == "h": seconds = val * 3600
+                elif unit == "d": seconds = val * 86400
+            elif raw_dur.isdigit():
+                seconds = int(raw_dur) * 60
+
+            # Max Discord timeout is 28 days
+            seconds = max(10, min(seconds, 2419200))
+            duration = datetime.timedelta(seconds=seconds)
+
+            if not is_owner and author.top_role <= target_member.top_role:
+                await channel.send("❌ You cannot timeout someone with a higher or equal role hierarchy.")
+                return
+            if target_member.guild_permissions.administrator:
+                await channel.send("❌ Cannot timeout a server Administrator.")
+                return
+            if target_member.top_role >= guild.me.top_role and target_member != guild.owner:
+                await channel.send("❌ Friday's role hierarchy is not high enough to timeout this user.")
+                return
+
+            try:
+                await target_member.timeout(duration, reason=f"{author} via prefix: {dur_reason}")
+                tm_embed = make_box_embed(
+                    title="TIMEOUT APPLIED",
+                    description=f"⏳ Successfully timed out {target_member.mention}.\n\n**Duration:** `{raw_dur}`\n**Staff:** {author.mention}\n**Reason:** {dur_reason}",
+                    status="warning"
+                )
+                await channel.send(embed=tm_embed)
+            except discord.Forbidden:
+                await channel.send("❌ Failed to timeout: Friday lacks Moderate Members permission.")
+            except Exception as e:
+                await channel.send(f"❌ Error applying timeout: {e}")
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))

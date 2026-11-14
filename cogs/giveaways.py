@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
+import os
 import time
 import random
 import re
@@ -110,6 +111,33 @@ async def resolve_giveaway_log_channel(bot, guild, cfg: dict = None) -> Optional
 
 
 from urllib.parse import urlparse
+
+def resolve_giveaway_banner_file(image_url: Optional[str]) -> tuple[Optional[str], Optional[discord.File]]:
+    """Resolves whether image_url is a remote URL or a locally uploaded file in dashboard/static/uploads/giveaway_banners."""
+    if not image_url:
+        return None, None
+    url = str(image_url).strip()
+    if not url or url.lower() in ("none", "null", "undefined"):
+        return None, None
+
+    if "/static/uploads/giveaway_banners/" in url or "giveaway_banners" in url:
+        banner_name = os.path.basename(url)
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        local_path = os.path.join(base_dir, "dashboard", "static", "uploads", "giveaway_banners", banner_name)
+        if os.path.exists(local_path):
+            safe_filename = f"giveaway_banner_{banner_name}"
+            return f"attachment://{safe_filename}", discord.File(local_path, filename=safe_filename)
+
+    if os.path.isabs(url) and os.path.exists(url):
+        b_name = os.path.basename(url)
+        safe_filename = f"giveaway_banner_{b_name}"
+        return f"attachment://{safe_filename}", discord.File(url, filename=safe_filename)
+
+    valid_url = validate_image_url(url)
+    if valid_url:
+        return valid_url, None
+
+    return None, None
 
 def validate_image_url(url: Optional[str]) -> Optional[str]:
     if not url:
@@ -418,6 +446,7 @@ class GiveawayApprovalView(discord.ui.View):
 
         end_timestamp = int(end_time)
         image_url = req.get("image_url") or cfg.get("default_banner")
+        final_banner_url, banner_file = resolve_giveaway_banner_file(image_url)
 
         dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
         desc_body = (
@@ -429,7 +458,6 @@ class GiveawayApprovalView(discord.ui.View):
 
         embed_color_hex = cfg.get("embed_color", "#5865F2")
         embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
-        valid_img = validate_image_url(image_url)
 
         embed = discord.Embed(
             title=f"{emoji_prize} {prize} {emoji_prize}",
@@ -439,8 +467,8 @@ class GiveawayApprovalView(discord.ui.View):
         )
         if guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
-        if valid_img:
-            embed.set_image(url=valid_img)
+        if final_banner_url:
+            embed.set_image(url=final_banner_url)
 
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
         embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
@@ -456,6 +484,8 @@ class GiveawayApprovalView(discord.ui.View):
 
         emoji_header = resolve_safe_emoji(self.bot, req.get("header_emoji") or req.get("emoji_header") or cfg.get("emoji_header"), fallback="🎉")
         send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
+        if banner_file:
+            send_kwargs["file"] = banner_file
         if view:
             send_kwargs["view"] = view
         gw_msg = await gw_channel.send(**send_kwargs)
@@ -504,7 +534,7 @@ class GiveawayApprovalView(discord.ui.View):
             "entries": [],
             "winners": [],
             "description": description,
-            "image_url": image_url or "",
+            "image_url": gw_msg.attachments[0].url if gw_msg.attachments else (final_banner_url or image_url or ""),
             "header_emoji": emoji_header
         }
         db.giveaways[real_key] = gw_data
@@ -1560,6 +1590,7 @@ class Giveaways(commands.Cog):
         end_time = now + duration_sec
         end_timestamp = int(end_time)
         image_url = (image.strip() if image else None) or cfg.get("default_banner")
+        final_banner_url, banner_file = resolve_giveaway_banner_file(image_url)
 
         dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
         desc_body = (
@@ -1571,7 +1602,6 @@ class Giveaways(commands.Cog):
 
         embed_color_hex = cfg.get("embed_color", "#5865F2")
         embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
-        valid_img = validate_image_url(image_url)
 
         embed = discord.Embed(
             title=f"{emoji_prize} {prize} {emoji_prize}",
@@ -1581,8 +1611,8 @@ class Giveaways(commands.Cog):
         )
         if guild.icon:
             embed.set_thumbnail(url=guild.icon.url)
-        if valid_img:
-            embed.set_image(url=valid_img)
+        if final_banner_url:
+            embed.set_image(url=final_banner_url)
 
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
         embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
@@ -1598,6 +1628,8 @@ class Giveaways(commands.Cog):
 
         emoji_header = resolve_safe_emoji(self.bot, cfg.get("emoji_header"), fallback="🎉")
         send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
+        if banner_file:
+            send_kwargs["file"] = banner_file
         if view:
             send_kwargs["view"] = view
         gw_msg = await target_channel.send(**send_kwargs)
@@ -1643,7 +1675,7 @@ class Giveaways(commands.Cog):
             "entries": [],
             "winners": [],
             "description": description or "",
-            "image_url": valid_img or "",
+            "image_url": gw_msg.attachments[0].url if gw_msg.attachments else (final_banner_url or image_url or ""),
             "embed_color": embed_color_hex
         }
         db.giveaways[real_key] = gw_data

@@ -78,6 +78,14 @@ class Database:
         self.booster_perks = bp if isinstance(bp, dict) else {}
         bb = self.data.get("booster_backgrounds")
         self.booster_backgrounds = bb if isinstance(bb, dict) else {}
+        lc = self.data.get("locked_channels")
+        self.locked_channels = lc if isinstance(lc, dict) else {}
+        cp = self.data.get("custom_prefixes")
+        self.custom_prefixes = cp if isinstance(cp, dict) else {}
+        pw = self.data.get("prefix_whitelist")
+        self.prefix_whitelist = pw if isinstance(pw, dict) else {}
+        srr = self.data.get("saved_reaction_roles")
+        self.saved_reaction_roles = srr if isinstance(srr, dict) else {}
 
     def load_data(self):
         try:
@@ -136,7 +144,11 @@ class Database:
                 "invite_counts": {},
                 "invite_history": {},
                 "booster_perks": {},
-                "booster_backgrounds": {}
+                "booster_backgrounds": {},
+                "locked_channels": {},
+                "custom_prefixes": {},
+                "prefix_whitelist": {},
+                "saved_reaction_roles": {}
             }
 
     def reload(self):

@@ -6415,29 +6415,77 @@ function setupEventListeners() {
 
 
     const addRrMappingBtn = document.getElementById('addRrMappingBtn');
-
-
-
-
-
-
-
     if (addRrMappingBtn) {
+        addRrMappingBtn.addEventListener('click', () => {
+            addRrMappingRow();
+            if (typeof saveReactionRolesDraft === 'function') saveReactionRolesDraft(false);
+        });
+    }
 
+    const saveRrDraftBtn = document.getElementById('saveRrDraftBtn');
+    if (saveRrDraftBtn) {
+        saveRrDraftBtn.addEventListener('click', () => {
+            if (typeof saveReactionRolesDraft === 'function') saveReactionRolesDraft(true);
+        });
+    }
 
+    const clearRrDraftBtn = document.getElementById('clearRrDraftBtn');
+    if (clearRrDraftBtn) {
+        clearRrDraftBtn.addEventListener('click', () => {
+            if (typeof clearReactionRolesDraft === 'function') clearReactionRolesDraft();
+        });
+    }
 
+    document.querySelectorAll('.rr-type-opt').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (typeof selectRrPanelType === 'function') selectRrPanelType(btn.dataset.type);
+            if (typeof saveReactionRolesDraft === 'function') saveReactionRolesDraft(false);
+        });
+    });
 
+    const savePrefixSettingsBtn = document.getElementById('savePrefixSettingsBtn');
+    if (savePrefixSettingsBtn) {
+        savePrefixSettingsBtn.addEventListener('click', () => {
+            if (typeof savePrefixSettings === 'function') savePrefixSettings();
+        });
+    }
 
+    const addPrefixRoleBtn = document.getElementById('addPrefixRoleBtn');
+    if (addPrefixRoleBtn) {
+        addPrefixRoleBtn.addEventListener('click', () => {
+            const rSelect = document.getElementById('prefixRoleSelect');
+            if (rSelect && rSelect.value) {
+                const val = rSelect.value;
+                if (!prefixWhitelistedRoles.includes(val)) {
+                    prefixWhitelistedRoles.push(val);
+                    renderPrefixRoles();
+                }
+                rSelect.value = '';
+            }
+        });
+    }
 
+    const addPrefixMemberBtn = document.getElementById('addPrefixMemberBtn');
+    if (addPrefixMemberBtn) {
+        addPrefixMemberBtn.addEventListener('click', () => {
+            const mSelect = document.getElementById('prefixMemberSelect');
+            if (mSelect && mSelect.value) {
+                const val = mSelect.value;
+                if (!prefixWhitelistedMembers.includes(val)) {
+                    prefixWhitelistedMembers.push(val);
+                    renderPrefixMembers();
+                }
+                mSelect.value = '';
+            }
+        });
+    }
 
-        addRrMappingBtn.addEventListener('click', () => addRrMappingRow());
-
-
-
-
-
-
-
+    const customPrefixInput = document.getElementById('customPrefixInput');
+    if (customPrefixInput) {
+        customPrefixInput.addEventListener('input', () => {
+            const val = customPrefixInput.value.trim() || '!';
+            document.querySelectorAll('.prefixRefDisplay').forEach(el => el.textContent = val);
+        });
     }
 
 
@@ -11870,6 +11918,7 @@ async function loadDataForActiveTab() {
 
 
     else if (activeTab === 'reactionRolesSection') await loadReactionRolesSettings();
+    else if (activeTab === 'customPrefixSection') await loadPrefixSettings();
 
 
 
@@ -24396,22 +24445,9 @@ function addRrMappingRow(initialEmoji = '🎉', initialRoleId = '') {
 
 
             mappingObj.emoji = chosenEmoji;
-
-
-
-
-
-
-
             emojiBtn.innerHTML = renderEmojiHtmlOrChar(chosenEmoji);
-
-
-
-
-
-
-
             updateRrEmbedPreview();
+            if (typeof saveReactionRolesDraft === 'function') saveReactionRolesDraft(false);
 
 
 
@@ -24508,14 +24544,8 @@ function addRrMappingRow(initialEmoji = '🎉', initialRoleId = '') {
 
 
         mappingObj.roleId = e.target.value;
-
-
-
-
-
-
-
         updateRrEmbedPreview();
+        if (typeof saveReactionRolesDraft === 'function') saveReactionRolesDraft(false);
 
 
 
@@ -24556,14 +24586,8 @@ function addRrMappingRow(initialEmoji = '🎉', initialRoleId = '') {
 
 
         rrMappings = rrMappings.filter(m => m.id !== rowId);
-
-
-
-
-
-
-
         updateRrEmbedPreview();
+        if (typeof saveReactionRolesDraft === 'function') saveReactionRolesDraft(false);
 
 
 
@@ -25349,6 +25373,16 @@ function updateRrEmbedPreview() {
 
     simReactionsRow.innerHTML = reactionsHtml;
 
+    const currentPanelType = (document.getElementById('rrPanelType') && document.getElementById('rrPanelType').value) || 'select';
+    const simSelectBox = document.getElementById('rrSimSelectBox');
+    if (currentPanelType === 'select') {
+        if (simSelectBox) simSelectBox.style.display = 'flex';
+        simReactionsRow.style.display = 'none';
+    } else {
+        if (simSelectBox) simSelectBox.style.display = 'none';
+        simReactionsRow.style.display = 'flex';
+    }
+
 
 
 
@@ -25523,127 +25557,283 @@ window.insertRrVar = function (text) {
 
 
 
-async function loadReactionRolesSettings() {
+// ───────────────────── REACTION ROLES PERSISTENT DRAFT & PANEL TYPE ─────────────────────
 
+window.selectRrPanelType = function(type) {
+    const input = document.getElementById('rrPanelType');
+    if (input) input.value = type;
+    document.querySelectorAll('.rr-type-opt').forEach(btn => {
+        if (btn.dataset.type === type) {
+            btn.classList.add('active');
+            btn.style.borderColor = 'var(--primary)';
+            btn.style.color = '#ffffff';
+        } else {
+            btn.classList.remove('active');
+            btn.style.borderColor = '';
+            btn.style.color = '';
+        }
+    });
+    updateRrEmbedPreview();
+};
 
+window.saveReactionRolesDraft = async function(notify = true) {
+    const title = (document.getElementById('rrTitleInput') && document.getElementById('rrTitleInput').value.trim()) || 'Role Assignment';
+    const description = (document.getElementById('rrDescInput') && document.getElementById('rrDescInput').value.trim()) || 'React below to get your roles!';
+    const footer = (document.getElementById('rrFooterInput') && document.getElementById('rrFooterInput').value.trim()) || '';
+    const channelId = (document.getElementById('rrChannelSelect') && document.getElementById('rrChannelSelect').value) || '';
+    const panelType = (document.getElementById('rrPanelType') && document.getElementById('rrPanelType').value) || 'select';
+    const exclusive = document.getElementById('rrExclusiveCheckbox') ? document.getElementById('rrExclusiveCheckbox').checked : true;
+    const thumbMode = (document.getElementById('rrThumbnailMode') && document.getElementById('rrThumbnailMode').value) || 'none';
+    const color = (document.getElementById('rrColorInput') && document.getElementById('rrColorInput').value) || '#2dd4bf';
 
+    const mappings = [];
+    if (Array.isArray(rrMappings)) {
+        rrMappings.forEach(m => {
+            if (m.roleId && m.emoji) {
+                mappings.push({ role_id: String(m.roleId), emoji: m.emoji.trim() });
+            }
+        });
+    }
 
-
-
+    const payload = {
+        title,
+        description,
+        footer,
+        channel_id: channelId,
+        panel_type: panelType,
+        exclusive,
+        thumbnail_mode: thumbMode,
+        color,
+        mappings
+    };
 
     try {
-
-
-
-
-
-
-
-        const resp = await fetch(`/api/guild/${currentGuildId}/reaction_roles`);
-
-
-
-
-
-
-
-        const data = await resp.json();
-
-
-
-
-
-
-
-        if (data.mappings && Array.isArray(data.mappings) && data.mappings.length > 0) {
-
-
-
-
-
-
-
-            rrMappings = [];
-
-
-
-
-
-
-
-            const container = document.getElementById('rrMappingsContainer');
-
-
-
-
-
-
-
-            if (container) container.innerHTML = '';
-
-
-
-
-
-
-
-            data.mappings.forEach(m => {
-
-
-
-
-
-
-
-                addRrMappingRow(m.emoji, String(m.role_id));
-
-
-
-
-
-
-
-            });
-
-
-
-
-
-
-
+        const resp = await fetch(`/api/guild/${currentGuildId}/reaction_roles/save_draft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.success && notify) {
+            showToast('💾 Reaction roles draft saved successfully!');
         }
+    } catch (e) {
+        if (notify) showToast('❌ Failed to save draft: ' + e.message);
+    }
+};
 
-
-
-
-
-
-
+window.clearReactionRolesDraft = async function() {
+    if (!confirm('Are you sure you want to clear all reaction role pairings and reset the panel?')) return;
+    try {
+        await fetch(`/api/guild/${currentGuildId}/reaction_roles/clear_draft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
     } catch (e) {}
 
-
-
-
-
-
-
-    syncAllRichEmojiEditors();
-
-
-
-
-
-
-
+    rrMappings = [];
+    const container = document.getElementById('rrMappingsContainer');
+    if (container) container.innerHTML = '';
+    addRrMappingRow('🎉', '');
+    addRrMappingRow('🔔', '');
     updateRrEmbedPreview();
+    showToast('🗑️ Cleared reaction roles configuration.');
+};
 
+async function loadReactionRolesSettings() {
+    try {
+        // 1. First check if a saved draft exists in memory
+        const draftResp = await fetch(`/api/guild/${currentGuildId}/reaction_roles/saved_draft`);
+        const draftData = await draftResp.json();
+        const draft = draftData.draft;
 
+        if (draft && draft.mappings && Array.isArray(draft.mappings) && draft.mappings.length > 0) {
+            if (draft.title && document.getElementById('rrTitleInput')) document.getElementById('rrTitleInput').value = draft.title;
+            if (draft.description && document.getElementById('rrDescInput')) document.getElementById('rrDescInput').value = draft.description;
+            if (draft.footer && document.getElementById('rrFooterInput')) document.getElementById('rrFooterInput').value = draft.footer;
+            if (draft.channel_id && document.getElementById('rrChannelSelect')) document.getElementById('rrChannelSelect').value = draft.channel_id;
+            if (draft.exclusive !== undefined && document.getElementById('rrExclusiveCheckbox')) document.getElementById('rrExclusiveCheckbox').checked = !!draft.exclusive;
+            if (draft.color && document.getElementById('rrColorInput')) {
+                document.getElementById('rrColorInput').value = draft.color;
+                currentRrColor = draft.color;
+            }
+            if (draft.panel_type) {
+                selectRrPanelType(draft.panel_type);
+            }
+            if (draft.thumbnail_mode && typeof selectRrThumbMode === 'function') {
+                selectRrThumbMode(draft.thumbnail_mode);
+            }
 
-
-
-
-
+            rrMappings = [];
+            const container = document.getElementById('rrMappingsContainer');
+            if (container) container.innerHTML = '';
+            draft.mappings.forEach(m => {
+                addRrMappingRow(m.emoji, String(m.role_id));
+            });
+        } else {
+            // Fallback: check existing active panel mappings
+            const resp = await fetch(`/api/guild/${currentGuildId}/reaction_roles`);
+            const data = await resp.json();
+            if (data.mappings && Array.isArray(data.mappings) && data.mappings.length > 0) {
+                rrMappings = [];
+                const container = document.getElementById('rrMappingsContainer');
+                if (container) container.innerHTML = '';
+                data.mappings.forEach(m => {
+                    addRrMappingRow(m.emoji, String(m.role_id));
+                });
+            } else if (!rrMappings || rrMappings.length === 0) {
+                const container = document.getElementById('rrMappingsContainer');
+                if (container && container.children.length === 0) {
+                    addRrMappingRow('🎉', '');
+                    addRrMappingRow('🔔', '');
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Error loading reaction roles:', e);
+    }
+    syncAllRichEmojiEditors();
+    updateRrEmbedPreview();
 }
+
+// ───────────────────── STAFF CUSTOM PREFIX & WHITELIST ENGINE ─────────────────────
+
+let prefixWhitelistedRoles = [];
+let prefixWhitelistedMembers = [];
+
+function populatePrefixSelects() {
+    const rSelect = document.getElementById('prefixRoleSelect');
+    if (rSelect && Array.isArray(currentGuildRoles)) {
+        rSelect.innerHTML = '<option value="">Select a role to whitelist...</option>' +
+            currentGuildRoles.map(r => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join('');
+    }
+    const mSelect = document.getElementById('prefixMemberSelect');
+    if (mSelect && Array.isArray(currentGuildMembers)) {
+        mSelect.innerHTML = '<option value="">Select a member to whitelist...</option>' +
+            currentGuildMembers.map(m => `<option value="${m.id}">${escapeHtml(m.username || m.name || m.id)}</option>`).join('');
+    }
+}
+
+function renderPrefixRoles() {
+    const container = document.getElementById('prefixRolesContainer');
+    if (!container) return;
+    if (prefixWhitelistedRoles.length === 0) {
+        container.innerHTML = '<span style="font-size: 12px; color: var(--text-muted); padding: 4px 0;">No roles whitelisted. Only Server Owner and Bot Owner can execute.</span>';
+        return;
+    }
+    container.innerHTML = prefixWhitelistedRoles.map(rid => {
+        const role = currentGuildRoles.find(r => String(r.id) === String(rid));
+        const name = role ? role.name : `Role (${rid})`;
+        const color = role && role.color && role.color !== '#000000' ? role.color : '#2dd4bf';
+        return `
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(45, 212, 191, 0.1); border: 1px solid rgba(45, 212, 191, 0.3); border-radius: 6px; font-size: 12px; color: ${color};">
+                <span>🛡️ ${escapeHtml(name)}</span>
+                <span onclick="removePrefixRole('${rid}')" style="cursor: pointer; opacity: 0.7; font-weight: bold; margin-left: 2px;" title="Remove role">&times;</span>
+            </span>
+        `;
+    }).join('');
+}
+
+function renderPrefixMembers() {
+    const container = document.getElementById('prefixMembersContainer');
+    if (!container) return;
+    if (prefixWhitelistedMembers.length === 0) {
+        container.innerHTML = '<span style="font-size: 12px; color: var(--text-muted); padding: 4px 0;">No specific staff members whitelisted.</span>';
+        return;
+    }
+    container.innerHTML = prefixWhitelistedMembers.map(mid => {
+        const m = currentGuildMembers.find(mem => String(mem.id) === String(mid));
+        const name = m ? (m.username || m.name || mid) : `User (${mid})`;
+        return `
+            <span style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; font-size: 12px; color: #38bdf8;">
+                <span>👤 ${escapeHtml(name)}</span>
+                <span onclick="removePrefixMember('${mid}')" style="cursor: pointer; opacity: 0.7; font-weight: bold; margin-left: 2px;" title="Remove member">&times;</span>
+            </span>
+        `;
+    }).join('');
+}
+
+window.removePrefixRole = function(rid) {
+    prefixWhitelistedRoles = prefixWhitelistedRoles.filter(r => String(r) !== String(rid));
+    renderPrefixRoles();
+};
+
+window.removePrefixMember = function(mid) {
+    prefixWhitelistedMembers = prefixWhitelistedMembers.filter(m => String(m) !== String(mid));
+    renderPrefixMembers();
+};
+
+window.loadPrefixSettings = async function() {
+    populatePrefixSelects();
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/prefix_settings`);
+        const res = await resp.json();
+        if (res.success) {
+            const prefix = res.prefix || '!';
+            const pInput = document.getElementById('customPrefixInput');
+            if (pInput) pInput.value = prefix;
+            document.querySelectorAll('.prefixRefDisplay').forEach(el => el.textContent = prefix);
+
+            const wl = res.whitelist || {};
+            prefixWhitelistedRoles = Array.isArray(wl.roles) ? wl.roles.map(String) : [];
+            prefixWhitelistedMembers = Array.isArray(wl.members) ? wl.members.map(String) : [];
+
+            const cmds = wl.commands || {};
+            if (document.getElementById('prefixCmd_purge')) document.getElementById('prefixCmd_purge').checked = cmds.purge !== false;
+            if (document.getElementById('prefixCmd_lock')) document.getElementById('prefixCmd_lock').checked = cmds.lock !== false;
+            if (document.getElementById('prefixCmd_unlock')) document.getElementById('prefixCmd_unlock').checked = cmds.unlock !== false;
+            if (document.getElementById('prefixCmd_ban')) document.getElementById('prefixCmd_ban').checked = cmds.ban !== false;
+            if (document.getElementById('prefixCmd_tm')) document.getElementById('prefixCmd_tm').checked = cmds.tm !== false;
+
+            renderPrefixRoles();
+            renderPrefixMembers();
+        }
+    } catch (e) {
+        console.error('Error loading prefix settings:', e);
+    }
+};
+
+window.savePrefixSettings = async function() {
+    const pInput = document.getElementById('customPrefixInput');
+    const prefix = (pInput ? pInput.value.trim() : '!') || '!';
+    if (prefix.length > 5) {
+        return showToast('⚠️ Prefix cannot be longer than 5 characters!');
+    }
+
+    const commands = {
+        purge: document.getElementById('prefixCmd_purge') ? document.getElementById('prefixCmd_purge').checked : true,
+        lock: document.getElementById('prefixCmd_lock') ? document.getElementById('prefixCmd_lock').checked : true,
+        unlock: document.getElementById('prefixCmd_unlock') ? document.getElementById('prefixCmd_unlock').checked : true,
+        ban: document.getElementById('prefixCmd_ban') ? document.getElementById('prefixCmd_ban').checked : true,
+        tm: document.getElementById('prefixCmd_tm') ? document.getElementById('prefixCmd_tm').checked : true
+    };
+
+    const payload = {
+        prefix,
+        whitelist: {
+            roles: prefixWhitelistedRoles,
+            members: prefixWhitelistedMembers,
+            commands
+        }
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/prefix_settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.success) {
+            showToast('✅ Staff prefix & whitelist settings saved successfully!');
+            document.querySelectorAll('.prefixRefDisplay').forEach(el => el.textContent = prefix);
+        } else {
+            showToast('❌ Failed to save prefix settings: ' + (res.error || 'Unknown error'));
+        }
+    } catch (e) {
+        showToast('❌ Error saving prefix settings: ' + e.message);
+    }
+};
 
 
 
@@ -25971,6 +26161,7 @@ async function deployReactionPanel() {
 
 
 
+                panel_type: (document.getElementById('rrPanelType') && document.getElementById('rrPanelType').value) || 'select',
                 show_thumbnail: currentRrThumbnailMode !== 'none',
                 thumbnail_mode: currentRrThumbnailMode,
                 exclusive: document.getElementById('rrExclusiveCheckbox')?.checked !== false,
@@ -26015,6 +26206,7 @@ async function deployReactionPanel() {
 
 
             showToast(`🎉 Reaction Panel deployed in #${data.channel_name}! (${data.count} roles mapped)`);
+            if (typeof saveReactionRolesDraft === 'function') saveReactionRolesDraft(false);
 
 
 

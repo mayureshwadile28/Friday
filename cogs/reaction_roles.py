@@ -2,30 +2,152 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import re
+import asyncio
 from database import db
 from emoji_utils import replace_plain_emojis, format_embed_description
+
+
+class ReactionRoleSelect(discord.ui.Select):
+    def __init__(self, options: list[discord.SelectOption], panel_id: str, exclusive: bool = True):
+        super().__init__(
+            placeholder="Select a role to claim...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id=f"rr_sel:{panel_id}"
+        )
+        self.panel_id = panel_id
+        self.exclusive = exclusive
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        selected_val = self.values[0]
+        guild = interaction.guild
+        member = interaction.user
+
+        if not guild or not isinstance(member, discord.Member):
+            await interaction.followup.send("❌ Error: Could not verify server member.", ephemeral=True)
+            return
+
+        # Extract all role IDs from options
+        all_role_ids = set()
+        for opt in self.options:
+            if opt.value != "clear" and opt.value.isdigit():
+                all_role_ids.add(int(opt.value))
+
+        panel_roles_map = db.reaction_roles.get(self.panel_id, {})
+        for r_id in panel_roles_map.values():
+            if isinstance(r_id, int):
+                all_role_ids.add(r_id)
+
+        # 1. Clear / Remove role
+        if selected_val == "clear":
+            roles_to_remove = [r for r in member.roles if r.id in all_role_ids]
+            if roles_to_remove:
+                try:
+                    await member.remove_roles(*roles_to_remove, reason="Reaction Role: Cleared self-role selection")
+                    await interaction.followup.send("🗑️ Successfully removed your role from this panel.", ephemeral=True)
+                except discord.Forbidden:
+                    await interaction.followup.send("❌ Friday lacks permission or role hierarchy to modify your roles.", ephemeral=True)
+            else:
+                await interaction.followup.send("ℹ️ You do not currently have any roles from this panel.", ephemeral=True)
+            return
+
+        # 2. Assign selected role
+        target_role_id = int(selected_val)
+        target_role = guild.get_role(target_role_id)
+        if not target_role:
+            await interaction.followup.send("❌ Error: The selected role no longer exists on this server.", ephemeral=True)
+            return
+
+        if target_role >= guild.me.top_role:
+            await interaction.followup.send(f"❌ Error: Friday's highest role is not high enough to assign **{target_role.name}**.", ephemeral=True)
+            return
+
+        if target_role in member.roles:
+            await interaction.followup.send(f"ℹ️ You already have the **@{target_role.name}** role.", ephemeral=True)
+            return
+
+        roles_to_remove = []
+        if self.exclusive:
+            for r in member.roles:
+                if r.id in all_role_ids and r.id != target_role_id:
+                    roles_to_remove.append(r)
+
+        try:
+            if roles_to_remove:
+                await member.remove_roles(*roles_to_remove, reason="Reaction Role: Swapped role selection")
+            await member.add_roles(target_role, reason="Reaction Role: Claimed role via dropdown")
+            await interaction.followup.send(f"✅ Successfully assigned the **@{target_role.name}** role!", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send("❌ Friday lacks permission or role hierarchy to assign this role.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error modifying roles: {e}", ephemeral=True)
+
+
+class ReactionRoleSelectView(discord.ui.View):
+    def __init__(self, options: list[discord.SelectOption], panel_id: str, exclusive: bool = True):
+        super().__init__(timeout=None)
+        self.add_item(ReactionRoleSelect(options=options, panel_id=panel_id, exclusive=exclusive))
+
 
 class ReactionRoles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._processing = set()
 
-    @app_commands.command(name="reaction_panel", description="Create an interactive role assignment panel.")
+    async def cog_load(self):
+        """Restore persistent dropdown views across bot restarts."""
+        meta_dict = db.data.get("reaction_roles_meta", {})
+        for msg_id, meta in list(meta_dict.items()):
+            if meta.get("panel_type") == "select" or meta.get("mode") == "select":
+                saved_opts = meta.get("options", [])
+                if saved_opts:
+                    opts = []
+                    for opt_data in saved_opts:
+                        emoji_obj = None
+                        e_str = opt_data.get("emoji")
+                        if e_str:
+                            m = re.match(r'<(a?):([a-zA-Z0-9_]+):([0-9]+)>', e_str)
+                            if m:
+                                emoji_obj = discord.PartialEmoji(name=m.group(2), id=int(m.group(3)), animated=bool(m.group(1)))
+                            else:
+                                emoji_obj = e_str
+                        opts.append(discord.SelectOption(
+                            label=opt_data.get("label", "Role")[:100],
+                            value=str(opt_data.get("value")),
+                            description=opt_data.get("description", "")[:100] or None,
+                            emoji=emoji_obj
+                        ))
+                    if opts:
+                        exclusive = meta.get("exclusive", True)
+                        self.bot.add_view(ReactionRoleSelectView(options=opts, panel_id=msg_id, exclusive=exclusive))
+
+    @app_commands.command(name="reaction_panel", description="Create an interactive role assignment panel (Dropdown or Reactions).")
     @app_commands.describe(
         channel="Where to post the panel", title="Title of the panel", description="Text above the roles",
         role1="First Role to assign", emoji1="Emoji for Role 1",
         role2="Second Role to assign", emoji2="Emoji for Role 2",
         role3="Third Role to assign", emoji3="Emoji for Role 3",
-        exclusive="If True, members can only pick 1 role at a time (choosing another auto-cancels old role & reaction)",
+        panel_type="Choose panel interface style (Dropdown menu is recommended and prevents race conditions)",
+        exclusive="If True, members can only pick 1 role at a time",
         thumbnail="Select thumbnail icon: No Avatar, Friday's Avatar, or Server Avatar"
     )
-    @app_commands.choices(thumbnail=[
-        app_commands.Choice(name="🚫 No Avatar", value="none"),
-        app_commands.Choice(name="🤖 Friday's Avatar", value="bot"),
-        app_commands.Choice(name="🌐 Server Avatar", value="server")
-    ])
+    @app_commands.choices(
+        panel_type=[
+            app_commands.Choice(name="📜 Dropdown Menu (Recommended - Atomic & Fast)", value="select"),
+            app_commands.Choice(name="🔘 Classic Reactions", value="reaction")
+        ],
+        thumbnail=[
+            app_commands.Choice(name="🚫 No Avatar", value="none"),
+            app_commands.Choice(name="🤖 Friday's Avatar", value="bot"),
+            app_commands.Choice(name="🌐 Server Avatar", value="server")
+        ]
+    )
     @app_commands.default_permissions(manage_roles=True)
     async def reaction_panel(self, interaction: discord.Interaction, channel: discord.TextChannel, title: str, description: str,
         role1: discord.Role, emoji1: str, role2: discord.Role = None, emoji2: str = None, role3: discord.Role = None, emoji3: str = None,
+        panel_type: app_commands.Choice[str] = None,
         exclusive: bool = True,
         thumbnail: app_commands.Choice[str] = None
     ):
@@ -83,30 +205,84 @@ class ReactionRoles(commands.Cog):
             panel_text += f"{str(emoji)} ─ {role.mention}\n"
             
         embed.add_field(name="Available Roles", value=panel_text, inline=False)
-        embed.set_footer(text="React below to claim your roles!")
+        is_select_mode = (panel_type.value if panel_type else "select") == "select"
+        footer_text = "Select your role from the dropdown menu below!" if is_select_mode else "React below to claim your roles!"
+        embed.set_footer(text=footer_text)
 
         try:
-            msg = await channel.send(embed=embed)
-            msg_id = str(msg.id)
-            db.reaction_roles[msg_id] = {}
-            
-            for role, emoji_obj in roles_setup:
-                await msg.add_reaction(emoji_obj) 
-                db.reaction_roles[msg_id][str(emoji_obj)] = role.id
+            temp_id = str(discord.utils.time_snowflake(discord.utils.utcnow()))
+            if is_select_mode:
+                select_options = []
+                stored_opts = []
+                for role, emoji_obj in roles_setup:
+                    opt = discord.SelectOption(
+                        label=role.name[:100],
+                        value=str(role.id),
+                        description="Claim this role"[:100],
+                        emoji=emoji_obj if isinstance(emoji_obj, (discord.PartialEmoji, discord.Emoji)) else (emoji_obj if isinstance(emoji_obj, str) and len(emoji_obj) <= 4 else None)
+                    )
+                    select_options.append(opt)
+                    stored_opts.append({
+                        "label": role.name[:100],
+                        "value": str(role.id),
+                        "description": "Claim this role",
+                        "emoji": str(emoji_obj)
+                    })
+
+                # Clear option
+                select_options.append(discord.SelectOption(
+                    label="None / Remove Role",
+                    value="clear",
+                    emoji="❌",
+                    description="Clear your self-role selection"
+                ))
+                stored_opts.append({
+                    "label": "None / Remove Role",
+                    "value": "clear",
+                    "description": "Clear your self-role selection",
+                    "emoji": "❌"
+                })
+
+                view = ReactionRoleSelectView(options=select_options, panel_id=temp_id, exclusive=exclusive)
+                msg = await channel.send(embed=embed, view=view)
+                msg_id = str(msg.id)
+                # Re-link with actual message id
+                view.panel_id = msg_id
+                self.bot.add_view(view)
+
+                db.reaction_roles[msg_id] = {str(e): r.id for r, e in roles_setup}
+                db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+                    "exclusive": exclusive,
+                    "channel_id": str(channel.id),
+                    "guild_id": str(interaction.guild.id),
+                    "panel_type": "select",
+                    "options": stored_opts
+                }
+                db.save_data()
+                await interaction.followup.send(f"✅ Dropdown Role Panel deployed successfully in {channel.mention}.")
+            else:
+                msg = await channel.send(embed=embed)
+                msg_id = str(msg.id)
+                db.reaction_roles[msg_id] = {}
                 
-            db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
-                "exclusive": exclusive,
-                "channel_id": str(channel.id),
-                "guild_id": str(interaction.guild.id)
-            }
-            db.save_data()
-            await interaction.followup.send(f"✅ Reaction panel deployed successfully in {channel.mention}.")
+                for role, emoji_obj in roles_setup:
+                    await msg.add_reaction(emoji_obj) 
+                    db.reaction_roles[msg_id][str(emoji_obj)] = role.id
+                    
+                db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+                    "exclusive": exclusive,
+                    "channel_id": str(channel.id),
+                    "guild_id": str(interaction.guild.id),
+                    "panel_type": "reaction"
+                }
+                db.save_data()
+                await interaction.followup.send(f"✅ Reaction panel deployed successfully in {channel.mention}.")
             
         except discord.Forbidden:
             await interaction.followup.send("❌ Error: I lack permissions to send messages or add reactions in that channel.")
-        except discord.HTTPException:
+        except discord.HTTPException as e:
             if 'msg' in locals(): await msg.delete() 
-            await interaction.followup.send("❌ Error: One or more emojis are invalid. Ensure they belong to this server.")
+            await interaction.followup.send(f"❌ Error creating panel: {e}")
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
@@ -132,48 +308,38 @@ class ReactionRoles(commands.Cog):
         if not member or member.bot:
             return
 
-        # Exclusive single-choice mode: member can only have 1 role per panel
-        meta = db.data.get("reaction_roles_meta", {}).get(msg_id, {})
-        is_exclusive = meta.get("exclusive", True)
+        # Atomic lock key per member per message to prevent concurrency storms
+        lock_key = (payload.user_id, payload.message_id)
+        if lock_key in self._processing:
+            return
+        self._processing.add(lock_key)
 
-        if is_exclusive:
-            roles_to_remove = []
-            other_emojis_to_clear = []
+        try:
+            meta = db.data.get("reaction_roles_meta", {}).get(msg_id, {})
+            is_exclusive = meta.get("exclusive", True)
 
-            for other_e_key, other_r_id in panel_roles.items():
-                if other_e_key != emoji_key and other_r_id != role_id:
-                    other_r = guild.get_role(other_r_id)
-                    if other_r and other_r in member.roles:
-                        roles_to_remove.append(other_r)
-                    other_emojis_to_clear.append(other_e_key)
+            if is_exclusive:
+                roles_to_remove = []
+                for other_e_key, other_r_id in panel_roles.items():
+                    if other_e_key != emoji_key and other_r_id != role_id:
+                        other_r = guild.get_role(other_r_id)
+                        if other_r and other_r in member.roles:
+                            roles_to_remove.append(other_r)
 
-            if roles_to_remove:
+                if roles_to_remove:
+                    try:
+                        await member.remove_roles(*roles_to_remove, reason="Reaction Role: Exclusive single role")
+                    except Exception as e:
+                        print(f"[ReactionRoles] Remove error: {e}")
+
+            target_role = guild.get_role(role_id)
+            if target_role and target_role not in member.roles:
                 try:
-                    await member.remove_roles(*roles_to_remove, reason="Reaction Role: Exclusive choice auto-cancel")
-                except Exception as e:
-                    print(f"[ReactionRoles] Remove error: {e}")
-
-            # Clear member's other reactions on the Discord message so UI displays only 1 chosen reaction
-            if other_emojis_to_clear:
-                try:
-                    channel = guild.get_channel(payload.channel_id)
-                    if channel:
-                        msg = await channel.fetch_message(payload.message_id)
-                        for rx in msg.reactions:
-                            if str(rx.emoji) in other_emojis_to_clear:
-                                try:
-                                    await rx.remove(member)
-                                except Exception:
-                                    pass
-                except Exception as e:
+                    await member.add_roles(target_role, reason="Reaction Role: Claimed role")
+                except discord.Forbidden:
                     pass
-
-        target_role = guild.get_role(role_id)
-        if target_role and target_role not in member.roles:
-            try:
-                await member.add_roles(target_role, reason="Reaction Role: Claimed role")
-            except discord.Forbidden:
-                pass
+        finally:
+            self._processing.discard(lock_key)
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload):
@@ -189,7 +355,7 @@ class ReactionRoles(commands.Cog):
                 
                 if role and member and not member.bot:
                     try:
-                        await member.remove_roles(role)
+                        await member.remove_roles(role, reason="Reaction Role: Removed reaction")
                     except discord.Forbidden:
                         pass
 

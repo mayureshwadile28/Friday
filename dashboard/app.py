@@ -1695,21 +1695,78 @@ def create_reaction_panel(gid):
 
         embed.add_field(name="Available Roles", value=panel_text, inline=False)
 
-        msg = await channel.send(embed=embed)
-        msg_id = str(msg.id)
-        if msg_id not in db.reaction_roles:
-            db.reaction_roles[msg_id] = {}
+        panel_type = str(body.get("panel_type") or "select").lower()
+        if panel_type not in ("select", "reaction"):
+            panel_type = "select"
 
-        for role, emoji_obj in roles_setup:
-            await msg.add_reaction(emoji_obj)
-            db.reaction_roles[msg_id][str(emoji_obj)] = role.id
+        if panel_type == "select":
+            from cogs.reaction_roles import ReactionRoleSelectView
+            temp_id = str(discord.utils.time_snowflake(discord.utils.utcnow()))
+            select_options = []
+            stored_opts = []
+            for role, emoji_obj in roles_setup:
+                opt = discord.SelectOption(
+                    label=role.name[:100],
+                    value=str(role.id),
+                    description="Claim this role"[:100],
+                    emoji=emoji_obj if isinstance(emoji_obj, (discord.PartialEmoji, discord.Emoji)) else (emoji_obj if isinstance(emoji_obj, str) and len(emoji_obj) <= 4 else None)
+                )
+                select_options.append(opt)
+                stored_opts.append({
+                    "label": role.name[:100],
+                    "value": str(role.id),
+                    "description": "Claim this role",
+                    "emoji": str(emoji_obj)
+                })
 
-        db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
-            "exclusive": exclusive,
-            "channel_id": str(channel_id),
-            "guild_id": str(gid)
-        }
+            select_options.append(discord.SelectOption(
+                label="None / Remove Role",
+                value="clear",
+                emoji="❌",
+                description="Clear your self-role selection"
+            ))
+            stored_opts.append({
+                "label": "None / Remove Role",
+                "value": "clear",
+                "description": "Clear your self-role selection",
+                "emoji": "❌"
+            })
 
+            view = ReactionRoleSelectView(options=select_options, panel_id=temp_id, exclusive=exclusive)
+            msg = await channel.send(embed=embed, view=view)
+            msg_id = str(msg.id)
+            view.panel_id = msg_id
+            bot_instance.add_view(view)
+
+            db.reaction_roles[msg_id] = {str(e): r.id for r, e in roles_setup}
+            db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+                "exclusive": exclusive,
+                "channel_id": str(channel_id),
+                "guild_id": str(gid),
+                "panel_type": "select",
+                "options": stored_opts
+            }
+        else:
+            msg = await channel.send(embed=embed)
+            msg_id = str(msg.id)
+            if msg_id not in db.reaction_roles:
+                db.reaction_roles[msg_id] = {}
+
+            for role, emoji_obj in roles_setup:
+                await msg.add_reaction(emoji_obj)
+                db.reaction_roles[msg_id][str(emoji_obj)] = role.id
+
+            db.data.setdefault("reaction_roles_meta", {})[msg_id] = {
+                "exclusive": exclusive,
+                "channel_id": str(channel_id),
+                "guild_id": str(gid),
+                "panel_type": "reaction"
+            }
+
+        # Auto-save current configuration as saved draft so refresh never wipes out the 10 roles
+        if not hasattr(db, "saved_reaction_roles") or not isinstance(db.saved_reaction_roles, dict):
+            db.saved_reaction_roles = {}
+        db.saved_reaction_roles[str(gid)] = body
         db.save_data()
         return channel.name, len(roles_setup)
 
@@ -1719,6 +1776,81 @@ def create_reaction_panel(gid):
         return jsonify({"success": True, "channel_name": ch_name, "count": count})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
+
+@app.route('/api/guild/<gid>/reaction_roles/saved_draft', methods=['GET'])
+def get_reaction_roles_draft(gid):
+    draft = getattr(db, "saved_reaction_roles", {}).get(str(gid), {})
+    return jsonify({"success": True, "draft": draft})
+
+
+@app.route('/api/guild/<gid>/reaction_roles/save_draft', methods=['POST'])
+def save_reaction_roles_draft_endpoint(gid):
+    body = flask_request.json or {}
+    if not hasattr(db, "saved_reaction_roles") or not isinstance(db.saved_reaction_roles, dict):
+        db.saved_reaction_roles = {}
+    db.saved_reaction_roles[str(gid)] = body
+    db.save_data()
+    return jsonify({"success": True, "message": "Draft saved successfully!"})
+
+
+@app.route('/api/guild/<gid>/reaction_roles/clear_draft', methods=['POST'])
+def clear_reaction_roles_draft_endpoint(gid):
+    if hasattr(db, "saved_reaction_roles") and isinstance(db.saved_reaction_roles, dict):
+        db.saved_reaction_roles.pop(str(gid), None)
+        db.save_data()
+    return jsonify({"success": True})
+
+
+# ───────────────────── API: Staff Custom Prefix & Whitelist ─────────────────────
+
+@app.route('/api/guild/<gid>/prefix_settings', methods=['GET'])
+def get_prefix_settings(gid):
+    gid_str = str(gid)
+    prefix = getattr(db, "custom_prefixes", {}).get(gid_str, "!")
+    wl = getattr(db, "prefix_whitelist", {}).get(gid_str, {
+        "roles": [],
+        "members": [],
+        "commands": {"purge": True, "lock": True, "unlock": True, "ban": True, "tm": True}
+    })
+    return jsonify({
+        "success": True,
+        "prefix": prefix,
+        "whitelist": wl
+    })
+
+
+@app.route('/api/guild/<gid>/prefix_settings', methods=['POST'])
+def save_prefix_settings(gid):
+    gid_str = str(gid)
+    body = flask_request.json or {}
+    new_prefix = str(body.get("prefix") or "!").strip()
+    if len(new_prefix) > 5:
+        return jsonify({"success": False, "error": "Prefix cannot be longer than 5 characters."})
+    if not new_prefix:
+        new_prefix = "!"
+
+    if not hasattr(db, "custom_prefixes") or not isinstance(db.custom_prefixes, dict):
+        db.custom_prefixes = {}
+    db.custom_prefixes[gid_str] = new_prefix
+
+    if not hasattr(db, "prefix_whitelist") or not isinstance(db.prefix_whitelist, dict):
+        db.prefix_whitelist = {}
+
+    wl_data = body.get("whitelist") or {}
+    db.prefix_whitelist[gid_str] = {
+        "roles": [str(r) for r in wl_data.get("roles", []) if str(r).isdigit()],
+        "members": [str(m) for m in wl_data.get("members", []) if str(m).isdigit()],
+        "commands": {
+            "purge": bool(wl_data.get("commands", {}).get("purge", True)),
+            "lock": bool(wl_data.get("commands", {}).get("lock", True)),
+            "unlock": bool(wl_data.get("commands", {}).get("unlock", True)),
+            "ban": bool(wl_data.get("commands", {}).get("ban", True)),
+            "tm": bool(wl_data.get("commands", {}).get("tm", True))
+        }
+    }
+    db.save_data()
+    return jsonify({"success": True, "prefix": new_prefix, "whitelist": db.prefix_whitelist[gid_str]})
 
 import re
 

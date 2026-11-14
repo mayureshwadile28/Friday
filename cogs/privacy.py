@@ -81,7 +81,11 @@ class Privacy(commands.Cog):
                 # If we tracked the channels privated during lockdown, ONLY restore those!
                 if locked_ids:
                     if ch.id in locked_ids:
-                        await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+                        ch_ow = ch.overwrites_for(interaction.guild.default_role)
+                        if str(ch.id) in getattr(db, "locked_channels", {}) or ch_ow.send_messages is False:
+                            await ch.set_permissions(interaction.guild.default_role, read_messages=None)
+                        else:
+                            await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
                         count += 1
                 else:
                     # Fallback safety: NEVER unprivate staff/admin channels that were already private!
@@ -92,7 +96,10 @@ class Privacy(commands.Cog):
                         if any(w in name_low or w in cat_low for w in ["staff", "admin", "mod", "log", "private", "ticket"]):
                             continue
                     if ow.read_messages is not None or ow.send_messages is not None:
-                        await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+                        if str(ch.id) in getattr(db, "locked_channels", {}) or ow.send_messages is False:
+                            await ch.set_permissions(interaction.guild.default_role, read_messages=None)
+                        else:
+                            await ch.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
                         count += 1
 
             db.lockdown_active[gid] = False
@@ -114,8 +121,14 @@ class Privacy(commands.Cog):
             if target.category and target.category.name == "Friday Security Logs":
                 await interaction.followup.send("❌ Security Alert: Channels in the Friday Security Logs category must remain private.")
                 return
-            await target.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
-            await interaction.followup.send(f"🔓 {target.mention} is no longer private (and unlocked if it was read-only).")
+
+            target_ow = target.overwrites_for(interaction.guild.default_role)
+            if str(target.id) in getattr(db, "locked_channels", {}) or target_ow.send_messages is False:
+                await target.set_permissions(interaction.guild.default_role, read_messages=None)
+                await interaction.followup.send(f"🔓 {target.mention} is no longer private (kept locked as it was locked by staff).")
+            else:
+                await target.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
+                await interaction.followup.send(f"🔓 {target.mention} is no longer private (and unlocked if it was read-only).")
 
     @app_commands.command(name="ignore_private_add", description="Add a channel to the ignore list (won't be affected by force private).")
     @app_commands.default_permissions(manage_channels=True)

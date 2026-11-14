@@ -189,6 +189,24 @@
 
                 </a>
 
+<a class="nav-item" data-tab="customPrefixSection" href="#">
+
+<div class="nav-icon-wrap">
+
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16">
+
+<polyline points="4 17 10 11 4 5"></polyline>
+
+<line x1="12" y1="19" x2="20" y2="19"></line>
+
+</svg>
+
+</div>
+
+                    Staff Prefix &amp; Whitelist
+
+                </a>
+
 <a class="nav-item" data-tab="responsesSection" href="#">
 
 <div class="nav-icon-wrap">
@@ -3252,6 +3270,19 @@
     <input type="hidden" id="rrThumbnailMode" value="none"/>
 </div>
 
+<div style="margin-bottom: 12px;">
+    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Panel Interaction Interface</label>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+        <button type="button" class="btn btn-secondary rr-type-opt active" data-type="select" id="rrTypeOpt_select" style="padding: 7px 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>📜</span> Dropdown Menu (Atomic &amp; Zero Lag)
+        </button>
+        <button type="button" class="btn btn-secondary rr-type-opt" data-type="reaction" id="rrTypeOpt_reaction" style="padding: 7px 10px; font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <span>🔘</span> Classic Reactions
+        </button>
+    </div>
+    <input type="hidden" id="rrPanelType" value="select"/>
+</div>
+
 <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); cursor: pointer;">
     <label class="switch"><input id="rrExclusiveCheckbox" checked type="checkbox"/><span class="slider"></span></label>
     <span>Exclusive Single-Choice Mode (1 role per user; selecting new role auto-cancels old role &amp; reaction)</span>
@@ -3263,7 +3294,7 @@
 
 <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
 
-<input class="text-input" id="rrFooterInput" style="flex: 1; font-size: 12px; padding: 6px 10px; margin-top: 0;" type="text" value="React below to claim your roles!"/>
+<input class="text-input" id="rrFooterInput" style="flex: 1; font-size: 12px; padding: 6px 10px; margin-top: 0;" type="text" value="Select your role from the dropdown menu below!"/>
 
 <button class="btn btn-secondary emoji-picker-btn" id="rrFooterEmojiBtn" style="padding: 2px 8px; font-size: 11px; height: 38px;" type="button" title="Insert Server Emoji">😊</button>
 
@@ -3277,15 +3308,21 @@
 
 <!-- Role & Emoji Mappings -->
 
-<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
 
 <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase;">Role &amp; Emoji Pairings</label>
 
-<button class="btn btn-secondary" id="addRrMappingBtn" style="padding: 4px 10px; font-size: 12px;" type="button">
-
-                                + Add Pair
-
-                            </button>
+<div style="display: flex; align-items: center; gap: 6px;">
+    <button class="btn btn-secondary" id="saveRrDraftBtn" style="padding: 4px 10px; font-size: 12px; border-color: rgba(45, 212, 191, 0.4); color: #2dd4bf;" type="button" title="Save this configuration so it stays on page refresh">
+        💾 Save Configuration
+    </button>
+    <button class="btn btn-secondary" id="clearRrDraftBtn" style="padding: 4px 10px; font-size: 12px; border-color: rgba(244, 63, 94, 0.4); color: #f43f5e;" type="button" title="Clear all pairings">
+        🗑️ Clear All
+    </button>
+    <button class="btn btn-secondary" id="addRrMappingBtn" style="padding: 4px 10px; font-size: 12px;" type="button">
+        + Add Pair
+    </button>
+</div>
 
 </div>
 
@@ -3381,9 +3418,14 @@
 
 </div>
 
-<!-- Simulated Reaction Buttons -->
+<!-- Simulated Role Selection UI -->
+<div id="rrSimSelectBox" style="margin-top: 10px; background: #1e1f22; border: 1px solid #3b3e45; border-radius: 4px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: #dbdee1; font-size: 13px; max-width: 480px;">
+    <span id="rrSimSelectPlaceholder">Select a role to claim...</span>
+    <span style="font-size: 10px; color: #949ba4;">▼</span>
+</div>
 
-<div id="rrSimReactionsRow" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
+<!-- Simulated Reaction Buttons -->
+<div id="rrSimReactionsRow" style="display: none; flex-wrap: wrap; gap: 6px; margin-top: 8px;">
 
 <!-- Reactions pills -->
 
@@ -3397,6 +3439,145 @@
 
 </div>
 
+</div>
+
+</div>
+
+</div>
+
+<!-- ──────────────── MODULE: STAFF CUSTOM PREFIX & WHITELIST ──────────────── -->
+
+<div class="section tab-content" id="customPrefixSection" style="display:none;">
+
+<div class="section-header">
+
+<h1 class="section-title">Staff Prefix &amp; Whitelist Engine</h1>
+
+<p class="section-desc">Configure text prefix commands (e.g. <code>!purge</code>, <code>!lock</code>, <code>!unlock</code>, <code>!ban</code>, <code>!tm</code>) exclusively for Server Owner &amp; whitelisted staff. Regular members cannot execute prefix commands.</p>
+
+</div>
+
+<div class="grid-2">
+
+<!-- Left: Prefix Settings & Command Toggles -->
+<div class="card">
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Command Prefix &amp; Toggles</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Choose your staff prefix character and toggle individual moderation commands.</p>
+
+    <div style="margin-bottom: 20px;">
+        <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Custom Prefix Character</label>
+        <div style="display: flex; gap: 10px; align-items: center; margin-top: 6px;">
+            <input class="text-input" id="customPrefixInput" type="text" maxlength="5" value="!" style="width: 110px; font-size: 20px; font-weight: 700; text-align: center; font-family: 'JetBrains Mono', monospace;" placeholder="!"/>
+            <span style="font-size: 13px; color: var(--text-muted);">Recommended: <code>!</code>, <code>.</code>, <code>?</code>, <code>$</code>, <code>;</code></span>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 14px;">
+        <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase; margin-bottom: 10px; display: block;">Permitted Staff Commands</label>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Purge Messages (<code>purge</code>)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Bulk delete messages (e.g. <code>!purge 20</code> or <code>!purge @user 10</code>)</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefixCmd_purge" checked/><span class="slider"></span></label>
+            </label>
+
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Channel Lock (<code>lock</code>)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Persistent channel lock for @everyone &amp; member roles (e.g. <code>!lock [reason]</code>)</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefixCmd_lock" checked/><span class="slider"></span></label>
+            </label>
+
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Channel Unlock (<code>unlock</code>)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Unlock channel and restore original member permissions (e.g. <code>!unlock</code>)</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefixCmd_unlock" checked/><span class="slider"></span></label>
+            </label>
+
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Ban Member (<code>ban</code>)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Ban member with role hierarchy safety check (e.g. <code>!ban @user [reason]</code>)</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefixCmd_ban" checked/><span class="slider"></span></label>
+            </label>
+
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Timeout Member (<code>tm</code>)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Timeout member with time syntax (e.g. <code>!tm @user 10m [reason]</code>)</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefixCmd_tm" checked/><span class="slider"></span></label>
+            </label>
+        </div>
+    </div>
+
+    <div style="text-align: right; margin-top: 20px;">
+        <button class="btn btn-primary" id="savePrefixSettingsBtn" type="button">
+            <svg fill="none" height="15" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="15"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            Save Prefix &amp; Whitelist
+        </button>
+    </div>
+</div>
+
+<!-- Right: Staff Whitelist & Command Syntax Reference -->
+<div style="display: flex; flex-direction: column; gap: 16px;">
+    <div class="card">
+        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Staff Whitelist Access</h3>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">Server Owner always has full access. Whitelist trusted roles or specific staff below.</p>
+
+        <div style="margin-bottom: 16px;">
+            <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Whitelisted Staff Roles</label>
+            <div style="display: flex; gap: 8px; margin-top: 6px;">
+                <select class="text-input" id="prefixRoleSelect" style="flex: 1;">
+                    <option value="">Select a role to whitelist...</option>
+                </select>
+                <button class="btn btn-secondary" id="addPrefixRoleBtn" type="button">+ Add</button>
+            </div>
+            <div id="prefixRolesContainer" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 28px;"></div>
+        </div>
+
+        <div>
+            <label style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase;">Whitelisted Staff Members</label>
+            <div style="display: flex; gap: 8px; margin-top: 6px;">
+                <select class="text-input" id="prefixMemberSelect" style="flex: 1;">
+                    <option value="">Select a member to whitelist...</option>
+                </select>
+                <button class="btn btn-secondary" id="addPrefixMemberBtn" type="button">+ Add</button>
+            </div>
+            <div id="prefixMembersContainer" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 28px;"></div>
+        </div>
+    </div>
+
+    <!-- Live Command Reference -->
+    <div class="card" style="background: rgba(255, 255, 255, 0.02); border-color: rgba(255, 255, 255, 0.08);">
+        <h4 style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 8px;">Live Command Reference</h4>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>purge 20 <span style="color: #94a3b8;">— Purge last 20 messages</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>purge @user 10 <span style="color: #94a3b8;">— Purge messages from specific user</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>lock Raid in progress <span style="color: #94a3b8;">— Persistent channel lock</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>unlock <span style="color: #94a3b8;">— Unlock channel &amp; restore chat</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>ban @user Rule violation <span style="color: #94a3b8;">— Ban member safely</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>tm @user 10m Spamming <span style="color: #94a3b8;">— Timeout (10m, 1h, 1d)</span>
+            </div>
+        </div>
+    </div>
 </div>
 
 </div>
