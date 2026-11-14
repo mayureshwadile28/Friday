@@ -170,25 +170,44 @@ def resolve_giveaway_banner_file(image_url: Optional[str]) -> tuple[Optional[str
     if not url or url.lower() in ("none", "null", "undefined"):
         return None, None
 
-    clean_url = url.split("?")[0].split("#")[0].replace("\\", "/")
+    # Unwrap attachment:// and giveaway_banner_ prefixes if previously wrapped
+    clean_target = url
+    if clean_target.startswith("attachment://"):
+        clean_target = clean_target[len("attachment://"):]
+    if clean_target.startswith("giveaway_banner_"):
+        clean_target = clean_target[len("giveaway_banner_"):]
+
+    clean_url = clean_target.split("?")[0].split("#")[0].replace("\\", "/")
     banner_name = os.path.basename(clean_url)
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    candidate_paths = [
-        os.path.join(base_dir, "dashboard", "static", "uploads", "giveaway_banners", banner_name),
-        os.path.join(os.getcwd(), "dashboard", "static", "uploads", "giveaway_banners", banner_name),
-        os.path.join(base_dir, "dashboard", "static", "uploads", banner_name),
+    candidate_names = [banner_name]
+    if banner_name.startswith("giveaway_banner_"):
+        candidate_names.append(banner_name[len("giveaway_banner_"):])
+    else:
+        candidate_names.append(f"giveaway_banner_{banner_name}")
+
+    candidate_paths = []
+    for b_name in candidate_names:
+        candidate_paths.extend([
+            os.path.join(base_dir, "dashboard", "static", "uploads", "giveaway_banners", b_name),
+            os.path.join(os.getcwd(), "dashboard", "static", "uploads", "giveaway_banners", b_name),
+            os.path.join(base_dir, "dashboard", "static", "uploads", b_name),
+            os.path.join(os.getcwd(), "dashboard", "static", "uploads", b_name),
+        ])
+    candidate_paths.extend([
         clean_url if os.path.isabs(clean_url) else None,
         url if os.path.isabs(url) else None
-    ]
+    ])
 
     for p in candidate_paths:
         if p and os.path.isfile(p):
-            safe_filename = f"giveaway_banner_{banner_name}"
+            actual_basename = os.path.basename(p)
+            safe_filename = actual_basename if actual_basename.startswith("giveaway_banner_") else f"giveaway_banner_{actual_basename}"
             return f"attachment://{safe_filename}", discord.File(p, filename=safe_filename)
 
     valid_url = validate_image_url(url)
-    if valid_url:
+    if valid_url and not valid_url.startswith("attachment://"):
         return valid_url, None
 
     return None, None
@@ -504,7 +523,10 @@ class GiveawayApprovalView(discord.ui.View):
         emoji_ends = cfg.get("emoji_ends", "⏳")
 
         end_timestamp = int(end_time)
-        image_url = req.get("image_url") or cfg.get("default_banner")
+        raw_img = req.get("image_url")
+        if not raw_img or str(raw_img).startswith("attachment://"):
+            raw_img = cfg.get("default_banner")
+        image_url = raw_img or cfg.get("default_banner")
         final_banner_url, banner_file = resolve_giveaway_banner_file(image_url)
 
         dot = resolve_safe_emoji(bot, cfg.get("emoji_bullet"), fallback="•")
@@ -1601,7 +1623,6 @@ class Giveaways(commands.Cog):
 
                 request_id = str(uuid.uuid4())[:8]
                 banner_url = str(cfg.get("default_banner") or "").strip()
-                final_banner_url, banner_file = resolve_giveaway_banner_file(banner_url)
 
                 req_data = {
                     "request_id": request_id,
@@ -1612,7 +1633,7 @@ class Giveaways(commands.Cog):
                     "duration_str": duration,
                     "winners_count": winners_count,
                     "description": description or "",
-                    "image_url": final_banner_url or banner_url or "",
+                    "image_url": banner_url,
                     "header_emoji": cfg.get("emoji_header") or "🎉",
                     "status": "pending",
                     "submitted_at": time.time()
@@ -1620,9 +1641,8 @@ class Giveaways(commands.Cog):
                 db.giveaways[f"req_{request_id}"] = req_data
                 db.save_data()
 
-                # Post approval card in #giveaway-approvals
+                # Post approval card in #giveaway-approvals (staff-only review embed, no standalone banner file attachment)
                 default_app_title = "📝 New Member Giveaway Request"
-                banner_preview = f"\n**Banner:** [Preview Image]({final_banner_url})" if (final_banner_url and not final_banner_url.startswith("attachment://")) else ""
                 default_app_desc = (
                     f"A member has requested to host a giveaway!\n\n"
                     f"**Prize:** {prize}\n"
@@ -1630,7 +1650,6 @@ class Giveaways(commands.Cog):
                     f"**Duration:** `{format_duration(duration_sec)}`\n"
                     f"**Winners:** `{winners_count}`\n"
                     f"**Description:** {description or '*None provided*'}"
-                    f"{banner_preview}"
                 )
                 raw_app_title = cfg.get("req_approval_title") or default_app_title
                 raw_app_desc = cfg.get("req_approval_message") or default_app_desc
@@ -1650,16 +1669,12 @@ class Giveaways(commands.Cog):
                     color=discord.Color.from_rgb(245, 158, 11), # Amber
                     timestamp=datetime.now(timezone.utc)
                 )
-                if final_banner_url and not final_banner_url.startswith("attachment://"):
-                    app_embed.set_thumbnail(url=final_banner_url)
-                elif guild.icon:
+                if guild.icon:
                     app_embed.set_thumbnail(url=guild.icon.url)
                 app_embed.set_footer(text=f"Request ID: {request_id}")
                 view = GiveawayApprovalView(request_id=request_id)
 
                 send_kwargs = {"embed": app_embed, "view": view}
-                if banner_file:
-                    send_kwargs["file"] = banner_file
 
                 app_posted = False
                 try:
