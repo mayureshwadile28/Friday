@@ -478,9 +478,10 @@ class GiveawayApprovalView(discord.ui.View):
                 pass
 
         guild = interaction.guild
+        bot = interaction.client
         cfg = get_giveaway_config(guild.id)
         gw_channel_id = cfg.get("giveaway_channel")
-        gw_channel = await resolve_channel(guild, self.bot, gw_channel_id, ("giveaways", "giveaway", "gw", "announcements", "gw-announcements", "giveaway-announcements"))
+        gw_channel = await resolve_channel(guild, bot, gw_channel_id, ("giveaways", "giveaway", "gw", "announcements", "gw-announcements", "giveaway-announcements"))
 
         if not gw_channel:
             await interaction.followup.send("❌ Configured giveaway channel not found. Please re-run `/gsetup` or configure it in the dashboard.", ephemeral=True)
@@ -506,7 +507,7 @@ class GiveawayApprovalView(discord.ui.View):
         image_url = req.get("image_url") or cfg.get("default_banner")
         final_banner_url, banner_file = resolve_giveaway_banner_file(image_url)
 
-        dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
+        dot = resolve_safe_emoji(bot, cfg.get("emoji_bullet"), fallback="•")
         desc_body = (
             f"{dot} **Winners:** {winners_count}\n"
             f"{dot} **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
@@ -540,7 +541,7 @@ class GiveawayApprovalView(discord.ui.View):
         gw_key = f"{guild.id}_{self.request_id}"
         view = GiveawayEnterView(giveaway_key=gw_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts) if entry_method == "button" else None
 
-        emoji_header = resolve_safe_emoji(self.bot, req.get("header_emoji") or req.get("emoji_header") or cfg.get("emoji_header"), fallback="🎉")
+        emoji_header = resolve_safe_emoji(bot, req.get("header_emoji") or req.get("emoji_header") or cfg.get("emoji_header"), fallback="🎉")
         send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
         if banner_file:
             send_kwargs["file"] = banner_file
@@ -553,7 +554,7 @@ class GiveawayApprovalView(discord.ui.View):
                 if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
                     m = re.search(r":(\d+)>$", emoji_prize)
                     if m:
-                        rx = self.bot.get_emoji(int(m.group(1)))
+                        rx = bot.get_emoji(int(m.group(1)))
                         if rx:
                             await gw_msg.add_reaction(rx)
                         else:
@@ -635,7 +636,7 @@ class GiveawayApprovalView(discord.ui.View):
 
         # Log to #giveaway-logs
         try:
-            log_channel = await resolve_giveaway_log_channel(self.bot, guild, cfg)
+            log_channel = await resolve_giveaway_log_channel(bot, guild, cfg)
             if log_channel:
                 log_embed = discord.Embed(
                     title="📜 Giveaway Approved & Launched",
@@ -707,7 +708,7 @@ class GiveawayApprovalView(discord.ui.View):
         # Log rejection to #giveaway-logs
         try:
             cfg = get_giveaway_config(interaction.guild_id)
-            log_channel = await resolve_giveaway_log_channel(self.bot, interaction.guild, cfg)
+            log_channel = await resolve_giveaway_log_channel(interaction.client, interaction.guild, cfg)
             if log_channel:
                 rej_log = discord.Embed(
                     title="❌ Member Giveaway Request Rejected",
@@ -1517,294 +1518,336 @@ class Giveaways(commands.Cog):
             except Exception as e:
                 print(f"[Giveaways] Failed to send interaction reply in gcreate: {e}", flush=True)
 
-        # ── 1. First-Time Setup Guard ──
-        if not is_giveaway_configured(guild.id, guild):
-            is_admin = interaction.user.guild_permissions.manage_guild or interaction.user.guild_permissions.administrator or interaction.user.id == guild.owner_id
-            if is_admin:
-                embed = discord.Embed(
-                    title="⚠️ Giveaway System Not Configured Yet!",
-                    description=(
-                        "Before launching giveaways, Friday needs to know where to:\n"
-                        "1. 📢 **Broadcast** public giveaways\n"
-                        "2. 🛡️ **Approve** member-submitted giveaways\n"
-                        "3. 📜 **Log** winner draws and rerolls\n\n"
-                        "Please click the button below or run `/gsetup` to start the quick interactive setup wizard!"
-                    ),
-                    color=discord.Color.gold()
-                )
-                await reply(embed=embed, view=LaunchSetupButtonView())
-            else:
+        try:
+            # ── 1. First-Time Setup Guard ──
+            if not is_giveaway_configured(guild.id, guild):
+                is_admin = interaction.user.guild_permissions.manage_guild or interaction.user.guild_permissions.administrator or interaction.user.id == guild.owner_id
+                if is_admin:
+                    embed = discord.Embed(
+                        title="⚠️ Giveaway System Not Configured Yet!",
+                        description=(
+                            "Before launching giveaways, Friday needs to know where to:\n"
+                            "1. 📢 **Broadcast** public giveaways\n"
+                            "2. 🛡️ **Approve** member-submitted giveaways\n"
+                            "3. 📜 **Log** winner draws and rerolls\n\n"
+                            "Please click the button below or run `/gsetup` to start the quick interactive setup wizard!"
+                        ),
+                        color=discord.Color.gold()
+                    )
+                    await reply(embed=embed, view=LaunchSetupButtonView())
+                else:
+                    await reply(
+                        content="⚠️ The giveaway system has not been configured by server administrators yet. Please ask a server admin to run `/gsetup`!"
+                    )
+                return
+
+            # ── 2. Validate Duration & Winners ──
+            duration_sec = parse_duration(duration)
+            if not duration_sec or duration_sec < 10:
                 await reply(
-                    content="⚠️ The giveaway system has not been configured by server administrators yet. Please ask a server admin to run `/gsetup`!"
-                )
-            return
-
-        # ── 2. Validate Duration & Winners ──
-        duration_sec = parse_duration(duration)
-        if not duration_sec or duration_sec < 10:
-            await reply(
-                content="❌ Invalid duration format! Please use formats like `10m`, `1h`, `2d`, `1w`, or `1h 30m` (minimum 10 seconds)."
-            )
-            return
-
-        winners_count = max(1, min(winners or 1, 25))
-        cfg = get_giveaway_config(guild.id)
-        gw_cid = cfg.get("giveaway_channel")
-        target_channel = await resolve_channel(
-            guild, self.bot, gw_cid,
-            ("giveaways", "giveaway", "gw", "announcements", "gw-announcements", "giveaway-announcements")
-        )
-
-        if not target_channel:
-            await reply(
-                content="❌ Giveaway broadcast channel is not configured or not found. An administrator must run `/gsetup` or configure it in the dashboard!"
-            )
-            return
-
-        if not gw_cid:
-            cfg["giveaway_channel"] = str(target_channel.id)
-            db.giveaways_config[str(guild.id)] = cfg
-            if hasattr(db, "data") and isinstance(db.data, dict):
-                db.data.setdefault("giveaways_config", {})[str(guild.id)] = cfg
-            db.save_data()
-
-        is_admin_or_owner = (
-            interaction.user.guild_permissions.manage_guild or
-            interaction.user.guild_permissions.administrator or
-            interaction.user.id == guild.owner_id
-        )
-
-        # ── 3. Branch: Regular Member Submission (Approval Queue) ──
-        if not is_admin_or_owner:
-            app_ch_id = cfg.get("approval_channel")
-            app_ch = await resolve_channel(
-                guild, self.bot, app_ch_id,
-                ("giveaway-approvals", "giveaways-approvals", "giveaway-approval", "gw-approvals", "approvals", "staff", "staff-chat")
-            )
-            if not app_ch:
-                log_ch_id = cfg.get("log_channel")
-                app_ch = await resolve_channel(guild, self.bot, log_ch_id) or guild.system_channel or target_channel
-
-            if not app_ch:
-                await reply(
-                    content="❌ Staff approval channel is not configured. Please notify a server administrator."
+                    content="❌ Invalid duration format! Please use formats like `10m`, `1h`, `2d`, `1w`, or `1h 30m` (minimum 10 seconds)."
                 )
                 return
 
-            request_id = str(uuid.uuid4())[:8]
-            banner_url = str(cfg.get("default_banner") or "").strip()
-            req_data = {
-                "request_id": request_id,
-                "sponsor_id": interaction.user.id,
-                "guild_id": guild.id,
-                "prize": prize,
-                "duration_seconds": duration_sec,
-                "duration_str": duration,
-                "winners_count": winners_count,
-                "description": description or "",
-                "image_url": banner_url,
-                "header_emoji": cfg.get("emoji_header") or "🎉",
-                "status": "pending",
-                "submitted_at": time.time()
-            }
-            db.giveaways[f"req_{request_id}"] = req_data
-            db.save_data()
-
-            # Post approval card in #giveaway-approvals
-            default_app_title = "📝 New Member Giveaway Request"
-            default_app_desc = (
-                f"A member has requested to host a giveaway!\n\n"
-                f"**Prize:** {prize}\n"
-                f"**Sponsor:** {interaction.user.mention} (`{interaction.user.name}`)\n"
-                f"**Duration:** `{format_duration(duration_sec)}`\n"
-                f"**Winners:** `{winners_count}`\n"
-                f"**Description:** {description or '*None provided*'}\n"
-                + (f"**Banner:** [Preview Image]({banner_url})" if banner_url else "")
+            winners_count = max(1, min(winners or 1, 25))
+            cfg = get_giveaway_config(guild.id)
+            gw_cid = cfg.get("giveaway_channel")
+            target_channel = await resolve_channel(
+                guild, self.bot, gw_cid,
+                ("giveaways", "giveaway", "gw", "announcements", "gw-announcements", "giveaway-announcements")
             )
-            raw_app_title = cfg.get("req_approval_title") or default_app_title
-            raw_app_desc = cfg.get("req_approval_message") or default_app_desc
-            formatted_app_desc = (
-                raw_app_desc
-                .replace("{prize}", prize)
-                .replace("{user}", interaction.user.mention)
-                .replace("{sponsor}", interaction.user.mention)
-                .replace("{duration}", format_duration(duration_sec))
-                .replace("{winners}", str(winners_count))
-                .replace("{description}", description or "None")
-                .replace("{server}", guild.name)
+
+            if not target_channel:
+                await reply(
+                    content="❌ Giveaway broadcast channel is not configured or not found. An administrator must run `/gsetup` or configure it in the dashboard!"
+                )
+                return
+
+            if not gw_cid:
+                cfg["giveaway_channel"] = str(target_channel.id)
+                db.giveaways_config[str(guild.id)] = cfg
+                if hasattr(db, "data") and isinstance(db.data, dict):
+                    db.data.setdefault("giveaways_config", {})[str(guild.id)] = cfg
+                db.save_data()
+
+            user = interaction.user
+            member = user if isinstance(user, discord.Member) else (guild.get_member(user.id) or user)
+            is_admin_or_owner = False
+            if isinstance(member, discord.Member):
+                is_admin_or_owner = (
+                    member.guild_permissions.manage_guild or
+                    member.guild_permissions.administrator or
+                    member.id == guild.owner_id
+                )
+            elif user.id == guild.owner_id:
+                is_admin_or_owner = True
+
+            # ── 3. Branch: Regular Member Submission (Approval Queue) ──
+            if not is_admin_or_owner:
+                app_ch_id = cfg.get("approval_channel")
+                app_ch = await resolve_channel(
+                    guild, self.bot, app_ch_id,
+                    ("giveaway-approvals", "giveaways-approvals", "giveaway-approval", "gw-approvals", "approvals", "staff", "staff-chat")
+                )
+                if not app_ch:
+                    log_ch_id = cfg.get("log_channel")
+                    app_ch = await resolve_channel(guild, self.bot, log_ch_id) or guild.system_channel or target_channel
+
+                if not app_ch:
+                    await reply(
+                        content="❌ Staff approval channel is not configured. Please notify a server administrator."
+                    )
+                    return
+
+                request_id = str(uuid.uuid4())[:8]
+                banner_url = str(cfg.get("default_banner") or "").strip()
+                final_banner_url, banner_file = resolve_giveaway_banner_file(banner_url)
+
+                req_data = {
+                    "request_id": request_id,
+                    "sponsor_id": interaction.user.id,
+                    "guild_id": guild.id,
+                    "prize": prize,
+                    "duration_seconds": duration_sec,
+                    "duration_str": duration,
+                    "winners_count": winners_count,
+                    "description": description or "",
+                    "image_url": final_banner_url or banner_url or "",
+                    "header_emoji": cfg.get("emoji_header") or "🎉",
+                    "status": "pending",
+                    "submitted_at": time.time()
+                }
+                db.giveaways[f"req_{request_id}"] = req_data
+                db.save_data()
+
+                # Post approval card in #giveaway-approvals
+                default_app_title = "📝 New Member Giveaway Request"
+                banner_preview = f"\n**Banner:** [Preview Image]({final_banner_url})" if (final_banner_url and not final_banner_url.startswith("attachment://")) else ""
+                default_app_desc = (
+                    f"A member has requested to host a giveaway!\n\n"
+                    f"**Prize:** {prize}\n"
+                    f"**Sponsor:** {interaction.user.mention} (`{interaction.user.name}`)\n"
+                    f"**Duration:** `{format_duration(duration_sec)}`\n"
+                    f"**Winners:** `{winners_count}`\n"
+                    f"**Description:** {description or '*None provided*'}"
+                    f"{banner_preview}"
+                )
+                raw_app_title = cfg.get("req_approval_title") or default_app_title
+                raw_app_desc = cfg.get("req_approval_message") or default_app_desc
+                formatted_app_desc = (
+                    str(raw_app_desc)
+                    .replace("{prize}", prize)
+                    .replace("{user}", interaction.user.mention)
+                    .replace("{sponsor}", interaction.user.mention)
+                    .replace("{duration}", format_duration(duration_sec))
+                    .replace("{winners}", str(winners_count))
+                    .replace("{description}", description or "None")
+                    .replace("{server}", guild.name)
+                )
+                app_embed = discord.Embed(
+                    title=str(raw_app_title).replace("{prize}", prize),
+                    description=formatted_app_desc,
+                    color=discord.Color.from_rgb(245, 158, 11), # Amber
+                    timestamp=datetime.now(timezone.utc)
+                )
+                if final_banner_url and not final_banner_url.startswith("attachment://"):
+                    app_embed.set_thumbnail(url=final_banner_url)
+                elif guild.icon:
+                    app_embed.set_thumbnail(url=guild.icon.url)
+                app_embed.set_footer(text=f"Request ID: {request_id}")
+                view = GiveawayApprovalView(request_id=request_id)
+
+                send_kwargs = {"embed": app_embed, "view": view}
+                if banner_file:
+                    send_kwargs["file"] = banner_file
+
+                app_posted = False
+                try:
+                    await app_ch.send(**send_kwargs)
+                    app_posted = True
+                except discord.Forbidden as e:
+                    print(f"[Giveaways] Missing permissions in approval channel {getattr(app_ch, 'name', app_ch)}: {e}", flush=True)
+                    if target_channel and getattr(target_channel, "id", None) != getattr(app_ch, "id", None):
+                        try:
+                            await target_channel.send(**send_kwargs)
+                            app_posted = True
+                            app_ch = target_channel
+                        except Exception as e2:
+                            print(f"[Giveaways] Fallback send to target_channel failed: {e2}", flush=True)
+                except Exception as e:
+                    print(f"[Giveaways] Error posting approval card: {e}", flush=True)
+
+                if not app_posted:
+                    await reply(
+                        content="❌ Could not submit giveaway request: Friday lacks permissions to post in the staff approval channel. Please ask staff to grant Friday **Send Messages** and **Embed Links** permissions."
+                    )
+                    return
+
+                default_sub = f"✅ Your giveaway request for **{prize}** has been submitted for staff approval in {app_ch.mention}! You'll be notified once reviewed."
+                raw_sub = cfg.get("req_submitted_message") or default_sub
+                sub_msg = (
+                    str(raw_sub)
+                    .replace("{prize}", prize)
+                    .replace("{user}", interaction.user.mention)
+                    .replace("{channel}", app_ch.mention)
+                    .replace("{server}", guild.name)
+                )
+                await reply(content=sub_msg)
+                return
+
+            # ── 4. Branch: Administrator Direct Launch ──
+            cfg = get_giveaway_config(guild.id)
+            emoji_prize = cfg.get("emoji_prize", "🎁")
+            emoji_host = cfg.get("emoji_host", "👑")
+            emoji_winners = cfg.get("emoji_winners", "🏆")
+            emoji_entries = cfg.get("emoji_entries", "🎟️")
+            emoji_ends = cfg.get("emoji_ends", "⏳")
+
+            now = time.time()
+            end_time = now + duration_sec
+            end_timestamp = int(end_time)
+            image_url = cfg.get("default_banner")
+            final_banner_url, banner_file = resolve_giveaway_banner_file(image_url)
+
+            dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
+            desc_body = (
+                f"{dot} **Winners:** {winners_count}\n"
+                f"{dot} **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
+                f"{dot} **Hosted By:** {interaction.user.mention}\n\n"
+                f"{dot} {description or 'Click the button below to participate!'}"
             )
-            app_embed = discord.Embed(
-                title=raw_app_title.replace("{prize}", prize),
-                description=formatted_app_desc,
-                color=discord.Color.from_rgb(245, 158, 11), # Amber
-                timestamp=datetime.now(timezone.utc)
+
+            embed_color_hex = cfg.get("embed_color", "#5865F2")
+            embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
+
+            embed = discord.Embed(
+                title=f"{emoji_prize} {prize} {emoji_prize}",
+                description=desc_body,
+                color=embed_color,
+                timestamp=datetime.fromtimestamp(end_time, timezone.utc)
             )
-            if banner_url:
-                app_embed.set_thumbnail(url=banner_url)
-            app_embed.set_footer(text=f"Request ID: {request_id}")
-            view = GiveawayApprovalView(request_id=request_id)
-            await app_ch.send(embed=app_embed, view=view)
+            if guild.icon:
+                embed.set_thumbnail(url=guild.icon.url)
+            if final_banner_url:
+                embed.set_image(url=final_banner_url)
 
-            default_sub = f"✅ Your giveaway request for **{prize}** has been submitted for staff approval in {app_ch.mention}! You'll be notified once reviewed."
-            raw_sub = cfg.get("req_submitted_message") or default_sub
-            sub_msg = (
-                raw_sub
-                .replace("{prize}", prize)
-                .replace("{user}", interaction.user.mention)
-                .replace("{channel}", app_ch.mention)
-                .replace("{server}", guild.name)
-            )
-            await reply(content=sub_msg)
-            return
+            ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
+            embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
-        # ── 4. Branch: Administrator Direct Launch ──
-        cfg = get_giveaway_config(guild.id)
-        emoji_prize = cfg.get("emoji_prize", "🎁")
-        emoji_host = cfg.get("emoji_host", "👑")
-        emoji_winners = cfg.get("emoji_winners", "🏆")
-        emoji_entries = cfg.get("emoji_entries", "🎟️")
-        emoji_ends = cfg.get("emoji_ends", "⏳")
+            # Temporary key before message is sent
+            temp_id = str(uuid.uuid4())[:8]
+            temp_key = f"{guild.id}_{temp_id}"
+            entry_method = str(cfg.get("entry_method", "button")).lower()
+            if entry_method != "reaction":
+                entry_method = "button"
+            emoji_parts = cfg.get("emoji_participants", "👥")
+            view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts) if entry_method == "button" else None
 
-        now = time.time()
-        end_time = now + duration_sec
-        end_timestamp = int(end_time)
-        image_url = cfg.get("default_banner")
-        final_banner_url, banner_file = resolve_giveaway_banner_file(image_url)
+            emoji_header = resolve_safe_emoji(self.bot, cfg.get("emoji_header"), fallback="🎉")
+            send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
+            if banner_file:
+                send_kwargs["file"] = banner_file
+            if view:
+                send_kwargs["view"] = view
+            gw_msg = await target_channel.send(**send_kwargs)
 
-        dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
-        desc_body = (
-            f"{dot} **Winners:** {winners_count}\n"
-            f"{dot} **Ends In:** <t:{end_timestamp}:R> (<t:{end_timestamp}:f>)\n"
-            f"{dot} **Hosted By:** {interaction.user.mention}\n\n"
-            f"{dot} {description or 'Click the button below to participate!'}"
-        )
-
-        embed_color_hex = cfg.get("embed_color", "#5865F2")
-        embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
-
-        embed = discord.Embed(
-            title=f"{emoji_prize} {prize} {emoji_prize}",
-            description=desc_body,
-            color=embed_color,
-            timestamp=datetime.fromtimestamp(end_time, timezone.utc)
-        )
-        if guild.icon:
-            embed.set_thumbnail(url=guild.icon.url)
-        if final_banner_url:
-            embed.set_image(url=final_banner_url)
-
-        ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
-        embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
-
-        # Temporary key before message is sent
-        temp_id = str(uuid.uuid4())[:8]
-        temp_key = f"{guild.id}_{temp_id}"
-        entry_method = str(cfg.get("entry_method", "button")).lower()
-        if entry_method != "reaction":
-            entry_method = "button"
-        emoji_parts = cfg.get("emoji_participants", "👥")
-        view = GiveawayEnterView(giveaway_key=temp_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts) if entry_method == "button" else None
-
-        emoji_header = resolve_safe_emoji(self.bot, cfg.get("emoji_header"), fallback="🎉")
-        send_kwargs = {"content": f"{emoji_header} **New Giveaway** {emoji_header}", "embed": embed}
-        if banner_file:
-            send_kwargs["file"] = banner_file
-        if view:
-            send_kwargs["view"] = view
-        gw_msg = await target_channel.send(**send_kwargs)
-
-        # Only add reaction if entry_method is 'reaction'
-        if entry_method == "reaction":
-            try:
-                if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
-                    m = re.search(r":(\d+)>$", emoji_prize)
-                    if m:
-                        rx = self.bot.get_emoji(int(m.group(1)))
-                        if rx:
-                            await gw_msg.add_reaction(rx)
+            # Only add reaction if entry_method is 'reaction'
+            if entry_method == "reaction":
+                try:
+                    if emoji_prize.startswith("<") and emoji_prize.endswith(">"):
+                        m = re.search(r":(\d+)>$", emoji_prize)
+                        if m:
+                            rx = self.bot.get_emoji(int(m.group(1)))
+                            if rx:
+                                await gw_msg.add_reaction(rx)
+                            else:
+                                await gw_msg.add_reaction("🎁")
                         else:
                             await gw_msg.add_reaction("🎁")
                     else:
-                        await gw_msg.add_reaction("🎁")
-                else:
-                    await gw_msg.add_reaction(emoji_prize)
-            except Exception:
-                try:
-                    await gw_msg.add_reaction("🎁")
+                        await gw_msg.add_reaction(emoji_prize)
                 except Exception:
-                    pass
+                    try:
+                        await gw_msg.add_reaction("🎁")
+                    except Exception:
+                        pass
 
-        real_key = f"{guild.id}_{gw_msg.id}"
-        if entry_method == "button":
-            real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts)
-            await gw_msg.edit(view=real_view)
+            real_key = f"{guild.id}_{gw_msg.id}"
+            if entry_method == "button":
+                real_view = GiveawayEnterView(giveaway_key=real_key, entry_count=0, emoji=emoji_prize, emoji_participants=emoji_parts)
+                await gw_msg.edit(view=real_view)
 
-        # Save giveaway
-        gw_data = {
-            "message_id": gw_msg.id,
-            "channel_id": target_channel.id,
-            "guild_id": guild.id,
-            "prize": prize,
-            "host_id": interaction.user.id,
-            "sponsor_id": interaction.user.id,
-            "winners_count": winners_count,
-            "created_at": now,
-            "end_time": end_time,
-            "status": "active",
-            "entries": [],
-            "winners": [],
-            "description": description or "",
-            "image_url": gw_msg.attachments[0].url if gw_msg.attachments else (final_banner_url or image_url or ""),
-            "embed_color": embed_color_hex
-        }
-        db.giveaways[real_key] = gw_data
-        db.save_data()
+            # Save giveaway
+            gw_data = {
+                "message_id": gw_msg.id,
+                "channel_id": target_channel.id,
+                "guild_id": guild.id,
+                "prize": prize,
+                "host_id": interaction.user.id,
+                "sponsor_id": interaction.user.id,
+                "winners_count": winners_count,
+                "created_at": now,
+                "end_time": end_time,
+                "status": "active",
+                "entries": [],
+                "winners": [],
+                "description": description or "",
+                "image_url": gw_msg.attachments[0].url if gw_msg.attachments else (final_banner_url or image_url or ""),
+                "embed_color": embed_color_hex
+            }
+            db.giveaways[real_key] = gw_data
+            db.save_data()
 
-        # Log event in #giveaway-logs
-        try:
-            log_channel = await resolve_giveaway_log_channel(self.bot, guild, cfg)
-            if log_channel:
-                default_log_title = "📜 Giveaway Created"
-                default_log_desc = (
-                    f"**Prize:** {prize}\n"
-                    f"**Channel:** {target_channel.mention}\n"
-                    f"**Sponsored by:** {interaction.user.mention}\n"
-                    f"**Winners Count:** {winners_count}\n"
-                    f"**Duration:** {format_duration(duration_sec)}\n"
-                    f"**Entry Method:** {entry_method.title()}\n"
-                    f"**Message Link:** [Jump to Giveaway]({gw_msg.jump_url})"
-                )
-                raw_log_title = cfg.get("log_created_title") or default_log_title
-                raw_log_desc = cfg.get("log_created_message") or default_log_desc
-                formatted_log_desc = (
-                    raw_log_desc
-                    .replace("{prize}", prize)
-                    .replace("{channel}", target_channel.mention)
-                    .replace("{host}", interaction.user.mention)
-                    .replace("{winners}", str(winners_count))
-                    .replace("{duration}", format_duration(duration_sec))
-                    .replace("{entry_method}", entry_method.title())
-                    .replace("{server}", guild.name)
-                    .replace("{link}", gw_msg.jump_url)
-                )
-                log_embed = discord.Embed(
-                    title=raw_log_title.replace("{prize}", prize),
-                    description=formatted_log_desc,
-                    color=discord.Color.blue(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                thumb_url = final_banner_url if (final_banner_url and not final_banner_url.startswith("attachment://")) else (guild.icon.url if guild.icon else None)
-                if thumb_url:
-                    log_embed.set_thumbnail(url=thumb_url)
-                if guild.icon:
-                    log_embed.set_footer(text="Friday Giveaway Engine • Audit Log", icon_url=guild.icon.url)
-                await log_channel.send(embed=log_embed)
+            # Log event in #giveaway-logs
+            try:
+                log_channel = await resolve_giveaway_log_channel(self.bot, guild, cfg)
+                if log_channel:
+                    default_log_title = "📜 Giveaway Created"
+                    default_log_desc = (
+                        f"**Prize:** {prize}\n"
+                        f"**Channel:** {target_channel.mention}\n"
+                        f"**Sponsored by:** {interaction.user.mention}\n"
+                        f"**Winners Count:** {winners_count}\n"
+                        f"**Duration:** {format_duration(duration_sec)}\n"
+                        f"**Entry Method:** {entry_method.title()}\n"
+                        f"**Message Link:** [Jump to Giveaway]({gw_msg.jump_url})"
+                    )
+                    raw_log_title = cfg.get("log_created_title") or default_log_title
+                    raw_log_desc = cfg.get("log_created_message") or default_log_desc
+                    formatted_log_desc = (
+                        raw_log_desc
+                        .replace("{prize}", prize)
+                        .replace("{channel}", target_channel.mention)
+                        .replace("{host}", interaction.user.mention)
+                        .replace("{winners}", str(winners_count))
+                        .replace("{duration}", format_duration(duration_sec))
+                        .replace("{entry_method}", entry_method.title())
+                        .replace("{server}", guild.name)
+                        .replace("{link}", gw_msg.jump_url)
+                    )
+                    log_embed = discord.Embed(
+                        title=raw_log_title.replace("{prize}", prize),
+                        description=formatted_log_desc,
+                        color=discord.Color.blue(),
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    thumb_url = final_banner_url if (final_banner_url and not final_banner_url.startswith("attachment://")) else (guild.icon.url if guild.icon else None)
+                    if thumb_url:
+                        log_embed.set_thumbnail(url=thumb_url)
+                    if guild.icon:
+                        log_embed.set_footer(text="Friday Giveaway Engine • Audit Log", icon_url=guild.icon.url)
+                    await log_channel.send(embed=log_embed)
+            except Exception as e:
+                print(f"[Giveaways] Error logging giveaway creation: {e}")
+
+            await reply(
+                content=f"🎉 Giveaway for **{prize}** created successfully in {target_channel.mention}!\n[Click here to view]({gw_msg.jump_url})"
+            )
         except Exception as e:
-            print(f"[Giveaways] Error logging giveaway creation: {e}")
-
-        await reply(
-            content=f"🎉 Giveaway for **{prize}** created successfully in {target_channel.mention}!\n[Click here to view]({gw_msg.jump_url})"
-        )
+            import traceback
+            print(f"[Giveaways] Unexpected error in gcreate: {e}", flush=True)
+            traceback.print_exc()
+            await reply(content=f"❌ Failed to process giveaway: `{e}`")
 
     @app_commands.command(name="gstart", description="Alias for /gcreate to quickly launch a giveaway")
     @app_commands.describe(
