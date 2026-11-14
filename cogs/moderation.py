@@ -13,6 +13,7 @@ from response_utils import make_box_embed, reply_box
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._unlocking_channels = set()
 
     def check_mod_permission(self, interaction: discord.Interaction, perm_name: str) -> bool:
         """Strict runtime check verifying Administrator, Server Owner, or the explicit moderation permission."""
@@ -312,44 +313,55 @@ class Moderation(commands.Cog):
             except discord.Forbidden:
                 return False, "Friday lacks permission to unlock this thread.", 0
 
-        default_role = target.guild.default_role
-        current_ow = target.overwrites_for(default_role)
-        current_ow.send_messages = None
-        current_ow.add_reactions = None
-        if hasattr(current_ow, "send_messages_in_threads"):
-            current_ow.send_messages_in_threads = None
-        if hasattr(current_ow, "create_public_threads"):
-            current_ow.create_public_threads = None
-        if hasattr(current_ow, "create_private_threads"):
-            current_ow.create_private_threads = None
-
-        try:
-            await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel unlocked by {user}: {reason}")
-        except discord.Forbidden:
-            return False, "Friday lacks Manage Channels permission to modify channel overwrites.", 0
-
+        # 1. Pop locked_channels record and register in _unlocking_channels BEFORE modifying permissions
+        # This completely prevents on_guild_channel_update race condition where Discord events re-lock the channel
         stored_info = db.data.setdefault("locked_channels", {}).pop(str(target.id), None)
-        restored_count = 0
-        if stored_info and isinstance(stored_info, dict):
-            for r_id in stored_info.get("roles", []):
-                role_obj = target.guild.get_role(int(r_id))
-                if role_obj:
-                    ow = target.overwrites_for(role_obj)
-                    ow.send_messages = True
-                    if hasattr(ow, "send_messages_in_threads"):
-                        ow.send_messages_in_threads = None
-                    if hasattr(ow, "create_public_threads"):
-                        ow.create_public_threads = None
-                    if hasattr(ow, "create_private_threads"):
-                        ow.create_private_threads = None
-                    try:
-                        await target.set_permissions(role_obj, overwrite=ow, reason=f"Channel unlocked by {user}: {reason}")
-                        restored_count += 1
-                    except Exception:
-                        pass
-
         db.save_data()
-        return True, "Channel unlocked.", restored_count
+
+        self._unlocking_channels.add(target.id)
+        try:
+            default_role = target.guild.default_role
+            current_ow = target.overwrites_for(default_role)
+            current_ow.send_messages = None
+            current_ow.add_reactions = None
+            if hasattr(current_ow, "send_messages_in_threads"):
+                current_ow.send_messages_in_threads = None
+            if hasattr(current_ow, "create_public_threads"):
+                current_ow.create_public_threads = None
+            if hasattr(current_ow, "create_private_threads"):
+                current_ow.create_private_threads = None
+
+            try:
+                await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel unlocked by {user}: {reason}")
+            except discord.Forbidden:
+                # If failed due to lack of bot permissions, restore database record
+                if stored_info:
+                    db.data.setdefault("locked_channels", {})[str(target.id)] = stored_info
+                    db.save_data()
+                return False, "Friday lacks Manage Channels permission to modify channel overwrites.", 0
+
+            restored_count = 0
+            if stored_info and isinstance(stored_info, dict):
+                for r_id in stored_info.get("roles", []):
+                    role_obj = target.guild.get_role(int(r_id))
+                    if role_obj:
+                        ow = target.overwrites_for(role_obj)
+                        ow.send_messages = True
+                        if hasattr(ow, "send_messages_in_threads"):
+                            ow.send_messages_in_threads = None
+                        if hasattr(ow, "create_public_threads"):
+                            ow.create_public_threads = None
+                        if hasattr(ow, "create_private_threads"):
+                            ow.create_private_threads = None
+                        try:
+                            await target.set_permissions(role_obj, overwrite=ow, reason=f"Channel unlocked by {user}: {reason}")
+                            restored_count += 1
+                        except Exception:
+                            pass
+
+            return True, "Channel unlocked.", restored_count
+        finally:
+            self._unlocking_channels.discard(target.id)
 
     @app_commands.command(name="lock", description="Lock a text or voice channel chat to prevent regular members from chatting.")
     @app_commands.describe(
@@ -453,11 +465,6 @@ class Moderation(commands.Cog):
             description=f"🔓 This {channel_type_name.lower()} has been unlocked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Members may now send messages and participate in chat.*",
             status="success"
         )
-        if target.id == interaction.channel_id:
-            await interaction.response.send_message(embed=unlock_embed)
-        else:
-            await target.send(embed=unlock_embed)
-            await reply_box(interaction, f"Successfully unlocked {target.mention}.", title=f"{channel_type_name.upper()} UNLOCKED", status="success", ephemeral=True)
         if target.id == interaction.channel_id:
             await interaction.response.send_message(embed=unlock_embed)
         else:
@@ -1587,6 +1594,8 @@ class Moderation(commands.Cog):
     async def on_guild_channel_update(self, before: discord.abc.GuildChannel, after: discord.abc.GuildChannel):
         """Reinforce channel lock if permissions are altered by category sync or external bots."""
         if not hasattr(after, "id") or not hasattr(after, "guild"):
+            return
+        if getattr(self, "_unlocking_channels", None) and after.id in self._unlocking_channels:
             return
         chan_id_str = str(after.id)
         locked_channels = db.data.get("locked_channels", {})
