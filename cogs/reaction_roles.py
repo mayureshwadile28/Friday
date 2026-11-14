@@ -114,113 +114,137 @@ class ReactionRoles(commands.Cog):
         if not selected_val:
             return
 
-        guild = interaction.guild
-        member = interaction.user
+        try:
+            guild = interaction.guild
+            member = interaction.user
 
-        if not guild or not isinstance(member, discord.Member):
-            try:
-                await interaction.followup.send("❌ Error: Could not verify server member.", ephemeral=True)
-            except Exception:
-                pass
-            return
+            if guild and not isinstance(member, discord.Member):
+                member = guild.get_member(interaction.user.id)
+                if not member:
+                    try:
+                        member = await guild.fetch_member(interaction.user.id)
+                    except Exception:
+                        member = None
 
-        msg = interaction.message
-        msg_id = str(msg.id) if msg else None
-        p_id = str(panel_id) if panel_id else (msg_id or "")
+            if not guild or not isinstance(member, discord.Member):
+                try:
+                    await interaction.followup.send("❌ Error: Could not verify server member.", ephemeral=True)
+                except Exception:
+                    pass
+                return
 
-        # Extract all role IDs across database AND message components directly
-        all_role_ids = set()
+            msg = interaction.message
+            msg_id = str(msg.id) if msg else None
+            p_id = str(panel_id) if panel_id else (msg_id or "")
 
-        # 1. From database mappings
-        for pid_candidate in (p_id, msg_id):
-            if pid_candidate:
-                p_map = getattr(db, "reaction_roles", {}).get(pid_candidate, {})
-                if isinstance(p_map, dict):
-                    for r_id in p_map.values():
-                        if isinstance(r_id, int):
-                            all_role_ids.add(r_id)
-                        elif isinstance(r_id, str) and r_id.isdigit():
-                            all_role_ids.add(int(r_id))
+            # Extract all role IDs across database AND message components directly
+            all_role_ids = set()
 
-                meta = getattr(db, "reaction_roles_meta", {}).get(pid_candidate, {})
-                if isinstance(meta, dict):
-                    for opt in meta.get("options", []):
-                        val = opt.get("value")
-                        if val and str(val).isdigit():
-                            all_role_ids.add(int(val))
+            # 1. From database mappings
+            for pid_candidate in (p_id, msg_id):
+                if pid_candidate:
+                    p_map = getattr(db, "reaction_roles", {}).get(pid_candidate, {})
+                    if isinstance(p_map, dict):
+                        for r_id in p_map.values():
+                            if isinstance(r_id, int):
+                                all_role_ids.add(r_id)
+                            elif isinstance(r_id, str) and r_id.isdigit():
+                                all_role_ids.add(int(r_id))
 
-        # 2. Directly from Discord message components (100% resilient even if DB has no record)
-        if msg and hasattr(msg, "components"):
-            for comp in msg.components:
-                children = getattr(comp, "children", [comp])
-                for child in children:
-                    if hasattr(child, "options"):
-                        for opt in child.options:
-                            val = getattr(opt, "value", None)
+                    meta = getattr(db, "reaction_roles_meta", {}).get(pid_candidate, {})
+                    if isinstance(meta, dict):
+                        for opt in meta.get("options", []):
+                            val = opt.get("value")
                             if val and str(val).isdigit():
                                 all_role_ids.add(int(val))
 
-        # Determine exclusive mode (default True)
-        meta_exclusive = True
-        for pid_candidate in (p_id, msg_id):
-            if pid_candidate:
-                m = getattr(db, "reaction_roles_meta", {}).get(pid_candidate)
-                if isinstance(m, dict) and "exclusive" in m:
-                    meta_exclusive = bool(m.get("exclusive", True))
-                    break
+            # 2. Directly from Discord message components (100% resilient even if DB has no record)
+            if msg and hasattr(msg, "components"):
+                for comp in msg.components:
+                    children = getattr(comp, "children", [comp])
+                    for child in children:
+                        opts = getattr(child, "options", None)
+                        if opts and isinstance(opts, (list, tuple)):
+                            for opt in opts:
+                                val = getattr(opt, "value", None)
+                                if val and str(val).isdigit():
+                                    all_role_ids.add(int(val))
 
-        # Case A: Clear / Remove Role
-        if selected_val == "clear":
-            roles_to_remove = [r for r in member.roles if r.id in all_role_ids]
-            if roles_to_remove:
-                try:
-                    await member.remove_roles(*roles_to_remove, reason="Reaction Role: Cleared self-role selection")
-                    await interaction.followup.send("🗑️ Successfully removed your role from this panel.", ephemeral=True)
-                except discord.Forbidden:
-                    await interaction.followup.send("❌ Friday lacks permission or role hierarchy to modify your roles.", ephemeral=True)
-                except Exception as e:
-                    await interaction.followup.send(f"❌ Error removing role: {e}", ephemeral=True)
-            else:
-                await interaction.followup.send("ℹ️ You do not currently have any roles from this panel.", ephemeral=True)
-            return
+            # Determine exclusive mode (default True)
+            meta_exclusive = True
+            for pid_candidate in (p_id, msg_id):
+                if pid_candidate:
+                    m = getattr(db, "reaction_roles_meta", {}).get(pid_candidate)
+                    if isinstance(m, dict) and "exclusive" in m:
+                        meta_exclusive = bool(m.get("exclusive", True))
+                        break
 
-        # Case B: Assign Selected Role
-        if not selected_val.isdigit():
-            await interaction.followup.send("❌ Invalid role selection.", ephemeral=True)
-            return
+            # Case A: Clear / Remove Role
+            if selected_val == "clear":
+                roles_to_remove = [r for r in member.roles if r.id in all_role_ids]
+                if roles_to_remove:
+                    try:
+                        await member.remove_roles(*roles_to_remove, reason="Reaction Role: Cleared self-role selection")
+                        await interaction.followup.send("🗑️ Successfully removed your role from this panel.", ephemeral=True)
+                    except discord.Forbidden:
+                        await interaction.followup.send("❌ Friday lacks permission or role hierarchy to modify your roles.", ephemeral=True)
+                    except Exception as e:
+                        await interaction.followup.send(f"❌ Error removing role: {e}", ephemeral=True)
+                else:
+                    await interaction.followup.send("ℹ️ You do not currently have any roles from this panel.", ephemeral=True)
+                return
 
-        target_role_id = int(selected_val)
-        target_role = guild.get_role(target_role_id)
-        if not target_role:
-            await interaction.followup.send("❌ Error: The selected role no longer exists on this server.", ephemeral=True)
-            return
+            # Case B: Assign Selected Role
+            if not str(selected_val).isdigit():
+                await interaction.followup.send("❌ Invalid role selection.", ephemeral=True)
+                return
 
-        if target_role >= guild.me.top_role:
-            await interaction.followup.send(
-                f"❌ Error: Friday's highest role is not high enough to assign **{target_role.name}**. Please move Friday's role higher in Server Settings > Roles.",
-                ephemeral=True
-            )
-            return
+            target_role_id = int(selected_val)
+            target_role = guild.get_role(target_role_id)
+            if not target_role:
+                await interaction.followup.send("❌ Error: The selected role no longer exists on this server.", ephemeral=True)
+                return
 
-        if target_role in member.roles:
-            await interaction.followup.send(f"ℹ️ You already have the **@{target_role.name}** role.", ephemeral=True)
-            return
+            bot_member = guild.me or guild.get_member(self.bot.user.id)
+            if bot_member and target_role >= bot_member.top_role:
+                await interaction.followup.send(
+                    f"❌ Error: Friday's highest role is not high enough to assign **{target_role.name}**. Please move Friday's role higher in Server Settings > Roles.",
+                    ephemeral=True
+                )
+                return
 
-        roles_to_remove = []
-        if meta_exclusive:
-            for r in member.roles:
-                if r.id in all_role_ids and r.id != target_role_id:
-                    roles_to_remove.append(r)
+            if target_role in member.roles:
+                await interaction.followup.send(f"ℹ️ You already have the **@{target_role.name}** role.", ephemeral=True)
+                return
 
-        try:
-            if roles_to_remove:
-                await member.remove_roles(*roles_to_remove, reason="Reaction Role: Swapped role selection")
-            await member.add_roles(target_role, reason="Reaction Role: Claimed role via dropdown")
-            await interaction.followup.send(f"✅ Successfully assigned the **@{target_role.name}** role!", ephemeral=True)
-        except discord.Forbidden:
-            await interaction.followup.send("❌ Friday lacks permission or role hierarchy to assign this role. Please ensure Friday's role is above the target role.", ephemeral=True)
+            roles_to_remove = []
+            if meta_exclusive:
+                for r in member.roles:
+                    if r.id in all_role_ids and r.id != target_role_id:
+                        if not bot_member or r < bot_member.top_role:
+                            roles_to_remove.append(r)
+
+            try:
+                if roles_to_remove:
+                    await member.remove_roles(*roles_to_remove, reason="Reaction Role: Swapped role selection")
+                await member.add_roles(target_role, reason="Reaction Role: Claimed role via dropdown")
+                await interaction.followup.send(f"✅ Successfully assigned the **@{target_role.name}** role!", ephemeral=True)
+            except discord.Forbidden:
+                await interaction.followup.send("❌ Friday lacks permission or role hierarchy to assign this role. Please ensure Friday's role is above the target role.", ephemeral=True)
+            except Exception as e:
+                await interaction.followup.send(f"❌ Error modifying roles: {e}", ephemeral=True)
+
         except Exception as e:
-            await interaction.followup.send(f"❌ Error modifying roles: {e}", ephemeral=True)
+            import traceback
+            print(f"[ReactionRoles] Unexpected error in process_role_selection: {e}", flush=True)
+            traceback.print_exc()
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(f"❌ Error processing role selection: {e}", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"❌ Error processing role selection: {e}", ephemeral=True)
+            except Exception:
+                pass
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):
