@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 import re
 import asyncio
+from typing import Optional, List, Dict, Any, Union
 from database import db
 from emoji_utils import replace_plain_emojis, format_embed_description
 
