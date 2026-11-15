@@ -160,7 +160,7 @@ HELP_MODULES = [
         "emoji": "⚖",
         "desc": "Autonomous AI Courtroom & Lawsuit Tribunal",
         "sections": [
-            ("Tribunal & Lawsuits", ["court sue", "court docket", "court records", "court leaderboard", "court pardon"])
+            ("Tribunal & Lawsuits", ["court sue", "court docket", "court records", "court leaderboard", "court bail", "court pardon"])
         ]
     }
 ]
