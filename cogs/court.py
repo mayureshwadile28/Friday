@@ -611,6 +611,17 @@ class TrialRunner:
 # MAIN COG CLASS
 # ─────────────────────────────────────────────────────────────
 
+COURT_HINGLISH_INDICATORS = re.compile(
+    r'\b(kya|kaise|kaisi|kaha|kyun|kyu|bolo|bol|dekh|dekho|kar|karo|kardo|karna|hatao|chahiye|hai|hain|hu|hoon|mujhe|tum|tumhe|aap|aapka|meri|mera|mere|nahi|nahin|achha|badhiya|baat|sun|suno|bhai|yaar|chori|churaya|mara|maar|ladai|paise|kuch|tera|teri|sab|bhi|toh|to|mat|chal|chalo|mein|me|se|ko|ne|aur|par|pe|baut|bohot|boht|zyada|sath|khaya|khao|liya|diya|de|pata|thief|kurkure|kutti|kutta|chirkut|nalla|bakwaas|faltu)\b',
+    re.IGNORECASE
+)
+
+def is_hinglish_dispute(text: str) -> bool:
+    if not text:
+        return False
+    return len(COURT_HINGLISH_INDICATORS.findall(text)) >= 1
+
+
 class Court(commands.Cog):
     """The Court of Friday: AI-powered interactive community tribunal."""
     def __init__(self, bot: commands.Bot):
@@ -682,20 +693,42 @@ class Court(commands.Cog):
         g_votes = jury_votes.get("guilty", 0)
         i_votes = jury_votes.get("innocent", 0)
 
+        # Detect if the dispute or chat evidence is in Hinglish
+        full_context_text = f"{charges} {plaintiff_statement} {defendant_statement} {chat_transcript}"
+        is_hinglish = is_hinglish_dispute(full_context_text)
+
+        if is_hinglish:
+            lang_directive = (
+                "LANGUAGE & TONE: NATURAL HINGLISH (MANDATORY)\n"
+                "- The complaint or chat evidence contains Hinglish. You MUST write the ENTIRE 'ANALYSIS' and 'SENTENCE' in casual, hilarious, modern HINGLISH (Desi Hindi in English/Latin letters)!\n"
+                "- Speak like a sassy, witty Desi lady judge (e.g. 'Arey bhai @User...', 'Yeh toh seedha timepass hai!').\n"
+                "- Use simple everyday conversational words (no complex or difficult words).\n"
+                "- Highlight important words, accusations, and names in **bold** (e.g. **@User**, **Kurkure chori**, **0 votes**).\n"
+                "- LENGTH: Keep it MEDIUM length! Strictly 1 to 2 short punchy paragraphs (maximum 75-90 words total). Do NOT write huge essays!"
+            )
+        else:
+            lang_directive = (
+                "LANGUAGE & TONE: SIMPLE CASUAL ENGLISH (MANDATORY)\n"
+                "- Use simple, natural everyday English that anyone can easily read.\n"
+                "- STRICTLY AVOID overly complex, academic, or big dictionary words (NEVER use words like 'seismograph', 'linguistically vacuous', 'diplomacy', etc.)!\n"
+                "- Speak like a witty, sharp, funny judge roasting silly disputes.\n"
+                "- Highlight important words, accusations, and names in **bold** (e.g. **@User**, **stolen snacks**, **0 votes**).\n"
+                "- LENGTH: Keep it MEDIUM length! Strictly 1 to 2 short punchy paragraphs (maximum 75-90 words total). Do NOT write huge essays!"
+            )
+
         system_prompt = (
-            "You are Chief Justice Friday, the supreme presiding judge of the Court of Friday Discord Tribunal. "
-            "You embody the sharp, no-nonsense judicial wit of Judge Judy blended with the tactical AI brilliance and "
-            "playful sarcasm of Tony Stark's FRIDAY. You speak with high feminine elegance, supreme authority, and hilarious legal banter. "
-            "You dissect weak excuses, highlight funny contradictions in the chat logs, evaluate the community jury vote, and issue a definitive verdict.\n\n"
+            "You are Chief Justice Friday, presiding over the Court of Friday Discord Tribunal. "
+            "You judge funny member beefs, gaming claims, and silly disputes.\n\n"
+            f"{lang_directive}\n\n"
             "VERDICT CHOICES:\n"
-            "- GUILTY: Defendant is caught red-handed, breaking promises, or capping hard.\n"
-            "- NOT GUILTY: Charges are baseless, exaggerated, or defendant successfully defended themselves.\n"
-            "- BOTH GUILTY: Both plaintiff and defendant are acting like clowns and deserve mutual roast.\n"
-            "- MISTRIAL: Frivolous lawsuit that wasted Court GPU cycles.\n\n"
-            "STRICT RESPONSE FORMAT (YOU MUST ADHERE TO THIS EXACT STRUCTURE):\n"
+            "- GUILTY: Defendant is caught red-handed or capping.\n"
+            "- NOT GUILTY: Charges are baseless, defendant is innocent.\n"
+            "- BOTH GUILTY: Both are acting like clowns and deserve mutual roast.\n"
+            "- MISTRIAL: The lawsuit is complete nonsense, silly timepass, or frivolous.\n\n"
+            "STRICT RESPONSE FORMAT:\n"
             "VERDICT: [GUILTY, NOT GUILTY, BOTH GUILTY, or MISTRIAL]\n"
-            "ANALYSIS: [2 to 3 paragraphs of sharp, witty judicial opinion, roasting the behavior, citing chat quotes, and addressing the jury's vote]\n"
-            "SENTENCE: [1 to 2 sharp sentences stating the official penalty, formal apology order, or vindication]"
+            "ANALYSIS: [1 to 2 short punchy paragraphs. Simple vocabulary only, bold key phrases, strictly medium length under 90 words.]\n"
+            "SENTENCE: [1 to 2 short sentences giving the funny penalty or dismissal order.]"
         )
 
         user_content = (
@@ -722,14 +755,14 @@ class Court(commands.Cog):
                 llm_reply = await ai_cog._call_openrouter(
                     messages=[{"role": "user", "content": user_content}],
                     system_prompt=system_prompt,
-                    max_tokens=650
+                    max_tokens=300
                 )
             except Exception as e:
                 print(f"[Court] AIChat call error: {e}")
 
         # 2. Autonomous fallback if AIChat cog is unavailable or failed
-        if not llm_reply or len(llm_reply) < 30:
-            llm_reply = await self._fallback_llm_query(system_prompt, user_content)
+        if not llm_reply or len(llm_reply) < 25:
+            llm_reply = await self._fallback_llm_query(system_prompt, user_content, is_hinglish=is_hinglish)
 
         # Parse LLM structured output
         verdict = "GUILTY"
@@ -749,13 +782,17 @@ class Court(commands.Cog):
             if s_match:
                 sentence = s_match.group(1).strip()
 
+        # Clean any accidental prefix labels
+        analysis = re.sub(r'^(?:ANALYSIS|FAISLA|OPINION):\s*', '', analysis, flags=re.IGNORECASE).strip()
+        sentence = re.sub(r'^(?:SENTENCE|ORDER|SAZA):\s*', '', sentence, flags=re.IGNORECASE).strip()
+
         return {
             "verdict": verdict,
             "analysis": analysis,
             "sentence": sentence
         }
 
-    async def _fallback_llm_query(self, system_prompt: str, user_content: str) -> Optional[str]:
+    async def _fallback_llm_query(self, system_prompt: str, user_content: str, is_hinglish: bool = False) -> Optional[str]:
         """Direct fallback API query in case AIChat cog is not reachable."""
         groq_key = os.getenv("GROQ_API_KEY")
         openrouter_key = (os.getenv("OPENROUTER_API_KEY") or "").split(",")[0].strip()
@@ -766,11 +803,11 @@ class Court(commands.Cog):
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content}
             ],
-            "max_tokens": 600,
+            "max_tokens": 300,
             "temperature": 0.7
         }
 
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=25)) as session:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
             # Try Groq
             if groq_key:
                 try:
@@ -795,12 +832,18 @@ class Court(commands.Cog):
                 except Exception:
                     pass
 
-        return (
-            "VERDICT: GUILTY\n"
-            "ANALYSIS: Having examined the chat logs, the Defendant's behavior exhibits overwhelming symptoms of capping. "
-            "The community jury confirms what the evidence clearly demonstrates.\n"
-            "SENTENCE: The accused is sentenced to wear the Certified Clown mantle and perform a formal apology."
-        )
+        if is_hinglish:
+            return (
+                "VERDICT: MISTRIAL\n"
+                "ANALYSIS: Chat aur saboot dekh kar saaf pata chal raha hai ki yeh koi serious case nahi balki **pure timepass** hai! Dono parties faltu baaton pe lad rahi hain aur **server jury** ne bhi koi bhav nahi diya.\n"
+                "SENTENCE: Case dismiss kiya jata hai! Dono faltu drama band karein aur shaanti se rahein."
+            )
+        else:
+            return (
+                "VERDICT: MISTRIAL\n"
+                "ANALYSIS: Looking at the chat evidence, this entire dispute is just **pure drama** over nothing! Both parties are wasting the Court's time, and the **jury** didn't even bother to vote.\n"
+                "SENTENCE: Case dismissed! Stop arguing over silly things and get back to gaming."
+            )
 
     # ─────────────────────────────────────────────────────────
     # BACKGROUND TASK: PENALTY ROLE EXPIRATIONS
