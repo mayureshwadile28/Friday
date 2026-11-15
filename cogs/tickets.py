@@ -12,12 +12,43 @@ from response_utils import ensure_admin_or_owner, is_admin_or_owner
 
 # ----------------- TICKET HELPERS & MODALS -----------------
 
+_closing_tickets = set()
+
 async def close_ticket_internal(bot, channel: discord.TextChannel, guild: discord.Guild, closer: discord.Member, reason: str, notes: str = ""):
+    global _closing_tickets
     gid = str(guild.id)
     cid = str(channel.id)
+
+    # Concurrency guard: strictly guarantee close logic runs only ONCE per ticket channel
+    if cid in _closing_tickets:
+        return
+    _closing_tickets.add(cid)
+
     settings = db.tickets.get(gid, {})
     active_ticket = settings.get("active_tickets", {}).get(cid)
-    
+    if active_ticket:
+        active_ticket["closing"] = True
+        db.save_data()
+
+    # Disable buttons on existing message to prevent any secondary clicks
+    try:
+        async for m in channel.history(limit=10, oldest_first=True):
+            if m.author.id == bot.user.id and m.components:
+                disabled_view = discord.ui.View()
+                for comp_row in m.components:
+                    for comp in comp_row.children:
+                        if isinstance(comp, discord.ButtonComponent):
+                            disabled_view.add_item(discord.ui.Button(
+                                label=comp.label,
+                                style=comp.style,
+                                emoji=comp.emoji,
+                                disabled=True
+                            ))
+                await m.edit(view=disabled_view)
+                break
+    except Exception:
+        pass
+
     # 1. Send in-channel closing message
     msg_closing = f"🔒 **Closing ticket in 5 seconds...**\n**Reason:** {reason}"
     if notes:
@@ -156,6 +187,8 @@ async def close_ticket_internal(bot, channel: discord.TextChannel, guild: discor
         await channel.delete(reason=f"Ticket closed by {closer}: {reason}")
     except Exception:
         pass
+    finally:
+        _closing_tickets.discard(cid)
 
 
 class TicketCloseModal(discord.ui.Modal, title="Close Ticket"):
@@ -179,6 +212,12 @@ class TicketCloseModal(discord.ui.Modal, title="Close Ticket"):
         self.bot = bot
 
     async def on_submit(self, interaction: discord.Interaction):
+        cid = str(interaction.channel.id)
+        global _closing_tickets
+        if cid in _closing_tickets:
+            await interaction.response.send_message("🔒 This ticket is already closing.", ephemeral=True)
+            return
+
         await interaction.response.defer(ephemeral=False)
         reason_val = self.reason.value.strip() or "Issue resolved"
         notes_val = self.notes.value.strip() if self.notes.value else ""
@@ -207,8 +246,18 @@ class TicketActiveView(discord.ui.View):
     async def close_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         gid = str(interaction.guild.id)
         cid = str(interaction.channel.id)
+
+        global _closing_tickets
+        if cid in _closing_tickets:
+            await interaction.response.send_message("🔒 This ticket is already closing.", ephemeral=True)
+            return
+
         settings = db.tickets.get(gid, {})
         active_ticket = settings.get("active_tickets", {}).get(cid, {})
+        if active_ticket.get("closing"):
+            await interaction.response.send_message("🔒 This ticket is already closing.", ephemeral=True)
+            return
+
         owner_id = active_ticket.get("owner_id")
         support_role_id = settings.get("support_role_id")
 
@@ -586,6 +635,12 @@ class Tickets(commands.Cog):
     async def slash_close(self, interaction: discord.Interaction, reason: str = None):
         gid = str(interaction.guild.id)
         cid = str(interaction.channel.id)
+
+        global _closing_tickets
+        if cid in _closing_tickets:
+            await interaction.response.send_message("🔒 This ticket is already closing.", ephemeral=True)
+            return
+
         settings = db.tickets.get(gid, {})
         active_ticket = settings.get("active_tickets", {}).get(cid)
         if not active_ticket:
@@ -595,6 +650,10 @@ class Tickets(commands.Cog):
                 color=0x2b2d31
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if active_ticket.get("closing"):
+            await interaction.response.send_message("🔒 This ticket is already closing.", ephemeral=True)
             return
 
         owner_id = active_ticket.get("owner_id")

@@ -135,7 +135,19 @@ SEARCH_INTENT_REGEX = re.compile(
     # Web search triggers & commands
     r'search google|google it|google pe dekho|google pe search|google karo|google pe|search online|search internet|'
     r'internet pe dekho|use internet|use internet ji|internet use karo|browse internet|check web|check on google|google this|look it up|check online|search web|'
-    r'tell me about|whatever you know about|'
+    r'tell me about|whatever you know about|search for|'
+    # Announcements, Reveals, Rumors & Leaks
+    r'announce(?:d|ments?)?|revealed?|teased?|leaked?|rumou?rs?|sneak peek|unveiled?|'
+    # Questions about new items, weapons, features, drops, and updates
+    r'(?:new|upcoming|latest|recent|next)\s+(?:weapon|weapons|feature|features|item|items|mob|mobs|boss|bosses|biome|biomes|character|characters|hero|heroes|agent|agents|skin|skins|map|maps|mode|modes|drop|drops|snapshot|snapshots|patch|patches|dlc|content|update|updates|version|game|games|season|seasons|episode|episodes|trailer|teaser|phone|laptop|model|chip|gpu|cpu)\b|'
+    r'what(?:\s*\'?s|\s+is)\s+(?:the\s+)?(?:new|latest|upcoming|recent|next)\b|'
+    r'is\s+(?:there\s+)?(?:a\s+|any\s+|the\s+)?(?:new|upcoming|latest)\b|'
+    r'(?:is|are|will)\s+[\w\s]{1,30}\s+(?:coming|releasing|launching|arriving|dropping|added|announced)\b|'
+    r'(?:did|has|have)\s+[\w\s]{1,30}\s+(?:announce|reveal|release|launch|drop|confirm|leak|tease|unveil)\b|'
+    r'what\s+(?:did|has)\s+[\w\s]{1,30}\s+(?:announce|reveal|release|say|show|unveil)\b|'
+    r'coming\s+to\s+[\w\s]{1,25}\b|'
+    # Popular Gaming titles & Publishers
+    r'minecraft|mojang|twitchcon|minecon|roblox|fortnite|epic games|valorant|riot games|genshin(?:\s+impact)?|honkai|gta\s*[56v]|grand theft auto|rockstar games|apex legends|overwatch|blizzard|call of duty|warzone|pokemon|nintendo|playstation|xbox|'
     # Space & Aerospace (Starship, SpaceX, NASA, ISRO)
     r'starship|spacex|falcon 9|falcon heavy|super heavy|artemis|isro|nasa|chandrayaan|gaganyaan|blue origin|space launch|rocket launch|'
     r'orbit|space mission|space flight|flight test|launch date|launch time|next launch|'
@@ -1101,10 +1113,16 @@ class AIChat(commands.Cog):
                 '', clean_text, flags=re.IGNORECASE
             ).strip()
             cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
+            # Strip leading auxiliary question starters (e.g. "is there", "is a", "did they")
+            cleaned = re.sub(r'^(?:is|are|will|did|has|have|can|do|does|kya)\s+(?:there\s+)?(?:a\s+|any\s+|the\s+)?', '', cleaned, flags=re.IGNORECASE).strip()
+            cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
             query_to_use = cleaned if len(cleaned) >= 3 else clean_text
             # Enrich SpaceX Starship queries for precision
             if re.search(r'\bstarship\b', query_to_use, re.IGNORECASE) and not re.search(r'\bspacex\b', query_to_use, re.IGNORECASE):
                 query_to_use = f"SpaceX {query_to_use}"
+            # Enrich Minecraft queries if asking about weapons/announcements
+            if re.search(r'\bminecraft\b', query_to_use, re.IGNORECASE) and not re.search(r'\b(latest|news|announce|announced|new)\b', query_to_use, re.IGNORECASE):
+                query_to_use = f"{query_to_use} latest announcement"
             return True, query_to_use
 
         return False, None
