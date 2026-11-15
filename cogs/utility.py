@@ -153,6 +153,15 @@ HELP_MODULES = [
         "sections": [
             ("Member Welcomes", ["welcomer_setup", "welcome_test"])
         ]
+    },
+    {
+        "id": "court",
+        "name": "Court of Friday",
+        "emoji": "⚖",
+        "desc": "Autonomous AI Courtroom & Lawsuit Tribunal",
+        "sections": [
+            ("Tribunal & Lawsuits", ["court sue", "court docket", "court records", "court leaderboard", "court pardon"])
+        ]
     }
 ]
 

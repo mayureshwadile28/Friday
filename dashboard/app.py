@@ -5160,6 +5160,152 @@ def deploy_application_panel(gid):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+
+# ───────────────────── Court of Friday (AI Vibe Tribunal) ─────────────────────
+
+@app.route('/api/guild/<gid>/court', methods=['GET'])
+def get_guild_court(gid):
+    gid_str = str(gid)
+    if not hasattr(db, "court_config") or not isinstance(db.court_config, dict):
+        db.court_config = {}
+    from cogs.court import DEFAULT_COURT_CONFIG
+    cfg = db.court_config.setdefault(gid_str, dict(DEFAULT_COURT_CONFIG))
+    for k, v in DEFAULT_COURT_CONFIG.items():
+        if k not in cfg:
+            cfg[k] = v
+    if "emojis" not in cfg or not isinstance(cfg["emojis"], dict):
+        cfg["emojis"] = dict(DEFAULT_COURT_CONFIG["emojis"])
+
+    # Fetch guild cases
+    cases_list = []
+    if hasattr(db, "court_cases") and isinstance(db.court_cases, dict):
+        for cid, c in db.court_cases.items():
+            if isinstance(c, dict) and str(c.get("guild_id")) == gid_str:
+                cases_list.append(c)
+    cases_list.sort(key=lambda x: x.get("created_at", 0), reverse=True)
+
+    # Fetch user records
+    records_list = []
+    if hasattr(db, "court_records") and isinstance(db.court_records, dict):
+        g_recs = db.court_records.get(gid_str, {})
+        for uid, r in g_recs.items():
+            if isinstance(r, dict):
+                records_list.append({"user_id": uid, **r})
+    records_list.sort(key=lambda x: x.get("total_trials", 0), reverse=True)
+
+    # Guild channels & roles
+    channels = []
+    roles = []
+    if bot_instance:
+        try:
+            guild = bot_instance.get_guild(int(gid))
+            if guild:
+                channels = [{"id": str(c.id), "name": c.name} for c in guild.text_channels]
+                roles = [{"id": str(r.id), "name": r.name, "color": f"#{r.color.value:06x}"} for r in guild.roles if not r.is_default() and not r.managed]
+        except Exception:
+            pass
+
+    return jsonify({
+        "success": True,
+        "config": cfg,
+        "cases": cases_list[:50],
+        "records": records_list[:50],
+        "channels": channels,
+        "roles": roles
+    })
+
+@app.route('/api/guild/<gid>/court/config', methods=['POST'])
+def save_guild_court_config(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    if not hasattr(db, "court_config") or not isinstance(db.court_config, dict):
+        db.court_config = {}
+
+    from cogs.court import DEFAULT_COURT_CONFIG
+    cfg = db.court_config.setdefault(gid_str, dict(DEFAULT_COURT_CONFIG))
+
+    if "enabled" in data:
+        cfg["enabled"] = bool(data["enabled"])
+    if "court_channel" in data:
+        val = str(data["court_channel"]).strip()
+        cfg["court_channel"] = val if val and val not in ("null", "none", "") else None
+    if "jury_voting" in data:
+        cfg["jury_voting"] = bool(data["jury_voting"])
+    if "jury_duration" in data:
+        try:
+            cfg["jury_duration"] = max(15, min(300, int(data["jury_duration"])))
+        except (ValueError, TypeError):
+            pass
+    if "summons_timeout" in data:
+        try:
+            cfg["summons_timeout"] = max(30, min(600, int(data["summons_timeout"])))
+        except (ValueError, TypeError):
+            pass
+    if "guilty_role" in data:
+        val = str(data["guilty_role"]).strip()
+        cfg["guilty_role"] = val if val and val not in ("null", "none", "") else None
+    if "innocent_role" in data:
+        val = str(data["innocent_role"]).strip()
+        cfg["innocent_role"] = val if val and val not in ("null", "none", "") else None
+    if "role_duration" in data:
+        try:
+            cfg["role_duration"] = max(1, min(10080, int(data["role_duration"])))
+        except (ValueError, TypeError):
+            pass
+    if "evidence_limit" in data:
+        try:
+            cfg["evidence_limit"] = max(5, min(50, int(data["evidence_limit"])))
+        except (ValueError, TypeError):
+            pass
+    if "emojis" in data and isinstance(data["emojis"], dict):
+        cur_emojis = cfg.setdefault("emojis", dict(DEFAULT_COURT_CONFIG["emojis"]))
+        for ek in ("gavel", "guilty", "innocent", "docket"):
+            if ek in data["emojis"]:
+                cur_emojis[ek] = str(data["emojis"][ek]).strip()
+
+    db.court_config[gid_str] = cfg
+    db.save_data()
+    return jsonify({"success": True, "message": "Court configuration saved successfully.", "config": cfg})
+
+@app.route('/api/guild/<gid>/court/pardon', methods=['POST'])
+def pardon_guild_court_case(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+    case_id = str(data.get("case_id", "")).strip().upper()
+    user_id = str(data.get("user_id", "")).strip()
+
+    if not case_id and not user_id:
+        return jsonify({"success": False, "error": "case_id or user_id is required."}), 400
+
+    cfg = db.court_config.get(gid_str, {})
+    guilty_role_id = cfg.get("guilty_role")
+
+    target_uid = user_id
+    if case_id and hasattr(db, "court_cases") and case_id in db.court_cases:
+        c = db.court_cases[case_id]
+        target_uid = target_uid or c.get("defendant_id")
+        c["role_expired"] = True
+        c["penalty_expires_at"] = 0
+        c["status"] = "pardoned"
+
+    if bot_instance and target_uid and guilty_role_id:
+        async def do_remove_role():
+            guild = bot_instance.get_guild(int(gid))
+            if guild:
+                member = guild.get_member(int(target_uid))
+                role = guild.get_role(int(guilty_role_id))
+                if member and role and role in member.roles:
+                    await member.remove_roles(role, reason="Executive pardon from web dashboard")
+
+        try:
+            asyncio.run_coroutine_threadsafe(do_remove_role(), bot_instance.loop).result(timeout=5)
+        except Exception as e:
+            print(f"[Court Pardon API] Role removal notice: {e}")
+
+    db.save_data()
+    return jsonify({"success": True, "message": "Pardon granted and penalty role cleared."})
+
+
 # ───────────────────── Bot Lifecycle ─────────────────────
 
 @app.route('/api/bot/stop', methods=['POST'])

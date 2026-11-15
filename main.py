@@ -120,7 +120,8 @@ async def on_ready():
         "cogs.applications",
         "cogs.activity",
         "cogs.invite_tracker",
-        "cogs.booster_perks"
+        "cogs.booster_perks",
+        "cogs.court"
     ]
     for cog in cogs_list:
         try:

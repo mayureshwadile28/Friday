@@ -345,6 +345,18 @@
 
                 </a>
 
+                <a class="nav-item" data-tab="courtSection" href="#">
+                    <div class="nav-icon-wrap" style="color: #f59e0b;">
+                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16">
+                            <path d="M12 3v18"></path>
+                            <path d="M3 7l9-4 9 4"></path>
+                            <path d="M6 13l-3 4h6l-3-4z"></path>
+                            <path d="M18 13l-3 4h6l-3-4z"></path>
+                        </svg>
+                    </div>
+                    The Court of Friday
+                </a>
+
 <a class="nav-item" data-tab="afkSection" href="#">
 
 <div class="nav-icon-wrap">
@@ -9797,9 +9809,262 @@ Click the button below to submit your confidential application.
 
 </div>
 
+<!-- ─────────────────────────────────────────────────────────────
+     THE COURT OF FRIDAY (AI VIBE TRIBUNAL)
+     ───────────────────────────────────────────────────────────── -->
+<div class="section tab-content" id="courtSection" style="display:none;">
+    <div class="section-header">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h1 class="section-title" style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size: 24px;">⚖️</span> The Court of Friday (AI Vibe Tribunal)
+                </h1>
+                <p class="section-desc">Autonomous Discord courtroom where server members sue each other over friendly disputes, broken bets, and gaming claims. Presided by Chief Justice Friday with subpoenaed litigant-only chat history, community jury voting, and binding AI verdicts.</p>
+            </div>
+            <div class="status-pill active" style="font-size: 11px; padding: 5px 12px; background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.35); font-weight: 700;">
+                ⚡ TRIBUNAL ENGINE ONLINE
+            </div>
+        </div>
+    </div>
 
+    <div style="display: flex; flex-direction: column; gap: 24px; max-width: 1100px; margin: 0 auto; width: 100%;">
 
+        <!-- Card 1: Core Tribunal Settings -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; color: #fbbf24;">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><path d="M12 3v18"></path><path d="M3 7l9-4 9 4"></path><path d="M6 13l-3 4h6l-3-4z"></path><path d="M18 13l-3 4h6l-3-4z"></path></svg>
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Courtroom Routing & Jury Deliberation</h3>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Configure where trials take place, jury deliberation voting windows, and evidence subpoena rules.</p>
 
+            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; margin-bottom: 16px;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #fff;">Enable Court System</div>
+                    <div style="font-size: 12px; color: var(--text-muted);">Allow server members to use <code>/court sue</code>, <code>/court docket</code>, and <code>/court records</code>.</div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="courtEnabledToggle" checked>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
+            <div class="grid-2" style="margin-bottom: 16px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Designated Courtroom Channel</label>
+                    <select class="text-input" id="courtChannelSelect">
+                        <option value="">Any Text Channel (Unrestricted)</option>
+                    </select>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">If selected, trials can only be initiated inside this specific channel.</p>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Jury Deliberation Voting</label>
+                    <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 6px;">
+                        <span style="font-size: 13px; color: #fff;">Enable Community Jury Ballots</span>
+                        <label class="switch">
+                            <input type="checkbox" id="courtJuryVotingToggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Whether community members can vote Guilty/Innocent during the trial phase.</p>
+                </div>
+            </div>
+
+            <div class="grid-3" style="margin-bottom: 16px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Jury Voting Duration (Seconds)</label>
+                    <input type="number" class="text-input" id="courtJuryDurationInput" min="15" max="300" value="45">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Default: 45 seconds.</p>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Summons Response Timeout (Seconds)</label>
+                    <input type="number" class="text-input" id="courtSummonsTimeoutInput" min="30" max="600" value="90">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Time before Default Contempt Judgment.</p>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Chat Evidence Limit (Messages)</label>
+                    <input type="number" class="text-input" id="courtEvidenceLimitInput" min="5" max="50" value="15">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Strictly litigant dialogue only (default: 15).</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 2: Penalties & Exoneration Roles -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); display: flex; align-items: center; justify-content: center; color: #f87171;">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Judicial Penalties & Role Sentencing</h3>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Assign temporary roles for convicted cappers or exonerated winners with automatic removal.</p>
+
+            <div class="grid-3" style="margin-bottom: 8px;">
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Convicted / Guilty Role</label>
+                    <select class="text-input" id="courtGuiltyRoleSelect">
+                        <option value="">None (Verbal Roast Only)</option>
+                    </select>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">E.g. "Certified Clown" or "Major Capper".</p>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Exonerated / Innocent Role</label>
+                    <select class="text-input" id="courtInnocentRoleSelect">
+                        <option value="">None (No Role)</option>
+                    </select>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">E.g. "Lawful Saint" or "Vindicated".</p>
+                </div>
+                <div>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; display: block;">Penalty Role Duration (Minutes)</label>
+                    <input type="number" class="text-input" id="courtRoleDurationInput" min="1" max="10080" value="60">
+                    <p style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Friday automatically revokes role after this time.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Card 3: Visual Court Emojis (SVG / Custom Server Emojis) -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); display: flex; align-items: center; justify-content: center; color: #60a5fa;">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Court Emojis & Visual Badges</h3>
+                </div>
+            </div>
+            <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">Customize court emojis using server custom emojis or standard emojis. Emojis render visually as SVG/PNG images.</p>
+
+            <div class="grid-4" style="margin-bottom: 8px;">
+                <!-- Gavel Emoji -->
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px; text-align: center;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Gavel / Scale</label>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+                        <button type="button" class="btn-emoji-visual-tile" id="courtGavelTile" style="width: 44px; height: 44px; font-size: 22px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center;">⚖️</button>
+                        <input type="hidden" id="courtGavelInput" value="⚖️">
+                        <button type="button" class="btn-action-secondary" id="courtGavelPickerBtn" style="padding: 6px 10px; font-size: 12px;">😊 Pick</button>
+                    </div>
+                </div>
+
+                <!-- Guilty Emoji -->
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px; text-align: center;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Guilty Badge</label>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+                        <button type="button" class="btn-emoji-visual-tile" id="courtGuiltyTile" style="width: 44px; height: 44px; font-size: 22px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center;">🔴</button>
+                        <input type="hidden" id="courtGuiltyInput" value="🔴">
+                        <button type="button" class="btn-action-secondary" id="courtGuiltyPickerBtn" style="padding: 6px 10px; font-size: 12px;">😊 Pick</button>
+                    </div>
+                </div>
+
+                <!-- Innocent Emoji -->
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px; text-align: center;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Innocent Badge</label>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+                        <button type="button" class="btn-emoji-visual-tile" id="courtInnocentTile" style="width: 44px; height: 44px; font-size: 22px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center;">🟢</button>
+                        <input type="hidden" id="courtInnocentInput" value="🟢">
+                        <button type="button" class="btn-action-secondary" id="courtInnocentPickerBtn" style="padding: 6px 10px; font-size: 12px;">😊 Pick</button>
+                    </div>
+                </div>
+
+                <!-- Docket Emoji -->
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 12px; text-align: center;">
+                    <label style="font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; margin-bottom: 8px; display: block;">Docket / Scroll</label>
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 8px;">
+                        <button type="button" class="btn-emoji-visual-tile" id="courtDocketTile" style="width: 44px; height: 44px; font-size: 22px; border-radius: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15); cursor: pointer; display: flex; align-items: center; justify-content: center;">📜</button>
+                        <input type="hidden" id="courtDocketInput" value="📜">
+                        <button type="button" class="btn-action-secondary" id="courtDocketPickerBtn" style="padding: 6px 10px; font-size: 12px;">😊 Pick</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Bar: Save Configuration -->
+        <div style="display: flex; justify-content: flex-end; gap: 12px; margin-bottom: 8px;">
+            <button class="btn-action-primary" id="saveCourtConfigBtn" style="padding: 10px 24px; font-size: 14px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+                <span>💾</span> Save Tribunal Configuration
+            </button>
+        </div>
+
+        <!-- Card 4: Live Case Docket History & Archive -->
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); display: flex; align-items: center; justify-content: center; color: #a78bfa;">
+                        <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+                    </div>
+                    <div>
+                        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Case Dockets & Verdict Archive</h3>
+                    </div>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn-action-secondary" id="refreshCourtCasesBtn" style="padding: 6px 14px; font-size: 12px; display: flex; align-items: center; gap: 6px;">
+                        <span>🔄</span> Refresh Dockets
+                    </button>
+                </div>
+            </div>
+
+            <div style="overflow-x: auto;">
+                <table class="data-table" id="courtCasesTable" style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); color: var(--text-muted); font-size: 12px; text-transform: uppercase;">
+                            <th style="padding: 10px;">Docket ID</th>
+                            <th style="padding: 10px;">Date</th>
+                            <th style="padding: 10px;">Plaintiff</th>
+                            <th style="padding: 10px;">Defendant</th>
+                            <th style="padding: 10px;">Charges</th>
+                            <th style="padding: 10px;">Verdict</th>
+                            <th style="padding: 10px;">Jury Ballots</th>
+                            <th style="padding: 10px; text-align: right;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="courtCasesTableBody">
+                        <tr>
+                            <td colspan="8" style="text-align: center; padding: 24px; color: var(--text-muted);">
+                                <em>No court cases recorded in this server yet.</em>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Card 5: Litigation Records & Clown Leaderboard -->
+        <div class="card">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+                <div style="width: 32px; height: 32px; border-radius: 8px; background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); display: flex; align-items: center; justify-content: center; color: #fbbf24;">
+                    <svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
+                </div>
+                <div>
+                    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin: 0;">Tribunal Standings & Clown Hall of Fame</h3>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div>
+                    <h4 style="font-size: 13px; font-weight: 700; color: #ef4444; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        <span>🤡</span> Most Convicted Cappers
+                    </h4>
+                    <div id="courtTopCappersList" style="display: flex; flex-direction: column; gap: 6px;">
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;"><em>No convictions recorded yet.</em></p>
+                    </div>
+                </div>
+                <div>
+                    <h4 style="font-size: 13px; font-weight: 700; color: #10b981; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+                        <span>⚖️</span> Undefeated Litigators
+                    </h4>
+                    <div id="courtTopLitigatorsList" style="display: flex; flex-direction: column; gap: 6px;">
+                        <p style="font-size: 12px; color: var(--text-muted); margin: 0;"><em>No victorious plaintiffs recorded yet.</em></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
 
 <div class="section tab-content" id="afkSection" style="display:none;">
 

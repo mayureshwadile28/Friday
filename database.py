@@ -94,6 +94,12 @@ class Database:
         self.saved_reaction_roles = srr if isinstance(srr, dict) else {}
         bcc = self.data.get("bot_command_channels")
         self.bot_command_channels = bcc if isinstance(bcc, dict) else {}
+        ccfg = self.data.get("court_config")
+        self.court_config = ccfg if isinstance(ccfg, dict) else {}
+        ccas = self.data.get("court_cases")
+        self.court_cases = ccas if isinstance(ccas, dict) else {}
+        crec = self.data.get("court_records")
+        self.court_records = crec if isinstance(crec, dict) else {}
 
     def load_data(self):
         try:
@@ -159,7 +165,10 @@ class Database:
                 "custom_prefixes": {},
                 "prefix_whitelist": {},
                 "saved_reaction_roles": {},
-                "bot_command_channels": {}
+                "bot_command_channels": {},
+                "court_config": {},
+                "court_cases": {},
+                "court_records": {}
             }
 
     def reload(self):

@@ -12006,6 +12006,7 @@ async function loadDataForActiveTab() {
 
 
     else if (activeTab === 'giveawaysSection') await loadGiveawaysData();
+    else if (activeTab === 'courtSection') await loadCourtSettings();
     else if (activeTab === 'birthdaysSection') await loadBirthdayData();
     else if (activeTab === 'inviteTrackerSection') await loadInviteTrackerSettings();
     else if (activeTab === 'boosterSection') await loadBoosterSettings();
@@ -71131,3 +71132,322 @@ function initMediaAnnouncementsUI() {
 document.addEventListener('DOMContentLoaded', () => {
     initMediaAnnouncementsUI();
 });
+
+// ───────────────────── The Court of Friday (AI Vibe Tribunal) ─────────────────────
+
+let courtInitialized = false;
+
+async function loadCourtSettings() {
+    const gid = currentGuildId;
+    if (!gid) return;
+
+    try {
+        const res = await fetch(`/api/guild/${gid}/court`);
+        const data = await res.json();
+        if (!data.success) {
+            console.error("Court data load failed:", data.error);
+            return;
+        }
+
+        const cfg = data.config || {};
+        const channels = data.channels || [];
+        const roles = data.roles || [];
+        const cases = data.cases || [];
+        const records = data.records || [];
+
+        // 1. Core settings
+        const enabledToggle = document.getElementById('courtEnabledToggle');
+        if (enabledToggle) enabledToggle.checked = cfg.enabled !== false;
+
+        const channelSelect = document.getElementById('courtChannelSelect');
+        if (channelSelect) {
+            channelSelect.innerHTML = '<option value="">Any Text Channel (Unrestricted)</option>';
+            channels.forEach(ch => {
+                const opt = document.createElement('option');
+                opt.value = ch.id;
+                opt.textContent = `#${ch.name}`;
+                if (String(cfg.court_channel) === String(ch.id)) opt.selected = true;
+                channelSelect.appendChild(opt);
+            });
+        }
+
+        const juryVotingToggle = document.getElementById('courtJuryVotingToggle');
+        if (juryVotingToggle) juryVotingToggle.checked = cfg.jury_voting !== false;
+
+        const juryDurInput = document.getElementById('courtJuryDurationInput');
+        if (juryDurInput) juryDurInput.value = cfg.jury_duration || 45;
+
+        const summonsTimeoutInput = document.getElementById('courtSummonsTimeoutInput');
+        if (summonsTimeoutInput) summonsTimeoutInput.value = cfg.summons_timeout || 90;
+
+        const evidenceLimitInput = document.getElementById('courtEvidenceLimitInput');
+        if (evidenceLimitInput) evidenceLimitInput.value = cfg.evidence_limit || 15;
+
+        // 2. Roles
+        const guiltyRoleSelect = document.getElementById('courtGuiltyRoleSelect');
+        if (guiltyRoleSelect) {
+            guiltyRoleSelect.innerHTML = '<option value="">None (Verbal Roast Only)</option>';
+            roles.forEach(r => {
+                const opt = document.createElement('option');
+                opt.value = r.id;
+                opt.textContent = `@${r.name}`;
+                if (String(cfg.guilty_role) === String(r.id)) opt.selected = true;
+                guiltyRoleSelect.appendChild(opt);
+            });
+        }
+
+        const innocentRoleSelect = document.getElementById('courtInnocentRoleSelect');
+        if (innocentRoleSelect) {
+            innocentRoleSelect.innerHTML = '<option value="">None (No Role)</option>';
+            roles.forEach(r => {
+                const opt = document.createElement('option');
+                opt.value = r.id;
+                opt.textContent = `@${r.name}`;
+                if (String(cfg.innocent_role) === String(r.id)) opt.selected = true;
+                innocentRoleSelect.appendChild(opt);
+            });
+        }
+
+        const roleDurationInput = document.getElementById('courtRoleDurationInput');
+        if (roleDurationInput) roleDurationInput.value = cfg.role_duration || 60;
+
+        // 3. Emojis (Visually rendered SVG / image)
+        const emojis = cfg.emojis || {};
+
+        setCourtEmojiVisual('courtGavelInput', 'courtGavelTile', emojis.gavel || '⚖️');
+        setCourtEmojiVisual('courtGuiltyInput', 'courtGuiltyTile', emojis.guilty || '🔴');
+        setCourtEmojiVisual('courtInnocentInput', 'courtInnocentTile', emojis.innocent || '🟢');
+        setCourtEmojiVisual('courtDocketInput', 'courtDocketTile', emojis.docket || '📜');
+
+        // 4. Render Case Dockets Table
+        renderCourtCasesTable(cases);
+
+        // 5. Render Standings & Leaderboard
+        renderCourtStandings(records);
+
+        initCourtEventListeners();
+
+    } catch (err) {
+        console.error("Error loading Court settings:", err);
+    }
+}
+
+function setCourtEmojiVisual(inputId, tileId, emojiVal) {
+    const input = document.getElementById(inputId);
+    const tile = document.getElementById(tileId);
+    if (input) input.value = emojiVal;
+    if (tile) {
+        tile.innerHTML = renderEmojiHtmlOrChar(emojiVal, 24);
+    }
+}
+
+function renderCourtCasesTable(cases) {
+    const tbody = document.getElementById('courtCasesTableBody');
+    if (!tbody) return;
+
+    if (!cases || cases.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" style="text-align: center; padding: 24px; color: var(--text-muted);">
+                    <em>No court cases recorded in this server yet. Run <code>/court sue @member [charges]</code> in Discord!</em>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = cases.map(c => {
+        const dt = c.created_at ? new Date(c.created_at * 1000).toLocaleString() : 'Recent';
+        let badgeColor = '#6b7280';
+        let badgeBg = 'rgba(107, 114, 128, 0.15)';
+        const verd = (c.verdict || 'PENDING').toUpperCase();
+
+        if (verd.includes('GUILTY') && !verd.includes('NOT')) {
+            badgeColor = '#ef4444';
+            badgeBg = 'rgba(239, 68, 68, 0.15)';
+        } else if (verd.includes('NOT GUILTY')) {
+            badgeColor = '#10b981';
+            badgeBg = 'rgba(16, 185, 129, 0.15)';
+        } else if (verd.includes('BOTH') || verd.includes('CLOWN')) {
+            badgeColor = '#a855f7';
+            badgeBg = 'rgba(168, 85, 247, 0.15)';
+        }
+
+        const jury = c.jury_votes || {};
+        const gVotes = jury.guilty || 0;
+        const iVotes = jury.innocent || 0;
+        const juryStr = (gVotes + iVotes > 0) ? `🔴 ${gVotes} vs 🟢 ${iVotes}` : '<em>No votes</em>';
+
+        const isPardoned = c.status === 'pardoned' || c.role_expired;
+        const pardonBtn = (verd.includes('GUILTY') && !isPardoned) ? `
+            <button class="btn-action-secondary" onclick="pardonCourtCase('${c.id}', '${c.defendant_id}')" style="padding: 4px 10px; font-size: 11px;">
+                🕊️ Pardon
+            </button>
+        ` : `<span style="font-size: 11px; color: var(--text-muted);">${c.status === 'pardoned' ? '🕊️ Pardoned' : 'Resolved'}</span>`;
+
+        return `
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px;">
+                <td style="padding: 10px; font-weight: 700; color: #fbbf24;"><code>${c.id}</code></td>
+                <td style="padding: 10px; color: var(--text-muted); font-size: 11px;">${dt}</td>
+                <td style="padding: 10px; font-weight: 600; color: #fff;">@${c.plaintiff_name || 'Plaintiff'}</td>
+                <td style="padding: 10px; font-weight: 600; color: #fff;">@${c.defendant_name || 'Defendant'}</td>
+                <td style="padding: 10px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary);" title="${(c.charges || '').replace(/"/g, '&quot;')}">
+                    ${c.charges || 'None'}
+                </td>
+                <td style="padding: 10px;">
+                    <span style="display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; color: ${badgeColor}; background: ${badgeBg};">
+                        ${verd}
+                    </span>
+                </td>
+                <td style="padding: 10px; font-size: 11px;">${juryStr}</td>
+                <td style="padding: 10px; text-align: right;">${pardonBtn}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function renderCourtStandings(records) {
+    const cappersEl = document.getElementById('courtTopCappersList');
+    const litigatorsEl = document.getElementById('courtTopLitigatorsList');
+
+    if (cappersEl) {
+        const topCappers = (records || []).filter(r => (r.convictions || 0) > 0).sort((a,b) => (b.convictions || 0) - (a.convictions || 0)).slice(0, 5);
+        if (topCappers.length === 0) {
+            cappersEl.innerHTML = '<p style="font-size: 12px; color: var(--text-muted); margin: 0;"><em>No convictions recorded yet.</em></p>';
+        } else {
+            cappersEl.innerHTML = topCappers.map((c, i) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(239, 68, 68, 0.08); border-radius: 6px; font-size: 12px;">
+                    <span style="font-weight: 600; color: #fff;">#${i+1} @${c.name || 'Member'}</span>
+                    <span style="font-weight: 700; color: #f87171;">🔴 ${c.convictions} Convictions</span>
+                </div>
+            `).join('');
+        }
+    }
+
+    if (litigatorsEl) {
+        const topLitigators = (records || []).filter(r => (r.won_as_plaintiff || 0) > 0).sort((a,b) => (b.won_as_plaintiff || 0) - (a.won_as_plaintiff || 0)).slice(0, 5);
+        if (topLitigators.length === 0) {
+            litigatorsEl.innerHTML = '<p style="font-size: 12px; color: var(--text-muted); margin: 0;"><em>No victorious plaintiffs recorded yet.</em></p>';
+        } else {
+            litigatorsEl.innerHTML = topLitigators.map((l, i) => `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: rgba(16, 185, 129, 0.08); border-radius: 6px; font-size: 12px;">
+                    <span style="font-weight: 600; color: #fff;">#${i+1} @${l.name || 'Member'}</span>
+                    <span style="font-weight: 700; color: #34d399;">⚖️ ${l.won_as_plaintiff} Wins</span>
+                </div>
+            `).join('');
+        }
+    }
+}
+
+async function pardonCourtCase(caseId, userId) {
+    const gid = currentGuildId;
+    if (!gid) return;
+    if (!confirm(`Are you sure you want to issue an executive pardon for Case ${caseId}?`)) return;
+
+    try {
+        const res = await fetch(`/api/guild/${gid}/court/pardon`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ case_id: caseId, user_id: userId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast("Executive pardon granted! 🕊️", "success");
+            loadCourtSettings();
+        } else {
+            if (typeof showToast === 'function') showToast(data.error || "Failed to grant pardon.", "error");
+        }
+    } catch (e) {
+        console.error("Pardon error:", e);
+    }
+}
+
+function initCourtEventListeners() {
+    if (courtInitialized) return;
+    courtInitialized = true;
+
+    // Emoji Pickers for Court Emojis
+    const emojiConfigs = [
+        { pickerId: 'courtGavelPickerBtn', tileId: 'courtGavelTile', inputId: 'courtGavelInput' },
+        { pickerId: 'courtGuiltyPickerBtn', tileId: 'courtGuiltyTile', inputId: 'courtGuiltyInput' },
+        { pickerId: 'courtInnocentPickerBtn', tileId: 'courtInnocentTile', inputId: 'courtInnocentInput' },
+        { pickerId: 'courtDocketPickerBtn', tileId: 'courtDocketTile', inputId: 'courtDocketInput' }
+    ];
+
+    emojiConfigs.forEach(cfg => {
+        const btn = document.getElementById(cfg.pickerId);
+        const tile = document.getElementById(cfg.tileId);
+        const trigger = btn || tile;
+        if (trigger && !trigger.dataset.bound) {
+            trigger.dataset.bound = "true";
+            trigger.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof openEmojiPicker === 'function') {
+                    openEmojiPicker(trigger, (chosenEmoji) => {
+                        setCourtEmojiVisual(cfg.inputId, cfg.tileId, chosenEmoji);
+                    });
+                }
+            });
+        }
+    });
+
+    // Save Tribunal Config Button
+    const saveBtn = document.getElementById('saveCourtConfigBtn');
+    if (saveBtn && !saveBtn.dataset.bound) {
+        saveBtn.dataset.bound = "true";
+        saveBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const gid = currentGuildId;
+            if (!gid) return;
+
+            const payload = {
+                enabled: document.getElementById('courtEnabledToggle')?.checked !== false,
+                court_channel: document.getElementById('courtChannelSelect')?.value || null,
+                jury_voting: document.getElementById('courtJuryVotingToggle')?.checked !== false,
+                jury_duration: parseInt(document.getElementById('courtJuryDurationInput')?.value) || 45,
+                summons_timeout: parseInt(document.getElementById('courtSummonsTimeoutInput')?.value) || 90,
+                evidence_limit: parseInt(document.getElementById('courtEvidenceLimitInput')?.value) || 15,
+                guilty_role: document.getElementById('courtGuiltyRoleSelect')?.value || null,
+                innocent_role: document.getElementById('courtInnocentRoleSelect')?.value || null,
+                role_duration: parseInt(document.getElementById('courtRoleDurationInput')?.value) || 60,
+                emojis: {
+                    gavel: document.getElementById('courtGavelInput')?.value || '⚖️',
+                    guilty: document.getElementById('courtGuiltyInput')?.value || '🔴',
+                    innocent: document.getElementById('courtInnocentInput')?.value || '🟢',
+                    docket: document.getElementById('courtDocketInput')?.value || '📜'
+                }
+            };
+
+            try {
+                const res = await fetch(`/api/guild/${gid}/court/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast("Court of Friday settings saved successfully! ⚖️", "success");
+                    loadCourtSettings();
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to save court settings.", "error");
+                }
+            } catch (err) {
+                console.error("Save court config error:", err);
+                if (typeof showToast === 'function') showToast("Network error while saving court settings.", "error");
+            }
+        });
+    }
+
+    // Refresh Cases Button
+    const refreshBtn = document.getElementById('refreshCourtCasesBtn');
+    if (refreshBtn && !refreshBtn.dataset.bound) {
+        refreshBtn.dataset.bound = "true";
+        refreshBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            loadCourtSettings();
+            if (typeof showToast === 'function') showToast("Case dockets refreshed! 🔄", "info");
+        });
+    }
+}
+
