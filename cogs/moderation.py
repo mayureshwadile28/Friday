@@ -1654,8 +1654,14 @@ class Moderation(commands.Cog):
             await self._execute_nickname_change(message, parts[1], new_nick)
             return
 
-        # B. Member Commands (Channel-Restricted from Dashboard UI)
-        member_cmds = {"rank", "level", "lvl", "lb", "leaderboard", "m", "stats", "mystats", "act", "activity"}
+        # B. Member Commands & Charts (Channel-Restricted from Dashboard UI)
+        member_cmds = {
+            "rank", "level", "lvl",
+            "lb", "leaderboard",
+            "m", "stats", "mystats", "act", "activity",
+            "server", "serverchat", "chart", "graph",
+            "invites", "inv"
+        }
         if cmd_name in member_cmds:
             # Check UI-configured channel restriction
             allowed_chan = getattr(db, "bot_command_channels", {}).get(gid)
@@ -1663,7 +1669,19 @@ class Moderation(commands.Cog):
                 # Critical Requirement: If member runs this in other channels, Friday strictly ignores it!
                 return
 
-            # 1. Rank & Level: !rank, !rank @user, !level, !lvl
+            # 1. Server Activity Chart: !server, !serverchat, or !act/chart server
+            if cmd_name in ("server", "serverchat") or (cmd_name in ("act", "activity", "chart", "graph") and len(parts) > 1 and parts[1].lower() in ("server", "chat")):
+                act_cog = self.bot.get_cog("Activity")
+                if act_cog:
+                    try:
+                        async with message.channel.typing():
+                            card_file = await act_cog.generate_server_card_file(message.guild, viewer=message.author)
+                            await message.reply(file=card_file, mention_author=False)
+                    except Exception as e:
+                        print(f"Error rendering server activity chart: {e}")
+                return
+
+            # 2. Rank & Level: !rank, !rank @user, !level, !lvl
             if cmd_name in ("rank", "level", "lvl"):
                 target_user = None
                 if message.mentions:
@@ -1695,7 +1713,36 @@ class Moderation(commands.Cog):
                         print(f"Error rendering rank prefix card: {e}")
                 return
 
-            # 2. Leaderboards: !lb invite, !lb msg
+            # 3. Invites Card: !invites, !invites @user, !inv
+            elif cmd_name in ("invites", "inv"):
+                target_user = None
+                if message.mentions:
+                    for m in message.mentions:
+                        if not m.bot:
+                            target_user = m
+                            break
+                if not target_user and len(parts) > 1 and parts[1].isdigit():
+                    uid = int(parts[1])
+                    target_user = message.guild.get_member(uid)
+                    if not target_user:
+                        try:
+                            target_user = await message.guild.fetch_member(uid)
+                        except Exception:
+                            target_user = None
+                if not target_user:
+                    target_user = message.author
+
+                inv_cog = self.bot.get_cog("InviteTracker")
+                if inv_cog:
+                    try:
+                        async with message.channel.typing():
+                            card_file = await inv_cog.generate_invite_card(target_user, message.author, message.guild)
+                            await message.reply(file=card_file, mention_author=False)
+                    except Exception as e:
+                        print(f"Error rendering invite card: {e}")
+                return
+
+            # 4. Leaderboards: !lb invite, !lb msg, !lb xp
             elif cmd_name in ("lb", "leaderboard"):
                 sub = parts[1].lower() if len(parts) > 1 else "msg"
                 if sub in ("invite", "invites", "inv"):
@@ -1711,6 +1758,18 @@ class Moderation(commands.Cog):
                         except Exception as e:
                             print(f"Error rendering invite lb prefix card: {e}")
                     return
+                elif sub in ("xp", "level", "lvl", "levels"):
+                    lvl_cog = self.bot.get_cog("Leveling")
+                    if lvl_cog:
+                        try:
+                            from cogs.leveling import XPLeaderboardView
+                            async with message.channel.typing():
+                                view = XPLeaderboardView(lvl_cog, message.guild, current_page=1)
+                                card_file = await lvl_cog.generate_xp_leaderboard_file(message.guild, page=1)
+                                await message.reply(file=card_file, view=view, mention_author=False)
+                        except Exception as e:
+                            print(f"Error rendering xp lb prefix card: {e}")
+                    return
                 else:
                     # Message / Chat Leaderboard (!lb msg or !lb)
                     act_cog = self.bot.get_cog("Activity")
@@ -1725,8 +1784,8 @@ class Moderation(commands.Cog):
                             print(f"Error rendering activity lb prefix card: {e}")
                     return
 
-            # 3. Personal & Member Stats: !m, !stats, !mystats, !act, !activity
-            elif cmd_name in ("m", "stats", "mystats", "act", "activity"):
+            # 5. Personal & Member Activity Charts: !m, !stats, !mystats, !act, !activity, !chart, !graph
+            elif cmd_name in ("m", "stats", "mystats", "act", "activity", "chart", "graph"):
                 target_user = None
                 if message.mentions:
                     for m in message.mentions:
@@ -1751,7 +1810,7 @@ class Moderation(commands.Cog):
                             card_file = await act_cog.generate_member_card_file(message.guild, target_user, viewer=message.author)
                             await message.reply(file=card_file, mention_author=False)
                     except Exception as e:
-                        print(f"Error rendering stats prefix card: {e}")
+                        print(f"Error rendering member activity chart: {e}")
                 return
 
         # C. Strict set of essential staff prefix commands
