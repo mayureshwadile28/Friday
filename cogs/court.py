@@ -413,7 +413,7 @@ class TrialRunner:
         self.bot = cog.bot
         self.interaction = interaction
         self.guild = interaction.guild
-        self.channel = interaction.channel or (interaction.guild.get_channel(interaction.channel_id) if interaction.guild else None)
+        self.origin_channel = interaction.channel or (interaction.guild.get_channel(interaction.channel_id) if interaction.guild else None)
         self.plaintiff = interaction.user
         self.defendant = defendant
         self.charges = charges
@@ -424,6 +424,26 @@ class TrialRunner:
         self.plea = None
         self.case_id = generate_case_id()
         self.cfg = get_court_config(str(self.guild.id) if self.guild else "")
+
+        # Official Courtroom Channel determination
+        court_room_id = self.cfg.get("court_channel")
+        court_room = None
+        if court_room_id and self.guild:
+            try:
+                c_id_int = int(str(court_room_id).strip())
+                court_room = self.guild.get_channel(c_id_int)
+            except (ValueError, TypeError):
+                pass
+        self.court_channel = court_room or self.origin_channel
+        self.channel = self.court_channel  # Court trials run in the official court channel!
+
+        # Evidence Source Channel determination:
+        # If Exhibit A is from another channel (e.g. #chill-chat), scan THAT channel!
+        if self.exhibit_msg and getattr(self.exhibit_msg, "channel", None):
+            self.evidence_channel = self.exhibit_msg.channel
+        else:
+            self.evidence_channel = self.origin_channel
+
         self.summons_message: Optional[discord.Message] = None
         self.summons_view: Optional[CourtSummonsView] = None
         self.jury_message: Optional[discord.Message] = None
@@ -439,7 +459,8 @@ class TrialRunner:
         exhibit_text = ""
         if self.exhibit_msg:
             snip = self.exhibit_msg.clean_content[:150] if self.exhibit_msg.clean_content else "[Media Attachment]"
-            exhibit_text = f"\n📌 **Exhibit A (Flagged Message):**\n> *\"{snip}\"*\n"
+            ch_name = f" (#{self.exhibit_msg.channel.name})" if hasattr(self.exhibit_msg, "channel") and self.exhibit_msg.channel else ""
+            exhibit_text = f"\n📌 **Exhibit A{ch_name}:**\n> *\"{snip}\"*\n"
 
         embed = discord.Embed(
             title=f"{gavel_e} THE COURT OF FRIDAY: OFFICIAL WRIT OF SUMMONS",
@@ -464,39 +485,65 @@ class TrialRunner:
         self.summons_view = CourtSummonsView(self, self.defendant, self.plaintiff, timeout=timeout_sec)
         content_text = f"🔔 **COURT CONVENED!** {self.defendant.mention}, you have been sued by {self.plaintiff.mention}!"
 
-        # Send response through interaction followup so Discord NEVER times out
-        try:
-            if self.interaction and self.interaction.response.is_done():
-                self.summons_message = await self.interaction.followup.send(
-                    content=content_text,
-                    embed=embed,
-                    view=self.summons_view,
-                    wait=True
-                )
-            elif self.interaction and not self.interaction.response.is_done():
-                await self.interaction.response.send_message(
+        # Route trial to official courtroom channel if different from origin channel
+        if self.court_channel and self.origin_channel and self.court_channel.id != self.origin_channel.id:
+            try:
+                self.summons_message = await self.court_channel.send(
                     content=content_text,
                     embed=embed,
                     view=self.summons_view
                 )
-                self.summons_message = await self.interaction.original_response()
-            elif self.channel:
-                self.summons_message = await self.channel.send(
-                    content=content_text,
-                    embed=embed,
-                    view=self.summons_view
+                redirect_notice = (
+                    f"⚖️ **COURT CONVENED!** {self.plaintiff.mention} has sued {self.defendant.mention}!\n"
+                    f"🏛️ The official trial is now in session in {self.court_channel.mention} ➡️ [**Jump to Courtroom**]({self.summons_message.jump_url})"
                 )
-        except Exception as e:
-            print(f"[Court] Error sending summons message: {e}", flush=True)
-            if self.channel:
-                try:
+                if self.interaction and self.interaction.response.is_done():
+                    await self.interaction.followup.send(content=redirect_notice)
+                elif self.interaction and not self.interaction.response.is_done():
+                    await self.interaction.response.send_message(content=redirect_notice)
+                elif self.origin_channel:
+                    await self.origin_channel.send(content=redirect_notice)
+            except Exception as e:
+                print(f"[Court] Error sending courtroom summons: {e}", flush=True)
+                if self.origin_channel:
+                    self.summons_message = await self.origin_channel.send(
+                        content=content_text,
+                        embed=embed,
+                        view=self.summons_view
+                    )
+        else:
+            try:
+                if self.interaction and self.interaction.response.is_done():
+                    self.summons_message = await self.interaction.followup.send(
+                        content=content_text,
+                        embed=embed,
+                        view=self.summons_view,
+                        wait=True
+                    )
+                elif self.interaction and not self.interaction.response.is_done():
+                    await self.interaction.response.send_message(
+                        content=content_text,
+                        embed=embed,
+                        view=self.summons_view
+                    )
+                    self.summons_message = await self.interaction.original_response()
+                elif self.channel:
                     self.summons_message = await self.channel.send(
                         content=content_text,
                         embed=embed,
                         view=self.summons_view
                     )
-                except Exception as ex:
-                    print(f"[Court] Channel fallback failed: {ex}", flush=True)
+            except Exception as e:
+                print(f"[Court] Error sending summons message: {e}", flush=True)
+                if self.channel:
+                    try:
+                        self.summons_message = await self.channel.send(
+                            content=content_text,
+                            embed=embed,
+                            view=self.summons_view
+                        )
+                    except Exception as ex:
+                        print(f"[Court] Channel fallback failed: {ex}", flush=True)
 
     async def receive_plaintiff_statement(self, interaction: discord.Interaction, statement: str):
         self.plaintiff_statement = statement
@@ -687,10 +734,10 @@ class TrialRunner:
         self._record_case(verdict="GUILTY", rationale="Default judgment entered for contempt of court.", sentence="Fined and reprimanded for dodging summons.")
 
     async def proceed_to_trial(self):
-        # Deep evidence scanner (scans up to 250 messages back)
+        # Deep evidence scanner (scans up to 250 messages back from the evidence channel!)
         evidence_limit = int(self.cfg.get("evidence_limit", 15))
         self.chat_evidence = await self.cog.fetch_filtered_evidence(
-            channel=self.channel,
+            channel=self.evidence_channel,
             plaintiff_id=self.plaintiff.id,
             defendant_id=self.defendant.id,
             charges=self.charges,
@@ -708,6 +755,7 @@ class TrialRunner:
             evidence_summary_lines.append("*No recent direct dispute dialogue between the parties was found in channel history.*")
 
         evidence_text = "\n".join(evidence_summary_lines)
+        channel_note = f" (Subpoenaed from #{self.evidence_channel.name})" if (self.evidence_channel and hasattr(self.evidence_channel, "id") and self.evidence_channel.id != self.channel.id) else ""
 
         docket_embed = discord.Embed(
             title=f"📜 DOCKET {self.case_id}: EVIDENCE & STATEMENTS",
@@ -715,7 +763,7 @@ class TrialRunner:
                 f"**Plaintiff's Allegations:**\n> *\"{self.charges}\"*\n"
                 f"{f'**Plaintiff Statement:** {self.plaintiff_statement}' if self.plaintiff_statement else ''}\n\n"
                 f"**Defendant's Defense:**\n> *\"{self.defendant_statement}\"*\n\n"
-                f"**Subpoenaed Chat Evidence (Deep Scanned Dispute Dialogue, {len(self.chat_evidence)} Messages):**\n"
+                f"**Subpoenaed Chat Evidence{channel_note} ({len(self.chat_evidence)} Messages):**\n"
                 f"{evidence_text}\n\n"
                 f"🏛️ **THE FLOOR IS NOW OPEN TO THE SERVER JURY!**\n"
                 f"Members of the server, cast your vote below! Does the defendant walk free, or are they guilty as charged?"
@@ -983,18 +1031,6 @@ class Court(commands.Cog):
         if message.author.id == interaction.user.id:
             await interaction.response.send_message("⚖️ You cannot sue yourself in the Court of Friday! Self-reflection is completely free.", ephemeral=True)
             return
-
-        court_channel_id = cfg.get("court_channel")
-        if court_channel_id:
-            try:
-                cid_int = int(str(court_channel_id).strip())
-                if cid_int and cid_int != interaction.channel_id:
-                    ch = interaction.guild.get_channel(cid_int)
-                    if ch:
-                        await interaction.response.send_message(f"⚖️ Court sessions are restricted to {ch.mention}. Please file your lawsuit there!", ephemeral=True)
-                        return
-            except (ValueError, TypeError):
-                pass
 
         if self.is_trial_active(gid):
             await interaction.response.send_message("⚖️ Another trial is currently in session in this server! Chief Justice Friday demands decorum—please wait for the current docket to conclude.", ephemeral=True)
@@ -1586,18 +1622,6 @@ class Court(commands.Cog):
         if defendant.id == interaction.user.id:
             await reply_error("⚖️ You cannot sue yourself in the Court of Friday! Self-reflection is completely free.")
             return
-
-        court_channel_id = cfg.get("court_channel")
-        if court_channel_id:
-            try:
-                cid_int = int(str(court_channel_id).strip())
-                if cid_int and cid_int != interaction.channel_id:
-                    ch = interaction.guild.get_channel(cid_int)
-                    if ch:
-                        await reply_error(f"⚖️ Court sessions are restricted to the official courtroom: {ch.mention}. Please file your lawsuit there!")
-                        return
-            except (ValueError, TypeError):
-                pass
 
         if self.is_trial_active(gid):
             await reply_error("⚖️ Another trial is currently in session in this server! Chief Justice Friday demands decorum—please wait for the current docket to conclude.")
