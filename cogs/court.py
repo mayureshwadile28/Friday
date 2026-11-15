@@ -241,8 +241,9 @@ class TrialRunner:
     def __init__(self, cog, interaction: discord.Interaction, defendant: discord.Member, charges: str, initial_statement: Optional[str] = None):
         self.cog = cog
         self.bot = cog.bot
+        self.interaction = interaction
         self.guild = interaction.guild
-        self.channel = interaction.channel
+        self.channel = interaction.channel or (interaction.guild.get_channel(interaction.channel_id) if interaction.guild else None)
         self.plaintiff = interaction.user
         self.defendant = defendant
         self.charges = charges
@@ -250,7 +251,7 @@ class TrialRunner:
         self.defendant_statement = ""
         self.plea = None
         self.case_id = generate_case_id()
-        self.cfg = get_court_config(str(self.guild.id))
+        self.cfg = get_court_config(str(self.guild.id) if self.guild else "")
         self.summons_message: Optional[discord.Message] = None
         self.summons_view: Optional[CourtSummonsView] = None
         self.jury_message: Optional[discord.Message] = None
@@ -284,11 +285,41 @@ class TrialRunner:
         embed.timestamp = discord.utils.utcnow()
 
         self.summons_view = CourtSummonsView(self, self.defendant, self.plaintiff, timeout=timeout_sec)
-        self.summons_message = await self.channel.send(
-            content=f"🔔 **COURT CONVENED!** {self.defendant.mention}, you have been sued by {self.plaintiff.mention}!",
-            embed=embed,
-            view=self.summons_view
-        )
+        content_text = f"🔔 **COURT CONVENED!** {self.defendant.mention}, you have been sued by {self.plaintiff.mention}!"
+
+        # Send response through interaction followup so Discord NEVER times out
+        try:
+            if self.interaction and self.interaction.response.is_done():
+                self.summons_message = await self.interaction.followup.send(
+                    content=content_text,
+                    embed=embed,
+                    view=self.summons_view,
+                    wait=True
+                )
+            elif self.interaction and not self.interaction.response.is_done():
+                await self.interaction.response.send_message(
+                    content=content_text,
+                    embed=embed,
+                    view=self.summons_view
+                )
+                self.summons_message = await self.interaction.original_response()
+            elif self.channel:
+                self.summons_message = await self.channel.send(
+                    content=content_text,
+                    embed=embed,
+                    view=self.summons_view
+                )
+        except Exception as e:
+            print(f"[Court] Error sending summons message: {e}", flush=True)
+            if self.channel:
+                try:
+                    self.summons_message = await self.channel.send(
+                        content=content_text,
+                        embed=embed,
+                        view=self.summons_view
+                    )
+                except Exception as ex:
+                    print(f"[Court] Channel fallback also failed: {ex}", flush=True)
 
     async def receive_plaintiff_statement(self, interaction: discord.Interaction, statement: str):
         self.plaintiff_statement = statement
@@ -605,6 +636,8 @@ class Court(commands.Cog):
         Captures only the direct dialogue between the plaintiff and defendant.
         """
         evidence = []
+        if not channel or not hasattr(channel, "history"):
+            return evidence
         try:
             async for m in channel.history(limit=80):
                 if m.author.bot:
@@ -832,56 +865,88 @@ class Court(commands.Cog):
         charges: str,
         statement: Optional[str] = None
     ):
+        # 1. Immediate acknowledgment so Discord NEVER times out ("The application did not respond")
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=False)
+            except Exception as e:
+                print(f"[Court] Defer notice in sue: {e}", flush=True)
+
+        async def reply_error(msg: str):
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(msg, ephemeral=True)
+                else:
+                    await interaction.response.send_message(msg, ephemeral=True)
+            except Exception:
+                pass
+
+        if not interaction.guild:
+            await reply_error("🔒 Court commands can only be executed inside a server.")
+            return
+
         gid = str(interaction.guild_id)
         cfg = get_court_config(gid)
 
         if not cfg.get("enabled", True):
-            await interaction.response.send_message("⚖️ The Court of Friday is currently closed by the server administration.", ephemeral=True)
+            await reply_error("⚖️ The Court of Friday is currently closed by the server administration.")
             return
 
-        if defendant.bot:
-            await interaction.response.send_message("🤖 Chief Justice Friday refuses to litigate artificial intelligence. Sue a human mortal instead!", ephemeral=True)
+        if getattr(defendant, "bot", False):
+            await reply_error("🤖 Chief Justice Friday refuses to litigate artificial intelligence. Sue a human mortal instead!")
             return
 
         if defendant.id == interaction.user.id:
-            await interaction.response.send_message("⚖️ You cannot sue yourself in the Court of Friday! Self-reflection is completely free.", ephemeral=True)
+            await reply_error("⚖️ You cannot sue yourself in the Court of Friday! Self-reflection is completely free.")
             return
 
         court_channel_id = cfg.get("court_channel")
-        if court_channel_id and int(court_channel_id) != interaction.channel_id:
-            ch = interaction.guild.get_channel(int(court_channel_id))
-            if ch:
-                await interaction.response.send_message(
-                    f"⚖️ Court sessions are restricted to the official courtroom: {ch.mention}. Please file your lawsuit there!",
-                    ephemeral=True
-                )
-                return
+        if court_channel_id:
+            try:
+                cid_int = int(str(court_channel_id).strip())
+                if cid_int and cid_int != interaction.channel_id:
+                    ch = interaction.guild.get_channel(cid_int)
+                    if ch:
+                        await reply_error(f"⚖️ Court sessions are restricted to the official courtroom: {ch.mention}. Please file your lawsuit there!")
+                        return
+            except (ValueError, TypeError):
+                pass
 
         if self.is_trial_active(gid):
-            await interaction.response.send_message(
-                "⚖️ Another trial is currently in session in this server! Chief Justice Friday demands decorum—please wait for the current docket to conclude.",
-                ephemeral=True
-            )
+            await reply_error("⚖️ Another trial is currently in session in this server! Chief Justice Friday demands decorum—please wait for the current docket to conclude.")
             return
 
-        await interaction.response.defer()
-
-        trial = TrialRunner(
-            cog=self,
-            interaction=interaction,
-            defendant=defendant,
-            charges=charges,
-            initial_statement=statement
-        )
-        self.set_active_trial(gid, trial.case_id)
-        await trial.start()
+        try:
+            trial = TrialRunner(
+                cog=self,
+                interaction=interaction,
+                defendant=defendant,
+                charges=charges,
+                initial_statement=statement
+            )
+            self.set_active_trial(gid, trial.case_id)
+            await trial.start()
+        except Exception as e:
+            self.clear_active_trial(gid)
+            import traceback
+            traceback.print_exc()
+            await reply_error(f"⚠️ Failed to convene the Court of Friday: {e}")
 
     @court_group.command(name="docket", description="View the case history and verdict for a specific case.")
     @app_commands.describe(case_id="The docket case ID (e.g. CASE-1234)")
     async def docket(self, interaction: discord.Interaction, case_id: str):
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer()
+            except Exception:
+                pass
+
         cid = case_id.strip().upper()
         if not hasattr(db, "court_cases") or not isinstance(db.court_cases, dict) or cid not in db.court_cases:
-            await interaction.response.send_message(f"❌ Case `{cid}` was not found in the Court archives.", ephemeral=True)
+            if interaction.response.is_done():
+                await interaction.followup.send(f"❌ Case `{cid}` was not found in the Court archives.", ephemeral=True)
+            else:
+                await interaction.response.send_message(f"❌ Case `{cid}` was not found in the Court archives.", ephemeral=True)
             return
 
         c = db.court_cases[cid]
@@ -907,13 +972,22 @@ class Court(commands.Cog):
             color=0x3B82F6
         )
         embed.set_footer(text=f"Court of Friday Archive • {cid}")
-        await interaction.response.send_message(embed=embed)
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed)
 
     @court_group.command(name="records", description="Check the court litigation record and conviction stats of a member.")
     @app_commands.describe(user="The member whose court record to view (defaults to yourself)")
     async def records(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer()
+            except Exception:
+                pass
+
         target = user or interaction.user
-        gid = str(interaction.guild_id)
+        gid = str(interaction.guild_id) if interaction.guild_id else ""
         rec = get_user_court_record(gid, str(target.id))
 
         sued_others = rec.get("sued_others", 0)
@@ -952,17 +1026,30 @@ class Court(commands.Cog):
         if target.display_avatar:
             embed.set_thumbnail(url=target.display_avatar.url)
         embed.set_footer(text="Court of Friday Registry • Records are permanent and immutable")
-        await interaction.response.send_message(embed=embed)
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed)
 
     @court_group.command(name="leaderboard", description="View the server's top litigators and most convicted cappers.")
     async def leaderboard(self, interaction: discord.Interaction):
-        gid = str(interaction.guild_id)
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer()
+            except Exception:
+                pass
+
+        gid = str(interaction.guild_id) if interaction.guild_id else ""
         if not hasattr(db, "court_records") or not isinstance(db.court_records, dict):
             db.court_records = {}
         g_recs = db.court_records.get(gid, {})
 
         if not g_recs:
-            await interaction.response.send_message("⚖️ No court records or trials have been conducted in this server yet!", ephemeral=True)
+            msg = "⚖️ No court records or trials have been conducted in this server yet!"
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
             return
 
         # Top Cappers (Most convictions)
@@ -997,25 +1084,42 @@ class Court(commands.Cog):
             color=0xF59E0B
         )
         embed.set_footer(text="Court of Friday Leaderboard • Updated Live")
-        await interaction.response.send_message(embed=embed)
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.response.send_message(embed=embed)
 
     @court_group.command(name="pardon", description="Pardon a convicted member and remove any active penalty role (Staff/Admin only).")
     @app_commands.describe(user="The member to pardon")
     @app_commands.default_permissions(administrator=True)
     async def pardon(self, interaction: discord.Interaction, user: discord.Member):
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
+        if not interaction.guild:
+            msg = "🔒 This command can only be executed in a server."
+            if interaction.response.is_done():
+                await interaction.followup.send(msg, ephemeral=True)
+            else:
+                await interaction.response.send_message(msg, ephemeral=True)
+            return
+
         gid = str(interaction.guild_id)
         cfg = get_court_config(gid)
         guilty_role_id = cfg.get("guilty_role")
 
         removed = False
         if guilty_role_id:
-            role = interaction.guild.get_role(int(guilty_role_id))
-            if role and role in user.roles:
-                try:
+            try:
+                role = interaction.guild.get_role(int(str(guilty_role_id).strip()))
+                if role and role in user.roles:
                     await user.remove_roles(role, reason=f"Pardoned by {interaction.user.display_name}")
                     removed = True
-                except Exception as e:
-                    print(f"[Court] Pardon role removal error: {e}")
+            except Exception as e:
+                print(f"[Court] Pardon role removal error: {e}")
 
         # Update any pending cases for this user to expired
         if hasattr(db, "court_cases") and isinstance(db.court_cases, dict):
@@ -1038,8 +1142,12 @@ class Court(commands.Cog):
             ),
             color=0x10B981
         )
-        await interaction.response.send_message(embed=embed)
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Court(bot))
+
