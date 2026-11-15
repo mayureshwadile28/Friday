@@ -25789,6 +25789,30 @@ window.loadPrefixSettings = async function() {
 
             renderPrefixRoles();
             renderPrefixMembers();
+
+            // Populate and select dedicated member commands channel
+            const chanSelect = document.getElementById('memberCommandsChannelSelect');
+            if (chanSelect) {
+                try {
+                    const cResp = await fetch(`/api/guild/${currentGuildId}/channels`);
+                    const cData = await cResp.json();
+                    const channels = Array.isArray(cData) ? cData : (cData.channels || []);
+                    chanSelect.innerHTML = '<option value="">Allow in All Channels (No restriction)</option>';
+                    channels.forEach(ch => {
+                        if (ch.type === 0 || ch.type === 'text' || !ch.type) {
+                            const opt = document.createElement('option');
+                            opt.value = ch.id;
+                            opt.textContent = '#' + (ch.name || ch.id);
+                            chanSelect.appendChild(opt);
+                        }
+                    });
+                    if (res.command_channel) {
+                        chanSelect.value = String(res.command_channel);
+                    }
+                } catch (ce) {
+                    console.error('Error populating command channels:', ce);
+                }
+            }
         }
     } catch (e) {
         console.error('Error loading prefix settings:', e);
@@ -25802,6 +25826,9 @@ window.savePrefixSettings = async function() {
         return showToast('⚠️ Prefix cannot be longer than 5 characters!');
     }
 
+    const chanSelect = document.getElementById('memberCommandsChannelSelect');
+    const command_channel = chanSelect ? chanSelect.value.trim() : '';
+
     const commands = {
         purge: document.getElementById('prefixCmd_purge') ? document.getElementById('prefixCmd_purge').checked : true,
         lock: document.getElementById('prefixCmd_lock') ? document.getElementById('prefixCmd_lock').checked : true,
@@ -25812,6 +25839,7 @@ window.savePrefixSettings = async function() {
 
     const payload = {
         prefix,
+        command_channel,
         whitelist: {
             roles: prefixWhitelistedRoles,
             members: prefixWhitelistedMembers,

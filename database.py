@@ -1,10 +1,13 @@
 import json
 import os
+import threading
+import tempfile
 
 DATA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "friday_memory.json")
 
 class Database:
     def __init__(self):
+        self._lock = threading.Lock()
         self.reload()
 
     def reload(self):
@@ -89,6 +92,8 @@ class Database:
         self.prefix_whitelist = pw if isinstance(pw, dict) else {}
         srr = self.data.get("saved_reaction_roles")
         self.saved_reaction_roles = srr if isinstance(srr, dict) else {}
+        bcc = self.data.get("bot_command_channels")
+        self.bot_command_channels = bcc if isinstance(bcc, dict) else {}
 
     def load_data(self):
         try:
@@ -153,7 +158,8 @@ class Database:
                 "locked_channels": {},
                 "custom_prefixes": {},
                 "prefix_whitelist": {},
-                "saved_reaction_roles": {}
+                "saved_reaction_roles": {},
+                "bot_command_channels": {}
             }
 
     def reload(self):
@@ -182,24 +188,44 @@ class Database:
         return default_val
 
     def save_data(self):
-        disk_data = {}
-        try:
-            if os.path.exists(DATA_FILE):
-                with open(DATA_FILE, "r", encoding="utf-8") as f:
-                    disk_data = json.load(f)
-        except Exception:
-            pass
+        lock = getattr(self, "_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._lock = lock
 
-        payload = {}
-        if hasattr(self, "data") and isinstance(self.data, dict):
-            payload.update(self.data)
-        if isinstance(disk_data, dict):
-            payload.update(disk_data)
-        for k, v in self.__dict__.items():
-            if k != "data" and not k.startswith("_"):
-                payload[k] = v
-        self.data = payload
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(payload, f, indent=4)
+        with lock:
+            disk_data = {}
+            try:
+                if os.path.exists(DATA_FILE):
+                    with open(DATA_FILE, "r", encoding="utf-8") as f:
+                        disk_data = json.load(f)
+            except Exception:
+                pass
+
+            payload = {}
+            if hasattr(self, "data") and isinstance(self.data, dict):
+                payload.update(self.data)
+            if isinstance(disk_data, dict):
+                payload.update(disk_data)
+            for k, v in self.__dict__.items():
+                if k != "data" and not k.startswith("_"):
+                    payload[k] = v
+            self.data = payload
+
+            # Atomic save: write to temporary file first, then atomically replace
+            dir_name = os.path.dirname(DATA_FILE) or "."
+            tmp_fd, tmp_path = tempfile.mkstemp(dir=dir_name, prefix="friday_mem_", suffix=".tmp")
+            try:
+                with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=4)
+                os.replace(tmp_path, DATA_FILE)
+            except Exception:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except Exception:
+                        pass
+                with open(DATA_FILE, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, indent=4)
 
 db = Database()

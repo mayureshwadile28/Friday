@@ -162,7 +162,9 @@ class AntiAbuse(commands.Cog):
         
         triggered_word = None
         for word in word_list:
-            if re.search(rf'\b{re.escape(word)}\b', content_lower):
+            if not word or not str(word).strip():
+                continue
+            if re.search(rf'\b{re.escape(str(word).strip())}\b', content_lower):
                 triggered_word = word
                 break
         
@@ -213,7 +215,9 @@ class AntiAbuse(commands.Cog):
         
         triggered_word = None
         for word in word_list:
-            if re.search(rf'\b{re.escape(word)}\b', content_lower):
+            if not word or not str(word).strip():
+                continue
+            if re.search(rf'\b{re.escape(str(word).strip())}\b', content_lower):
                 triggered_word = word
                 break
         

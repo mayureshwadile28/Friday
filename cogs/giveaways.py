@@ -1192,17 +1192,22 @@ class Giveaways(commands.Cog):
             entries.append(payload.user_id)
             db.save_data()
 
-            # Update button entry counter on the message
-            try:
-                channel = self.bot.get_channel(payload.channel_id) or await self.bot.fetch_channel(payload.channel_id)
-                msg = await channel.fetch_message(payload.message_id)
-                cfg = get_giveaway_config(payload.guild_id)
-                emoji_prize = cfg.get("emoji_prize", "🎁")
-                emoji_parts = cfg.get("emoji_participants", "👥")
-                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize, emoji_participants=emoji_parts)
-                await msg.edit(view=view)
-            except Exception:
-                pass
+            # Update button entry counter on the message (debounced to protect Discord API rate limits)
+            now = time.time()
+            if not hasattr(self, "_last_reaction_edit"):
+                self._last_reaction_edit = {}
+            if (now - self._last_reaction_edit.get(key, 0)) >= 3.0:
+                self._last_reaction_edit[key] = now
+                try:
+                    channel = self.bot.get_channel(payload.channel_id) or await self.bot.fetch_channel(payload.channel_id)
+                    msg = await channel.fetch_message(payload.message_id)
+                    cfg = get_giveaway_config(payload.guild_id)
+                    emoji_prize = cfg.get("emoji_prize", "🎁")
+                    emoji_parts = cfg.get("emoji_participants", "👥")
+                    view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize, emoji_participants=emoji_parts)
+                    await msg.edit(view=view)
+                except Exception:
+                    pass
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
@@ -1220,16 +1225,21 @@ class Giveaways(commands.Cog):
             entries.remove(payload.user_id)
             db.save_data()
 
-            try:
-                channel = self.bot.get_channel(payload.channel_id) or await self.bot.fetch_channel(payload.channel_id)
-                msg = await channel.fetch_message(payload.message_id)
-                cfg = get_giveaway_config(payload.guild_id)
-                emoji_prize = cfg.get("emoji_prize", "🎁")
-                emoji_parts = cfg.get("emoji_participants", "👥")
-                view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize, emoji_participants=emoji_parts)
-                await msg.edit(view=view)
-            except Exception:
-                pass
+            now = time.time()
+            if not hasattr(self, "_last_reaction_edit"):
+                self._last_reaction_edit = {}
+            if (now - self._last_reaction_edit.get(key, 0)) >= 3.0:
+                self._last_reaction_edit[key] = now
+                try:
+                    channel = self.bot.get_channel(payload.channel_id) or await self.bot.fetch_channel(payload.channel_id)
+                    msg = await channel.fetch_message(payload.message_id)
+                    cfg = get_giveaway_config(payload.guild_id)
+                    emoji_prize = cfg.get("emoji_prize", "🎁")
+                    emoji_parts = cfg.get("emoji_participants", "👥")
+                    view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), emoji=emoji_prize, emoji_participants=emoji_parts)
+                    await msg.edit(view=view)
+                except Exception:
+                    pass
 
     @tasks.loop(seconds=10)
     async def giveaway_checker(self):

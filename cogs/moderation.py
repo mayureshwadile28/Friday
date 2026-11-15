@@ -223,6 +223,7 @@ class Moderation(commands.Cog):
         if not await self.require_mod_permission(interaction, "manage_messages", "Manage Messages"):
             return
         await interaction.response.defer(ephemeral=True)
+        amount = max(1, min(amount, 100))
         gid = str(interaction.guild.id)
         try:
             deleted = await interaction.channel.purge(limit=amount)
@@ -731,119 +732,6 @@ class Moderation(commands.Cog):
             db.warnings[gid][uid] = []
             db.save_data()
             await reply_box(interaction, f"Successfully cleared all **{count}** warning(s) for {member.mention}.", title="WARNINGS CLEARED", status="success")
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.author.bot or not message.guild:
-            return
-
-        # Trigger 1: Nickname Change via Mention: @Friday nick @User [New Nickname] OR @Friday @User [New Nickname]
-        bot_mention_str1 = f"<@{self.bot.user.id}>"
-        bot_mention_str2 = f"<@!{self.bot.user.id}>"
-
-        raw_content = message.content.strip()
-        if raw_content.startswith(bot_mention_str1) or raw_content.startswith(bot_mention_str2):
-            import re
-            parts = raw_content.split()
-            if len(parts) >= 2:
-                # Detect explicit nickname commands or mention syntax
-                is_explicit_cmd = False
-                target_member = None
-                new_nickname = None
-
-                # Format A: @Friday nick/setnick/nickname @User [New Nickname]
-                if parts[1].lower() in ("nick", "setnick", "nickname", "resetnick") and len(parts) >= 3:
-                    is_explicit_cmd = True
-                    target_match = re.match(r'^<@!?(\d+)>$', parts[2])
-                    if target_match:
-                        target_member = message.guild.get_member(int(target_match.group(1)))
-                        if parts[1].lower() != "resetnick" and len(parts) > 3:
-                            new_nickname = " ".join(parts[3:])
-
-                # Format B: @Friday @User [New Nickname]
-                else:
-                    target_match = re.match(r'^<@!?(\d+)>$', parts[1])
-                    if target_match:
-                        potential_target = message.guild.get_member(int(target_match.group(1)))
-                        if potential_target:
-                            remainder = " ".join(parts[2:]).strip()
-                            # Check conversational indicators: question marks, common question/chat words, or long sentences
-                            conversational_keywords = re.compile(
-                                r'(?:who|what|why|where|when|how|is|are|tell|help|kya|kaun|kaise|kaisi|batao|kyun|kaisa|hi|hello|hey|listen|sun|suno)|\?',
-                                re.IGNORECASE
-                            )
-                            # If it looks conversational or has question marks, ignore in moderation cog and let AI handle it!
-                            if not conversational_keywords.search(remainder) and len(remainder) <= 32 and len(parts[2:]) <= 3:
-                                target_member = potential_target
-                                new_nickname = remainder if remainder else None
-                                is_explicit_cmd = len(parts) == 2 or bool(remainder)
-
-                if target_member:
-                    perms = message.author.guild_permissions
-                    gid = str(message.guild.id)
-
-                    # 1. Author Permission Check
-                    if not (perms.administrator or perms.manage_nicknames):
-                        # If user typed an explicit nickname command without permission, reject cleanly
-                        if is_explicit_cmd and (parts[1].lower() in ("nick", "setnick", "nickname", "resetnick") or len(parts) == 2):
-                            err_tpl = db.custom_responses.get(gid, {}).get("nick_perm_err", "Only staff with Manage Nicknames or Administrator permissions can change nicknames.")
-                            embed = make_box_embed(title="ACCESS DENIED", description=err_tpl, status="danger")
-                            await message.reply(embed=embed, mention_author=False)
-                            return
-                        # Otherwise, let Friday AI conversationally answer the comment/question!
-                        return
-
-                    # 2. Server Owner Protection Check
-                    if target_member.id == message.guild.owner_id and message.author.id != message.guild.owner_id:
-                        embed = make_box_embed(
-                            title="HIERARCHY RESTRICTION",
-                            description="You cannot change the nickname of the Server Owner.",
-                            status="danger"
-                        )
-                        await message.reply(embed=embed, mention_author=False)
-                        return
-
-                    # 3. Author Role Hierarchy Check
-                    if target_member.top_role >= message.author.top_role and message.author.id != message.guild.owner_id:
-                        embed = make_box_embed(
-                            title="HIERARCHY RESTRICTION",
-                            description=f"You cannot modify {target_member.mention}'s nickname because their role is higher than or equal to yours.",
-                            status="danger"
-                        )
-                        await message.reply(embed=embed, mention_author=False)
-                        return
-
-                    # 4. Friday Bot Role Hierarchy Check
-                    if target_member.top_role >= message.guild.me.top_role or target_member.id == message.guild.owner_id:
-                        err_tpl = db.custom_responses.get(gid, {}).get("nick_bot_err", "Friday does not have permission or role hierarchy to modify this user's nickname.")
-                        embed = make_box_embed(title="PERMISSION FAULT", description=err_tpl, status="danger")
-                        await message.reply(embed=embed, mention_author=False)
-                        return
-
-                    # 5. Execute Nickname Update
-                    try:
-                        await target_member.edit(nick=new_nickname, reason=f"Nickname update commanded by {message.author.name} ({message.author.id})")
-                        if new_nickname:
-                            resp_tpl = db.custom_responses.get(gid, {}).get("nick_success", "Nickname of {member} changed to **{nick}**.")
-                            desc = resp_tpl.replace("{member}", target_member.mention).replace("{nick}", new_nickname)
-                            embed = make_box_embed(title="NICKNAME UPDATED", description=desc, status="success")
-                            await message.reply(embed=embed, mention_author=False)
-                        else:
-                            resp_tpl = db.custom_responses.get(gid, {}).get("nick_reset", "Nickname of {member} has been successfully reset.")
-                            desc = resp_tpl.replace("{member}", target_member.mention)
-                            embed = make_box_embed(title="NICKNAME RESET", description=desc, status="success")
-                            await message.reply(embed=embed, mention_author=False)
-                        return
-                    except discord.Forbidden:
-                        err_tpl = db.custom_responses.get(gid, {}).get("nick_bot_err", "Friday does not have permission or role hierarchy to modify this user's nickname.")
-                        embed = make_box_embed(title="PERMISSION FAULT", description=err_tpl, status="danger")
-                        await message.reply(embed=embed, mention_author=False)
-                        return
-                    except Exception as e:
-                        embed = make_box_embed(title="EXECUTION ERROR", description=f"Error changing nickname: {e}", status="danger")
-                        await message.reply(embed=embed, mention_author=False)
-                        return
-
 
     # ───────────────────── Voice Move Commands ─────────────────────
 
@@ -1610,28 +1498,263 @@ class Moderation(commands.Cog):
         except Exception:
             pass
 
+    async def _execute_nickname_change(self, message: discord.Message, target_user_input, new_nickname: Optional[str]):
+        """Robust handler for changing/resetting member nicknames via mention or !nick command."""
+        gid = str(message.guild.id)
+        author = message.author
+        guild = message.guild
+
+        # 1. Resolve Target Member
+        target_member = None
+        if isinstance(target_user_input, discord.Member):
+            target_member = target_user_input
+        elif isinstance(target_user_input, str):
+            m = re.match(r'^<@!?(\d+)>$', target_user_input.strip())
+            uid = int(m.group(1)) if m else (int(target_user_input) if target_user_input.isdigit() else None)
+            if uid:
+                target_member = guild.get_member(uid)
+                if not target_member:
+                    try:
+                        target_member = await guild.fetch_member(uid)
+                    except Exception:
+                        target_member = None
+
+        if not target_member:
+            embed = make_box_embed(title="MEMBER NOT FOUND", description="Could not find or fetch the specified member in this server.", status="danger")
+            await message.reply(embed=embed, mention_author=False)
+            return
+
+        # 2. Permission Check for Command Author
+        perms = author.guild_permissions
+        is_staff = bool(perms.administrator or perms.manage_nicknames or author.id == guild.owner_id)
+        if not is_staff:
+            err_tpl = db.custom_responses.get(gid, {}).get("nick_perm_err", "Only staff with Manage Nicknames or Administrator permissions can change nicknames.")
+            embed = make_box_embed(title="ACCESS DENIED", description=err_tpl, status="danger")
+            await message.reply(embed=embed, mention_author=False)
+            return
+
+        # 3. Server Owner Protection Check
+        if target_member.id == guild.owner_id and author.id != guild.owner_id:
+            embed = make_box_embed(
+                title="HIERARCHY RESTRICTION",
+                description="You cannot change the nickname of the Server Owner.",
+                status="danger"
+            )
+            await message.reply(embed=embed, mention_author=False)
+            return
+
+        # 4. Author Role Hierarchy Check
+        if target_member.top_role >= author.top_role and author.id != guild.owner_id:
+            embed = make_box_embed(
+                title="HIERARCHY RESTRICTION",
+                description=f"You cannot modify {target_member.mention}'s nickname because their role is higher than or equal to yours.",
+                status="danger"
+            )
+            await message.reply(embed=embed, mention_author=False)
+            return
+
+        # 5. Friday Bot Role Hierarchy & Permission Check
+        me = guild.me
+        if not me.guild_permissions.manage_nicknames:
+            embed = make_box_embed(title="PERMISSION FAULT", description="Friday lacks the **Manage Nicknames** permission in this server.", status="danger")
+            await message.reply(embed=embed, mention_author=False)
+            return
+
+        if target_member.top_role >= me.top_role or target_member.id == guild.owner_id:
+            err_tpl = db.custom_responses.get(gid, {}).get("nick_bot_err", "Friday does not have sufficient role hierarchy to modify this user's nickname. Please drag Friday's role higher than the member's role.")
+            embed = make_box_embed(title="PERMISSION FAULT", description=err_tpl, status="danger")
+            await message.reply(embed=embed, mention_author=False)
+            return
+
+        # 6. Nickname Length Check
+        if new_nickname:
+            new_nickname = new_nickname.strip()
+            if len(new_nickname) > 32:
+                embed = make_box_embed(title="INVALID NICKNAME", description="Discord nicknames must be 32 characters or fewer.", status="danger")
+                await message.reply(embed=embed, mention_author=False)
+                return
+            if not new_nickname:
+                new_nickname = None
+
+        # 7. Apply Nickname Update
+        try:
+            await target_member.edit(nick=new_nickname, reason=f"Nickname update commanded by {author.name} ({author.id})")
+            if new_nickname:
+                resp_tpl = db.custom_responses.get(gid, {}).get("nick_success", "Nickname of {member} changed to **{nick}**.")
+                desc = resp_tpl.replace("{member}", target_member.mention).replace("{nick}", new_nickname)
+                embed = make_box_embed(title="NICKNAME UPDATED", description=desc, status="success")
+                await message.reply(embed=embed, mention_author=False)
+            else:
+                resp_tpl = db.custom_responses.get(gid, {}).get("nick_reset", "Nickname of {member} has been successfully reset.")
+                desc = resp_tpl.replace("{member}", target_member.mention)
+                embed = make_box_embed(title="NICKNAME RESET", description=desc, status="success")
+                await message.reply(embed=embed, mention_author=False)
+        except discord.Forbidden:
+            err_tpl = db.custom_responses.get(gid, {}).get("nick_bot_err", "Friday does not have permission or role hierarchy to modify this user's nickname.")
+            embed = make_box_embed(title="PERMISSION FAULT", description=err_tpl, status="danger")
+            await message.reply(embed=embed, mention_author=False)
+        except Exception as e:
+            embed = make_box_embed(title="EXECUTION ERROR", description=f"Error changing nickname: {e}", status="danger")
+            await message.reply(embed=embed, mention_author=False)
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        """Custom Prefix Engine exclusively for Server Owner and whitelisted staff members/roles.
-        Supported prefix commands: purge, lock, unlock, ban, tm (timeout).
-        Normal members cannot invoke these commands."""
+        """Unified message processor handling:
+        1. Nickname Changes via Bot Mention: @Friday @User [New Nickname] or @Friday nick @User [New Nickname]
+        2. Prefix Commands:
+           - Staff Moderation: purge, lock, unlock, ban, tm, nick
+           - Member Features (Channel-Restricted): rank, level, lvl, lb, m, stats
+        """
         if not message.guild or message.author.bot:
             return
 
         gid = str(message.guild.id)
+        raw_content = message.content.strip()
+
+        # ─── Trigger 1: Nickname Change via Bot Mention ───
+        bot_id = self.bot.user.id if self.bot.user else 0
+        if bot_id and (raw_content.startswith(f"<@{bot_id}>") or raw_content.startswith(f"<@!{bot_id}>")):
+            parts = raw_content.split()
+            if len(parts) >= 2:
+                # Format A: @Friday nick/setnick/nickname/resetnick @User [New Nickname]
+                if parts[1].lower() in ("nick", "setnick", "nickname", "resetnick") and len(parts) >= 3:
+                    new_nick = " ".join(parts[3:]).strip() if len(parts) > 3 and parts[1].lower() != "resetnick" else None
+                    await self._execute_nickname_change(message, parts[2], new_nick)
+                    return
+                # Format B: @Friday @User [New Nickname]
+                elif re.match(r'^<@!?\d+>$', parts[1]):
+                    target_match = re.match(r'^<@!?(\d+)>$', parts[1])
+                    if target_match and int(target_match.group(1)) != bot_id:
+                        remainder = " ".join(parts[2:]).strip() if len(parts) > 2 else None
+                        if remainder and ("?" in remainder):
+                            # Conversational question for Friday AI chat, do not intercept!
+                            return
+                        await self._execute_nickname_change(message, parts[1], remainder)
+                        return
+
+        # ─── Trigger 2: Prefix Engine ───
         prefix = db.custom_prefixes.get(gid, "!")
-        content = message.content.strip()
-        if not content.startswith(prefix):
+        if not raw_content.startswith(prefix):
             return
 
-        cmd_raw = content[len(prefix):].strip()
+        cmd_raw = raw_content[len(prefix):].strip()
         if not cmd_raw:
             return
 
         parts = cmd_raw.split()
         cmd_name = parts[0].lower()
 
-        # Strict set of essential staff prefix commands
+        # A. Nickname Command via Prefix: !nick @user [New Nickname]
+        if cmd_name in ("nick", "setnick", "nickname", "resetnick"):
+            if len(parts) < 2:
+                embed = make_box_embed(title="USAGE", description=f"Usage: `{prefix}nick @user <new nickname>` or `{prefix}nick @user` (to reset)", status="warning")
+                await message.reply(embed=embed, mention_author=False)
+                return
+            new_nick = " ".join(parts[2:]).strip() if len(parts) > 2 and cmd_name != "resetnick" else None
+            await self._execute_nickname_change(message, parts[1], new_nick)
+            return
+
+        # B. Member Commands (Channel-Restricted from Dashboard UI)
+        member_cmds = {"rank", "level", "lvl", "lb", "leaderboard", "m", "stats", "mystats", "act", "activity"}
+        if cmd_name in member_cmds:
+            # Check UI-configured channel restriction
+            allowed_chan = getattr(db, "bot_command_channels", {}).get(gid)
+            if allowed_chan and str(message.channel.id) != str(allowed_chan):
+                # Critical Requirement: If member runs this in other channels, Friday strictly ignores it!
+                return
+
+            # 1. Rank & Level: !rank, !rank @user, !level, !lvl
+            if cmd_name in ("rank", "level", "lvl"):
+                target_user = None
+                if message.mentions:
+                    for m in message.mentions:
+                        if not m.bot:
+                            target_user = m
+                            break
+                if not target_user and len(parts) > 1 and parts[1].isdigit():
+                    uid = int(parts[1])
+                    target_user = message.guild.get_member(uid)
+                    if not target_user:
+                        try:
+                            target_user = await message.guild.fetch_member(uid)
+                        except Exception:
+                            target_user = None
+                if not target_user:
+                    target_user = message.author
+
+                leveling_cog = self.bot.get_cog("Leveling")
+                if leveling_cog:
+                    try:
+                        async with message.channel.typing():
+                            card_file, err_msg = await leveling_cog.get_rank_card_file(message.guild, target_user)
+                            if card_file:
+                                await message.reply(file=card_file, mention_author=False)
+                            elif err_msg:
+                                await message.reply(err_msg, mention_author=False)
+                    except Exception as e:
+                        print(f"Error rendering rank prefix card: {e}")
+                return
+
+            # 2. Leaderboards: !lb invite, !lb msg
+            elif cmd_name in ("lb", "leaderboard"):
+                sub = parts[1].lower() if len(parts) > 1 else "msg"
+                if sub in ("invite", "invites", "inv"):
+                    inv_cog = self.bot.get_cog("InviteTracker")
+                    if inv_cog:
+                        try:
+                            async with message.channel.typing():
+                                card_file, view, err_msg = await inv_cog.get_leaderboard_file_and_view(message.guild)
+                                if card_file:
+                                    await message.reply(file=card_file, view=view, mention_author=False)
+                                else:
+                                    await message.reply(err_msg or "No invite statistics recorded yet!", mention_author=False)
+                        except Exception as e:
+                            print(f"Error rendering invite lb prefix card: {e}")
+                    return
+                else:
+                    # Message / Chat Leaderboard (!lb msg or !lb)
+                    act_cog = self.bot.get_cog("Activity")
+                    if act_cog:
+                        try:
+                            from cogs.activity import ActivityLeaderboardView
+                            async with message.channel.typing():
+                                view = ActivityLeaderboardView(act_cog, message.guild, current_tf="lifetime", current_page=1)
+                                card_file = await act_cog.generate_leaderboard_card_file(message.guild, "lifetime", page=1)
+                                await message.reply(file=card_file, view=view, mention_author=False)
+                        except Exception as e:
+                            print(f"Error rendering activity lb prefix card: {e}")
+                    return
+
+            # 3. Personal & Member Stats: !m, !stats, !mystats, !act, !activity
+            elif cmd_name in ("m", "stats", "mystats", "act", "activity"):
+                target_user = None
+                if message.mentions:
+                    for m in message.mentions:
+                        if not m.bot:
+                            target_user = m
+                            break
+                if not target_user and len(parts) > 1 and parts[1].isdigit():
+                    uid = int(parts[1])
+                    target_user = message.guild.get_member(uid)
+                    if not target_user:
+                        try:
+                            target_user = await message.guild.fetch_member(uid)
+                        except Exception:
+                            target_user = None
+                if not target_user:
+                    target_user = message.author
+
+                act_cog = self.bot.get_cog("Activity")
+                if act_cog:
+                    try:
+                        async with message.channel.typing():
+                            card_file = await act_cog.generate_member_card_file(message.guild, target_user, viewer=message.author)
+                            await message.reply(file=card_file, mention_author=False)
+                    except Exception as e:
+                        print(f"Error rendering stats prefix card: {e}")
+                return
+
+        # C. Strict set of essential staff prefix commands
         allowed_prefix_cmds = {"purge", "lock", "unlock", "ban", "tm"}
         if cmd_name not in allowed_prefix_cmds:
             return

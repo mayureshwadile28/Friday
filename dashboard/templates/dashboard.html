@@ -3485,6 +3485,14 @@
         </div>
     </div>
 
+    <div style="margin-bottom: 20px;">
+        <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase; margin-bottom: 6px; display: block;">Dedicated Member Commands Channel</label>
+        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Restrict member commands (<code>!rank</code>, <code>!lb invite</code>, <code>!lb msg</code>, <code>!m</code>) to run ONLY in this specific channel. In all other channels, Friday will strictly ignore them.</p>
+        <select class="text-input" id="memberCommandsChannelSelect" style="width: 100%;">
+            <option value="">Allow in All Channels (No restriction)</option>
+        </select>
+    </div>
+
     <div style="margin-bottom: 14px;">
         <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase; margin-bottom: 10px; display: block;">Permitted Staff Commands</label>
         <div style="display: flex; flex-direction: column; gap: 10px;">
@@ -3588,6 +3596,28 @@
             </div>
             <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
                 <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>tm @user 10m Spamming <span style="color: #94a3b8;">— Timeout (10m, 1h, 1d)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Member Commands Reference (Channel Restricted) -->
+    <div class="card" style="background: rgba(255, 255, 255, 0.02); border-color: rgba(255, 255, 255, 0.08); margin-top: 12px;">
+        <h4 style="font-size: 14px; font-weight: 700; color: #2dd4bf; margin-bottom: 8px;">Member Commands (Channel Restricted)</h4>
+        <div style="display: flex; flex-direction: column; gap: 8px; font-family: 'JetBrains Mono', monospace; font-size: 12px;">
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>rank <span style="color: #94a3b8;">or</span> <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>rank @user <span style="color: #94a3b8;">— Rank &amp; XP Progression Card</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>lb invite <span style="color: #94a3b8;">— Top Inviters Leaderboard</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>lb msg <span style="color: #94a3b8;">— Messages Activity Leaderboard</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                <span style="color: #2dd4bf; font-weight: 700;" class="prefixRefDisplay">!</span>m <span style="color: #94a3b8;">— Personal Stats Card (/my stats)</span>
+            </div>
+            <div style="padding: 8px 12px; background: rgba(0,0,0,0.3); border-radius: 6px; color: #e2e8f0;">
+                @Friday @user [nickname] <span style="color: #94a3b8;">— Quick Nickname Change</span>
             </div>
         </div>
     </div>

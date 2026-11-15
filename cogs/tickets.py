@@ -216,6 +216,10 @@ class TicketActiveView(discord.ui.View):
         if not is_staff and support_role_id:
             is_staff = any(r.id == support_role_id for r in interaction.user.roles)
 
+        if not is_staff and interaction.user.id != owner_id:
+            await interaction.response.send_message("❌ You do not have permission to close this ticket.", ephemeral=True)
+            return
+
         panel_id = active_ticket.get("panel_message_id")
         panel_settings = settings.get("panels", {}).get(str(panel_id), {})
         require_modal = panel_settings.get("dm_require_modal", True)

@@ -886,10 +886,9 @@ class InviteTracker(commands.Cog):
         file = await self.generate_invite_card(target, interaction.user, interaction.guild)
         await interaction.followup.send(file=file)
 
-    @app_commands.command(name="invite_leaderboard", description="View custom graphic leaderboard of top inviters in the server.")
-    async def invite_leaderboard(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        gid = str(interaction.guild.id)
+    async def get_leaderboard_file_and_view(self, guild: discord.Guild):
+        """Generates the invite leaderboard image file and interactive view. Returns (file, view, err)."""
+        gid = str(guild.id)
         all_counts = db.invite_counts.get(gid, {})
 
         leaderboard_data = []
@@ -904,12 +903,20 @@ class InviteTracker(commands.Cog):
         leaderboard_data.sort(key=lambda x: x[1], reverse=True)
 
         if not leaderboard_data:
-            await interaction.followup.send("No invite statistics recorded yet!", ephemeral=True)
-            return
+            return None, None, "No invite statistics recorded yet!"
 
-        view = InviteLeaderboardView(self, interaction.guild, leaderboard_data, current_page=1, per_page=10)
+        view = InviteLeaderboardView(self, guild, leaderboard_data, current_page=1, per_page=10)
         file = await view.generate_card_file()
-        await interaction.followup.send(file=file, view=view)
+        return file, view, None
+
+    @app_commands.command(name="invite_leaderboard", description="View custom graphic leaderboard of top inviters in the server.")
+    async def invite_leaderboard(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        file, view, err = await self.get_leaderboard_file_and_view(interaction.guild)
+        if file:
+            await interaction.followup.send(file=file, view=view)
+        else:
+            await interaction.followup.send(err or "No invite statistics recorded yet!", ephemeral=True)
 
     # ────────────────────────── Admin Subgroup ──────────────────────────
 

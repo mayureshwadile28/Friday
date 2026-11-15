@@ -2058,12 +2058,15 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         if not is_reply_to_friday_llm and not is_mentioning_friday:
             return
 
-        # 3. Nickname Change Command Bypass: @Friday @User New Nickname
+        # 3. Nickname Change Command Bypass: @Friday @User New Nickname OR @Friday nick @User
         # Handled specifically by cogs/moderation.py
         parts = content.split()
         if is_mentioning_friday and len(parts) >= 2:
-            if re.match(r'^<@!?\d+>$', parts[0]) and re.match(r'^<@!?\d+>$', parts[1]):
-                return
+            if re.match(r'^<@!?\d+>$', parts[0]):
+                if re.match(r'^<@!?\d+>$', parts[1]) and "?" not in content:
+                    return
+                if parts[1].lower() in ("nick", "setnick", "nickname", "resetnick"):
+                    return
 
         # 4. Clean bot mention text
         clean_text = re.sub(r'<@!?' + str(bot_id) + r'>', '', content).strip()

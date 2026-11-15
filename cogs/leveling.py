@@ -66,22 +66,19 @@ class Leveling(commands.Cog):
         db.save_data()
         await interaction.response.send_message(f"✅ Leveling system activated! Updates will now be posted in {channel.mention}.", ephemeral=True)
 
-    @app_commands.command(name="rank", description="Check your current Level, XP, and progression card.")
-    async def rank(self, interaction: discord.Interaction, user: discord.Member = None):
-        await interaction.response.defer() 
-        user = user or interaction.user
-        gid = str(interaction.guild.id)
+    async def get_rank_card_file(self, guild: discord.Guild, user: discord.Member):
+        """Generates the rank card file for a member. Returns (discord.File, error_message)."""
+        gid = str(guild.id)
         uid = str(user.id)
         
         if gid not in db.xp_data or uid not in db.xp_data[gid]:
-            await interaction.followup.send(f"{clean_display_name(user.display_name)} has no XP recorded yet! Send some messages to start leveling up.")
-            return
+            return None, f"{clean_display_name(user.display_name)} has no XP recorded yet! Send some messages to start leveling up."
 
         user_stats = db.xp_data[gid][uid]
         # Only rank current active members
         active_users = []
         for u_id, s in db.xp_data[gid].items():
-            if interaction.guild.get_member(int(u_id)):
+            if guild.get_member(int(u_id)):
                 active_users.append((u_id, s))
         sorted_users = sorted(active_users, key=lambda item: (item[1].get('level', 0), item[1].get('xp', 0)), reverse=True)
         try:
@@ -100,7 +97,7 @@ class Leveling(commands.Cog):
         act_cog = self.bot.get_cog("Activity")
         if act_cog:
             try:
-                stats = act_cog.get_member_stats(interaction.guild.id, user.id)
+                stats = act_cog.get_member_stats(guild.id, user.id)
                 total_messages = stats.get("lifetime", 0)
                 voice_str = act_cog.format_duration(stats.get("voice_lifetime", 0))
             except Exception:
@@ -117,7 +114,17 @@ class Leveling(commands.Cog):
             total_messages=total_messages,
             voice_str=voice_str
         )
-        await interaction.followup.send(file=card_file)
+        return card_file, None
+
+    @app_commands.command(name="rank", description="Check your current Level, XP, and progression card.")
+    async def rank(self, interaction: discord.Interaction, user: discord.Member = None):
+        await interaction.response.defer() 
+        user = user or interaction.user
+        card_file, err_msg = await self.get_rank_card_file(interaction.guild, user)
+        if card_file:
+            await interaction.followup.send(file=card_file)
+        else:
+            await interaction.followup.send(err_msg)
 
     async def fetch_avatar(self, target, size: int = 110) -> Image.Image:
         """Helper to fetch and circle-mask an avatar or server icon, or return a default colored circle."""

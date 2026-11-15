@@ -324,11 +324,13 @@ class Security(commands.Cog):
         
         if gid not in self.action_tracker:
             self.action_tracker[gid] = {}
-        if uid not in self.action_tracker[gid]:
-            self.action_tracker[gid][uid] = []
+        if uid not in self.action_tracker[gid] or not isinstance(self.action_tracker[gid][uid], dict):
+            self.action_tracker[gid][uid] = {}
+        if action_type not in self.action_tracker[gid][uid]:
+            self.action_tracker[gid][uid][action_type] = []
             
-        self.action_tracker[gid][uid].append(now)
-        self.action_tracker[gid][uid] = [t for t in self.action_tracker[gid][uid] if now - t <= time_window]
+        self.action_tracker[gid][uid][action_type].append(now)
+        self.action_tracker[gid][uid][action_type] = [t for t in self.action_tracker[gid][uid][action_type] if now - t <= time_window]
         
         cfg = self.get_security_config(gid)
         limit_rule = cfg.get("limits", {}).get(action_type, {})
@@ -338,7 +340,7 @@ class Security(commands.Cog):
         if not enabled:
             return False
             
-        return len(self.action_tracker[gid][uid]) >= limit
+        return len(self.action_tracker[gid][uid][action_type]) >= limit
 
     async def log_security_event(self, guild: discord.Guild, channel_name: str, embed: discord.Embed):
         """Send embed log to specified security channel in 'Friday Security Logs'."""

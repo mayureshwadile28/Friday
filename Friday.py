@@ -84,14 +84,16 @@ def record_action_and_check(guild_id, user_id, action_type):
     
     if gid not in action_tracker:
         action_tracker[gid] = {}
-    if uid not in action_tracker[gid]:
-        action_tracker[gid][uid] = []
+    if uid not in action_tracker[gid] or not isinstance(action_tracker[gid][uid], dict):
+        action_tracker[gid][uid] = {}
+    if action_type not in action_tracker[gid][uid]:
+        action_tracker[gid][uid][action_type] = []
         
-    action_tracker[gid][uid].append(now)
-    action_tracker[gid][uid] = [t for t in action_tracker[gid][uid] if now - t <= time_window]
+    action_tracker[gid][uid][action_type].append(now)
+    action_tracker[gid][uid][action_type] = [t for t in action_tracker[gid][uid][action_type] if now - t <= time_window]
     
     limit = nuke_settings.get(gid, {}).get(action_type, 999) 
-    if len(action_tracker[gid][uid]) >= limit:
+    if len(action_tracker[gid][uid][action_type]) >= limit:
         return True
     return False
 
@@ -114,7 +116,7 @@ async def on_ready():
 # --- ACTIVE CHAT FILTER & XP SYSTEM ---
 @bot.event
 async def on_message(message):
-    if message.author.bot: 
+    if message.author.bot or not message.guild: 
         return
 
     gid = str(message.guild.id)

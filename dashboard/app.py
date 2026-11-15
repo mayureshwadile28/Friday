@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify, request as flask_request
+from flask import Flask, render_template, jsonify, request as flask_request, session, redirect, url_for
 import json
 import os
 import sys
@@ -6,6 +6,7 @@ import uuid
 import requests
 import asyncio
 import time
+import hmac
 import discord
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -23,6 +24,11 @@ from emoji_utils import replace_plain_emojis, parse_btn, format_embed_descriptio
 load_dotenv(os.path.join(PARENT_DIR, '.env'))
 
 app = Flask(__name__)
+app.secret_key = os.getenv("DASHBOARD_SECRET_KEY") or os.getenv("SECRET_KEY") or "friday_command_center_secret_2026"
+app.permanent_session_lifetime = 60 * 60 * 24 * 7  # 7-day session validity
+
+DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "Mayuresh@28")
+
 BOT_TOKEN = os.getenv('DISCORD_TOKEN')
 DISCORD_API = "https://discord.com/api/v10"
 
@@ -74,6 +80,46 @@ def fetch_user_info(user_id):
         pass
     return {"id": str(user_id), "username": f"User {user_id}", "avatar": None}
 
+# ───────────────────── Security & Authentication ─────────────────────
+
+@app.before_request
+def require_dashboard_authentication():
+    # Allow public access to login page, static assets, and favicon
+    allowed_endpoints = ('/login', '/favicon.ico', '/static/avatar.png')
+    if (
+        flask_request.path in allowed_endpoints or 
+        flask_request.path.startswith('/static/') or
+        flask_request.path.startswith('/favicon')
+    ):
+        return None
+
+    if not session.get("authenticated"):
+        if flask_request.path.startswith('/api/'):
+            return jsonify({"success": False, "error": "Unauthorized. Please authenticate at /login."}), 401
+        return redirect('/login')
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if session.get("authenticated"):
+        return redirect('/')
+
+    error = None
+    if flask_request.method == 'POST':
+        entered = flask_request.form.get("password", "")
+        if hmac.compare_digest(str(entered).strip(), str(DASHBOARD_PASSWORD).strip()):
+            session.permanent = True
+            session["authenticated"] = True
+            return redirect('/')
+        else:
+            error = "Incorrect master password. Access denied."
+
+    return render_template('login.html', error=error, cache_buster=int(time.time()))
+
+@app.route('/logout')
+def logout():
+    session.pop("authenticated", None)
+    return redirect('/login')
+
 # ───────────────────── Pages ─────────────────────
 
 @app.route('/')
@@ -114,13 +160,15 @@ def get_bot_profile():
         resp = requests.get(f"{DISCORD_API}/users/@me", headers=discord_headers(), timeout=5)
         if resp.status_code == 200:
             data = resp.json()
-            ext = "gif" if avatar_hash and avatar_hash.startswith("a_") else "png"
-            avatar_url = f"https://cdn.discordapp.com/avatars/{uid}/{avatar_hash}.{ext}?size=256" if avatar_hash else None
+            uid = data.get("id")
+            avatar_hash = data.get("avatar")
+            ext = "gif" if avatar_hash and str(avatar_hash).startswith("a_") else "png"
+            avatar_url = f"https://cdn.discordapp.com/avatars/{uid}/{avatar_hash}.{ext}?size=256" if (avatar_hash and uid) else None
             return jsonify({
                 "name": data.get("username", "Friday"),
                 "display_name": data.get("global_name") or data.get("username", "Friday"),
                 "avatar": avatar_url,
-                "id": str(uid)
+                "id": str(uid) if uid else None
             })
     except Exception:
         pass
@@ -715,8 +763,11 @@ def test_leveling_message(gid):
 @app.route('/api/guild/<gid>/leveling/upload-background', methods=['POST'])
 @app.route('/api/guild/<gid>/card-background/upload', methods=['POST'])
 def upload_rank_background(gid):
-    gid_str = str(gid)
-    card_type = flask_request.form.get("card_type", "rank")
+    import re
+    gid_str = re.sub(r'[^0-9]', '', str(gid))
+    card_type = str(flask_request.form.get("card_type", "rank")).strip().lower()
+    if card_type not in ("rank", "levelup", "invite", "activity", "leaderboard", "booster"):
+        card_type = "rank"
     try:
         os.makedirs(RANK_BG_DIR, exist_ok=True)
         file = flask_request.files.get('background_file') or flask_request.files.get('file') or flask_request.files.get('background')
@@ -1180,9 +1231,14 @@ def get_antiabuse(gid):
 def update_antiabuse_words(gid):
     gid_str = str(gid)
     body = flask_request.json or {}
-    db.banned_words[gid_str] = body.get("words", [])
+    raw_words = body.get("words", [])
+    if isinstance(raw_words, list):
+        clean_words = [str(w).strip().lower() for w in raw_words if str(w).strip()]
+    else:
+        clean_words = []
+    db.banned_words[gid_str] = clean_words
     db.save_data()
-    return jsonify({"success": True})
+    return jsonify({"success": True, "words": clean_words})
 
 @app.route('/api/guild/<gid>/antiabuse/whitelist/add', methods=['POST'])
 def abuse_whitelist_add(gid):
@@ -1923,6 +1979,7 @@ def clear_reaction_roles_draft_endpoint(gid):
 def get_prefix_settings(gid):
     gid_str = str(gid)
     prefix = getattr(db, "custom_prefixes", {}).get(gid_str, "!")
+    cmd_chan = getattr(db, "bot_command_channels", {}).get(gid_str, "")
     wl = getattr(db, "prefix_whitelist", {}).get(gid_str, {
         "roles": [],
         "members": [],
@@ -1931,6 +1988,7 @@ def get_prefix_settings(gid):
     return jsonify({
         "success": True,
         "prefix": prefix,
+        "command_channel": cmd_chan,
         "whitelist": wl
     })
 
@@ -1949,6 +2007,16 @@ def save_prefix_settings(gid):
         db.custom_prefixes = {}
     db.custom_prefixes[gid_str] = new_prefix
 
+    # Save dedicated member command channel
+    if "command_channel" in body:
+        cmd_chan = str(body.get("command_channel") or "").strip()
+        if not hasattr(db, "bot_command_channels") or not isinstance(db.bot_command_channels, dict):
+            db.bot_command_channels = {}
+        if cmd_chan:
+            db.bot_command_channels[gid_str] = cmd_chan
+        else:
+            db.bot_command_channels.pop(gid_str, None)
+
     if not hasattr(db, "prefix_whitelist") or not isinstance(db.prefix_whitelist, dict):
         db.prefix_whitelist = {}
 
@@ -1965,7 +2033,29 @@ def save_prefix_settings(gid):
         }
     }
     db.save_data()
-    return jsonify({"success": True, "prefix": new_prefix, "whitelist": db.prefix_whitelist[gid_str]})
+    return jsonify({
+        "success": True,
+        "prefix": new_prefix,
+        "command_channel": getattr(db, "bot_command_channels", {}).get(gid_str, ""),
+        "whitelist": db.prefix_whitelist[gid_str]
+    })
+
+
+@app.route('/api/guild/<gid>/command-channel', methods=['GET', 'POST'])
+def guild_command_channel(gid):
+    gid_str = str(gid)
+    if not hasattr(db, "bot_command_channels") or not isinstance(db.bot_command_channels, dict):
+        db.bot_command_channels = {}
+    if flask_request.method == 'POST':
+        body = flask_request.json or {}
+        cid = str(body.get("channel_id") or "").strip()
+        if cid:
+            db.bot_command_channels[gid_str] = cid
+        else:
+            db.bot_command_channels.pop(gid_str, None)
+        db.save_data()
+        return jsonify({"success": True, "channel_id": db.bot_command_channels.get(gid_str, "")})
+    return jsonify({"success": True, "channel_id": db.bot_command_channels.get(gid_str, "")})
 
 import re
 
