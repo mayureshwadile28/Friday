@@ -62503,35 +62503,9 @@ async function loadGiveawaysData() {
             }
         });
 
+        try { updateGwPreview(); } catch (e) { console.warn("[GW Preview Error]", e); }
 
-
-
-
-
-
-        updateGwPreview();
-
-
-
-
-
-
-
-        updateGwWinnerPreview();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        try { updateGwWinnerPreview(); } catch (e) { console.warn("[GW Winner Preview Error]", e); }
 
         // Populate Active Giveaways Table
 
@@ -62725,7 +62699,7 @@ async function loadGiveawaysData() {
 
 
 
-                                ${renderDiscordMarkdown(gw.prize || "Prize")}
+                                <span class="badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 2px 7px; border-radius: 4px; font-size: 11px; font-family: monospace; margin-right: 6px;">[${escapeHtml(gw.giveaway_id || gw.custom_id || ('GW-' + String(gw.id || gw.message_id || '').slice(-4)))}]</span> ${renderDiscordMarkdown(gw.prize || "Prize")}
 
 
 
@@ -63373,7 +63347,7 @@ async function loadGiveawaysData() {
 
 
 
-                                ${renderDiscordMarkdown(gw.prize || "Prize")}
+                                <span class="badge" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); padding: 2px 7px; border-radius: 4px; font-size: 11px; font-family: monospace; margin-right: 6px;">[${escapeHtml(gw.giveaway_id || gw.custom_id || ('GW-' + String(gw.id || gw.message_id || '').slice(-4)))}]</span> ${renderDiscordMarkdown(gw.prize || "Prize")}
 
 
 
@@ -63591,27 +63565,35 @@ async function loadGiveawaysData() {
 
         }
 
-
-
-
-
-
+        if (!window._gwAutoSyncInterval) {
+            window._gwAutoSyncInterval = setInterval(async () => {
+                const sec = document.getElementById('giveawaysSection');
+                if (sec && !sec.classList.contains('hidden') && currentGuildId) {
+                    try {
+                        const r = await fetch(`/api/guild/${currentGuildId}/giveaways`);
+                        const d = await r.json();
+                        if (d && d.success && Array.isArray(d.active)) {
+                            const activeTbody = document.getElementById('gwActiveTableBody');
+                            const activeCountBadge = document.getElementById('gwActiveCountBadge');
+                            if (activeCountBadge) activeCountBadge.textContent = d.active.length;
+                            if (activeTbody && !document.querySelector('.modal-backdrop:not(.hidden)')) {
+                                const newSig = d.active.map(g => (g.giveaway_id || g.custom_id || g.id) + ':' + (g.entries || []).length).join('|');
+                                if (activeTbody.dataset.renderedSig && activeTbody.dataset.renderedSig !== newSig) {
+                                    activeTbody.dataset.renderedSig = newSig;
+                                    await loadGiveawaysData();
+                                } else {
+                                    activeTbody.dataset.renderedSig = newSig;
+                                }
+                            }
+                        }
+                    } catch (e) {}
+                }
+            }, 10000);
+        }
 
     } catch (err) {
 
-
-
-
-
-
-
         console.error("Error loading giveaways:", err);
-
-
-
-
-
-
 
     }
 

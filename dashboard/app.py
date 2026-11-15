@@ -3815,7 +3815,10 @@ def get_guild_giveaways(gid):
     for key, item in list(all_gw.items()):
         if not isinstance(item, dict) or key.startswith("req_"):
             continue
-        if str(item.get("guild_id")) == gid_str:
+        item_gid = str(item.get("guild_id") or "")
+        if not item_gid and "_" in key:
+            item_gid = key.split("_")[0]
+        if item_gid == gid_str or key.startswith(f"{gid_str}_"):
             msg_id_val = str(item.get("message_id") or key.split("_")[-1])
             # Guard against triplication: if this message_id was already processed, skip duplicate alias rows
             if msg_id_val in seen_msg_ids:
@@ -3830,6 +3833,9 @@ def get_guild_giveaways(gid):
             seen_msg_ids.add(msg_id_val)
 
             gw_copy = dict(item)
+            gw_id_val = str(item.get("giveaway_id") or item.get("custom_id") or f"GW-{msg_id_val[-4:]}")
+            gw_copy["giveaway_id"] = gw_id_val
+            gw_copy["custom_id"] = gw_id_val
             gw_copy["key"] = f"{gid_str}_{msg_id_val}"
             gw_copy["id"] = msg_id_val
             gw_copy["message_id"] = msg_id_val
@@ -4103,7 +4109,7 @@ def create_guild_giveaway(gid):
     if not prize:
         return jsonify({"success": False, "error": "Prize title is required."})
 
-    from cogs.giveaways import parse_duration, GiveawayEnterView
+    from cogs.giveaways import parse_duration, GiveawayEnterView, generate_giveaway_id, resolve_giveaway
     from datetime import datetime, timezone
     import time, uuid
 
@@ -4243,8 +4249,9 @@ def create_guild_giveaway(gid):
                     embed.set_image(url=validated)
                     final_image_url = validated
 
+        custom_id = generate_giveaway_id()
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
-        embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
+        embed.set_footer(text=f"🆔 ID: {custom_id} • Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
         temp_id = str(uuid.uuid4())[:8]
         temp_key = f"{gid}_{temp_id}"
@@ -4297,6 +4304,8 @@ def create_guild_giveaway(gid):
 
         gw_data = {
             "message_id": msg.id,
+            "giveaway_id": custom_id,
+            "custom_id": custom_id,
             "giveaway_key": real_key,
             "key": real_key,
             "channel_id": channel.id,
@@ -4323,6 +4332,8 @@ def create_guild_giveaway(gid):
         db.giveaways[real_key] = gw_data
         db.save_data()
 
+        host_display = host_mention or saved_host_name or "Server Staff"
+
         # Log event in #giveaway-logs channel
         try:
             cfg = db.giveaways_config.get(str(gid), {})
@@ -4330,6 +4341,7 @@ def create_guild_giveaway(gid):
             if log_channel:
                 default_log_title = "📜 Giveaway Created (Dashboard)"
                 default_log_desc = (
+                    f"**Giveaway ID:** `{custom_id}`\n"
                     f"**Prize:** {prize}\n"
                     f"**Channel:** {channel.mention}\n"
                     f"**Sponsored by:** {host_display}\n"
@@ -4342,6 +4354,8 @@ def create_guild_giveaway(gid):
                 raw_log_desc = cfg.get("log_created_message") or default_log_desc
                 formatted_log_desc = (
                     raw_log_desc
+                    .replace("{giveaway_id}", custom_id)
+                    .replace("{id}", custom_id)
                     .replace("{prize}", prize)
                     .replace("{channel}", channel.mention)
                     .replace("{host}", host_display)
@@ -4351,6 +4365,8 @@ def create_guild_giveaway(gid):
                     .replace("{server}", guild.name)
                     .replace("{link}", msg.jump_url)
                 )
+                if custom_id not in formatted_log_desc:
+                    formatted_log_desc = f"**Giveaway ID:** `{custom_id}`\n" + formatted_log_desc
                 log_embed = discord.Embed(
                     title=raw_log_title.replace("{prize}", prize),
                     description=formatted_log_desc,
@@ -4367,6 +4383,7 @@ def create_guild_giveaway(gid):
 
         return {
             "message_id": str(msg.id),
+            "giveaway_id": custom_id,
             "jump_url": msg.jump_url,
             "channel_name": channel.name
         }
@@ -4386,11 +4403,9 @@ def end_guild_giveaway(gid):
     body = flask_request.json or {}
     raw_id = str(body.get("message_id") or body.get("id") or body.get("key") or "").strip()
     if not raw_id or raw_id == "undefined":
-        return jsonify({"success": False, "error": "Valid Giveaway Message ID required."})
+        return jsonify({"success": False, "error": "Valid Giveaway ID or Message ID required."})
 
-    msg_id = raw_id.split("_")[-1]
-    key = f"{gid}_{msg_id}"
-    gw = db.giveaways.get(key) or db.giveaways.get(raw_id)
+    key, gw = resolve_giveaway(int(gid), raw_id)
     if not gw or gw.get("status") != "active":
         return jsonify({"success": False, "error": "Active giveaway not found."})
 
@@ -4404,7 +4419,8 @@ def end_guild_giveaway(gid):
     try:
         fut = asyncio.run_coroutine_threadsafe(do_end(), bot_instance.loop)
         fut.result(timeout=10)
-        return jsonify({"success": True, "message": f"Giveaway for '{gw.get('prize')}' ended early!"})
+        gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(gw.get('message_id', ''))[-4:]}")
+        return jsonify({"success": True, "message": f"Giveaway [{gw_id}] for '{gw.get('prize')}' ended early!"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -4416,19 +4432,19 @@ def reroll_guild_giveaway(gid):
     body = flask_request.json or {}
     raw_id = str(body.get("message_id") or body.get("id") or body.get("key") or "").strip()
     if not raw_id or raw_id == "undefined":
-        return jsonify({"success": False, "error": "Valid Giveaway Message ID required."})
+        return jsonify({"success": False, "error": "Valid Giveaway ID or Message ID required."})
 
-    msg_id = raw_id.split("_")[-1]
-    winners = int(body.get("winners", 1))
-
-    key = f"{gid}_{msg_id}"
-    gw = db.giveaways.get(key) or db.giveaways.get(raw_id)
+    key, gw = resolve_giveaway(int(gid), raw_id)
     if not gw:
         return jsonify({"success": False, "error": "Giveaway not found."})
 
     entries = gw.get("entries", [])
     if not entries:
         return jsonify({"success": False, "error": "No entries in this giveaway to reroll."})
+
+    clean_id = str(gw.get("message_id") or key.split("_")[-1])
+    gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{clean_id[-4:]}")
+    winners = int(body.get("winners", 1))
 
     import random
     new_winners = random.sample(entries, k=min(len(entries), max(1, winners)))
@@ -4441,7 +4457,7 @@ def reroll_guild_giveaway(gid):
             ch = guild.get_channel(gw.get("channel_id"))
             if ch:
                 mentions = " ".join(f"<@{w}>" for w in new_winners)
-                jump_url = f"https://discord.com/channels/{gid}/{ch.id}/{msg_id}"
+                jump_url = f"https://discord.com/channels/{gid}/{ch.id}/{clean_id}"
                 cfg = db.giveaways_config.get(str(gid), {})
                 reroll_title = cfg.get("reroll_title") or "🎲 GIVEAWAY REROLLED (via Dashboard)! 🎲"
                 emoji_prize = cfg.get("emoji_prize", "🎁")
@@ -4462,7 +4478,7 @@ def reroll_guild_giveaway(gid):
                 )
                 embed.add_field(name=f"{emoji_prize} Prize", value=f"**{gw.get('prize')}**", inline=True)
                 embed.add_field(name=f"{emoji_winners} New Winner(s)", value=mentions, inline=True)
-                embed.set_footer(text="Friday Giveaway Engine • Dashboard Reroll", icon_url=guild.icon.url if guild.icon else None)
+                embed.set_footer(text=f"🆔 ID: {gw_id} • Friday Giveaway Engine • Dashboard Reroll", icon_url=guild.icon.url if guild.icon else None)
                 view = discord.ui.View()
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
                 await ch.send(content=f"🎲 **Giveaway Rerolled!** Congratulations {mentions}!", embed=embed, view=view)
@@ -4473,6 +4489,7 @@ def reroll_guild_giveaway(gid):
                     if log_channel:
                         default_reroll_log_title = "🎲 Giveaway Rerolled"
                         default_reroll_log_desc = (
+                            f"**Giveaway ID:** `{gw_id}`\n"
                             f"**Prize:** {gw.get('prize')}\n"
                             f"**New Winner(s):** {mentions}\n"
                             f"**Channel:** <#{ch.id}>\n"
@@ -4482,6 +4499,8 @@ def reroll_guild_giveaway(gid):
                         raw_reroll_log_desc = cfg.get("log_reroll_message") or default_reroll_log_desc
                         formatted_log = (
                             raw_reroll_log_desc
+                            .replace("{giveaway_id}", gw_id)
+                            .replace("{id}", gw_id)
                             .replace("{prize}", str(gw.get("prize")))
                             .replace("{winners}", mentions)
                             .replace("{channel}", f"<#{ch.id}>")
@@ -4489,6 +4508,8 @@ def reroll_guild_giveaway(gid):
                             .replace("{server}", guild.name)
                             .replace("{link}", jump_url)
                         )
+                        if gw_id not in formatted_log:
+                            formatted_log = f"**Giveaway ID:** `{gw_id}`\n" + formatted_log
                         reroll_log_embed = discord.Embed(
                             title=raw_reroll_log_title.replace("{prize}", str(gw.get("prize"))),
                             description=formatted_log,
@@ -4516,15 +4537,16 @@ def cancel_guild_giveaway(gid):
     body = flask_request.json or {}
     raw_id = str(body.get("message_id") or body.get("id") or body.get("key") or "").strip()
     if not raw_id or raw_id == "undefined":
-        return jsonify({"success": False, "error": "Valid Giveaway Message ID required."})
+        return jsonify({"success": False, "error": "Valid Giveaway ID or Message ID required."})
 
-    msg_id = raw_id.split("_")[-1]
-    key = f"{gid}_{msg_id}"
-    gw = db.giveaways.get(key) or db.giveaways.get(raw_id)
+    key, gw = resolve_giveaway(int(gid), raw_id)
     if not gw or gw.get("status") != "active":
         return jsonify({"success": False, "error": "Active giveaway not found."})
 
+    clean_id = str(gw.get("message_id") or key.split("_")[-1])
+    gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{clean_id[-4:]}")
     gw["status"] = "cancelled"
+    gw["cancelled"] = True
     db.save_data()
 
     async def do_cancel():
@@ -4533,11 +4555,12 @@ def cancel_guild_giveaway(gid):
             ch = guild.get_channel(gw.get("channel_id"))
             if ch:
                 try:
-                    m = await ch.fetch_message(int(msg_id))
+                    m = await ch.fetch_message(int(clean_id))
                     if m and m.embeds:
                         embed = m.embeds[0]
                         embed.title = f"❌ GIVEAWAY CANCELLED: {gw.get('prize')} ❌"
                         embed.color = discord.Color.red()
+                        embed.set_footer(text=f"🆔 ID: {gw_id} • Cancelled via Dashboard")
                         from cogs.giveaways import GiveawayEnterView
                         view = GiveawayEnterView(giveaway_key=key, entry_count=len(gw.get("entries", [])), disabled=True)
                         await m.edit(embed=embed, view=view)
@@ -4550,8 +4573,8 @@ def cancel_guild_giveaway(gid):
                     log_channel = await resolve_giveaway_log_channel(bot_instance, guild, cfg)
                     if log_channel:
                         cancel_log = discord.Embed(
-                            title="❌ Giveaway Cancelled",
-                            description=f"**Prize:** {gw.get('prize')}\n**Channel:** <#{ch.id}>\n**Action:** Cancelled via Dashboard",
+                            title="🛑 Giveaway Cancelled",
+                            description=f"**Giveaway ID:** `{gw_id}`\n**Prize:** {gw.get('prize')}\n**Channel:** <#{ch.id}>\n**Action:** Cancelled via Dashboard",
                             color=discord.Color.red(),
                             timestamp=datetime.now(timezone.utc)
                         )
@@ -4564,7 +4587,7 @@ def cancel_guild_giveaway(gid):
     try:
         fut = asyncio.run_coroutine_threadsafe(do_cancel(), bot_instance.loop)
         fut.result(timeout=10)
-        return jsonify({"success": True, "message": "Giveaway cancelled."})
+        return jsonify({"success": True, "message": f"Giveaway [{gw_id}] cancelled."})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 

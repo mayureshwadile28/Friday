@@ -66,6 +66,157 @@ def format_duration(seconds: int) -> str:
     return " ".join(parts) if parts else "0s"
 
 
+def generate_giveaway_id() -> str:
+    """Generate a clean, memorable 4-digit giveaway ID like GW-4829."""
+    import random
+    all_gw = getattr(db, "giveaways", {})
+    existing_ids = set()
+    for gw in all_gw.values():
+        if isinstance(gw, dict) and gw.get("giveaway_id"):
+            existing_ids.add(str(gw.get("giveaway_id")).upper())
+    for _ in range(200):
+        cand = f"GW-{random.randint(1000, 9999)}"
+        if cand not in existing_ids:
+            return cand
+    import uuid
+    return f"GW-{uuid.uuid4().hex[:4].upper()}"
+
+
+def resolve_giveaway(guild_id: int, query: str) -> tuple[Optional[str], Optional[dict]]:
+    """
+    Robustly resolves a giveaway by:
+    - Custom Giveaway ID (e.g. GW-4829, 4829)
+    - Discord Message ID (e.g. 1234567890123456789)
+    - Canonical Key (e.g. 112233_1234567890)
+    - Prize name substring match
+    Returns (canonical_key, giveaway_dict) or (None, None).
+    """
+    if not query:
+        return None, None
+    clean = str(query).strip()
+    clean_upper = clean.upper()
+    all_gw = getattr(db, "giveaways", {})
+    gid_str = str(guild_id)
+
+    # 1. Exact key match
+    if clean in all_gw and isinstance(all_gw[clean], dict):
+        return clean, all_gw[clean]
+
+    # 2. Canonical key: {gid}_{query}
+    key_cand = f"{gid_str}_{clean}"
+    if key_cand in all_gw and isinstance(all_gw[key_cand], dict):
+        return key_cand, all_gw[key_cand]
+
+    # 3. Match by giveaway_id (e.g. GW-4829 or 4829) or message_id
+    for k, gw in all_gw.items():
+        if not isinstance(gw, dict) or k.startswith("req_"):
+            continue
+        g_id = str(gw.get("guild_id") or "")
+        if not g_id and "_" in k:
+            g_id = k.split("_")[0]
+        if g_id and g_id != gid_str:
+            continue
+
+        gw_id = str(gw.get("giveaway_id") or f"GW-{str(gw.get('message_id', ''))[-4:]}").upper()
+        raw_msg_id = str(gw.get("message_id") or "")
+
+        if clean_upper == gw_id or clean_upper == gw_id.replace("GW-", "") or clean == raw_msg_id:
+            return k, gw
+
+    # 4. Fallback: match by prize name substring
+    for k, gw in all_gw.items():
+        if not isinstance(gw, dict) or k.startswith("req_"):
+            continue
+        g_id = str(gw.get("guild_id") or "")
+        if not g_id and "_" in k:
+            g_id = k.split("_")[0]
+        if g_id and g_id != gid_str:
+            continue
+        prize = str(gw.get("prize") or "").upper()
+        if clean_upper in prize or prize in clean_upper:
+            return k, gw
+
+    return None, None
+
+
+async def active_giveaway_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    """Autocomplete helper offering all active giveaways in the server as choices."""
+    gid_str = str(interaction.guild_id)
+    all_gw = getattr(db, "giveaways", {})
+    choices = []
+    current_lower = current.strip().lower()
+
+    for k, gw in all_gw.items():
+        if not isinstance(gw, dict) or k.startswith("req_"):
+            continue
+        g_id = str(gw.get("guild_id") or "")
+        if not g_id and "_" in k:
+            g_id = k.split("_")[0]
+        if g_id and g_id != gid_str:
+            continue
+        if gw.get("status") != "active":
+            continue
+
+        clean_id = str(gw.get("message_id") or k.split("_")[-1])
+        gw_id = str(gw.get("giveaway_id") or f"GW-{clean_id[-4:]}")
+        prize = str(gw.get("prize") or "Giveaway")
+        now = time.time()
+        time_left = max(0, int(gw.get("end_time", now) - now))
+        time_str = format_duration(time_left) if time_left > 0 else "ending soon"
+
+        label = f"[{gw_id}] {prize} ({time_str} left)"
+        if len(label) > 100:
+            label = label[:97] + "..."
+
+        if not current_lower or current_lower in label.lower() or current_lower in gw_id.lower() or current_lower in prize.lower():
+            choices.append(app_commands.Choice(name=label, value=gw_id))
+            if len(choices) >= 25:
+                break
+
+    return choices
+
+
+async def ended_giveaway_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    """Autocomplete helper offering all ended giveaways in the server as choices."""
+    gid_str = str(interaction.guild_id)
+    all_gw = getattr(db, "giveaways", {})
+    choices = []
+    current_lower = current.strip().lower()
+
+    sorted_items = sorted(
+        all_gw.items(),
+        key=lambda x: x[1].get("ended_at", x[1].get("end_time", 0)) if isinstance(x[1], dict) else 0,
+        reverse=True
+    )
+
+    for k, gw in sorted_items:
+        if not isinstance(gw, dict) or k.startswith("req_"):
+            continue
+        g_id = str(gw.get("guild_id") or "")
+        if not g_id and "_" in k:
+            g_id = k.split("_")[0]
+        if g_id and g_id != gid_str:
+            continue
+        if gw.get("status") not in ("ended", "concluded"):
+            continue
+
+        clean_id = str(gw.get("message_id") or k.split("_")[-1])
+        gw_id = str(gw.get("giveaway_id") or f"GW-{clean_id[-4:]}")
+        prize = str(gw.get("prize") or "Giveaway")
+        winners_count = len(gw.get("winners") or [])
+
+        label = f"[{gw_id}] {prize} ({winners_count} winners)"
+        if len(label) > 100:
+            label = label[:97] + "..."
+
+        if not current_lower or current_lower in label.lower() or current_lower in gw_id.lower() or current_lower in prize.lower():
+            choices.append(app_commands.Choice(name=label, value=gw_id))
+            if len(choices) >= 25:
+                break
+
+    return choices
+
+
 def get_giveaway_config(guild_id: int) -> dict:
     """Fetches giveaway configuration for a guild with multi-type, db.data, and disk-reload fallbacks."""
     gid_str = str(guild_id)
@@ -540,6 +691,7 @@ class GiveawayApprovalView(discord.ui.View):
         embed_color_hex = cfg.get("embed_color", "#5865F2")
         embed_color = parse_hex_color(embed_color_hex, default=0x5865F2)
 
+        custom_id = generate_giveaway_id()
         embed = discord.Embed(
             title=f"{emoji_prize} {prize} {emoji_prize}",
             description=desc_body,
@@ -552,7 +704,7 @@ class GiveawayApprovalView(discord.ui.View):
             embed.set_image(url=final_banner_url)
 
         ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
-        embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
+        embed.set_footer(text=f"🆔 ID: {custom_id} • Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
         cfg = get_giveaway_config(guild.id)
         emoji_parts = cfg.get("emoji_participants", "👥")
@@ -602,6 +754,8 @@ class GiveawayApprovalView(discord.ui.View):
 
         gw_data = {
             "message_id": gw_msg.id,
+            "giveaway_id": custom_id,
+            "custom_id": custom_id,
             "channel_id": gw_channel.id,
             "guild_id": guild.id,
             "prize": prize,
@@ -662,7 +816,7 @@ class GiveawayApprovalView(discord.ui.View):
             if log_channel:
                 log_embed = discord.Embed(
                     title="📜 Giveaway Approved & Launched",
-                    description=f"**Prize:** {prize}\n**Sponsor:** <@{sponsor_id}>\n**Approved By:** {interaction.user.mention}\n**Channel:** {gw_channel.mention}\n**Duration:** {format_duration(duration_sec)}",
+                    description=f"**Giveaway ID:** `{custom_id}`\n**Prize:** {prize}\n**Sponsor:** <@{sponsor_id}>\n**Approved By:** {interaction.user.mention}\n**Channel:** {gw_channel.mention}\n**Duration:** {format_duration(duration_sec)}",
                     color=discord.Color.blue(),
                     timestamp=datetime.now(timezone.utc)
                 )
@@ -1363,7 +1517,8 @@ class Giveaways(commands.Cog):
                     valid_ended_img = validate_image_url(gw.get("image_url"))
                     if valid_ended_img:
                         ended_embed.set_image(url=valid_ended_img)
-                ended_embed.set_footer(text="Ended • Friday Engine", icon_url=guild.icon.url if guild.icon else None)
+                gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(message_id)[-4:]}")
+                ended_embed.set_footer(text=f"🆔 ID: {gw_id} • Ended • Friday Engine", icon_url=guild.icon.url if guild.icon else None)
 
                 disabled_view = GiveawayEnterView(giveaway_key=key, entry_count=len(entries), disabled=True, emoji=emoji_ended)
                 try:
@@ -1409,7 +1564,8 @@ class Giveaways(commands.Cog):
                 embed.add_field(name=f"{emoji_prize} Prize", value=f"**{prize}**", inline=True)
                 embed.add_field(name=f"{emoji_host} Hosted By", value=host_display, inline=True)
                 embed.add_field(name=f"{emoji_entries} Total Entries", value=f"**{len(entries)}**", inline=True)
-                embed.set_footer(text="Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
+                gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(message_id)[-4:]}")
+                embed.set_footer(text=f"🆔 ID: {gw_id} • Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
                 
                 view = discord.ui.View()
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
@@ -1440,7 +1596,8 @@ class Giveaways(commands.Cog):
                     color=discord.Color.from_rgb(107, 114, 128),
                     timestamp=datetime.now(timezone.utc)
                 )
-                embed.set_footer(text="Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
+                gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(message_id)[-4:]}")
+                embed.set_footer(text=f"🆔 ID: {gw_id} • Friday Giveaway Engine • Concluded", icon_url=guild.icon.url if guild.icon else None)
                 view = discord.ui.View()
                 view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
                 await channel.send(embed=embed, view=view)
@@ -1452,9 +1609,11 @@ class Giveaways(commands.Cog):
             cfg = get_giveaway_config(guild_id)
             log_channel = await resolve_giveaway_log_channel(self.bot, guild, cfg)
             if log_channel:
+                gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(message_id)[-4:]}")
                 winners_str = ", ".join(f"<@{w}>" for w in chosen) if chosen else "None (0 entries)"
                 default_log_title = "📜 Giveaway Concluded"
                 default_log_desc = (
+                    f"**Giveaway ID:** `{gw_id}`\n"
                     f"**Prize:** {prize}\n"
                     f"**Winners ({len(chosen)}):** {winners_str}\n"
                     f"**Total Entries:** {len(entries)}\n"
@@ -1465,6 +1624,8 @@ class Giveaways(commands.Cog):
                 raw_log_desc = cfg.get("log_concluded_message") or default_log_desc
                 formatted_log_desc = (
                     raw_log_desc
+                    .replace("{giveaway_id}", gw_id)
+                    .replace("{id}", gw_id)
                     .replace("{prize}", prize)
                     .replace("{winners}", winners_str)
                     .replace("{winner_count}", str(len(chosen)))
@@ -1474,6 +1635,8 @@ class Giveaways(commands.Cog):
                     .replace("{server}", guild.name)
                     .replace("{link}", jump_url)
                 )
+                if gw_id not in formatted_log_desc:
+                    formatted_log_desc = f"**Giveaway ID:** `{gw_id}`\n" + formatted_log_desc
                 log_embed = discord.Embed(
                     title=raw_log_title.replace("{prize}", prize),
                     description=formatted_log_desc,
@@ -1756,8 +1919,9 @@ class Giveaways(commands.Cog):
             if final_banner_url:
                 embed.set_image(url=final_banner_url)
 
+            custom_id = generate_giveaway_id()
             ends_date_str = datetime.fromtimestamp(end_time, timezone.utc).strftime("%m/%d/%y")
-            embed.set_footer(text=f"Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
+            embed.set_footer(text=f"🆔 ID: {custom_id} • Ends • {ends_date_str}", icon_url=guild.icon.url if guild.icon else None)
 
             # Temporary key before message is sent
             temp_id = str(uuid.uuid4())[:8]
@@ -1805,6 +1969,8 @@ class Giveaways(commands.Cog):
             # Save giveaway
             gw_data = {
                 "message_id": gw_msg.id,
+                "giveaway_id": custom_id,
+                "custom_id": custom_id,
                 "channel_id": target_channel.id,
                 "guild_id": guild.id,
                 "prize": prize,
@@ -1829,6 +1995,7 @@ class Giveaways(commands.Cog):
                 if log_channel:
                     default_log_title = "📜 Giveaway Created"
                     default_log_desc = (
+                        f"**Giveaway ID:** `{custom_id}`\n"
                         f"**Prize:** {prize}\n"
                         f"**Channel:** {target_channel.mention}\n"
                         f"**Sponsored by:** {interaction.user.mention}\n"
@@ -1841,6 +2008,8 @@ class Giveaways(commands.Cog):
                     raw_log_desc = cfg.get("log_created_message") or default_log_desc
                     formatted_log_desc = (
                         raw_log_desc
+                        .replace("{giveaway_id}", custom_id)
+                        .replace("{id}", custom_id)
                         .replace("{prize}", prize)
                         .replace("{channel}", target_channel.mention)
                         .replace("{host}", interaction.user.mention)
@@ -1850,6 +2019,8 @@ class Giveaways(commands.Cog):
                         .replace("{server}", guild.name)
                         .replace("{link}", gw_msg.jump_url)
                     )
+                    if custom_id not in formatted_log_desc:
+                        formatted_log_desc = f"**Giveaway ID:** `{custom_id}`\n" + formatted_log_desc
                     log_embed = discord.Embed(
                         title=raw_log_title.replace("{prize}", prize),
                         description=formatted_log_desc,
@@ -1866,7 +2037,7 @@ class Giveaways(commands.Cog):
                 print(f"[Giveaways] Error logging giveaway creation: {e}")
 
             await reply(
-                content=f"🎉 Giveaway for **{prize}** created successfully in {target_channel.mention}!\n[Click here to view]({gw_msg.jump_url})"
+                content=f"🎉 Giveaway `[{custom_id}]` for **{prize}** created successfully in {target_channel.mention}!\n[Click here to view]({gw_msg.jump_url})"
             )
         except Exception as e:
             import traceback
@@ -1893,20 +2064,17 @@ class Giveaways(commands.Cog):
         await self.gcreate.callback(self, interaction, prize, duration, winners, description)
 
     @app_commands.command(name="gend", description="End an active giveaway early and pick winners immediately")
-    @app_commands.describe(message_id="The Discord Message ID of the giveaway")
+    @app_commands.describe(giveaway="Select or enter the Giveaway ID, Message ID, or prize")
     @app_commands.default_permissions(manage_guild=True)
-    async def gend(self, interaction: discord.Interaction, message_id: str):
+    async def gend(self, interaction: discord.Interaction, giveaway: str):
         """Immediately ends an active giveaway and draws winners."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server staff can end giveaways.", ephemeral=True)
             return
 
-        clean_id = message_id.strip()
-        key = f"{interaction.guild_id}_{clean_id}"
-        gw = db.giveaways.get(key)
-
+        key, gw = resolve_giveaway(interaction.guild_id, giveaway)
         if not gw or gw.get("status") != "active":
-            await interaction.response.send_message(f"❌ Active giveaway with message ID `{clean_id}` was not found.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Active giveaway `{giveaway}` was not found.", ephemeral=True)
             return
 
         if not interaction.response.is_done():
@@ -1916,26 +2084,28 @@ class Giveaways(commands.Cog):
                 pass
 
         await self.conclude_giveaway(key, gw)
-        await interaction.followup.send(f"✅ Successfully ended the giveaway for **{gw.get('prize')}** early!", ephemeral=True)
+        gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(gw.get('message_id', ''))[-4:]}")
+        await interaction.followup.send(f"✅ Successfully ended giveaway `[{gw_id}]` for **{gw.get('prize')}** early!", ephemeral=True)
+
+    @gend.autocomplete("giveaway")
+    async def gend_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await active_giveaway_autocomplete(interaction, current)
 
     @app_commands.command(name="greroll", description="Reroll new winner(s) for an ended giveaway")
     @app_commands.describe(
-        message_id="The Discord Message ID of the ended giveaway",
+        giveaway="Select or enter the Giveaway ID, Message ID, or prize",
         winners="Number of new winners to pick (default: 1)"
     )
     @app_commands.default_permissions(manage_guild=True)
-    async def greroll(self, interaction: discord.Interaction, message_id: str, winners: Optional[int] = 1):
+    async def greroll(self, interaction: discord.Interaction, giveaway: str, winners: Optional[int] = 1):
         """Rerolls winners from the entry pool of an ended giveaway."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server staff can reroll giveaways.", ephemeral=True)
             return
 
-        clean_id = message_id.strip()
-        key = f"{interaction.guild_id}_{clean_id}"
-        gw = db.giveaways.get(key)
-
+        key, gw = resolve_giveaway(interaction.guild_id, giveaway)
         if not gw:
-            await interaction.response.send_message(f"❌ Giveaway with message ID `{clean_id}` was not found.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Giveaway `{giveaway}` was not found.", ephemeral=True)
             return
 
         entries = gw.get("entries", [])
@@ -1949,6 +2119,8 @@ class Giveaways(commands.Cog):
             except Exception:
                 pass
 
+        clean_id = str(gw.get("message_id") or key.split("_")[-1])
+        gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{clean_id[-4:]}")
         count = max(1, min(winners or 1, len(entries)))
         new_winners = random.sample(entries, k=count)
         gw["winners"] = new_winners
@@ -1987,7 +2159,7 @@ class Giveaways(commands.Cog):
             embed.add_field(name=f"{emoji_prize} Prize", value=f"**{prize}**", inline=True)
             embed.add_field(name="🎲 Rerolled By", value=interaction.user.mention, inline=True)
             embed.add_field(name=f"{emoji_winners} New Winner(s)", value=mentions_str, inline=True)
-            embed.set_footer(text="Friday Giveaway Engine • Reroll", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+            embed.set_footer(text=f"🆔 ID: {gw_id} • Friday Giveaway Engine • Reroll", icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
             
             view = discord.ui.View()
             view.add_item(discord.ui.Button(label="View Giveaway Message", url=jump_url, emoji="🔗", style=discord.ButtonStyle.link))
@@ -2007,6 +2179,7 @@ class Giveaways(commands.Cog):
             if log_channel:
                 default_reroll_log_title = "🎲 Giveaway Rerolled"
                 default_reroll_log_desc = (
+                    f"**Giveaway ID:** `{gw_id}`\n"
                     f"**Prize:** {prize}\n"
                     f"**New Winner(s):** {mentions_str}\n"
                     f"**Channel:** {channel.mention if channel else 'Unknown'}\n"
@@ -2016,6 +2189,8 @@ class Giveaways(commands.Cog):
                 raw_reroll_log_desc = cfg.get("log_reroll_message") or default_reroll_log_desc
                 formatted_log = (
                     raw_reroll_log_desc
+                    .replace("{giveaway_id}", gw_id)
+                    .replace("{id}", gw_id)
                     .replace("{prize}", prize)
                     .replace("{winners}", mentions_str)
                     .replace("{channel}", channel.mention if channel else 'Unknown')
@@ -2023,6 +2198,8 @@ class Giveaways(commands.Cog):
                     .replace("{server}", interaction.guild.name)
                     .replace("{link}", jump_url if channel else "")
                 )
+                if gw_id not in formatted_log:
+                    formatted_log = f"**Giveaway ID:** `{gw_id}`\n" + formatted_log
                 log_embed = discord.Embed(
                     title=raw_reroll_log_title.replace("{prize}", prize),
                     description=formatted_log,
@@ -2036,25 +2213,26 @@ class Giveaways(commands.Cog):
             print(f"[Giveaways] Failed to send reroll log: {e}")
 
         if interaction.response.is_done():
-            await interaction.followup.send(f"✅ Rerolled {count} new winner(s) for **{prize}**!", ephemeral=True)
+            await interaction.followup.send(f"✅ Rerolled {count} new winner(s) for giveaway `[{gw_id}]` (**{prize}**)!", ephemeral=True)
         else:
-            await interaction.response.send_message(f"✅ Rerolled {count} new winner(s) for **{prize}**!", ephemeral=True)
+            await interaction.response.send_message(f"✅ Rerolled {count} new winner(s) for giveaway `[{gw_id}]` (**{prize}**)!", ephemeral=True)
+
+    @greroll.autocomplete("giveaway")
+    async def greroll_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await ended_giveaway_autocomplete(interaction, current)
 
     @app_commands.command(name="gcancel", description="Cancel an active giveaway without picking winners")
-    @app_commands.describe(message_id="The Discord Message ID of the giveaway")
+    @app_commands.describe(giveaway="Select or enter the Giveaway ID, Message ID, or prize")
     @app_commands.default_permissions(manage_guild=True)
-    async def gcancel(self, interaction: discord.Interaction, message_id: str):
+    async def gcancel(self, interaction: discord.Interaction, giveaway: str):
         """Cancels an active giveaway without drawing any winners."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server staff can cancel giveaways.", ephemeral=True)
             return
 
-        clean_id = message_id.strip()
-        key = f"{interaction.guild_id}_{clean_id}"
-        gw = db.giveaways.get(key)
-
+        key, gw = resolve_giveaway(interaction.guild_id, giveaway)
         if not gw or gw.get("status") != "active":
-            await interaction.response.send_message(f"❌ Active giveaway with message ID `{clean_id}` was not found.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Active giveaway `{giveaway}` was not found.", ephemeral=True)
             return
 
         if not interaction.response.is_done():
@@ -2063,7 +2241,10 @@ class Giveaways(commands.Cog):
             except Exception:
                 pass
 
+        clean_id = str(gw.get("message_id") or key.split("_")[-1])
+        gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{clean_id[-4:]}")
         gw["status"] = "cancelled"
+        gw["cancelled"] = True
         db.save_data()
 
         channel = await resolve_channel(interaction.guild, self.bot, gw.get("channel_id"), ("giveaways", "giveaway", "gw", "announcements"))
@@ -2074,16 +2255,42 @@ class Giveaways(commands.Cog):
                     embed = msg.embeds[0]
                     embed.title = f"❌ GIVEAWAY CANCELLED: {gw.get('prize')} ❌"
                     embed.color = discord.Color.red()
-                    embed.set_footer(text=f"Cancelled by {interaction.user.display_name}")
+                    embed.set_footer(text=f"🆔 ID: {gw_id} • Cancelled by {interaction.user.display_name}")
                     disabled_view = GiveawayEnterView(giveaway_key=key, entry_count=len(gw.get("entries", [])), disabled=True)
                     await msg.edit(embed=embed, view=disabled_view)
             except Exception:
                 pass
 
+        # Log cancellation to #giveaway-logs
+        try:
+            cfg = get_giveaway_config(interaction.guild_id)
+            log_channel = await resolve_giveaway_log_channel(self.bot, interaction.guild, cfg)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="🛑 Giveaway Cancelled",
+                    description=(
+                        f"**Giveaway ID:** `{gw_id}`\n"
+                        f"**Prize:** {gw.get('prize')}\n"
+                        f"**Channel:** {channel.mention if channel else 'Unknown'}\n"
+                        f"**Cancelled by:** {interaction.user.mention}"
+                    ),
+                    color=discord.Color.red(),
+                    timestamp=datetime.now(timezone.utc)
+                )
+                if interaction.guild.icon:
+                    log_embed.set_footer(text="Friday Giveaway Engine • Audit Log", icon_url=interaction.guild.icon.url)
+                await log_channel.send(embed=log_embed)
+        except Exception as e:
+            print(f"[Giveaways] Failed to send cancel log: {e}")
+
         if interaction.response.is_done():
-            await interaction.followup.send(f"❌ Successfully cancelled the giveaway for **{gw.get('prize')}**.", ephemeral=True)
+            await interaction.followup.send(f"❌ Successfully cancelled giveaway `[{gw_id}]` for **{gw.get('prize')}**.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"❌ Successfully cancelled the giveaway for **{gw.get('prize')}**.", ephemeral=True)
+            await interaction.response.send_message(f"❌ Successfully cancelled giveaway `[{gw_id}]` for **{gw.get('prize')}**.", ephemeral=True)
+
+    @gcancel.autocomplete("giveaway")
+    async def gcancel_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        return await active_giveaway_autocomplete(interaction, current)
 
     @app_commands.command(name="glist", description="List all active giveaways running in this server")
     async def glist(self, interaction: discord.Interaction):
@@ -2106,17 +2313,20 @@ class Giveaways(commands.Cog):
             timestamp=datetime.now(timezone.utc)
         )
 
+        cfg = get_giveaway_config(interaction.guild_id)
+        dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
+
         for gw in active[:15]:
             end_ts = int(gw.get("end_time", time.time()))
             entries_count = len(gw.get("entries", []))
             ch_id = gw.get("channel_id")
             msg_id = gw.get("message_id")
+            gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(msg_id)[-4:]}")
             link = f"https://discord.com/channels/{gid}/{ch_id}/{msg_id}"
-            cfg = get_giveaway_config(interaction.guild_id)
-            dot = resolve_safe_emoji(self.bot, cfg.get("emoji_bullet"), fallback="•")
             embed.add_field(
-                name=f"🎉 {gw.get('prize')}",
+                name=f"🎉 {gw.get('prize')} [{gw_id}]",
                 value=(
+                    f"{dot} **ID:** `{gw_id}`\n"
                     f"{dot} **Channel:** <#{ch_id}>\n"
                     f"{dot} **Winners:** {gw.get('winners_count', 1)}\n"
                     f"{dot} **Entries:** {entries_count}\n"
