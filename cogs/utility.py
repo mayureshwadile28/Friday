@@ -90,8 +90,9 @@ HELP_MODULES = [
         "id": "voice",
         "name": "Voice",
         "emoji": "☊",
-        "desc": "Temporary Join-to-Create Voice Rooms",
+        "desc": "Voice Channels, Activity Analytics & Temp Rooms",
         "sections": [
+            ("Voice Analytics", ["vc", "activity voice", "!vc"]),
             ("Hub Setup", ["voice setup", "voice autohub", "voice status"]),
             ("Room Controls", ["voice lock", "voice unlock", "voice hide", "voice unhide", "voice limit", "voice name", "voice kick", "voice claim"])
         ]

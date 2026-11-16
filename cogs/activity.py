@@ -206,6 +206,16 @@ class Activity(commands.Cog):
                 )
             """)
             cursor.execute("""
+                CREATE TABLE IF NOT EXISTS channel_voice (
+                    guild_id TEXT,
+                    channel_id TEXT,
+                    user_id TEXT,
+                    date TEXT,
+                    seconds INTEGER DEFAULT 0,
+                    PRIMARY KEY (guild_id, channel_id, user_id, date)
+                )
+            """)
+            cursor.execute("""
                 CREATE TABLE IF NOT EXISTS channel_names (
                     channel_id TEXT PRIMARY KEY,
                     guild_id TEXT,
@@ -216,6 +226,7 @@ class Activity(commands.Cog):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_member_msg_date ON member_messages(guild_id, user_id, date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_member_voice_date ON member_voice(guild_id, user_id, date)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_channel_msg_date ON channel_messages(guild_id, channel_id, date)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_channel_voice_date ON channel_voice(guild_id, channel_id, date)")
             conn.commit()
 
     def record_message(self, guild_id: int, channel_id: int, user_id: int, channel_name: str = None):
@@ -345,11 +356,12 @@ class Activity(commands.Cog):
                 pass
         return "deleted-channel"
 
-    def add_voice_seconds(self, guild_id: int, user_id: int, seconds: int):
+    def add_voice_seconds(self, guild_id: int, user_id: int, seconds: int, channel_id: int = None, channel_name: str = None):
         if seconds <= 0:
             return
         today = datetime.datetime.now(KOLKATA_TZ).strftime("%Y-%m-%d")
         gid_str, uid_str = str(guild_id), str(user_id)
+        cid_str = str(channel_id) if channel_id else None
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -359,17 +371,34 @@ class Activity(commands.Cog):
                     ON CONFLICT(guild_id, user_id, date)
                     DO UPDATE SET seconds = seconds + excluded.seconds
                 """, (gid_str, uid_str, today, int(seconds)))
+                if cid_str:
+                    cursor.execute("""
+                        INSERT INTO channel_voice (guild_id, channel_id, user_id, date, seconds)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(guild_id, channel_id, user_id, date)
+                        DO UPDATE SET seconds = seconds + excluded.seconds
+                    """, (gid_str, cid_str, uid_str, today, int(seconds)))
+                    if channel_name:
+                        cursor.execute("""
+                            INSERT INTO channel_names (channel_id, guild_id, name, updated_at)
+                            VALUES (?, ?, ?, ?)
+                            ON CONFLICT(channel_id) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at
+                        """, (cid_str, gid_str, channel_name, today))
                 conn.commit()
         except Exception as e:
             print(f"⚠️ Activity DB add_voice_seconds error: {e}")
 
     def flush_active_voice_sessions(self):
         now = time.time()
-        for (gid, uid), start_time in list(self.voice_sessions.items()):
+        for (gid, uid), session_data in list(self.voice_sessions.items()):
+            if isinstance(session_data, tuple):
+                start_time, ch_id = session_data
+            else:
+                start_time, ch_id = session_data, None
             elapsed = int(now - start_time)
             if elapsed > 0:
-                self.add_voice_seconds(gid, uid, elapsed)
-                self.voice_sessions[(gid, uid)] = now
+                self.add_voice_seconds(gid, uid, elapsed, channel_id=ch_id)
+                self.voice_sessions[(gid, uid)] = (now, ch_id) if ch_id else now
 
     @tasks.loop(minutes=5)
     async def flush_voice_loop(self):
@@ -666,6 +695,171 @@ class Activity(commands.Cog):
         except Exception:
             return 0
 
+    # ────────────────────────── Voice Analytics Query Helpers ──────────────────────────
+
+    def get_voice_trend(self, guild_id: int, channel_id: int = None, days: int = 7) -> Tuple[List[str], List[float], str]:
+        """
+        Returns (labels, values, unit) for voice activity over the past `days` days.
+        unit is 'Hours' (or 'Mins' if values are small).
+        """
+        gid_str = str(guild_id)
+        cid_str = str(channel_id) if channel_id else None
+        now = datetime.datetime.now(KOLKATA_TZ)
+
+        dates = [(now - datetime.timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days - 1, -1, -1)]
+        labels = [(now - datetime.timedelta(days=i)).strftime("%b %d") for i in range(days - 1, -1, -1)]
+
+        raw_seconds = []
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                for d in dates:
+                    if cid_str:
+                        cursor.execute("SELECT COALESCE(SUM(seconds), 0) FROM channel_voice WHERE guild_id = ? AND channel_id = ? AND date = ?", (gid_str, cid_str, d))
+                    else:
+                        cursor.execute("SELECT COALESCE(SUM(seconds), 0) FROM member_voice WHERE guild_id = ? AND date = ?", (gid_str, d))
+                    row = cursor.fetchone()
+                    raw_seconds.append(row[0] if row else 0)
+        except Exception as e:
+            print(f"⚠️ Activity DB get_voice_trend error: {e}")
+            raw_seconds = [0] * days
+
+        max_sec = max(raw_seconds) if raw_seconds else 0
+        if max_sec > 0 and max_sec < 5400:
+            unit = "Mins"
+            values = [round(s / 60.0, 1) for s in raw_seconds]
+        else:
+            unit = "Hours"
+            values = [round(s / 3600.0, 1) for s in raw_seconds]
+
+        return labels, values, unit
+
+    def get_voice_kpis(self, guild: discord.Guild, channel_id: int = None) -> List[Tuple[str, str]]:
+        gid_str = str(guild.id)
+        cid_str = str(channel_id) if channel_id else None
+        now = datetime.datetime.now(KOLKATA_TZ)
+        today_str = now.strftime("%Y-%m-%d")
+        week_str = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        month_str = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+
+        today_sec, week_sec, month_sec, life_sec = 0, 0, 0, 0
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if cid_str:
+                    cursor.execute("""
+                        SELECT
+                            COALESCE(SUM(CASE WHEN date = ? THEN seconds ELSE 0 END), 0) AS today_sec,
+                            COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS week_sec,
+                            COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS month_sec,
+                            COALESCE(SUM(seconds), 0) AS life_sec
+                        FROM channel_voice
+                        WHERE guild_id = ? AND channel_id = ?
+                    """, (today_str, week_str, month_str, gid_str, cid_str))
+                else:
+                    cursor.execute("""
+                        SELECT
+                            COALESCE(SUM(CASE WHEN date = ? THEN seconds ELSE 0 END), 0) AS today_sec,
+                            COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS week_sec,
+                            COALESCE(SUM(CASE WHEN date >= ? THEN seconds ELSE 0 END), 0) AS month_sec,
+                            COALESCE(SUM(seconds), 0) AS life_sec
+                        FROM member_voice
+                        WHERE guild_id = ?
+                    """, (today_str, week_str, month_str, gid_str))
+                row = cursor.fetchone()
+                if row:
+                    today_sec = row["today_sec"]
+                    week_sec = row["week_sec"]
+                    month_sec = row["month_sec"]
+                    life_sec = row["life_sec"]
+        except Exception as e:
+            print(f"⚠️ Activity DB get_voice_kpis error: {e}")
+
+        # Active humans online in voice right now
+        active_now = 0
+        if channel_id:
+            ch = guild.get_channel(int(channel_id))
+            if ch and hasattr(ch, "members"):
+                active_now = sum(1 for m in ch.members if not m.bot)
+        else:
+            for vc in guild.voice_channels:
+                active_now += sum(1 for m in vc.members if not m.bot)
+
+        return [
+            ("TODAY", self.format_duration(today_sec)),
+            ("THIS WEEK", self.format_duration(week_sec)),
+            ("THIS MONTH", self.format_duration(month_sec)),
+            ("ALL-TIME", self.format_duration(life_sec)),
+            ("ACTIVE NOW", f"{active_now} Online")
+        ]
+
+    def get_top_voice_members(self, guild: discord.Guild, channel_id: int = None, limit: int = 5) -> List[Tuple[int, str, str, int]]:
+        """
+        Returns top voice members: [(rank, display_name, duration_str, user_id), ...]
+        STRICTLY EXCLUDES BOTS (e.g. 24/7 music bots) so only genuine human members rank!
+        """
+        gid_str = str(guild.id)
+        cid_str = str(channel_id) if channel_id else None
+
+        results = []
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                if cid_str:
+                    cursor.execute("""
+                        SELECT user_id, SUM(seconds) as total_sec
+                        FROM channel_voice
+                        WHERE guild_id = ? AND channel_id = ?
+                        GROUP BY user_id
+                        ORDER BY total_sec DESC
+                        LIMIT 50
+                    """, (gid_str, cid_str))
+                else:
+                    cursor.execute("""
+                        SELECT user_id, SUM(seconds) as total_sec
+                        FROM member_voice
+                        WHERE guild_id = ?
+                        GROUP BY user_id
+                        ORDER BY total_sec DESC
+                        LIMIT 50
+                    """, (gid_str,))
+                rows = cursor.fetchall()
+                rank = 1
+                for r in rows:
+                    uid = int(r["user_id"])
+                    member = guild.get_member(uid)
+                    # Strictly filter out music bots and system bots
+                    if member and member.bot:
+                        continue
+                    name = member.display_name if member else f"User {uid}"
+                    dur_str = self.format_duration(r["total_sec"])
+                    results.append((rank, name, dur_str, uid))
+                    rank += 1
+                    if len(results) >= limit:
+                        break
+        except Exception as e:
+            print(f"⚠️ Activity DB get_top_voice_members error: {e}")
+
+        return results
+
+    def get_active_voice_channels_summary(self, guild: discord.Guild, limit: int = 4) -> List[dict]:
+        """Returns summary of currently active voice channels with connected human members."""
+        active = []
+        if not guild:
+            return active
+        for vc in guild.voice_channels:
+            humans = [m for m in vc.members if not m.bot]
+            if len(humans) > 0 or len(vc.members) > 0:
+                active.append({
+                    "id": vc.id,
+                    "name": vc.name,
+                    "human_count": len(humans),
+                    "total_count": len(vc.members),
+                    "humans": [m.display_name for m in humans[:3]]
+                })
+        active.sort(key=lambda x: (x["human_count"], x["total_count"]), reverse=True)
+        return active[:limit]
+
     # ────────────────────────── Event Listeners ──────────────────────────
 
     @commands.Cog.listener()
@@ -685,22 +879,24 @@ class Activity(commands.Cog):
 
         # Joined VC
         if before.channel is None and after.channel is not None:
-            self.voice_sessions[key] = now
+            self.voice_sessions[key] = (now, after.channel.id)
 
         # Left VC
         elif before.channel is not None and after.channel is None:
-            start_time = self.voice_sessions.pop(key, None)
-            if start_time:
+            session_data = self.voice_sessions.pop(key, None)
+            if session_data:
+                start_time, ch_id = session_data if isinstance(session_data, tuple) else (session_data, before.channel.id)
                 elapsed = int(now - start_time)
-                self.add_voice_seconds(gid, uid, elapsed)
+                self.add_voice_seconds(gid, uid, elapsed, channel_id=ch_id, channel_name=before.channel.name)
 
         # Switched VC
         elif before.channel is not None and after.channel is not None and before.channel.id != after.channel.id:
-            start_time = self.voice_sessions.get(key)
-            if start_time:
+            session_data = self.voice_sessions.get(key)
+            if session_data:
+                start_time, ch_id = session_data if isinstance(session_data, tuple) else (session_data, before.channel.id)
                 elapsed = int(now - start_time)
-                self.add_voice_seconds(gid, uid, elapsed)
-            self.voice_sessions[key] = now
+                self.add_voice_seconds(gid, uid, elapsed, channel_id=ch_id, channel_name=before.channel.name)
+            self.voice_sessions[key] = (now, after.channel.id)
 
     # ────────────────────────── High-Res Image Rendering ──────────────────────────
 
@@ -1856,6 +2052,415 @@ class Activity(commands.Cog):
         )
         return discord.File(fp=buf, filename=f"leaderboard_{guild.id}_{timeframe}_p{current_page}.png")
 
+    # ────────────────────────── Voice Analytics Graphic Card ──────────────────────────
+
+    def render_vc_analytics_card(
+        self,
+        guild_name: str,
+        guild_icon: Optional[Image.Image],
+        target_channel_name: Optional[str],
+        kpi_metrics: list,
+        chart_labels: list,
+        chart_values: list,
+        chart_unit: str,
+        top_members: list,
+        active_channels: list,
+        guild_id: int,
+        active_now_count: int,
+        total_voice_channels: int
+    ) -> io.BytesIO:
+        """
+        Renders a high-resolution 1080x760 Voice Channel Analytics & Leaderboard Graphic Card.
+        Features:
+          - Dynamic wallpaper support (vc_card_backgrounds / activity_card_backgrounds)
+          - Wallpaper dimmed and blurred with dynamic luminance adaptation
+          - Transparent glassmorphic curved boxes (no opaque blocks)
+          - Dynamic palette adaptation to wallpaper hue (spline curve, glowing dots, text halo)
+          - 7-day spline volume graph with Catmull-Rom monotone cubic interpolation
+          - Top voice members leaderboard strictly excluding 24/7 music bots
+          - Active voice channels live telemetry with human member count
+        """
+        W, H = 1080, 760
+
+        # Check custom wallpaper with dynamic luminance adaptation
+        raw_bg = None
+        bg_img = None
+        custom_bg = resolve_card_background(db.vc_card_backgrounds.get(str(guild_id))) if guild_id else None
+        if not custom_bg and guild_id:
+            custom_bg = resolve_card_background(db.activity_card_backgrounds.get(str(guild_id)))
+
+        container_alpha = 22
+        panel_alpha = 38
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx, cy = (nw - W) // 2, (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=4))
+
+                stat = ImageStat.Stat(raw_bg.convert('L'))
+                mean_lum = stat.mean[0]
+                dim_factor = max(0.48, 0.72 - ((mean_lum - 100) / 220.0)) if mean_lum > 100 else 0.75
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
+                container_alpha = 22
+                panel_alpha = 38
+            except Exception:
+                raw_bg = bg_img = None
+
+        if not bg_img:
+            img = Image.new("RGBA", (W, H), (14, 17, 24, 255))
+        else:
+            img = bg_img.copy()
+
+        # Outer rounded container (Adaptive Frosted Dark Glass)
+        container_fill = (10, 12, 18, container_alpha) if raw_bg else (22, 25, 33, 255)
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=24, fill=container_fill, outline=(255, 255, 255, 65) if raw_bg else (42, 45, 54, 255), width=2)
+        img = Image.alpha_composite(img, overlay)
+
+        # Dynamic accent and complementary colors
+        accent_color = extract_accent_color(raw_bg, default_rgb=(56, 189, 248)) if raw_bg else (56, 189, 248)
+        import colorsys as _cs
+        if raw_bg:
+            _ar, _ag, _ab = accent_color
+            _h, _s, _v = _cs.rgb_to_hsv(_ar / 255.0, _ag / 255.0, _ab / 255.0)
+            _tr, _tg, _tb = _cs.hsv_to_rgb(_h, min(_s * 1.25, 0.95), max(_v, 0.98))
+            accent_bright = (int(_tr * 255), int(_tg * 255), int(_tb * 255))
+            _sr, _sg, _sb = _cs.hsv_to_rgb(_h, 0.28, 0.96)
+            text_secondary = (int(_sr * 255), int(_sg * 255), int(_sb * 255))
+            _wr, _wg, _wb = _cs.hsv_to_rgb((_h + 0.08) % 1.0, 0.75, 0.98)
+            accent_gold = (int(_wr * 255), int(_wg * 255), int(_wb * 255))
+        else:
+            accent_bright = (56, 189, 248)
+            text_secondary = (186, 230, 253)
+            accent_gold = (251, 191, 36)
+
+        # Glassmorphic Inner Panels Layer (Alpha Composited so wallpaper shines through!)
+        panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel_layer)
+
+        p_fill = (12, 16, 26, panel_alpha) if raw_bg else (32, 35, 44, 240)
+        p_outline = (255, 255, 255, 52) if raw_bg else (48, 52, 63, 255)
+        r_fill = (255, 255, 255, 20) if raw_bg else (22, 24, 30, 255)
+
+        # 1. Row 1: KPI metric cards (5 cards)
+        kpi_y = 104
+        kpi_h = 78
+        card_w = 190
+        spacing = 13
+        for idx in range(min(5, len(kpi_metrics))):
+            cx = 38 + idx * (card_w + spacing)
+            draw_rounded_rect(pd, (cx, kpi_y, cx + card_w, kpi_y + kpi_h), radius=14, fill=p_fill, outline=p_outline, width=1)
+
+        # 2. Row 2: Main body
+        body_y = 196
+        body_h = 512
+        left_w = 560
+        right_x = 614
+        right_w = W - 38 - right_x
+
+        # Left: Chart container
+        draw_rounded_rect(pd, (38, body_y, 38 + left_w, body_y + body_h), radius=18, fill=p_fill, outline=p_outline, width=1)
+        # Right: Leaderboard & live channels container
+        draw_rounded_rect(pd, (right_x, body_y, right_x + right_w, body_y + body_h), radius=18, fill=p_fill, outline=p_outline, width=1)
+
+        # Right container: Slots for Top Members (up to 4)
+        for slot in range(4):
+            sy = body_y + 48 + slot * 48
+            draw_rounded_rect(pd, (right_x + 12, sy, right_x + right_w - 12, sy + 42), radius=9, fill=r_fill)
+
+        # Right container: Slots for Active Channels (up to 4)
+        div_y = body_y + 252
+        for slot in range(4):
+            sy2 = div_y + 44 + slot * 48
+            draw_rounded_rect(pd, (right_x + 12, sy2, right_x + right_w - 12, sy2 + 42), radius=9, fill=r_fill)
+
+        img = Image.alpha_composite(img, panel_layer)
+        draw = ImageDraw.Draw(img)
+
+        # High-impact typography
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14)
+        font_pill = get_unicode_font(13, bold=True)
+        font_kpi_lbl = get_unicode_font(13, bold=True)
+        font_kpi_val = get_unicode_font(30, bold=True)
+        font_box_title = get_unicode_font(18, bold=True)
+        font_axis = get_unicode_font(13, bold=True)
+        font_list = get_unicode_font(15, bold=True)
+        font_list_sub = get_unicode_font(12)
+        font_list_badge = get_unicode_font(13, bold=True)
+        font_footer = get_unicode_font(12)
+        font_footer_bold = get_unicode_font(12, bold=True)
+
+        # Header: Server Icon & Titles
+        header_x, header_y = 38, 28
+        if guild_icon:
+            try:
+                icon_resized = guild_icon.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (64, 64), 0)
+                mask_draw = ImageDraw.Draw(mask)
+                mask_draw.ellipse((0, 0, 64, 64), fill=255)
+                img.paste(icon_resized, (header_x, header_y), mask)
+                draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=accent_bright + (220,), width=2)
+            except Exception:
+                pass
+        else:
+            draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=accent_bright + (220,), fill=(25, 30, 42, 255), width=2)
+            init_c = guild_name[0].upper() if guild_name else "V"
+            ib = font_title.getbbox(init_c)
+            draw_luminous_text(draw, (header_x + (64 - (ib[2] - ib[0])) // 2, header_y + 14), init_c, font=font_title, fill=(255, 255, 255, 255))
+
+        text_x = header_x + 78
+        title_str = f"{clean_display_name(guild_name, max_len=22)} • #{clean_display_name(target_channel_name, max_len=16)}" if target_channel_name else f"{clean_display_name(guild_name, max_len=26)} • Voice Analytics"
+        draw_luminous_text(draw, (text_x, header_y + 2), title_str, font=font_title, fill=accent_gold)
+        sub_str = f"Filtered Channel: #{target_channel_name} • 7-Day History & Metrics" if target_channel_name else "Voice Telemetry & Real-Time Presence • Bot-Filtered Leaderboard"
+        draw_luminous_text(draw, (text_x, header_y + 36), sub_str, font=font_sub, fill=text_secondary)
+
+        # Top-right Status Pills
+        pills = [
+            ("VOICE TELEMETRY", (251, 191, 36)),
+            (f"🔊 {total_voice_channels} Channels", accent_bright),
+            (f"LIVE: {active_now_count} in VC", (52, 211, 153))
+        ]
+        pill_right = W - 38
+        for p_label, (cr, cg, cb) in pills:
+            bbox = font_pill.getbbox(p_label)
+            pw = (bbox[2] - bbox[0]) + 24
+            px = pill_right - pw
+            py = header_y + 14
+            draw_rounded_rect(draw, (px, py, px + pw, py + 32), radius=16, fill=(cr, cg, cb, 40), outline=(cr, cg, cb, 210), width=1)
+            draw_luminous_text(draw, (px + 12, py + 7), p_label, font=font_pill, fill=(cr, cg, cb, 255))
+            pill_right = px - 10
+
+        # 1. Row 1: KPI Metric Cards
+        for idx, (label, val_str) in enumerate(kpi_metrics[:5]):
+            cx = 38 + idx * (card_w + spacing)
+            draw_luminous_text(draw, (cx + 16, kpi_y + 10), label.upper(), font=font_kpi_lbl, fill=text_secondary)
+            draw_luminous_text(draw, (cx + 16, kpi_y + 32), val_str, font=font_kpi_val, fill=accent_gold)
+            ix = cx + card_w - 22
+            iy = kpi_y + 16
+            draw.ellipse((ix, iy, ix + 8, iy + 8), fill=accent_bright + (255,))
+
+        # 2. Row 2: Left Spline Chart
+        chart_title = f"7-Day Voice Volume Trend [{'#' + target_channel_name if target_channel_name else 'Overall'}]"
+        draw_luminous_text(draw, (58, body_y + 16), chart_title, font=font_box_title, fill=accent_bright)
+
+        legend_text = f"● Voice Time ({chart_unit})"
+        leg_bbox = font_axis.getbbox(legend_text)
+        leg_x = 38 + left_w - 24 - (leg_bbox[2] - leg_bbox[0])
+        draw_luminous_text(draw, (leg_x, body_y + 18), legend_text, font=font_axis, fill=text_secondary)
+
+        plot_x = 94
+        plot_y = body_y + 68
+        plot_w = left_w - 82
+        plot_h = 360
+        baseline_y = plot_y + plot_h
+
+        max_val = max(chart_values) if chart_values and max(chart_values) > 0 else 5.0
+        if max_val <= 5:
+            max_y = 5.0
+        elif max_val <= 10:
+            max_y = 10.0
+        elif max_val <= 50:
+            max_y = float(math.ceil(max_val / 10) * 10)
+        elif max_val <= 200:
+            max_y = float(math.ceil(max_val / 20) * 20)
+        else:
+            max_y = float(math.ceil(max_val / 50) * 50)
+
+        # Horizontal gridlines & Y labels
+        for step in range(4):
+            val = max_y * (3 - step) / 3
+            gy = plot_y + int(plot_h * step / 3)
+            draw.line((plot_x, gy, plot_x + plot_w, gy), fill=(255, 255, 255, 40) if raw_bg else (44, 48, 58, 255), width=1)
+            val_str = f"{val:.1f}h" if val < 10 and chart_unit == "Hours" else (f"{int(val)}h" if chart_unit == "Hours" else f"{int(val)}m")
+            draw_luminous_text(draw, (plot_x - 52, gy - 8), val_str, font=font_axis, fill=text_secondary)
+
+        raw_points = []
+        num_pts = len(chart_values)
+        for i, v in enumerate(chart_values):
+            cx = plot_x + int(i * (plot_w / max(1, num_pts - 1)))
+            cy = baseline_y - int((v / max_y) * plot_h)
+            raw_points.append((cx, cy))
+
+        raw_spline = monotone_cubic_spline(raw_points, num_subdivisions=16)
+        spline_points = [(p[0], min(baseline_y, max(plot_y, p[1]))) for p in raw_spline]
+
+        # Area gradient fill under curve
+        overlay_chart = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        oc_draw = ImageDraw.Draw(overlay_chart)
+        poly_points = [(plot_x, baseline_y)] + spline_points + [(plot_x + plot_w, baseline_y)]
+        oc_draw.polygon(poly_points, fill=accent_bright + (40,))
+        img = Image.alpha_composite(img, overlay_chart)
+        draw = ImageDraw.Draw(img)
+
+        # Spline stroke line
+        for i in range(len(spline_points) - 1):
+            draw.line([spline_points[i], spline_points[i + 1]], fill=accent_bright + (255,), width=4)
+
+        # Point markers, tags, & X date labels
+        for i, (px, py) in enumerate(raw_points):
+            draw.ellipse((px - 6, py - 6, px + 6, py + 6), fill=(15, 20, 30, 255), outline=accent_bright + (255,), width=2)
+            draw.ellipse((px - 3, py - 3, px + 3, py + 3), fill=(255, 255, 255, 255))
+            if i < len(chart_labels):
+                lbl = chart_labels[i]
+                l_bbox = font_axis.getbbox(lbl)
+                lw = l_bbox[2] - l_bbox[0]
+                draw_luminous_text(draw, (px - lw // 2, baseline_y + 14), lbl, font=font_axis, fill=text_secondary)
+
+            val_num = chart_values[i]
+            if val_num > 0:
+                val_tag = f"{val_num:.1f}h" if val_num < 10 and chart_unit == "Hours" else (f"{int(val_num)}h" if chart_unit == "Hours" else f"{int(val_num)}m")
+                vt_bbox = font_axis.getbbox(val_tag)
+                vtw = vt_bbox[2] - vt_bbox[0]
+                draw_luminous_text(draw, (px - vtw // 2, max(plot_y + 4, py - 22)), val_tag, font=font_axis, fill=accent_gold)
+
+        draw_luminous_text(draw, (58, baseline_y + 36), "Voice activity duration logged in real-time across voice sessions", font=font_list_sub, fill=(120, 130, 145, 255))
+
+        # 3. Row 2: Right Container (Top Members & Live Activity)
+        # Section A: Top Voice Members (BOTS EXCLUDED)
+        draw_luminous_text(draw, (right_x + 18, body_y + 16), "Top Voice Members", font=font_box_title, fill=accent_bright)
+
+        be_bbox = font_pill.getbbox("BOTS EXCLUDED")
+        bew = (be_bbox[2] - be_bbox[0]) + 16
+        bex = right_x + right_w - 18 - bew
+        draw_rounded_rect(draw, (bex, body_y + 16, bex + bew, body_y + 36), radius=10, fill=(168, 85, 247, 40), outline=(168, 85, 247, 210), width=1)
+        draw_luminous_text(draw, (bex + 8, body_y + 20), "BOTS EXCLUDED", font=font_pill, fill=(192, 132, 252, 255))
+
+        for idx in range(4):
+            sy = body_y + 48 + idx * 48
+            if idx < len(top_members):
+                rank, name, dur_str, av_img = top_members[idx]
+                if rank == 1:
+                    rf, ro, rt = (60, 45, 15, 255), (217, 119, 6, 255), (245, 158, 11, 255)
+                elif rank == 2:
+                    rf, ro, rt = (38, 45, 58, 255), (148, 163, 184, 255), (226, 232, 240, 255)
+                elif rank == 3:
+                    rf, ro, rt = (52, 32, 24, 255), (180, 83, 9, 255), (217, 119, 6, 255)
+                else:
+                    rf, ro, rt = (24, 28, 38, 255), (55, 65, 81, 255), (156, 163, 175, 255)
+
+                draw_rounded_rect(draw, (right_x + 16, sy + 6, right_x + 46, sy + 36), radius=8, fill=rf, outline=ro, width=1)
+                r_str = f"#{rank}"
+                rb = font_list_badge.getbbox(r_str)
+                rw = rb[2] - rb[0]
+                draw_luminous_text(draw, (right_x + 16 + (30 - rw) // 2, sy + 11), r_str, font=font_list_badge, fill=rt)
+
+                # Avatar
+                av_x = right_x + 54
+                if av_img:
+                    try:
+                        av_resized = av_img.convert("RGBA").resize((30, 30), Image.Resampling.LANCZOS)
+                        mask = Image.new("L", (30, 30), 0)
+                        mask_draw = ImageDraw.Draw(mask)
+                        mask_draw.ellipse((0, 0, 30, 30), fill=255)
+                        img.paste(av_resized, (av_x, sy + 6), mask)
+                        draw.ellipse((av_x, sy + 6, av_x + 30, sy + 36), outline=accent_bright + (220,), width=1)
+                    except Exception:
+                        av_img = None
+                if not av_img:
+                    draw.ellipse((av_x, sy + 6, av_x + 30, sy + 36), fill=(40, 45, 60, 255), outline=(70, 75, 95, 255), width=1)
+                    c_char = name[0].upper() if name else "?"
+                    cb = font_list_badge.getbbox(c_char)
+                    cw = cb[2] - cb[0]
+                    draw_luminous_text(draw, (av_x + (30 - cw) // 2, sy + 11), c_char, font=font_list_badge, fill=(255, 255, 255, 255))
+
+                # Name
+                draw_luminous_text(draw, (av_x + 38, sy + 12), clean_display_name(name, max_len=14), font=font_list, fill=text_secondary)
+
+                # Duration badge
+                db_bbox = font_list_badge.getbbox(dur_str)
+                dw = (db_bbox[2] - db_bbox[0]) + 18
+                dpx = right_x + right_w - 18 - dw
+                draw_rounded_rect(draw, (dpx, sy + 8, dpx + dw, sy + 34), radius=8, fill=(accent_color[0], accent_color[1], accent_color[2], 40), outline=(accent_color[0], accent_color[1], accent_color[2], 180), width=1)
+                draw_luminous_text(draw, (dpx + 9, sy + 12), dur_str, font=font_list_badge, fill=accent_gold)
+            else:
+                draw_luminous_text(draw, (right_x + 24, sy + 12), f"#{idx + 1}  — No recorded voice data —", font=font_list_sub, fill=(120, 130, 145, 255))
+
+        # Divider line
+        draw.line((right_x + 16, div_y, right_x + right_w - 16, div_y), fill=(255, 255, 255, 40) if raw_bg else (48, 52, 63, 255), width=1)
+
+        # Section B: Active Voice Channels
+        draw_luminous_text(draw, (right_x + 18, div_y + 14), "Active Voice Channels", font=font_box_title, fill=accent_bright)
+
+        live_bbox = font_pill.getbbox("LIVE NOW")
+        lw = (live_bbox[2] - live_bbox[0]) + 16
+        lx = right_x + right_w - 18 - lw
+        draw_rounded_rect(draw, (lx, div_y + 14, lx + lw, div_y + 34), radius=10, fill=(52, 211, 153, 40), outline=(52, 211, 153, 210), width=1)
+        draw_luminous_text(draw, (lx + 8, div_y + 18), "LIVE NOW", font=font_pill, fill=(52, 211, 153, 255))
+
+        for idx in range(4):
+            sy = div_y + 44 + idx * 48
+            if idx < len(active_channels):
+                ch = active_channels[idx]
+                is_live = ch["human_count"] > 0
+                ic_col = (52, 211, 153) if is_live else (100, 110, 130)
+                draw.ellipse((right_x + 18, sy + 13, right_x + 34, sy + 29), fill=(ic_col[0], ic_col[1], ic_col[2], 50), outline=ic_col + (220,), width=1)
+
+                ch_label = f"#{safe_channel_label(ch['name'], max_len=14)}"
+                draw_luminous_text(draw, (right_x + 44, sy + 12), ch_label, font=font_list, fill=text_secondary if is_live else (120, 130, 145, 255))
+
+                cnt_lbl = f"{ch['human_count']} in VC" if is_live else "Quiet"
+                cb_bbox = font_list_badge.getbbox(cnt_lbl)
+                cw = (cb_bbox[2] - cb_bbox[0]) + 16
+                cpx = right_x + right_w - 18 - cw
+                draw_rounded_rect(draw, (cpx, sy + 8, cpx + cw, sy + 34), radius=8, fill=(ic_col[0], ic_col[1], ic_col[2], 40), outline=(ic_col[0], ic_col[1], ic_col[2], 180), width=1)
+                draw_luminous_text(draw, (cpx + 8, sy + 12), cnt_lbl, font=font_list_badge, fill=ic_col + (255,))
+            else:
+                draw_luminous_text(draw, (right_x + 24, sy + 12), f"•  — All other channels quiet —", font=font_list_sub, fill=(120, 130, 145, 255))
+
+        # Footer
+        footer_y = H - 34
+        draw_luminous_text(draw, (38, footer_y), "Use !vc or /vc to view analytics • Filter channels via dropdown below • Timezone: IST", font=font_footer, fill=text_secondary)
+        fb = font_footer_bold.getbbox("Powered by Friday")
+        draw_luminous_text(draw, (W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 225, 255, 255))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        return buf
+
+    async def generate_vc_card_file(self, guild: discord.Guild, target_channel: Optional[discord.VoiceChannel] = None) -> discord.File:
+        gid = guild.id
+        cid = target_channel.id if target_channel else None
+        labels, values, unit = self.get_voice_trend(gid, channel_id=cid, days=7)
+        kpi_metrics = self.get_voice_kpis(guild, channel_id=cid)
+        top_raw = self.get_top_voice_members(guild, channel_id=cid, limit=4)
+        top_members = []
+        for rank, name, dur_str, uid in top_raw:
+            mem = guild.get_member(uid)
+            av_img = await self.fetch_avatar_image(mem) if mem else None
+            top_members.append((rank, name, dur_str, av_img))
+
+        active_channels = self.get_active_voice_channels_summary(guild, limit=4)
+        guild_icon = await self.fetch_avatar_image(guild)
+
+        active_now_count = sum(len([m for m in vc.members if not m.bot]) for vc in guild.voice_channels)
+        total_vc = len(guild.voice_channels)
+
+        buf = self.render_vc_analytics_card(
+            guild_name=guild.name,
+            guild_icon=guild_icon,
+            target_channel_name=target_channel.name if target_channel else None,
+            kpi_metrics=kpi_metrics,
+            chart_labels=labels,
+            chart_values=values,
+            chart_unit=unit,
+            top_members=top_members,
+            active_channels=active_channels,
+            guild_id=gid,
+            active_now_count=active_now_count,
+            total_voice_channels=total_vc
+        )
+        ch_suffix = f"_{target_channel.id}" if target_channel else "_overall"
+        return discord.File(fp=buf, filename=f"voice_analytics_{gid}{ch_suffix}.png")
+
     # ────────────────────────── Slash Commands ──────────────────────────
 
     activity_group = app_commands.Group(name="activity", description="Inspect member and server chat activity, voice telemetry, and leaderboards.")
@@ -1875,6 +2480,37 @@ class Activity(commands.Cog):
         await interaction.response.defer()
         file = await self.generate_server_card_file(interaction.guild, viewer=interaction.user)
         await interaction.followup.send(file=file)
+
+    @activity_group.command(name="voice", description="View custom graphic analytics dashboard for voice channels and top VC members.")
+    @app_commands.describe(channel="Specific voice channel to inspect (defaults to overall server)")
+    async def activity_voice(self, interaction: discord.Interaction, channel: Optional[discord.VoiceChannel] = None):
+        await interaction.response.defer()
+        file = await self.generate_vc_card_file(interaction.guild, target_channel=channel)
+        view = VCAnalyticsView(self, interaction.guild, target_channel_id=channel.id if channel else None)
+        await interaction.followup.send(file=file, view=view)
+
+    @app_commands.command(name="vc", description="View custom graphic analytics dashboard for voice channels and top VC members.")
+    @app_commands.describe(channel="Specific voice channel to inspect (defaults to overall server)")
+    async def slash_vc(self, interaction: discord.Interaction, channel: Optional[discord.VoiceChannel] = None):
+        await interaction.response.defer()
+        file = await self.generate_vc_card_file(interaction.guild, target_channel=channel)
+        view = VCAnalyticsView(self, interaction.guild, target_channel_id=channel.id if channel else None)
+        await interaction.followup.send(file=file, view=view)
+
+    @commands.command(name="vc", aliases=["voice", "voiceactivity", "vcs"])
+    async def prefix_vc(self, ctx: commands.Context, *, channel: Optional[discord.VoiceChannel] = None):
+        """
+        View custom graphic analytics dashboard for voice channels and top VC members.
+        Usage:
+          !vc
+          !vc #general-vc
+        """
+        if not ctx.guild:
+            return
+        async with ctx.typing():
+            file = await self.generate_vc_card_file(ctx.guild, target_channel=channel)
+            view = VCAnalyticsView(self, ctx.guild, target_channel_id=channel.id if channel else None)
+            await ctx.reply(file=file, view=view, mention_author=False)
 
     @server_group.command(name="chat", description="View custom graphic analytics dashboard for server chat activity.")
     async def server_chat(self, interaction: discord.Interaction):
@@ -2080,6 +2716,103 @@ class ActivityLeaderboardView(discord.ui.View):
     async def refresh_view(self, interaction: discord.Interaction):
         self.update_buttons()
         file = await self.cog.generate_leaderboard_card_file(self.guild, self.current_tf, self.current_page)
+        await interaction.edit_original_response(attachments=[file], view=self)
+
+class VCAnalyticsView(discord.ui.View):
+    """
+    Interactive View for Voice Channel Analytics Graphic Card.
+    Provides:
+      - Channel dropdown (Select a specific VC to inspect its 7-day volume and metrics)
+      - Overall Server Voice button
+      - Refresh button to reload live telemetry
+    """
+    def __init__(self, cog: Activity, guild: discord.Guild, target_channel_id: Optional[int] = None):
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.guild = guild
+        self.target_channel_id = target_channel_id
+        self.build_components()
+
+    def build_components(self):
+        self.clear_items()
+
+        # Row 0: Dropdown selector for voice channels
+        options = [
+            discord.SelectOption(
+                label="Overall Server Voice",
+                value="overall",
+                description="Aggregated 7-day stats across all server voice channels",
+                default=(self.target_channel_id is None)
+            )
+        ]
+
+        vcs = self.guild.voice_channels[:24] if self.guild else []
+        for vc in vcs:
+            humans_in_vc = len([m for m in vc.members if not m.bot])
+            desc = f"{humans_in_vc} online now" if humans_in_vc > 0 else "No active members"
+            options.append(
+                discord.SelectOption(
+                    label=f"#{vc.name}"[:100],
+                    value=str(vc.id),
+                    description=desc[:100],
+                    default=(self.target_channel_id == vc.id)
+                )
+            )
+
+        if options:
+            select = discord.ui.Select(
+                placeholder="Select a Voice Channel to inspect...",
+                options=options,
+                min_values=1,
+                max_values=1,
+                row=0
+            )
+            select.callback = self.on_channel_selected
+            self.add_item(select)
+
+        # Row 1: Action buttons
+        overall_btn = discord.ui.Button(
+            label="Overall Server",
+            style=discord.ButtonStyle.secondary if self.target_channel_id is not None else discord.ButtonStyle.success,
+            row=1
+        )
+        overall_btn.callback = self.on_overall_clicked
+        self.add_item(overall_btn)
+
+        refresh_btn = discord.ui.Button(
+            label="Refresh Data",
+            style=discord.ButtonStyle.primary,
+            row=1
+        )
+        refresh_btn.callback = self.on_refresh_clicked
+        self.add_item(refresh_btn)
+
+    async def on_channel_selected(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        selected_val = interaction.data["values"][0]
+        if selected_val == "overall":
+            self.target_channel_id = None
+        else:
+            try:
+                self.target_channel_id = int(selected_val)
+            except ValueError:
+                self.target_channel_id = None
+
+        await self.refresh_card(interaction)
+
+    async def on_overall_clicked(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        self.target_channel_id = None
+        await self.refresh_card(interaction)
+
+    async def on_refresh_clicked(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        await self.refresh_card(interaction)
+
+    async def refresh_card(self, interaction: discord.Interaction):
+        target_ch = self.guild.get_channel(self.target_channel_id) if (self.guild and self.target_channel_id) else None
+        self.build_components()
+        file = await self.cog.generate_vc_card_file(self.guild, target_channel=target_ch)
         await interaction.edit_original_response(attachments=[file], view=self)
 
 async def setup(bot):

@@ -2843,6 +2843,27 @@
     </div>
 </div>
 
+<!-- Voice Channel Analytics & Leaderboard Wallpaper Customization -->
+<div class="card" style="margin-top: 20px;">
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Voice Analytics & Leaderboard Wallpaper (!vc, /vc, /activity voice)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+        Customize the 1080×760 voice channel analytics card showing 7-day spline graphs, top VC members (bots excluded), and live presence with ultra-transparent glassmorphic panels and dynamic luminance dimming.
+    </p>
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <input type="file" id="vcBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'vc')">
+        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('vcBgFileInput').click()">
+            📁 Select Voice Wallpaper
+        </button>
+        <button class="btn btn-secondary btn-action-secondary" type="button" id="vcBgResetBtn" onclick="resetCardBackground('vc')">
+            ↺ Restore Default Theme
+        </button>
+        <span id="vcBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
+    </div>
+    <div id="vcBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+        <img id="vcBgPreviewImg" src="" style="width: 100%; height: 140px; object-fit: cover; display: block;" alt="Voice Analytics Card Background Preview">
+    </div>
+</div>
+
 <div style="text-align: right; margin-top: 20px;">
 
 <button class="btn btn-primary" id="saveLevelingBtn">

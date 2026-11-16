@@ -789,6 +789,8 @@ def upload_rank_background(gid):
             db.activity_card_backgrounds[gid_str] = save_path
         elif card_type == "leaderboard":
             db.leaderboard_card_backgrounds[gid_str] = save_path
+        elif card_type == "vc":
+            db.vc_card_backgrounds[gid_str] = save_path
         elif card_type == "booster":
             db.booster_backgrounds[gid_str] = save_path
         else:
@@ -812,6 +814,8 @@ def reset_rank_background(gid):
         del db.activity_card_backgrounds[gid_str]
     elif card_type == "leaderboard" and gid_str in db.leaderboard_card_backgrounds:
         del db.leaderboard_card_backgrounds[gid_str]
+    elif card_type == "vc" and gid_str in db.vc_card_backgrounds:
+        del db.vc_card_backgrounds[gid_str]
     elif card_type == "booster" and gid_str in db.booster_backgrounds:
         del db.booster_backgrounds[gid_str]
     elif gid_str in db.rank_card_backgrounds:
@@ -1054,10 +1058,12 @@ def get_activity_cards(gid):
     gid_str = str(gid)
     act_bg = db.activity_card_backgrounds.get(gid_str)
     lb_bg = db.leaderboard_card_backgrounds.get(gid_str)
+    vc_bg = db.vc_card_backgrounds.get(gid_str)
     return jsonify({
         "success": True,
         "activity_card_background": resolve_card_bg_url(act_bg),
-        "leaderboard_card_background": resolve_card_bg_url(lb_bg)
+        "leaderboard_card_background": resolve_card_bg_url(lb_bg),
+        "vc_card_background": resolve_card_bg_url(vc_bg)
     })
 
 @app.route('/api/guild/<gid>/invite-tracker/save', methods=['POST'])

@@ -19191,6 +19191,21 @@ async function loadLevelingSettings() {
                     if (actStatus) actStatus.textContent = "Default Theme Active";
                     if (actWrap) actWrap.style.display = 'none';
                 }
+
+                const vcStatus = document.getElementById('vcBgStatus');
+                const vcWrap = document.getElementById('vcBgPreviewWrap');
+                const vcImg = document.getElementById('vcBgPreviewImg');
+                const vcBg = actData.vc_card_background || "";
+                if (vcBg) {
+                    if (vcStatus) vcStatus.textContent = "Custom Wallpaper Active";
+                    if (vcWrap && vcImg) {
+                        vcWrap.style.display = 'block';
+                        vcImg.src = vcBg;
+                    }
+                } else {
+                    if (vcStatus) vcStatus.textContent = "Default Theme Active";
+                    if (vcWrap) vcWrap.style.display = 'none';
+                }
             }
         } catch (ae) {
             console.warn("Could not load activity card wallpapers:", ae);

@@ -74,6 +74,8 @@ class Database:
         self.activity_card_backgrounds = ac_bg if isinstance(ac_bg, dict) else {}
         lb_bg = self.data.get("leaderboard_card_backgrounds")
         self.leaderboard_card_backgrounds = lb_bg if isinstance(lb_bg, dict) else {}
+        vc_bg = self.data.get("vc_card_backgrounds")
+        self.vc_card_backgrounds = vc_bg if isinstance(vc_bg, dict) else {}
         inv_trk = self.data.get("invite_tracker")
         self.invite_tracker = inv_trk if isinstance(inv_trk, dict) else {}
         inv_cnt = self.data.get("invite_counts")
@@ -156,6 +158,7 @@ class Database:
                 "invite_card_backgrounds": {},
                 "activity_card_backgrounds": {},
                 "leaderboard_card_backgrounds": {},
+                "vc_card_backgrounds": {},
                 "invite_tracker": {},
                 "invite_counts": {},
                 "invite_history": {},
