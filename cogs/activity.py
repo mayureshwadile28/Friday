@@ -2497,21 +2497,6 @@ class Activity(commands.Cog):
         view = VCAnalyticsView(self, interaction.guild, target_channel_id=channel.id if channel else None)
         await interaction.followup.send(file=file, view=view)
 
-    @commands.command(name="vc", aliases=["voice", "voiceactivity", "vcs"])
-    async def prefix_vc(self, ctx: commands.Context, *, channel: Optional[discord.VoiceChannel] = None):
-        """
-        View custom graphic analytics dashboard for voice channels and top VC members.
-        Usage:
-          !vc
-          !vc #general-vc
-        """
-        if not ctx.guild:
-            return
-        async with ctx.typing():
-            file = await self.generate_vc_card_file(ctx.guild, target_channel=channel)
-            view = VCAnalyticsView(self, ctx.guild, target_channel_id=channel.id if channel else None)
-            await ctx.reply(file=file, view=view, mention_author=False)
-
     @server_group.command(name="chat", description="View custom graphic analytics dashboard for server chat activity.")
     async def server_chat(self, interaction: discord.Interaction):
         await interaction.response.defer()

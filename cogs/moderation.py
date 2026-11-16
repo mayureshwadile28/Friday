@@ -1660,7 +1660,8 @@ class Moderation(commands.Cog):
             "lb", "leaderboard",
             "m", "stats", "mystats", "act", "activity",
             "server", "serverchat", "chart", "graph",
-            "invites", "inv"
+            "invites", "inv",
+            "vc", "voice", "voiceactivity", "vcs"
         }
         if cmd_name in member_cmds:
             # Check UI-configured channel restriction
@@ -1770,6 +1771,18 @@ class Moderation(commands.Cog):
                         except Exception as e:
                             print(f"Error rendering xp lb prefix card: {e}")
                     return
+                elif sub in ("vc", "voice"):
+                    act_cog = self.bot.get_cog("Activity")
+                    if act_cog:
+                        try:
+                            from cogs.activity import VCAnalyticsView
+                            async with message.channel.typing():
+                                card_file = await act_cog.generate_vc_card_file(message.guild)
+                                view = VCAnalyticsView(act_cog, message.guild)
+                                await message.reply(file=card_file, view=view, mention_author=False)
+                        except Exception as e:
+                            print(f"Error rendering vc lb prefix card: {e}")
+                    return
                 else:
                     # Message / Chat Leaderboard (!lb msg or !lb)
                     act_cog = self.bot.get_cog("Activity")
@@ -1811,6 +1824,33 @@ class Moderation(commands.Cog):
                             await message.reply(file=card_file, mention_author=False)
                     except Exception as e:
                         print(f"Error rendering member activity chart: {e}")
+                return
+
+            # 6. Voice Analytics & VC Leaderboard Card: !vc, .vc, !vc #channel, !voice
+            elif cmd_name in ("vc", "voice", "voiceactivity", "vcs"):
+                act_cog = self.bot.get_cog("Activity")
+                if act_cog:
+                    try:
+                        async with message.channel.typing():
+                            target_vc = None
+                            if message.channel_mentions:
+                                for ch in message.channel_mentions:
+                                    if isinstance(ch, discord.VoiceChannel):
+                                        target_vc = ch
+                                        break
+                            if not target_vc and len(parts) > 1:
+                                arg = parts[1].strip("#")
+                                if arg.isdigit():
+                                    target_vc = message.guild.get_channel(int(arg))
+                                if not target_vc:
+                                    target_vc = discord.utils.find(lambda c: isinstance(c, discord.VoiceChannel) and c.name.lower() == arg.lower(), message.guild.voice_channels)
+
+                            from cogs.activity import VCAnalyticsView
+                            card_file = await act_cog.generate_vc_card_file(message.guild, target_channel=target_vc)
+                            view = VCAnalyticsView(act_cog, message.guild, target_channel_id=target_vc.id if target_vc else None)
+                            await message.reply(file=card_file, view=view, mention_author=False)
+                    except Exception as e:
+                        print(f"Error rendering vc prefix card: {e}")
                 return
 
         # C. Strict set of essential staff prefix commands
