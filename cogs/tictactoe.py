@@ -5,6 +5,8 @@ import random
 import math
 import asyncio
 import time
+from datetime import datetime
+import pytz
 from typing import Optional, List, Tuple, Union
 
 from database import db
@@ -218,7 +220,7 @@ class TicTacToeTileButton(discord.ui.Button):
     def __init__(self, x: int, y: int, index: int):
         super().__init__(
             style=discord.ButtonStyle.secondary,
-            label="\u200b",
+            label="·",
             row=y
         )
         self.x = x
@@ -304,10 +306,16 @@ class TicTacToeGameView(discord.ui.View):
             ACTIVE_PLAYERS.discard(self.player_o.id)
 
     def build_status_embed(self, status: str = "info", notice: str = None) -> discord.Embed:
-        x_name = clean_display_name(self.player_x.display_name, 24)
-        o_name = "Friday (AI)" if self.is_ai else clean_display_name(self.player_o.display_name, 24)
+        colors = {
+            "info": 0x5865F2,     # Blurple
+            "success": 0x57F287,  # Emerald Green
+            "error": 0xED4245,    # Coral Red
+            "warning": 0xFEE75C,  # Amber Gold
+            "neutral": 0x95A5A6   # Soft Gray
+        }
+        color = colors.get(status.lower(), 0x5865F2)
 
-        title = f"Tic-Tac-Toe • {'Friday AI' if self.is_ai else 'PvP Challenge'}"
+        title = f"🎮  Tic-Tac-Toe • {'Friday AI' if self.is_ai else 'PvP Challenge'}"
 
         if self.is_ai:
             desc = (
@@ -327,22 +335,26 @@ class TicTacToeGameView(discord.ui.View):
             cur_mention = cur_user.mention if hasattr(cur_user, "mention") else "**Friday**"
             desc += f"👉 **Current Turn:** {cur_mention} (`{self.current_turn}`)\n*Click an empty tile on the board below!*"
 
-        embed = make_box_embed(
+        embed = discord.Embed(
             title=title,
             description=desc,
-            status=status,
-            footer="Friday Games • 90s Turn Timer"
+            color=color,
+            timestamp=datetime.now(pytz.utc)
         )
+        embed.set_footer(text="Friday Games • 90s Turn Timer")
         return embed
 
     async def handle_move(self, interaction: discord.Interaction, index: int, button: TicTacToeTileButton):
         if self.game_over:
             return await interaction.response.defer()
 
+        # Keep message reference updated
+        if interaction.message:
+            self.message = interaction.message
+
         # 1. Turn and Authorization Verification
         expected_user = self.player_x if self.current_turn == "X" else self.player_o
         if interaction.user.id != expected_user.id:
-            # Check if user is a random spectator or the other player
             if interaction.user.id in (self.player_x.id, getattr(self.player_o, "id", None)):
                 return await interaction.response.send_message(
                     f"⏳ It is not your turn! Please wait for {expected_user.mention} to play (`{self.current_turn}`).",
@@ -358,9 +370,9 @@ class TicTacToeGameView(discord.ui.View):
             return await interaction.response.defer()
 
         # 2. Apply Human Move
-        self.board[index] = self.current_turn
-        button.label = "✕" if self.current_turn == "X" else "◯"
-        button.style = discord.ButtonStyle.danger if self.current_turn == "X" else discord.ButtonStyle.primary
+        self.board[index] = "X"
+        button.label = "✕"
+        button.style = discord.ButtonStyle.danger
         button.disabled = True
 
         # Check for victory or tie
@@ -370,16 +382,6 @@ class TicTacToeGameView(discord.ui.View):
 
         # 3. AI Turn (if in PvE mode)
         if self.is_ai:
-            self.current_turn = "O"
-            # Update UI to show AI thinking
-            await interaction.response.edit_message(
-                embed=self.build_status_embed(notice="🤖 **Friday is calculating optimal move...**"),
-                view=self
-            )
-
-            await asyncio.sleep(0.4)
-
-            # Determine AI move based on selected difficulty
             if self.difficulty == "Easy":
                 ai_idx = ai_easy_move(self.board, ai_sym="O", human_sym="X")
             elif self.difficulty == "Hard":
@@ -396,17 +398,17 @@ class TicTacToeGameView(discord.ui.View):
 
             ai_winner = check_board_winner(self.board)
             if ai_winner:
-                return await self.finish_game(None, ai_winner)
+                return await self.finish_game(interaction, ai_winner)
 
-            # Switch back to Human
+            # Turn remains with Human
             self.current_turn = "X"
-            if self.message:
-                await self.message.edit(embed=self.build_status_embed(), view=self)
-            return
+            embed = self.build_status_embed()
+            return await interaction.response.edit_message(embed=embed, view=self)
 
         # 4. Switch Turns for PvP
         self.current_turn = "O" if self.current_turn == "X" else "X"
-        await interaction.response.edit_message(embed=self.build_status_embed(), view=self)
+        embed = self.build_status_embed()
+        await interaction.response.edit_message(embed=embed, view=self)
 
     async def finish_game(self, interaction: Optional[discord.Interaction], winner: str):
         self.game_over = True
@@ -423,8 +425,12 @@ class TicTacToeGameView(discord.ui.View):
             btn.disabled = True
 
         # Remove forfeit button, add rematch button
-        self.remove_item(self.forfeit_btn)
+        if hasattr(self, "forfeit_btn") and self.forfeit_btn in self.children:
+            self.remove_item(self.forfeit_btn)
         self.add_item(RematchButton())
+
+        # Extend timeout for rematch decision (2 minutes)
+        self.timeout = 120
 
         elapsed = int(time.time() - self.start_time)
 
@@ -446,16 +452,24 @@ class TicTacToeGameView(discord.ui.View):
         if interaction and not interaction.response.is_done():
             await interaction.response.edit_message(embed=embed, view=self)
         elif self.message:
-            await self.message.edit(embed=embed, view=self)
-
-        self.stop()
+            try:
+                await self.message.edit(embed=embed, view=self)
+            except Exception:
+                pass
+        # Note: self.stop() is intentionally NOT called here so that RematchButton remains interactive!
 
     async def handle_forfeit(self, interaction: discord.Interaction):
         if self.game_over:
             return await interaction.response.defer()
 
-        # Only participating players can forfeit
-        if interaction.user.id not in (self.player_x.id, getattr(self.player_o, "id", None)):
+        if interaction.message:
+            self.message = interaction.message
+
+        allowed_ids = [self.player_x.id]
+        if hasattr(self.player_o, "id"):
+            allowed_ids.append(self.player_o.id)
+
+        if interaction.user.id not in allowed_ids:
             return await interaction.response.send_message("❌ You are not part of this game.", ephemeral=True)
 
         self.game_over = True
@@ -464,8 +478,10 @@ class TicTacToeGameView(discord.ui.View):
         for btn in self.buttons:
             btn.disabled = True
 
-        self.remove_item(self.forfeit_btn)
+        if hasattr(self, "forfeit_btn") and self.forfeit_btn in self.children:
+            self.remove_item(self.forfeit_btn)
         self.add_item(RematchButton())
+        self.timeout = 120
 
         forfeiter = interaction.user
         if forfeiter.id == self.player_x.id:
@@ -482,15 +498,18 @@ class TicTacToeGameView(discord.ui.View):
 
         embed = self.build_status_embed(status="warning", notice=notice)
         await interaction.response.edit_message(embed=embed, view=self)
-        self.stop()
 
     async def handle_rematch(self, interaction: discord.Interaction):
-        # Only previous participants can request rematch
-        if interaction.user.id not in (self.player_x.id, getattr(self.player_o, "id", None)):
+        allowed_ids = [self.player_x.id]
+        if hasattr(self.player_o, "id"):
+            allowed_ids.append(self.player_o.id)
+
+        if interaction.user.id not in allowed_ids:
             return await interaction.response.send_message("❌ Only match participants can trigger a rematch.", ephemeral=True)
 
-        if interaction.user.id in ACTIVE_PLAYERS or getattr(self.player_o, "id", None) in ACTIVE_PLAYERS:
-            return await interaction.response.send_message("⚠️ One of the players is currently in another match.", ephemeral=True)
+        # Clear any stale lock before initializing rematch
+        self.cleanup_active_players()
+        self.stop()
 
         # For PvP: swap first turn (X and O) for balanced fairness
         if not self.is_ai:
@@ -519,7 +538,8 @@ class TicTacToeGameView(discord.ui.View):
             self.game_over = True
             for btn in self.buttons:
                 btn.disabled = True
-            self.remove_item(self.forfeit_btn)
+            if hasattr(self, "forfeit_btn") and self.forfeit_btn in self.children:
+                self.remove_item(self.forfeit_btn)
             if self.message:
                 try:
                     embed = self.build_status_embed(
@@ -527,6 +547,15 @@ class TicTacToeGameView(discord.ui.View):
                         notice="⏰ **Game Abandoned:** Match timed out after 90 seconds of inactivity."
                     )
                     await self.message.edit(embed=embed, view=self)
+                except Exception:
+                    pass
+        else:
+            # Rematch window expired: disable rematch button
+            for item in self.children:
+                item.disabled = True
+            if self.message:
+                try:
+                    await self.message.edit(view=self)
                 except Exception:
                     pass
 
