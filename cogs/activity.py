@@ -12,6 +12,7 @@ import time
 import unicodedata
 import asyncio
 import aiohttp
+import functools
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageStat
 from database import db
 from font_utils import get_unicode_font, clean_display_name, safe_channel_label
@@ -2101,7 +2102,7 @@ class Activity(commands.Cog):
                 resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
                 cx, cy = (nw - W) // 2, (nh - H) // 2
                 raw_bg = resized.crop((cx, cy, cx + W, cy + H))
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=4))
+                _blurred = raw_bg.filter(ImageFilter.BoxBlur(3))
 
                 stat = ImageStat.Stat(raw_bg.convert('L'))
                 mean_lum = stat.mean[0]
@@ -2422,7 +2423,7 @@ class Activity(commands.Cog):
         draw_luminous_text(draw, (W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 225, 255, 255))
 
         buf = io.BytesIO()
-        img.save(buf, format="PNG", optimize=True)
+        img.save(buf, format="PNG")
         buf.seek(0)
         return buf
 
@@ -2432,31 +2433,47 @@ class Activity(commands.Cog):
         labels, values, unit = self.get_voice_trend(gid, channel_id=cid, days=7)
         kpi_metrics = self.get_voice_kpis(guild, channel_id=cid)
         top_raw = self.get_top_voice_members(guild, channel_id=cid, limit=4)
-        top_members = []
-        for rank, name, dur_str, uid in top_raw:
+
+        # Parallel avatar fetches for members and guild icon (fast <200ms)
+        async def fetch_member_avatar(rank, name, dur_str, uid):
             mem = guild.get_member(uid)
             av_img = await self.fetch_avatar_image(mem) if mem else None
-            top_members.append((rank, name, dur_str, av_img))
+            return (rank, name, dur_str, av_img)
+
+        mem_tasks = [fetch_member_avatar(r, n, d, u) for r, n, d, u in top_raw]
+        guild_icon_task = self.fetch_avatar_image(guild)
+
+        if mem_tasks:
+            all_res = await asyncio.gather(guild_icon_task, *mem_tasks)
+            guild_icon = all_res[0]
+            top_members = all_res[1:]
+        else:
+            guild_icon = await guild_icon_task
+            top_members = []
 
         active_channels = self.get_active_voice_channels_summary(guild, limit=4)
-        guild_icon = await self.fetch_avatar_image(guild)
-
         active_now_count = sum(len([m for m in vc.members if not m.bot]) for vc in guild.voice_channels)
         total_vc = len(guild.voice_channels)
 
-        buf = self.render_vc_analytics_card(
-            guild_name=guild.name,
-            guild_icon=guild_icon,
-            target_channel_name=target_channel.name if target_channel else None,
-            kpi_metrics=kpi_metrics,
-            chart_labels=labels,
-            chart_values=values,
-            chart_unit=unit,
-            top_members=top_members,
-            active_channels=active_channels,
-            guild_id=gid,
-            active_now_count=active_now_count,
-            total_voice_channels=total_vc
+        # Offload image rendering and encoding to worker thread so asyncio event loop never blocks
+        loop = asyncio.get_running_loop()
+        buf = await loop.run_in_executor(
+            None,
+            functools.partial(
+                self.render_vc_analytics_card,
+                guild_name=guild.name,
+                guild_icon=guild_icon,
+                target_channel_name=target_channel.name if target_channel else None,
+                kpi_metrics=kpi_metrics,
+                chart_labels=labels,
+                chart_values=values,
+                chart_unit=unit,
+                top_members=top_members,
+                active_channels=active_channels,
+                guild_id=gid,
+                active_now_count=active_now_count,
+                total_voice_channels=total_vc
+            )
         )
         ch_suffix = f"_{target_channel.id}" if target_channel else "_overall"
         return discord.File(fp=buf, filename=f"voice_analytics_{gid}{ch_suffix}.png")
@@ -2735,9 +2752,12 @@ class VCAnalyticsView(discord.ui.View):
         for vc in vcs:
             humans_in_vc = len([m for m in vc.members if not m.bot])
             desc = f"{humans_in_vc} online now" if humans_in_vc > 0 else "No active members"
+            ch_name = vc.name.strip()
+            if not ch_name.startswith("#"):
+                ch_name = f"#{ch_name}"
             options.append(
                 discord.SelectOption(
-                    label=f"#{vc.name}"[:100],
+                    label=ch_name[:100],
                     value=str(vc.id),
                     description=desc[:100],
                     default=(self.target_channel_id == vc.id)
@@ -2773,8 +2793,14 @@ class VCAnalyticsView(discord.ui.View):
         self.add_item(refresh_btn)
 
     async def on_channel_selected(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        selected_val = interaction.data["values"][0]
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer()
+            except Exception as e:
+                print(f"[VCAnalytics] defer warning: {e}", flush=True)
+
+        values = interaction.data.get("values", ["overall"]) if interaction.data else ["overall"]
+        selected_val = values[0] if values else "overall"
         if selected_val == "overall":
             self.target_channel_id = None
         else:
@@ -2786,19 +2812,34 @@ class VCAnalyticsView(discord.ui.View):
         await self.refresh_card(interaction)
 
     async def on_overall_clicked(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer()
+            except Exception as e:
+                print(f"[VCAnalytics] defer warning: {e}", flush=True)
         self.target_channel_id = None
         await self.refresh_card(interaction)
 
     async def on_refresh_clicked(self, interaction: discord.Interaction):
-        await interaction.response.defer()
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer()
+            except Exception as e:
+                print(f"[VCAnalytics] defer warning: {e}", flush=True)
         await self.refresh_card(interaction)
 
     async def refresh_card(self, interaction: discord.Interaction):
         target_ch = self.guild.get_channel(self.target_channel_id) if (self.guild and self.target_channel_id) else None
         self.build_components()
         file = await self.cog.generate_vc_card_file(self.guild, target_channel=target_ch)
-        await interaction.edit_original_response(attachments=[file], view=self)
+        try:
+            await interaction.edit_original_response(attachments=[file], view=self)
+        except Exception:
+            if hasattr(interaction, "message") and interaction.message:
+                try:
+                    await interaction.message.edit(attachments=[file], view=self)
+                except Exception as me:
+                    print(f"[VCAnalytics] message.edit fallback error: {me}", flush=True)
 
 async def setup(bot):
     await bot.add_cog(Activity(bot))
