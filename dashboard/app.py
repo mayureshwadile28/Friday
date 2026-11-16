@@ -3090,6 +3090,115 @@ def test_first_welcome(gid):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+# ───────────────────── Chat Join Notice Endpoints ─────────────────────
+
+@app.route('/api/guild/<gid>/join_announce', methods=['GET'])
+def get_join_announce(gid):
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
+    cfg = getattr(db, "join_announce", {}).get(gid_str) or getattr(db, "join_announce", {}).get(gid_int) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return jsonify({
+        "success": True,
+        "config": {
+            "enabled": bool(cfg.get("enabled", False)),
+            "channel_id": cfg.get("channel_id"),
+            "message": cfg.get("message", "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉"),
+            "show_avatar": bool(cfg.get("show_avatar", True)),
+            "custom_hex": cfg.get("custom_hex", "#5865F2")
+        }
+    })
+
+@app.route('/api/guild/<gid>/join_announce/toggle', methods=['POST'])
+def toggle_join_announce(gid):
+    gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
+    data = flask_request.json or {}
+    active = bool(data.get("active", False))
+
+    if not hasattr(db, "join_announce") or not isinstance(db.join_announce, dict):
+        db.join_announce = {}
+    if gid_str not in db.join_announce or not isinstance(db.join_announce[gid_str], dict):
+        db.join_announce[gid_str] = {}
+
+    db.join_announce[gid_str]["enabled"] = active
+    db.save_data()
+    return jsonify({"success": True, "enabled": active})
+
+@app.route('/api/guild/<gid>/join_announce/update', methods=['POST'])
+def update_join_announce(gid):
+    gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
+    data = flask_request.json or {}
+
+    if not hasattr(db, "join_announce") or not isinstance(db.join_announce, dict):
+        db.join_announce = {}
+    if gid_str not in db.join_announce or not isinstance(db.join_announce[gid_str], dict):
+        db.join_announce[gid_str] = {}
+
+    if "enabled" in data:
+        db.join_announce[gid_str]["enabled"] = bool(data.get("enabled", False))
+    if "channel_id" in data:
+        db.join_announce[gid_str]["channel_id"] = str(data.get("channel_id")).strip() if data.get("channel_id") else None
+    if "message" in data:
+        db.join_announce[gid_str]["message"] = str(data.get("message", "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉")).strip()
+    if "show_avatar" in data:
+        db.join_announce[gid_str]["show_avatar"] = bool(data.get("show_avatar", True))
+    if "custom_hex" in data:
+        db.join_announce[gid_str]["custom_hex"] = str(data.get("custom_hex", "#5865F2"))
+
+    db.save_data()
+    return jsonify({"success": True, "config": db.join_announce[gid_str]})
+
+@app.route('/api/guild/<gid>/join_announce/test', methods=['POST'])
+def test_join_announce(gid):
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Bot is not connected"})
+
+    gid_str = str(gid)
+    cfg = getattr(db, "join_announce", {}).get(gid_str, {})
+    target_channel_id = cfg.get("channel_id")
+
+    async def do_test():
+        guild = bot_instance.get_guild(int(gid))
+        if not guild:
+            raise Exception("Guild not found")
+        channel = None
+        if target_channel_id:
+            channel = guild.get_channel(int(target_channel_id))
+        if not channel:
+            # Fallback to first text channel bot can send messages in
+            for ch in guild.text_channels:
+                if ch.permissions_for(guild.me).send_messages:
+                    channel = ch
+                    break
+        if not channel:
+            raise Exception("No writable channel found")
+
+        from cogs.welcomer import build_join_announce_embed
+        sample_member = guild.owner or guild.me
+        embed = build_join_announce_embed(sample_member, guild, cfg, channel)
+        await channel.send(content="🧪 **[Test Preview] Chat Join Notice:**", embed=embed)
+        return channel.name
+
+    try:
+        fut = asyncio.run_coroutine_threadsafe(do_test(), bot_instance.loop)
+        chan_name = fut.result(timeout=10)
+        return jsonify({"success": True, "channel_name": chan_name})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 # ───────────────────── AFK System Endpoints ─────────────────────
 
 @app.route('/api/guild/<gid>/afk', methods=['GET'])

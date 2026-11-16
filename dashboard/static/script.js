@@ -11755,6 +11755,14 @@ async function loadCoreData() {
             if (prevFwVal2) farewellChanSelect.value = prevFwVal2;
         }
 
+        const jaChanSelect = document.getElementById('joinAnnounceChannelSelect');
+        if (jaChanSelect) {
+            const prevJaVal = jaChanSelect.value;
+            jaChanSelect.innerHTML = '<option value="">Select a chat channel...</option>' +
+                currentGuildChannels.map(c => `<option value="${c.id}"># ${escapeHtml(c.name)}</option>`).join('');
+            if (prevJaVal) jaChanSelect.value = prevJaVal;
+        }
+
         const fwChanSelect = document.getElementById('firstWelcomeChannelSelect');
 
 
@@ -11965,6 +11973,7 @@ async function loadDataForActiveTab() {
         await loadWelcomeSettings();
         await loadFarewellSettings();
         await loadFirstWelcomeSettings();
+        await loadJoinAnnounceSettings();
     }
 
 
@@ -47427,6 +47436,176 @@ async function sendTestFirstWelcome() {
 
 
 
+// ───────────────────── 📢 Chat Join Notice Functions ─────────────────────
+
+let currentJaColor = "#5865F2";
+
+async function loadJoinAnnounceSettings() {
+    if (!currentGuildId) return;
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/join_announce`);
+        const data = await resp.json();
+        if (data.success && data.config) {
+            const cfg = data.config;
+
+            const tgl = document.getElementById('joinAnnounceToggle');
+            if (tgl) {
+                tgl.checked = !!cfg.enabled;
+                updateJoinAnnounceStatusBadge(!!cfg.enabled);
+            }
+
+            const chanSelect = document.getElementById('joinAnnounceChannelSelect');
+            if (chanSelect && cfg.channel_id) chanSelect.value = cfg.channel_id;
+
+            const msgInput = document.getElementById('joinAnnounceMsgInput');
+            if (msgInput) {
+                msgInput.value = cfg.message || "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉";
+            }
+
+            const avtTgl = document.getElementById('joinAnnounceAvatarToggle');
+            if (avtTgl) avtTgl.checked = cfg.show_avatar !== false;
+
+            const color = cfg.custom_hex || "#5865F2";
+            setJoinAnnounceColor(color);
+
+            updateJoinAnnouncePreview();
+        }
+    } catch (e) {
+        console.error("Error loading chat join notice settings:", e);
+    }
+}
+
+function updateJoinAnnounceStatusBadge(isActive) {
+    const badge = document.getElementById('joinAnnounceStatusBadge');
+    if (!badge) return;
+    if (isActive) {
+        badge.className = 'status-pill active';
+        badge.innerHTML = '<span class="status-pulse"></span> Active';
+    } else {
+        badge.className = 'status-pill paused';
+        badge.textContent = 'Paused';
+    }
+}
+
+function setJoinAnnounceColor(hex) {
+    if (!hex) hex = "#5865F2";
+    currentJaColor = hex;
+
+    const picker = document.getElementById('joinAnnounceColorPicker');
+    if (picker) picker.value = hex;
+
+    const hexInput = document.getElementById('joinAnnounceHexInput');
+    if (hexInput) hexInput.value = hex;
+
+    document.querySelectorAll('.ja-color-btn').forEach(btn => {
+        if (btn.dataset.color && btn.dataset.color.toLowerCase() === hex.toLowerCase()) {
+            btn.style.borderColor = '#ffffff';
+            btn.classList.add('active');
+        } else {
+            btn.style.borderColor = 'transparent';
+            btn.classList.remove('active');
+        }
+    });
+
+    updateJoinAnnouncePreview();
+}
+
+function updateJoinAnnouncePreview() {
+    const msgInput = document.getElementById('joinAnnounceMsgInput');
+    const avtTgl = document.getElementById('joinAnnounceAvatarToggle');
+    const simEmbed = document.getElementById('jaSimEmbed');
+    const simMsg = document.getElementById('jaSimMsg');
+    const simThumbnail = document.getElementById('jaSimThumbnail');
+    const simFooterText = document.getElementById('jaSimFooterText');
+
+    if (simEmbed) {
+        simEmbed.style.borderLeftColor = currentJaColor;
+    }
+
+    const guildName = (guildNameDisplay && guildNameDisplay.textContent !== "Select a server...") 
+        ? guildNameDisplay.textContent 
+        : "Our Community";
+
+    if (simFooterText) {
+        simFooterText.textContent = `Member #1,420 • ${guildName}`;
+    }
+
+    if (simThumbnail && avtTgl) {
+        simThumbnail.style.display = avtTgl.checked ? 'flex' : 'none';
+    }
+
+    if (simMsg && msgInput) {
+        let m = msgInput.value || "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉";
+        const dummyGid = currentGuildId || "123456789";
+        m = m.replace(/{server}/g, guildName)
+             .replace(/{username}/g, "Alex")
+             .replace(/{user}/g, "@Alex")
+             .replace(/{name}/g, "Alex")
+             .replace(/{member_count}/g, "1,420")
+             .replace(/{rules}/g, `[#rules](https://discord.com/channels/${dummyGid}/rules)`)
+             .replace(/{channel}/g, `[#chat](https://discord.com/channels/${dummyGid}/chat)`);
+
+        if (typeof renderDiscordMarkdown === 'function') {
+            simMsg.innerHTML = renderDiscordMarkdown(m);
+        } else {
+            simMsg.textContent = m;
+        }
+    }
+}
+
+async function saveJoinAnnounceSettings() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+
+    const tgl = document.getElementById('joinAnnounceToggle');
+    const chanSelect = document.getElementById('joinAnnounceChannelSelect');
+    const msgInput = document.getElementById('joinAnnounceMsgInput');
+    const avtTgl = document.getElementById('joinAnnounceAvatarToggle');
+
+    const payload = {
+        enabled: tgl ? tgl.checked : false,
+        channel_id: chanSelect ? (chanSelect.value || null) : null,
+        message: msgInput ? msgInput.value : "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉",
+        show_avatar: avtTgl ? avtTgl.checked : true,
+        custom_hex: currentJaColor
+    };
+
+    try {
+        const resp = await fetch(`/api/guild/${currentGuildId}/join_announce/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast("✅ Chat Join Notice settings saved successfully!");
+            if (tgl) updateJoinAnnounceStatusBadge(tgl.checked);
+        } else {
+            showToast("❌ Error saving settings: " + (data.error || "Unknown"));
+        }
+    } catch (e) {
+        showToast("❌ Network error saving settings");
+    }
+}
+
+async function sendTestJoinAnnounce() {
+    if (!currentGuildId) return showToast("⚠️ Select a server first!");
+    try {
+        showToast("🚀 Sending test chat join notice to Discord...");
+        const resp = await fetch(`/api/guild/${currentGuildId}/join_announce/test`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(`✅ Test notice sent to #${data.channel_name}!`);
+        } else {
+            showToast(`❌ Test failed: ${data.error || 'Check bot permissions'}`);
+        }
+    } catch (e) {
+        showToast("❌ Network error sending test notice");
+    }
+}
+
 // ══════════════════════════════════════════════════════════════
 // 🌟 MODULE 9: WELCOME & FAREWELL STUDIO (JOIN & LEAVE)
 // ══════════════════════════════════════════════════════════════
@@ -47435,17 +47614,21 @@ function switchWelcomeSubtab(tabName) {
     const btnJoin = document.getElementById('subtabBtnJoin');
     const btnLeave = document.getElementById('subtabBtnLeave');
     const btnFirstChat = document.getElementById('subtabBtnFirstChat');
+    const btnJoinAnnounce = document.getElementById('subtabBtnJoinAnnounce');
     const panelJoin = document.getElementById('subtabJoinPanel');
     const panelLeave = document.getElementById('subtabLeavePanel');
     const panelFirstChat = document.getElementById('subtabFirstChatPanel');
+    const panelJoinAnnounce = document.getElementById('subtabJoinAnnouncePanel');
 
     if (btnJoin) btnJoin.classList.toggle('active', tabName === 'join');
     if (btnLeave) btnLeave.classList.toggle('active', tabName === 'leave');
     if (btnFirstChat) btnFirstChat.classList.toggle('active', tabName === 'first_chat');
+    if (btnJoinAnnounce) btnJoinAnnounce.classList.toggle('active', tabName === 'join_announce');
 
     if (panelJoin) panelJoin.style.display = (tabName === 'join') ? 'block' : 'none';
     if (panelLeave) panelLeave.style.display = (tabName === 'leave') ? 'block' : 'none';
     if (panelFirstChat) panelFirstChat.style.display = (tabName === 'first_chat') ? 'block' : 'none';
+    if (panelJoinAnnounce) panelJoinAnnounce.style.display = (tabName === 'join_announce') ? 'block' : 'none';
 }
 
 // ───────────────────── 🌟 Server Join Welcome ─────────────────────
@@ -48269,9 +48452,11 @@ function setupWelcomeAndFarewellEvents() {
     const subJoin = document.getElementById('subtabBtnJoin');
     const subLeave = document.getElementById('subtabBtnLeave');
     const subFirst = document.getElementById('subtabBtnFirstChat');
+    const subJoinAnnounce = document.getElementById('subtabBtnJoinAnnounce');
     if (subJoin) subJoin.addEventListener('click', () => switchWelcomeSubtab('join'));
     if (subLeave) subLeave.addEventListener('click', () => switchWelcomeSubtab('leave'));
     if (subFirst) subFirst.addEventListener('click', () => switchWelcomeSubtab('first_chat'));
+    if (subJoinAnnounce) subJoinAnnounce.addEventListener('click', () => switchWelcomeSubtab('join_announce'));
 
     // ── Welcome Listeners ──
     const welcomeTgl = document.getElementById('welcomeToggle');
@@ -50597,6 +50782,63 @@ function setupFirstWelcomeAndAfkEvents() {
 
     const resetFwBtn = document.getElementById('resetFirstWelcomeHistoryBtn');
     if (resetFwBtn) resetFwBtn.addEventListener('click', resetFirstWelcomeHistory);
+
+    // ── Chat Join Notice Listeners ──
+    const jaTgl = document.getElementById('joinAnnounceToggle');
+    if (jaTgl) {
+        jaTgl.addEventListener('change', async (e) => {
+            const isChecked = e.target.checked;
+            updateJoinAnnounceStatusBadge(isChecked);
+            if (!currentGuildId) return showToast("⚠️ Select a server first!");
+            try {
+                const resp = await fetch(`/api/guild/${currentGuildId}/join_announce/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ active: isChecked })
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    showToast(isChecked ? "🟢 Chat Join Notice activated!" : "⏸️ Chat Join Notice paused.");
+                }
+            } catch (err) {
+                showToast("❌ Error updating status");
+            }
+        });
+    }
+
+    const jaInputs = ['joinAnnounceChannelSelect', 'joinAnnounceMsgInput', 'joinAnnounceAvatarToggle', 'joinAnnounceHexInput'];
+    jaInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('input', updateJoinAnnouncePreview);
+            el.addEventListener('keyup', updateJoinAnnouncePreview);
+            el.addEventListener('change', updateJoinAnnouncePreview);
+            el.addEventListener('paste', () => setTimeout(updateJoinAnnouncePreview, 50));
+        }
+    });
+
+    const jaColorPicker = document.getElementById('joinAnnounceColorPicker');
+    if (jaColorPicker) jaColorPicker.addEventListener('input', (e) => setJoinAnnounceColor(e.target.value));
+
+    const jaHexInput = document.getElementById('joinAnnounceHexInput');
+    if (jaHexInput) {
+        jaHexInput.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                setJoinAnnounceColor(val);
+            }
+        });
+    }
+
+    document.querySelectorAll('.ja-color-btn').forEach(btn => {
+        btn.addEventListener('click', () => setJoinAnnounceColor(btn.dataset.color));
+    });
+
+    const saveJaBtn = document.getElementById('saveJoinAnnounceBtn');
+    if (saveJaBtn) saveJaBtn.addEventListener('click', saveJoinAnnounceSettings);
+
+    const testJaBtn = document.getElementById('testJoinAnnounceBtn');
+    if (testJaBtn) testJaBtn.addEventListener('click', sendTestJoinAnnounce);
 
 
 

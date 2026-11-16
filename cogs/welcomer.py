@@ -38,6 +38,11 @@ DEFAULT_FIRST_WELCOME_MSG = (
     "📌 Review {rules} to get started and enjoy your stay."
 )
 
+# ──────────────── Chat Join Notice Defaults ────────────────
+DEFAULT_JOIN_ANNOUNCE_MSG = "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉"
+DEFAULT_JOIN_ANNOUNCE_COLOR = "info"
+DEFAULT_JOIN_ANNOUNCE_HEX = "#5865F2"
+
 # ──────────────── Helper Configurations ────────────────
 
 def get_welcome_config(gid: str) -> dict:
@@ -114,6 +119,25 @@ def get_first_welcome_config(gid: str) -> dict:
         "status_color": cfg.get("status_color", "success"),
         "custom_hex": cfg.get("custom_hex", "#10b981"),
         "is_first_welcome": True
+    }
+
+def get_join_announce_config(gid: str) -> dict:
+    """Returns the chat join notice configuration for a guild with defaults populated."""
+    gid_str = str(gid)
+    gid_int = int(gid) if str(gid).isdigit() else None
+    try:
+        db.reload()
+    except Exception:
+        pass
+    cfg = db.join_announce.get(gid_str) or db.join_announce.get(gid_int) or {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+    return {
+        "enabled": bool(cfg.get("enabled", False)),
+        "channel_id": cfg.get("channel_id", None),
+        "message": cfg.get("message", DEFAULT_JOIN_ANNOUNCE_MSG),
+        "custom_hex": cfg.get("custom_hex", DEFAULT_JOIN_ANNOUNCE_HEX),
+        "show_avatar": bool(cfg.get("show_avatar", True)),
     }
 
 def get_channel_markdown_link(channel: discord.abc.GuildChannel) -> str:
@@ -383,6 +407,37 @@ def build_farewell_embed(member: discord.Member, guild: discord.Guild, cfg: dict
         embed.set_image(url=image_url)
 
     footer_text = f"User ID: {getattr(member, 'id', 'Unknown')} • {guild.name}"
+    if guild.icon:
+        embed.set_footer(text=footer_text, icon_url=guild.icon.url)
+    else:
+        embed.set_footer(text=footer_text)
+
+    return embed
+
+def build_join_announce_embed(member: discord.Member, guild: discord.Guild, cfg: dict, channel: discord.abc.GuildChannel = None) -> discord.Embed:
+    """Builds a compact embed box announcing a new member's arrival to chat channels (e.g. #chill-chat)."""
+    msg_raw = cfg.get("message", DEFAULT_JOIN_ANNOUNCE_MSG)
+    custom_hex = cfg.get("custom_hex", DEFAULT_JOIN_ANNOUNCE_HEX)
+    show_avatar = cfg.get("show_avatar", True)
+
+    formatted_msg = format_welcome_text(msg_raw, member, guild, channel)
+    formatted_msg = replace_plain_emojis(formatted_msg, guild=guild)
+    color_val = parse_color_hex(custom_hex, 0x5865F2)
+
+    embed = discord.Embed(
+        description=formatted_msg,
+        color=color_val,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+    if hasattr(member, "display_avatar") and member.display_avatar:
+        embed.set_author(name=f"{member.display_name} just joined!", icon_url=member.display_avatar.url)
+        if show_avatar:
+            embed.set_thumbnail(url=member.display_avatar.url)
+    else:
+        embed.set_author(name=f"{member.display_name} just joined!")
+
+    footer_text = f"Member #{guild.member_count:,} • {guild.name}"
     if guild.icon:
         embed.set_footer(text=footer_text, icon_url=guild.icon.url)
     else:
@@ -1156,93 +1211,119 @@ class WelcomerCog(commands.Cog, name="Welcomer"):
 
         gid = str(member.guild.id)
 
+        # ── 1. PRIMARY SERVER JOIN WELCOME (EXISTING LOGIC) ──
         cfg = get_welcome_config(gid)
-        if not cfg.get("enabled"):
-            print(f"ℹ️ [Welcomer] Welcome is currently PAUSED / DISABLED for '{member.guild.name}' ({gid}).")
-            return
+        if cfg.get("enabled"):
+            channel_id = cfg.get("channel_id")
+            target_channel = None
+            if channel_id:
+                try:
+                    cid = int(channel_id)
+                    target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
+                    if not target_channel:
+                        try:
+                            target_channel = await self.bot.fetch_channel(cid)
+                        except Exception as fe:
+                            print(f"⚠️ [Welcomer] Failed to fetch configured welcome channel {cid}: {fe}")
+                except (ValueError, TypeError):
+                    print(f"⚠️ [Welcomer] Invalid welcome channel_id '{channel_id}' in {member.guild.name}.")
 
-        channel_id = cfg.get("channel_id")
-        target_channel = None
-        if channel_id:
-            try:
-                cid = int(channel_id)
-                target_channel = member.guild.get_channel(cid) or self.bot.get_channel(cid)
-                if not target_channel:
-                    try:
-                        target_channel = await self.bot.fetch_channel(cid)
-                    except Exception as fe:
-                        print(f"⚠️ [Welcomer] Failed to fetch configured welcome channel {cid}: {fe}")
-            except (ValueError, TypeError):
-                print(f"⚠️ [Welcomer] Invalid welcome channel_id '{channel_id}' in {member.guild.name}.")
-
-        # Smart fallback if channel_id is not set or channel was not found
-        if not target_channel:
-            print(f"🔍 [Welcomer] Configured channel not found for '{member.guild.name}', attempting auto-discovery fallback...")
-            bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
-            if member.guild.system_channel and (not bot_member or member.guild.system_channel.permissions_for(bot_member).send_messages):
-                target_channel = member.guild.system_channel
+            # Smart fallback if channel_id is not set or channel was not found
             if not target_channel:
-                for candidate_name in ["welcome", "welcome-and-rules", "joins", "general", "lobby", "chat"]:
-                    ch = discord.utils.get(member.guild.text_channels, name=candidate_name)
-                    if ch and (not bot_member or ch.permissions_for(bot_member).send_messages):
-                        target_channel = ch
-                        break
-            if not target_channel and bot_member:
-                for ch in member.guild.text_channels:
-                    if ch.permissions_for(bot_member).send_messages:
-                        target_channel = ch
-                        break
+                print(f"🔍 [Welcomer] Configured channel not found for '{member.guild.name}', attempting auto-discovery fallback...")
+                bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+                if member.guild.system_channel and (not bot_member or member.guild.system_channel.permissions_for(bot_member).send_messages):
+                    target_channel = member.guild.system_channel
+                if not target_channel:
+                    for candidate_name in ["welcome", "welcome-and-rules", "joins", "general", "lobby", "chat"]:
+                        ch = discord.utils.get(member.guild.text_channels, name=candidate_name)
+                        if ch and (not bot_member or ch.permissions_for(bot_member).send_messages):
+                            target_channel = ch
+                            break
+                if not target_channel and bot_member:
+                    for ch in member.guild.text_channels:
+                        if ch.permissions_for(bot_member).send_messages:
+                            target_channel = ch
+                            break
 
-        if not target_channel:
-            print(f"❌ [Welcomer] No writable welcome channel found for {member.guild.name}.")
-            return
+            if target_channel:
+                bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+                if not bot_member and self.bot.user:
+                    try:
+                        bot_member = await member.guild.fetch_member(self.bot.user.id)
+                    except Exception:
+                        bot_member = None
 
-        # Check bot permissions safely
-        bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
-        if not bot_member and self.bot.user:
-            try:
-                bot_member = await member.guild.fetch_member(self.bot.user.id)
-            except Exception:
-                bot_member = None
+                perms = target_channel.permissions_for(bot_member) if bot_member else None
+                if not perms or perms.send_messages:
+                    try:
+                        can_embed = perms.embed_links if perms else True
+                        if cfg.get("is_embed", True) and can_embed:
+                            embed = build_welcome_embed(member, member.guild, cfg, target_channel)
+                            content = None
+                            if cfg.get("ping_user", True):
+                                raw_hdr = cfg.get("header_text") or "👋 Welcome {user} !"
+                                content = format_welcome_text(raw_hdr, member, member.guild, target_channel)
+                            discord_file = None
+                            img_url = str(cfg.get("image_url", "")).strip()
+                            if "/static/uploads/welcome_banners/" in img_url:
+                                fname = os.path.basename(img_url)
+                                fpath = os.path.join("dashboard", "static", "uploads", "welcome_banners", fname)
+                                if not os.path.exists(fpath):
+                                    fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "welcome_banners", fname)
+                                if os.path.exists(fpath):
+                                    discord_file = discord.File(fpath, filename=fname)
+                                    embed.set_image(url=f"attachment://{fname}")
+                            elif img_url and (img_url.startswith("http://") or img_url.startswith("https://")):
+                                embed.set_image(url=img_url)
 
-        if bot_member:
-            perms = target_channel.permissions_for(bot_member)
-            if not perms.send_messages:
-                print(f"❌ [Welcomer] Missing send_messages permission in #{target_channel.name} ({member.guild.name}).")
-                return
-
-        try:
-            can_embed = perms.embed_links if bot_member else True
-            if cfg.get("is_embed", True) and can_embed:
-                embed = build_welcome_embed(member, member.guild, cfg, target_channel)
-                content = None
-                if cfg.get("ping_user", True):
-                    raw_hdr = cfg.get("header_text") or "👋 Welcome {user} !"
-                    content = format_welcome_text(raw_hdr, member, member.guild, target_channel)
-                discord_file = None
-                img_url = str(cfg.get("image_url", "")).strip()
-                if "/static/uploads/welcome_banners/" in img_url:
-                    fname = os.path.basename(img_url)
-                    fpath = os.path.join("dashboard", "static", "uploads", "welcome_banners", fname)
-                    if not os.path.exists(fpath):
-                        fpath = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "welcome_banners", fname)
-                    if os.path.exists(fpath):
-                        discord_file = discord.File(fpath, filename=fname)
-                        embed.set_image(url=f"attachment://{fname}")
-                elif img_url and (img_url.startswith("http://") or img_url.startswith("https://")):
-                    embed.set_image(url=img_url)
-
-                send_kwargs = {"content": content, "embed": embed} if content else {"embed": embed}
-                if discord_file:
-                    send_kwargs["file"] = discord_file
-                await target_channel.send(**send_kwargs)
-                print(f"✅ [Welcomer] Successfully delivered welcome card for {member} in #{target_channel.name} ({member.guild.name})")
+                            send_kwargs = {"content": content, "embed": embed} if content else {"embed": embed}
+                            if discord_file:
+                                send_kwargs["file"] = discord_file
+                            await target_channel.send(**send_kwargs)
+                            print(f"✅ [Welcomer] Successfully delivered welcome card for {member} in #{target_channel.name} ({member.guild.name})")
+                        else:
+                            text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), member, member.guild, target_channel)
+                            await target_channel.send(content=text)
+                            print(f"✅ [Welcomer] Successfully delivered plain welcome text for {member} in #{target_channel.name} ({member.guild.name})")
+                    except Exception as e:
+                        print(f"❌ [Welcomer] Error delivering server join greeting in {member.guild.name}: {e}")
+                else:
+                    print(f"❌ [Welcomer] Missing send_messages permission in #{target_channel.name} ({member.guild.name}).")
             else:
-                text = format_welcome_text(cfg.get("message", DEFAULT_WELCOME_MSG), member, member.guild, target_channel)
-                await target_channel.send(content=text)
-                print(f"✅ [Welcomer] Successfully delivered plain welcome text for {member} in #{target_channel.name} ({member.guild.name})")
-        except Exception as e:
-            print(f"❌ [Welcomer] Error delivering server join greeting in {member.guild.name}: {e}")
+                print(f"❌ [Welcomer] No writable welcome channel found for {member.guild.name}.")
+        else:
+            print(f"ℹ️ [Welcomer] Primary welcome is currently PAUSED / DISABLED for '{member.guild.name}' ({gid}).")
+
+        # ── 2. CHAT JOIN NOTICE (COMPACT EMBED IN DESIGNATED CHAT CHANNEL) ──
+        join_cfg = get_join_announce_config(gid)
+        if join_cfg.get("enabled") and join_cfg.get("channel_id"):
+            try:
+                announce_cid = int(join_cfg.get("channel_id"))
+                announce_ch = member.guild.get_channel(announce_cid) or self.bot.get_channel(announce_cid)
+                if not announce_ch:
+                    try:
+                        announce_ch = await self.bot.fetch_channel(announce_cid)
+                    except Exception:
+                        pass
+                if announce_ch:
+                    bot_member = member.guild.me or member.guild.get_member(self.bot.user.id)
+                    if not bot_member and self.bot.user:
+                        try:
+                            bot_member = await member.guild.fetch_member(self.bot.user.id)
+                        except Exception:
+                            pass
+                    perms = announce_ch.permissions_for(bot_member) if bot_member else None
+                    if not perms or perms.send_messages:
+                        announce_embed = build_join_announce_embed(member, member.guild, join_cfg, announce_ch)
+                        await announce_ch.send(embed=announce_embed)
+                        print(f"✅ [Welcomer] Successfully delivered chat join notice for {member} in #{announce_ch.name} ({member.guild.name})")
+                    else:
+                        print(f"⚠️ [Welcomer] Missing send_messages permission in chat join notice channel #{announce_ch.name}.")
+                else:
+                    print(f"⚠️ [Welcomer] Chat join notice channel {announce_cid} not found in {member.guild.name}.")
+            except Exception as e:
+                print(f"❌ [Welcomer] Error delivering chat join notice in {member.guild.name}: {e}")
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):

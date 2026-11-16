@@ -44,6 +44,7 @@ class Database:
         self.first_welcome_allow_test = self.data.get("first_welcome_allow_test", {})
         self.welcome = self.data.get("welcome", {})
         self.farewell = self.data.get("farewell", {})
+        self.join_announce = self.data.get("join_announce", {})
         self.afk_data = self.data.get("afk_data", {})
         self.user_memories = self.data.get("user_memories", {})
         self.server_instructions = self.data.get("server_instructions", {})
@@ -140,6 +141,7 @@ class Database:
                 "first_welcome_allow_test": {},
                 "welcome": {},
                 "farewell": {},
+                "join_announce": {},
                 "afk_data": {},
                 "user_memories": {},
                 "server_instructions": {},

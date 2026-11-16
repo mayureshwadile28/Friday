@@ -7497,6 +7497,9 @@ Click the button below to submit your confidential application.
                 <button type="button" class="welcome-subtab-btn" id="subtabBtnFirstChat">
                     <span>💬 First Chat Greeting</span>
                 </button>
+                <button type="button" class="welcome-subtab-btn" id="subtabBtnJoinAnnounce">
+                    <span>📢 Chat Join Notice</span>
+                </button>
             </div>
         </div>
     </div>
@@ -8131,6 +8134,150 @@ Click the button below to submit your confidential application.
                         First Message Tracking
                     </div>
                     Friday remembers every member who chats. When a newcomer types their first message in your configured channel, Friday greets them instantly with their avatar.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ──────────────── TAB 4: CHAT JOIN NOTICE ──────────────── -->
+    <div id="subtabJoinAnnouncePanel" class="welcome-subpanel" style="display: none;">
+        <div class="first-welcome-layout" style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start;">
+            <!-- Left: Configuration Form -->
+            <div class="automation-card" style="display: flex; flex-direction: column; gap: 20px;">
+                <!-- Status Row -->
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px;">
+                    <div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <h2 class="automation-card-title" style="margin: 0; font-size: 16px;">Chat Join Notice Status</h2>
+                            <span class="status-pill paused" id="joinAnnounceStatusBadge">Paused</span>
+                        </div>
+                        <p class="automation-card-desc" style="margin: 4px 0 0 0;">Send a small, compact embed notice into your active chat channels (e.g. #chill-chat) whenever someone joins.</p>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="joinAnnounceToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Destination Chat Channel -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Target Chat Channel</label>
+                    <select id="joinAnnounceChannelSelect" class="form-select" style="width: 100%;">
+                        <option value="">Select a chat channel...</option>
+                    </select>
+                    <div class="helper-text" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;">
+                        Select your #chill-chat, #general, or lobby channel where active members talk.
+                    </div>
+                </div>
+
+                <!-- Announcement Message Template -->
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label class="form-label" style="font-weight: 600; font-size: 13px; margin: 0;">Notice Message Text</label>
+                    </div>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; align-items: center;">
+                        <button type="button" class="resp-var-badge" data-target="joinAnnounceMsgInput" data-var="{user}">+ {user}</button>
+                        <button type="button" class="resp-var-badge" data-target="joinAnnounceMsgInput" data-var="{username}">+ {username}</button>
+                        <button type="button" class="resp-var-badge" data-target="joinAnnounceMsgInput" data-var="{server}">+ {server}</button>
+                        <button type="button" class="resp-var-badge" data-target="joinAnnounceMsgInput" data-var="{member_count}">+ {member_count}</button>
+                        <button type="button" class="resp-var-badge" data-target="joinAnnounceMsgInput" data-var="{rules}">+ {rules}</button>
+                        <button type="button" class="resp-var-badge" data-target="joinAnnounceMsgInput" data-var="{channel}">+ {channel}</button>
+                        <button type="button" class="resp-emoji-btn" id="joinAnnounceMsgEmojiBtn" data-target="joinAnnounceMsgInput" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: rgba(88, 101, 242, 0.15); border: 1px solid rgba(88, 101, 242, 0.35); border-radius: 6px; color: #c7d2fe; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s ease;">
+                            😊 Server Emojis
+                        </button>
+                    </div>
+                    <textarea id="joinAnnounceMsgInput" class="text-input" rows="3" style="width: 100%; resize: vertical;" placeholder="👋 Welcome {user} to **{server}**! Everyone say hello! 🎉"></textarea>
+                </div>
+
+                <!-- Avatar Toggle -->
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: 8px; padding: 12px 16px;">
+                    <div>
+                        <div style="font-weight: 600; font-size: 13px; color: var(--text-primary);">Show Member Avatar</div>
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Display the new member's avatar on the right of the compact embed box.</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="joinAnnounceAvatarToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+                <!-- Border & Accent Color -->
+                <div>
+                    <label class="form-label" style="display: block; font-weight: 600; font-size: 13px; margin-bottom: 8px;">Box Border Accent Color</label>
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="ja-color-btn active" data-color="#5865F2" style="background:#5865F2; width: 28px; height: 28px; border-radius: 50%; border: 2px solid #fff; cursor: pointer;"></button>
+                        <button type="button" class="ja-color-btn" data-color="#10b981" style="background:#10b981; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="ja-color-btn" data-color="#6366f1" style="background:#6366f1; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="ja-color-btn" data-color="#2dd4bf" style="background:#2dd4bf; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="ja-color-btn" data-color="#f59e0b" style="background:#f59e0b; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="ja-color-btn" data-color="#ef4444" style="background:#ef4444; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="ja-color-btn" data-color="#8b5cf6" style="background:#8b5cf6; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <button type="button" class="ja-color-btn" data-color="#ec4899" style="background:#ec4899; width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;"></button>
+                        <input type="color" id="joinAnnounceColorPicker" value="#5865F2" style="width: 32px; height: 32px; border: none; border-radius: 6px; cursor: pointer; background: transparent;">
+                        <input type="text" id="joinAnnounceHexInput" class="text-input" value="#5865F2" style="width: 90px; height: 32px; font-family: monospace; font-size: 13px;">
+                    </div>
+                </div>
+
+                <!-- Actions Row -->
+                <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                    <button type="button" id="saveJoinAnnounceBtn" class="btn-action-primary" style="flex: 1; min-width: 160px; height: 42px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        Save Notice Settings
+                    </button>
+                    <button type="button" id="testJoinAnnounceBtn" class="btn-action-secondary" style="height: 42px; white-space: nowrap;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        Send Test Notice
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Authentic Live Discord Simulation -->
+            <div class="discord-preview-column" style="position: sticky; top: 20px;">
+                <div class="discord-preview-card" style="margin-top: 0;">
+                    <div class="discord-preview-header">
+                        <span>Discord Embed Simulator</span>
+                        <span style="display: flex; align-items: center; gap: 6px;">
+                            <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #5865F2;"></span>
+                            Live Preview
+                        </span>
+                    </div>
+                    <div class="discord-chat-box">
+                        <div class="discord-msg">
+                            <div class="discord-avatar" id="jaSimBotAvatar">F</div>
+                            <div class="discord-msg-content" style="flex: 1;">
+                                <div class="discord-msg-header">
+                                    <span class="discord-bot-name">Friday</span>
+                                    <span class="discord-bot-tag">BOT</span>
+                                    <span class="discord-timestamp">Just now</span>
+                                </div>
+                                <div id="jaSimEmbed" style="border-left: 4px solid #5865F2; background: #2b2d31; border-radius: 4px; padding: 12px 16px; margin-top: 6px; max-width: 480px; transition: all 0.2s ease;">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                                        <img id="jaSimAuthorAvatar" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Avatar" style="width: 20px; height: 20px; border-radius: 50%;">
+                                        <span id="jaSimAuthorName" style="font-size: 13px; font-weight: 600; color: #ffffff;">Alex just joined!</span>
+                                    </div>
+                                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px;">
+                                        <div style="flex: 1;">
+                                            <div id="jaSimMsg" style="font-size: 13px; color: #dbdee1; line-height: 1.5; white-space: pre-wrap;">👋 Welcome <span style="background: rgba(88, 101, 242, 0.2); color: #c9cdfb; border-radius: 3px; padding: 1px 4px; font-weight: 500;">@Alex</span> to **Our Community**! Everyone say hello! 🎉</div>
+                                        </div>
+                                        <div id="jaSimThumbnail" style="width: 50px; height: 50px; border-radius: 8px; overflow: hidden; flex-shrink: 0; background: #1e1f22; display: flex; align-items: center; justify-content: center;">
+                                            <img id="jaSimThumbnailImg" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="User Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">
+                                        </div>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 12px; font-size: 11px; color: #949ba4; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+                                        <span id="jaSimFooterText">Member #1,420 • Our Community</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 16px; background: rgba(88, 101, 242, 0.08); border: 1px solid rgba(88, 101, 242, 0.2); border-radius: 8px; padding: 14px 16px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;">
+                    <div style="font-weight: 600; color: #c9cdfb; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                        Compact Chat Join Notice
+                    </div>
+                    When a new member joins your server, Friday sends this small, elegant embed box into your designated chat channel (e.g. #chill-chat) so members chatting there immediately see newcomers and can give them a warm welcome!
                 </div>
             </div>
         </div>
