@@ -1,10 +1,11 @@
 import os
 import io
 import re
+import time
 import colorsys
 import asyncio
 import unicodedata
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 from datetime import datetime
 import pytz
 import aiohttp
@@ -57,6 +58,7 @@ class BoosterPerks(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._last_boost_handled: Dict[str, float] = {}
 
     def _extract_accent_color(self, bg_img: Optional[Image.Image]) -> Tuple[int, int, int]:
         """
@@ -201,7 +203,7 @@ class BoosterPerks(commands.Cog):
                 raw_bg = resized.crop((crop_x, crop_y, crop_x + W, crop_y + H))
 
                 # Subtle blur (3 * SCALE) so wallpaper remains recognizable
-                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3 * SCALE))
+                _blurred = raw_bg.filter(ImageFilter.BoxBlur(3 * SCALE))
 
                 # Dynamic luminance adaptation: dims bright backdrops to keep text 100% readable
                 mean_lum = ImageStat.Stat(raw_bg.convert('L')).mean[0]
@@ -395,11 +397,93 @@ class BoosterPerks(commands.Cog):
         final_img = img.resize((840, 300), Image.Resampling.LANCZOS)
 
         buf = io.BytesIO()
-        final_img.convert("RGBA").save(buf, format="PNG", optimize=True)
+        final_img.convert("RGBA").save(buf, format="PNG")
         buf.seek(0)
         return discord.File(fp=buf, filename=f"booster_{member.id}.png")
 
     # ───────────────────── Discord Event Listeners ─────────────────────
+
+    async def handle_boost_event(
+        self,
+        guild: discord.Guild,
+        member: discord.Member,
+        source: str = "member_update",
+        times_boosted: int = 1
+    ):
+        """
+        Unified handler for all server boost events:
+        - 1st boost via on_member_update
+        - 2nd, 3rd, and subsequent boosts via on_message system messages
+        Guarded with an in-memory debounce window to prevent duplicate announcements if both events fire.
+        """
+        gid = str(guild.id)
+        cfg = db.booster_perks.get(gid, {})
+        if not cfg.get("enabled", True):
+            return
+
+        now = time.time()
+        debounce_key = f"{guild.id}:{member.id}"
+        last_handled = self._last_boost_handled.get(debounce_key, 0.0)
+
+        # 4-second debounce window to prevent duplicate announcements
+        if now - last_handled < 4.0:
+            return
+        self._last_boost_handled[debounce_key] = now
+
+        # Prune old cache if oversized
+        if len(self._last_boost_handled) > 2000:
+            cutoff = now - 300.0
+            self._last_boost_handled = {k: v for k, v in self._last_boost_handled.items() if v > cutoff}
+
+        print(f"🚀 Booster event detected in {guild.name} via [{source}] (x{times_boosted}): {member.name} ({member.id})")
+
+        # 1. Assign booster reward role if configured
+        reward_role_id = cfg.get("reward_role_id")
+        if reward_role_id:
+            try:
+                role_id_int = int(reward_role_id)
+                role = guild.get_role(role_id_int)
+                if role and role not in member.roles:
+                    await member.add_roles(role, reason="Friday Server Booster Perks: Reward Role Granted")
+                    print(f"✅ Assigned booster reward role '{role.name}' to {member.name}")
+            except Exception as e:
+                print(f"⚠️ Failed to grant booster role in {guild.name}: {e}")
+
+        # 2. Dispatch celebratory announcement card & text
+        try:
+            await self.dispatch_booster_announcement(guild, member, times_boosted=times_boosted)
+        except Exception as e:
+            print(f"⚠️ Failed to dispatch booster announcement in {guild.name}: {e}")
+
+        # 3. Send DM thank-you if configured
+        if cfg.get("dm_enabled", True):
+            try:
+                dm_tmpl = cfg.get("dm_message") or (
+                    "💜 Huge thank you for boosting **{guild}**, {user}!\n"
+                    "You've unlocked exclusive booster perks and our deepest appreciation! ✨"
+                )
+                role_str = ""
+                if reward_role_id:
+                    r = guild.get_role(int(reward_role_id))
+                    if r:
+                        role_str = r.name
+
+                boost_count_total = str(getattr(guild, "premium_subscription_count", 0) or 0)
+                tier_str = str(getattr(guild, "premium_tier", 0) or 0)
+                times_str = str(times_boosted) if times_boosted > 1 else "1"
+
+                formatted_dm = dm_tmpl.replace("{user}", member.mention) \
+                                      .replace("{username}", member.name) \
+                                      .replace("{guild}", guild.name) \
+                                      .replace("{boosts}", boost_count_total) \
+                                      .replace("{tier}", tier_str) \
+                                      .replace("{reward_role}", role_str or "Server Booster") \
+                                      .replace("{times}", times_str) \
+                                      .replace("{count}", times_str)
+                formatted_dm = replace_plain_emojis(formatted_dm, self.bot, guild_id=gid, guild=guild)
+                await member.send(formatted_dm)
+            except Exception as e:
+                print(f"ℹ️ Could not send booster thank-you DM to {member.name}: {e}")
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -417,48 +501,9 @@ class BoosterPerks(commands.Cog):
         was_boosting = before.premium_since is not None
         is_boosting = after.premium_since is not None
 
-        # 1. Member started boosting
+        # 1. Member started boosting (1st boost)
         if not was_boosting and is_boosting:
-            print(f"🚀 New booster detected in {guild.name}: {after.name} ({after.id})")
-            reward_role_id = cfg.get("reward_role_id")
-            if reward_role_id:
-                try:
-                    role_id_int = int(reward_role_id)
-                    role = guild.get_role(role_id_int)
-                    if role and role not in after.roles:
-                        await after.add_roles(role, reason="Friday Server Booster Perks: Reward Role Granted")
-                        print(f"✅ Assigned booster reward role '{role.name}' to {after.name}")
-                except Exception as e:
-                    print(f"⚠️ Failed to grant booster role in {guild.name}: {e}")
-
-            # Send announcement
-            try:
-                await self.dispatch_booster_announcement(guild, after)
-            except Exception as e:
-                print(f"⚠️ Failed to dispatch booster announcement in {guild.name}: {e}")
-
-            # Send DM thank-you if configured
-            if cfg.get("dm_enabled", True):
-                try:
-                    dm_tmpl = cfg.get("dm_message") or (
-                        "💜 Huge thank you for boosting **{guild}**, {user}!\n"
-                        "You've unlocked exclusive booster perks and our deepest appreciation! ✨"
-                    )
-                    role_str = ""
-                    if reward_role_id:
-                        r = guild.get_role(int(reward_role_id))
-                        if r:
-                            role_str = r.name
-                    formatted_dm = dm_tmpl.replace("{user}", after.mention) \
-                                          .replace("{username}", after.name) \
-                                          .replace("{guild}", guild.name) \
-                                          .replace("{boosts}", str(guild.premium_subscription_count or 0)) \
-                                          .replace("{tier}", str(guild.premium_tier or 0)) \
-                                          .replace("{reward_role}", role_str or "Server Booster")
-                    formatted_dm = replace_plain_emojis(formatted_dm, self.bot, guild_id=gid, guild=guild)
-                    await after.send(formatted_dm)
-                except Exception as e:
-                    print(f"ℹ️ Could not send booster thank-you DM to {after.name}: {e}")
+            await self.handle_boost_event(after.guild, after, source="member_update", times_boosted=1)
 
         # 2. Member stopped boosting (Unboosted)
         elif was_boosting and not is_boosting:
@@ -475,6 +520,37 @@ class BoosterPerks(commands.Cog):
                     except Exception as e:
                         print(f"⚠️ Failed to remove booster role from {after.name}: {e}")
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """
+        Listens for Discord system boost messages.
+        Discord fires this for EVERY boost (1st, 2nd, 3rd, etc.), including subsequent
+        boosts from members who are already boosting.
+        """
+        if not message.guild:
+            return
+
+        boost_types = (
+            discord.MessageType.premium_guild_subscription,
+            discord.MessageType.premium_guild_tier_1,
+            discord.MessageType.premium_guild_tier_2,
+            discord.MessageType.premium_guild_tier_3,
+        )
+
+        if message.type in boost_types:
+            member = message.author
+            if not isinstance(member, discord.Member):
+                member = message.guild.get_member(member.id) or member
+
+            if member and not member.bot:
+                times = 1
+                if message.content and message.content.strip().isdigit():
+                    try:
+                        times = int(message.content.strip())
+                    except Exception:
+                        times = 1
+                await self.handle_boost_event(message.guild, member, source="system_message", times_boosted=times)
+
     # ───────────────────── Dispatch Announcement ─────────────────────
 
     async def dispatch_booster_announcement(
@@ -482,11 +558,12 @@ class BoosterPerks(commands.Cog):
         guild: discord.Guild,
         member: discord.Member,
         is_test: bool = False,
-        target_channel: Optional[discord.TextChannel] = None
+        target_channel: Optional[discord.TextChannel] = None,
+        times_boosted: int = 1
     ) -> bool:
         """
         Formats and dispatches the booster celebration message and/or glassmorphic card.
-        Can be triggered by live on_member_update event or from Dashboard Live Test.
+        Can be triggered by live on_member_update event, on_message boost event, or from Dashboard Live Test.
         """
         gid = str(guild.id)
         cfg = db.booster_perks.get(gid, {})
@@ -516,12 +593,18 @@ class BoosterPerks(commands.Cog):
             "You unlocked {reward_role} perks! ✨"
         )
         msg_template = cfg.get("announcement_message") or default_msg
+        times_str = str(times_boosted) if times_boosted > 1 else "1"
+        boost_count_total = str(getattr(guild, "premium_subscription_count", 0) or 0)
+        tier_str = str(getattr(guild, "premium_tier", 0) or 0)
+
         formatted_msg = msg_template.replace("{user}", member.mention) \
                                     .replace("{username}", member.name) \
                                     .replace("{guild}", guild.name) \
-                                    .replace("{boosts}", str(guild.premium_subscription_count or 0)) \
-                                    .replace("{tier}", str(guild.premium_tier or 0)) \
-                                    .replace("{reward_role}", role_mention)
+                                    .replace("{boosts}", boost_count_total) \
+                                    .replace("{tier}", tier_str) \
+                                    .replace("{reward_role}", role_mention) \
+                                    .replace("{times}", times_str) \
+                                    .replace("{count}", times_str)
 
         formatted_msg = replace_plain_emojis(formatted_msg, self.bot, guild_id=gid, guild=guild)
 
