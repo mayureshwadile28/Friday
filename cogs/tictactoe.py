@@ -565,7 +565,7 @@ class TicTacToeGameView(discord.ui.View):
 # ─────────────────────────────────────────────────────────────
 
 class ChallengeInviteView(discord.ui.View):
-    def __init__(self, challenger: discord.Member, target: discord.Member, bot: commands.Bot):
+    def __init__(self, challenger: Union[discord.Member, discord.User], target: Union[discord.Member, discord.User], bot: commands.Bot):
         super().__init__(timeout=60)
         self.challenger = challenger
         self.target = target
@@ -602,7 +602,7 @@ class ChallengeInviteView(discord.ui.View):
         game_view.message = interaction.message
         self.stop()
 
-    @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger, emoji="✕")
+    @discord.ui.button(label="Decline", style=discord.ButtonStyle.danger, emoji="❌")
     async def decline_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.target.id:
             return await interaction.response.send_message(
@@ -614,12 +614,13 @@ class ChallengeInviteView(discord.ui.View):
         for item in self.children:
             item.disabled = True
 
-        embed = make_box_embed(
-            title="Tic-Tac-Toe • Challenge Declined",
+        embed = discord.Embed(
+            title="🎮  Tic-Tac-Toe • Challenge Declined",
             description=f"❌ {self.target.mention} declined the challenge from {self.challenger.mention}.",
-            status="error",
-            footer="Friday Games"
+            color=0xED4245,
+            timestamp=datetime.now(pytz.utc)
         )
+        embed.set_footer(text="Friday Games")
         await interaction.response.edit_message(embed=embed, view=self)
         self.stop()
 
@@ -629,12 +630,13 @@ class ChallengeInviteView(discord.ui.View):
             item.disabled = True
         if self.message:
             try:
-                embed = make_box_embed(
-                    title="Tic-Tac-Toe • Invitation Expired",
+                embed = discord.Embed(
+                    title="🎮  Tic-Tac-Toe • Invitation Expired",
                     description=f"⏰ Challenge from {self.challenger.mention} to {self.target.mention} expired (no response within 60s).",
-                    status="neutral",
-                    footer="Friday Games"
+                    color=0x95A5A6,
+                    timestamp=datetime.now(pytz.utc)
                 )
+                embed.set_footer(text="Friday Games")
                 await self.message.edit(embed=embed, view=self)
             except Exception:
                 pass
@@ -663,7 +665,7 @@ class TicTacToe(commands.Cog, name="Games"):
     async def tictactoe_slash(
         self,
         interaction: discord.Interaction,
-        opponent: Optional[discord.Member] = None,
+        opponent: Optional[Union[discord.Member, discord.User]] = None,
         difficulty: Optional[str] = "Normal"
     ):
         await self._start_game_flow(interaction, opponent, difficulty or "Normal")
@@ -671,7 +673,7 @@ class TicTacToe(commands.Cog, name="Games"):
     async def _start_game_flow(
         self,
         interaction: discord.Interaction,
-        opponent: Optional[discord.Member],
+        opponent: Optional[Union[discord.Member, discord.User]],
         difficulty: str
     ):
         author = interaction.user
@@ -701,6 +703,10 @@ class TicTacToe(commands.Cog, name="Games"):
             game_view.message = await interaction.original_response()
             return
 
+        # Resolve to guild member if resolved as User
+        if interaction.guild and not isinstance(opponent, discord.Member):
+            opponent = interaction.guild.get_member(opponent.id) or opponent
+
         # ─── CASE B: CHALLENGE VALIDATION ───
         if opponent.id == author.id:
             return await interaction.response.send_message(
@@ -722,17 +728,18 @@ class TicTacToe(commands.Cog, name="Games"):
 
         # ─── CASE C: SEND PVP INVITATION ───
         invite_view = ChallengeInviteView(challenger=author, target=opponent, bot=self.bot)
-        embed = make_box_embed(
-            title="Tic-Tac-Toe • Match Challenge",
+        embed = discord.Embed(
+            title="🎮  Tic-Tac-Toe • Match Challenge",
             description=(
                 f"**{author.mention}** has invited **{opponent.mention}** to an epic game of **X and O**!\n\n"
                 f"• **Challenger:** {author.display_name} (`✕`)\n"
                 f"• **Opponent:** {opponent.display_name} (`◯`)\n\n"
                 f"👉 **{opponent.mention}**, will you accept the duel?"
             ),
-            status="info",
-            footer="Friday Games • Awaiting response (60s)"
+            color=0x5865F2,
+            timestamp=datetime.now(pytz.utc)
         )
+        embed.set_footer(text="Friday Games • Awaiting response (60s)")
 
         await interaction.response.send_message(content=f"{opponent.mention}", embed=embed, view=invite_view)
         invite_view.message = await interaction.original_response()
