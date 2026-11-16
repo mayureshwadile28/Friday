@@ -508,7 +508,9 @@ class TicTacToeGameView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
     async def handle_rematch(self, interaction: discord.Interaction):
-        allowed_ids = [self.player_x.id]
+        allowed_ids = []
+        if hasattr(self.player_x, "id"):
+            allowed_ids.append(self.player_x.id)
         if hasattr(self.player_o, "id"):
             allowed_ids.append(self.player_o.id)
 
@@ -519,24 +521,32 @@ class TicTacToeGameView(discord.ui.View):
         self.cleanup_active_players()
         self.stop()
 
-        # For PvP: swap first turn (X and O) for balanced fairness
-        if not self.is_ai:
+        # The participant who clicked 'Play Rematch' is ready at their keyboard and gets First Turn (Player 1, 'X')!
+        rematch_initiator = interaction.user
+
+        if self.is_ai:
+            # In PvE: Human is always Player 1 ('X'), Friday is Player 2 ('O')
             new_view = TicTacToeGameView(
-                player_x=self.player_o,
-                player_o=self.player_x,
-                is_ai=False,
-                bot=self.bot
-            )
-        else:
-            new_view = TicTacToeGameView(
-                player_x=self.player_x,
-                player_o=self.player_o,
+                player_x=rematch_initiator,
+                player_o=self.bot.user,
                 is_ai=True,
                 difficulty=self.difficulty,
                 bot=self.bot
             )
+        else:
+            # In PvP: The player who clicked Rematch plays as Player 1 ('X') and starts first!
+            other_player = self.player_o if rematch_initiator.id == self.player_x.id else self.player_x
+            new_view = TicTacToeGameView(
+                player_x=rematch_initiator,
+                player_o=other_player,
+                is_ai=False,
+                bot=self.bot
+            )
 
-        embed = new_view.build_status_embed(status="info", notice="🔄 **Rematch initiated! Let the games begin!**\n")
+        embed = new_view.build_status_embed(
+            status="info",
+            notice=f"🔄 **Rematch initiated by {rematch_initiator.mention}!**"
+        )
         await interaction.response.edit_message(embed=embed, view=new_view)
         new_view.message = interaction.message
 
