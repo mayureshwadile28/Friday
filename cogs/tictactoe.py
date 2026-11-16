@@ -318,9 +318,11 @@ class TicTacToeGameView(discord.ui.View):
         title = f"🎮  Tic-Tac-Toe • {'Friday AI' if self.is_ai else 'PvP Challenge'}"
 
         if self.is_ai:
+            x_mention = self.player_x.mention if hasattr(self.player_x, "mention") and self.player_x.id != getattr(self.bot.user, 'id', 0) else "**Friday**"
+            o_mention = self.player_o.mention if hasattr(self.player_o, "mention") and self.player_o.id != getattr(self.bot.user, 'id', 0) else "**Friday**"
             desc = (
-                f"**Player 1:** {self.player_x.mention} (`✕`)\n"
-                f"**Opponent:** **Friday** (`◯`) • Mode: **{self.difficulty}**\n\n"
+                f"**Player 1:** {x_mention} (`✕`)\n"
+                f"**Opponent:** {o_mention} (`◯`) • Mode: **{self.difficulty}**\n\n"
             )
         else:
             desc = (
@@ -329,11 +331,14 @@ class TicTacToeGameView(discord.ui.View):
             )
 
         if notice:
-            desc += notice
-        else:
+            desc += f"{notice}\n\n"
+
+        if not self.game_over:
             cur_user = self.player_x if self.current_turn == "X" else self.player_o
             cur_mention = cur_user.mention if hasattr(cur_user, "mention") else "**Friday**"
-            desc += f"👉 **Current Turn:** {cur_mention} (`{self.current_turn}`)\n*Click an empty tile on the board below!*"
+            is_start = all(spot is None for spot in self.board)
+            turn_label = "First Turn" if is_start else "Current Turn"
+            desc += f"👉 **{turn_label}:** {cur_mention} (`{self.current_turn}`)\n*Click an empty tile on the board below!*"
 
         embed = discord.Embed(
             title=title,
@@ -355,7 +360,7 @@ class TicTacToeGameView(discord.ui.View):
         # 1. Turn and Authorization Verification
         expected_user = self.player_x if self.current_turn == "X" else self.player_o
         if interaction.user.id != expected_user.id:
-            if interaction.user.id in (self.player_x.id, getattr(self.player_o, "id", None)):
+            if interaction.user.id in (getattr(self.player_x, "id", None), getattr(self.player_o, "id", None)):
                 return await interaction.response.send_message(
                     f"⏳ It is not your turn! Please wait for {expected_user.mention} to play (`{self.current_turn}`).",
                     ephemeral=True
@@ -369,10 +374,11 @@ class TicTacToeGameView(discord.ui.View):
         if self.board[index] is not None:
             return await interaction.response.defer()
 
-        # 2. Apply Human Move
-        self.board[index] = "X"
-        button.label = "✕"
-        button.style = discord.ButtonStyle.danger
+        # 2. Apply Move for Current Player
+        move_symbol = self.current_turn
+        self.board[index] = move_symbol
+        button.label = "✕" if move_symbol == "X" else "◯"
+        button.style = discord.ButtonStyle.danger if move_symbol == "X" else discord.ButtonStyle.primary
         button.disabled = True
 
         # Check for victory or tie
@@ -382,26 +388,28 @@ class TicTacToeGameView(discord.ui.View):
 
         # 3. AI Turn (if in PvE mode)
         if self.is_ai:
+            ai_sym = "O" if move_symbol == "X" else "X"
+            human_sym = move_symbol
             if self.difficulty == "Easy":
-                ai_idx = ai_easy_move(self.board, ai_sym="O", human_sym="X")
+                ai_idx = ai_easy_move(self.board, ai_sym=ai_sym, human_sym=human_sym)
             elif self.difficulty == "Hard":
-                ai_idx = ai_hard_move(self.board, ai_sym="O", human_sym="X")
+                ai_idx = ai_hard_move(self.board, ai_sym=ai_sym, human_sym=human_sym)
             else:
-                ai_idx = ai_normal_move(self.board, ai_sym="O", human_sym="X")
+                ai_idx = ai_normal_move(self.board, ai_sym=ai_sym, human_sym=human_sym)
 
             if ai_idx is not None:
-                self.board[ai_idx] = "O"
+                self.board[ai_idx] = ai_sym
                 ai_btn = self.buttons[ai_idx]
-                ai_btn.label = "◯"
-                ai_btn.style = discord.ButtonStyle.primary
+                ai_btn.label = "✕" if ai_sym == "X" else "◯"
+                ai_btn.style = discord.ButtonStyle.danger if ai_sym == "X" else discord.ButtonStyle.primary
                 ai_btn.disabled = True
 
             ai_winner = check_board_winner(self.board)
             if ai_winner:
                 return await self.finish_game(interaction, ai_winner)
 
-            # Turn remains with Human
-            self.current_turn = "X"
+            # Turn returns to Human
+            self.current_turn = human_sym
             embed = self.build_status_embed()
             return await interaction.response.edit_message(embed=embed, view=self)
 
@@ -565,11 +573,18 @@ class TicTacToeGameView(discord.ui.View):
 # ─────────────────────────────────────────────────────────────
 
 class ChallengeInviteView(discord.ui.View):
-    def __init__(self, challenger: Union[discord.Member, discord.User], target: Union[discord.Member, discord.User], bot: commands.Bot):
+    def __init__(
+        self,
+        challenger: Union[discord.Member, discord.User],
+        target: Union[discord.Member, discord.User],
+        bot: commands.Bot,
+        first_turn: str = "challenger"
+    ):
         super().__init__(timeout=60)
         self.challenger = challenger
         self.target = target
         self.bot = bot
+        self.first_turn = first_turn
         self.message: Optional[discord.Message] = None
 
         ACTIVE_PLAYERS.add(self.challenger.id)
@@ -587,16 +602,33 @@ class ChallengeInviteView(discord.ui.View):
                 ephemeral=True
             )
 
+        # Decide who is Player 1 (X, goes first)
+        toss_notice = ""
+        if self.first_turn == "random":
+            p1 = random.choice([self.challenger, self.target])
+            p2 = self.target if p1.id == self.challenger.id else self.challenger
+            toss_notice = f"🪙 **Coin Toss:** {p1.mention} won the toss and gets the first move (`✕`)!"
+        elif self.first_turn == "opponent":
+            p1 = self.target
+            p2 = self.challenger
+        else:
+            p1 = self.challenger
+            p2 = self.target
+
         # Launch Game View
         game_view = TicTacToeGameView(
-            player_x=self.challenger,
-            player_o=self.target,
+            player_x=p1,
+            player_o=p2,
             is_ai=False,
             bot=self.bot
         )
+        notice_lines = [f"⚔️ **Challenge Accepted!** {self.target.mention} joined the battlefield."]
+        if toss_notice:
+            notice_lines.append(toss_notice)
+
         embed = game_view.build_status_embed(
             status="info",
-            notice=f"⚔️ **Challenge Accepted!** {self.target.mention} joined the battlefield.\n\n"
+            notice="\n".join(notice_lines)
         )
         await interaction.response.edit_message(embed=embed, view=game_view)
         game_view.message = interaction.message
@@ -655,26 +687,34 @@ class TicTacToe(commands.Cog, name="Games"):
     @app_commands.command(name="tictactoe", description="Play Tic-Tac-Toe (X and O) against a friend or Friday AI!")
     @app_commands.describe(
         opponent="Member to challenge (leave blank to play against Friday AI)",
-        difficulty="Friday AI difficulty mode (Easy, Normal, Hard)"
+        difficulty="Friday AI difficulty mode (Easy, Normal, Hard)",
+        first_turn="Who plays first as 'X' (You, Opponent, or Random coin toss)"
     )
     @app_commands.choices(difficulty=[
         app_commands.Choice(name="Easy (Casual & Fun)", value="Easy"),
         app_commands.Choice(name="Normal (Balanced & Smart)", value="Normal"),
         app_commands.Choice(name="Hard (Unbeatable Minimax AI)", value="Hard")
     ])
+    @app_commands.choices(first_turn=[
+        app_commands.Choice(name="You (Challenger goes first)", value="challenger"),
+        app_commands.Choice(name="Opponent (Opponent / Friday goes first)", value="opponent"),
+        app_commands.Choice(name="🎲 Random (Coin toss decides who goes first)", value="random")
+    ])
     async def tictactoe_slash(
         self,
         interaction: discord.Interaction,
         opponent: Optional[Union[discord.Member, discord.User]] = None,
-        difficulty: Optional[str] = "Normal"
+        difficulty: Optional[str] = "Normal",
+        first_turn: Optional[str] = "challenger"
     ):
-        await self._start_game_flow(interaction, opponent, difficulty or "Normal")
+        await self._start_game_flow(interaction, opponent, difficulty or "Normal", first_turn or "challenger")
 
     async def _start_game_flow(
         self,
         interaction: discord.Interaction,
         opponent: Optional[Union[discord.Member, discord.User]],
-        difficulty: str
+        difficulty: str,
+        first_turn: str = "challenger"
     ):
         author = interaction.user
 
@@ -687,16 +727,44 @@ class TicTacToe(commands.Cog, name="Games"):
 
         # ─── CASE A: PLAY WITH FRIDAY (PvE) ───
         if opponent is None or opponent.id == self.bot.user.id:
+            toss_notice = ""
+            if first_turn == "random":
+                ai_first = random.choice([True, False])
+                if ai_first:
+                    p1, p2 = self.bot.user, author
+                    toss_notice = "🪙 **Coin Toss:** Friday won the toss and gets the first move (`✕`)!"
+                else:
+                    p1, p2 = author, self.bot.user
+                    toss_notice = f"🪙 **Coin Toss:** {author.mention} won the toss and gets the first move (`✕`)!"
+            elif first_turn == "opponent":
+                p1, p2 = self.bot.user, author
+            else:
+                p1, p2 = author, self.bot.user
+
             game_view = TicTacToeGameView(
-                player_x=author,
-                player_o=self.bot.user,
+                player_x=p1,
+                player_o=p2,
                 is_ai=True,
                 difficulty=difficulty,
                 bot=self.bot
             )
+
+            # If Friday is Player 1, Friday makes its opening move immediately!
+            if p1.id == self.bot.user.id:
+                opening_move = 4  # Take center
+                game_view.board[opening_move] = "X"
+                game_view.buttons[opening_move].label = "✕"
+                game_view.buttons[opening_move].style = discord.ButtonStyle.danger
+                game_view.buttons[opening_move].disabled = True
+                game_view.current_turn = "O"
+
+            notice_lines = [f"🎮 **Match Initialized!** Playing against **Friday** on **{difficulty}** mode."]
+            if toss_notice:
+                notice_lines.append(toss_notice)
+
             embed = game_view.build_status_embed(
                 status="info",
-                notice=f"🎮 **Match Initialized!** You are playing against **Friday** on **{difficulty}** mode.\n"
+                notice="\n".join(notice_lines)
             )
 
             await interaction.response.send_message(embed=embed, view=game_view)
@@ -727,13 +795,21 @@ class TicTacToe(commands.Cog, name="Games"):
             )
 
         # ─── CASE C: SEND PVP INVITATION ───
-        invite_view = ChallengeInviteView(challenger=author, target=opponent, bot=self.bot)
+        invite_view = ChallengeInviteView(challenger=author, target=opponent, bot=self.bot, first_turn=first_turn)
+
+        turn_pref_str = f"{author.display_name} (`✕`)"
+        if first_turn == "opponent":
+            turn_pref_str = f"{opponent.display_name} (`✕`)"
+        elif first_turn == "random":
+            turn_pref_str = "🎲 Coin toss will decide"
+
         embed = discord.Embed(
             title="🎮  Tic-Tac-Toe • Match Challenge",
             description=(
                 f"**{author.mention}** has invited **{opponent.mention}** to an epic game of **X and O**!\n\n"
                 f"• **Challenger:** {author.display_name} (`✕`)\n"
-                f"• **Opponent:** {opponent.display_name} (`◯`)\n\n"
+                f"• **Opponent:** {opponent.display_name} (`◯`)\n"
+                f"• **First Move:** {turn_pref_str}\n\n"
                 f"👉 **{opponent.mention}**, will you accept the duel?"
             ),
             color=0x5865F2,
