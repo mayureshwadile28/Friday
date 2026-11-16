@@ -641,7 +641,7 @@ class ChallengeInviteView(discord.ui.View):
 
 
 # ─────────────────────────────────────────────────────────────
-# TIC-TAC-TOE COG SETUP
+# TIC-TAC-TOE COG SETUP (SLASH COMMANDS ONLY)
 # ─────────────────────────────────────────────────────────────
 
 class TicTacToe(commands.Cog, name="Games"):
@@ -668,39 +668,20 @@ class TicTacToe(commands.Cog, name="Games"):
     ):
         await self._start_game_flow(interaction, opponent, difficulty or "Normal")
 
-    @commands.command(name="tictactoe", aliases=["ttt", "xo", "xando"])
-    async def tictactoe_prefix(
-        self,
-        ctx: commands.Context,
-        opponent: Optional[discord.Member] = None,
-        difficulty: str = "Normal"
-    ):
-        """Play Tic-Tac-Toe against a member or Friday AI! Example: !ttt @friend OR !ttt Hard"""
-        # If user passed a difficulty string as the first argument instead of member
-        if opponent is None and difficulty and difficulty.lower() in ("easy", "normal", "hard"):
-            diff_clean = difficulty.capitalize()
-        else:
-            diff_clean = "Normal"
-            if difficulty and difficulty.capitalize() in ("Easy", "Normal", "Hard"):
-                diff_clean = difficulty.capitalize()
-
-        await self._start_game_flow(ctx, opponent, diff_clean)
-
     async def _start_game_flow(
         self,
-        ctx_or_interaction: Union[commands.Context, discord.Interaction],
+        interaction: discord.Interaction,
         opponent: Optional[discord.Member],
         difficulty: str
     ):
-        author = ctx_or_interaction.author if isinstance(ctx_or_interaction, commands.Context) else ctx_or_interaction.user
+        author = interaction.user
 
         # Guard: Inactive / Already in Match
         if author.id in ACTIVE_PLAYERS:
-            msg = "⚠️ You are already participating in an active Tic-Tac-Toe match! Finish it first."
-            if isinstance(ctx_or_interaction, discord.Interaction):
-                return await ctx_or_interaction.response.send_message(msg, ephemeral=True)
-            else:
-                return await ctx_or_interaction.reply(msg)
+            return await interaction.response.send_message(
+                "⚠️ You are already participating in an active Tic-Tac-Toe match! Finish it first.",
+                ephemeral=True
+            )
 
         # ─── CASE A: PLAY WITH FRIDAY (PvE) ───
         if opponent is None or opponent.id == self.bot.user.id:
@@ -716,34 +697,28 @@ class TicTacToe(commands.Cog, name="Games"):
                 notice=f"🎮 **Match Initialized!** You are playing against **Friday** on **{difficulty}** mode.\n"
             )
 
-            if isinstance(ctx_or_interaction, discord.Interaction):
-                await ctx_or_interaction.response.send_message(embed=embed, view=game_view)
-                game_view.message = await ctx_or_interaction.original_response()
-            else:
-                game_view.message = await ctx_or_interaction.reply(embed=embed, view=game_view)
+            await interaction.response.send_message(embed=embed, view=game_view)
+            game_view.message = await interaction.original_response()
             return
 
         # ─── CASE B: CHALLENGE VALIDATION ───
         if opponent.id == author.id:
-            msg = "❌ You cannot play against yourself! Invite another member or play against Friday."
-            if isinstance(ctx_or_interaction, discord.Interaction):
-                return await ctx_or_interaction.response.send_message(msg, ephemeral=True)
-            else:
-                return await ctx_or_interaction.reply(msg)
+            return await interaction.response.send_message(
+                "❌ You cannot play against yourself! Invite another member or play against Friday.",
+                ephemeral=True
+            )
 
         if opponent.bot:
-            msg = f"❌ {opponent.display_name} is a bot! If you want to play against an AI, challenge Friday directly with `/tictactoe`."
-            if isinstance(ctx_or_interaction, discord.Interaction):
-                return await ctx_or_interaction.response.send_message(msg, ephemeral=True)
-            else:
-                return await ctx_or_interaction.reply(msg)
+            return await interaction.response.send_message(
+                f"❌ {opponent.display_name} is a bot! If you want to play against an AI, challenge Friday directly with `/tictactoe`.",
+                ephemeral=True
+            )
 
         if opponent.id in ACTIVE_PLAYERS:
-            msg = f"⚠️ {opponent.mention} is currently in an active match. Please wait until they finish."
-            if isinstance(ctx_or_interaction, discord.Interaction):
-                return await ctx_or_interaction.response.send_message(msg, ephemeral=True)
-            else:
-                return await ctx_or_interaction.reply(msg)
+            return await interaction.response.send_message(
+                f"⚠️ {opponent.mention} is currently in an active match. Please wait until they finish.",
+                ephemeral=True
+            )
 
         # ─── CASE C: SEND PVP INVITATION ───
         invite_view = ChallengeInviteView(challenger=author, target=opponent, bot=self.bot)
@@ -759,11 +734,8 @@ class TicTacToe(commands.Cog, name="Games"):
             footer="Friday Games • Awaiting response (60s)"
         )
 
-        if isinstance(ctx_or_interaction, discord.Interaction):
-            await ctx_or_interaction.response.send_message(content=f"{opponent.mention}", embed=embed, view=invite_view)
-            invite_view.message = await ctx_or_interaction.original_response()
-        else:
-            invite_view.message = await ctx_or_interaction.reply(content=f"{opponent.mention}", embed=embed, view=invite_view)
+        await interaction.response.send_message(content=f"{opponent.mention}", embed=embed, view=invite_view)
+        invite_view.message = await interaction.original_response()
 
     @app_commands.command(name="tictactoe_stats", description="View your or another member's Tic-Tac-Toe match record & stats.")
     @app_commands.describe(member="Member whose stats to view (defaults to you)")
@@ -771,13 +743,7 @@ class TicTacToe(commands.Cog, name="Games"):
         target = member or interaction.user
         await self._display_stats(interaction, target)
 
-    @commands.command(name="tictactoe_stats", aliases=["tttstats", "xostats"])
-    async def stats_prefix(self, ctx: commands.Context, member: Optional[discord.Member] = None):
-        """View your or another member's Tic-Tac-Toe record."""
-        target = member or ctx.author
-        await self._display_stats(ctx, target)
-
-    async def _display_stats(self, ctx_or_interaction: Union[commands.Context, discord.Interaction], target: discord.Member):
+    async def _display_stats(self, interaction: discord.Interaction, target: discord.Member):
         stats = get_player_stats(target.id)
         played = stats.get("games_played", 0)
         wins = stats.get("wins", 0)
@@ -811,10 +777,7 @@ class TicTacToe(commands.Cog, name="Games"):
         if target.display_avatar:
             embed.set_thumbnail(url=target.display_avatar.url)
 
-        if isinstance(ctx_or_interaction, discord.Interaction):
-            await ctx_or_interaction.response.send_message(embed=embed)
-        else:
-            await ctx_or_interaction.reply(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot: commands.Bot):
