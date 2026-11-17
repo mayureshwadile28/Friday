@@ -335,29 +335,58 @@ class TicTacToeGameView(discord.ui.View):
 
         title = f"🎮  Tic-Tac-Toe • {'Friday AI' if self.is_ai else 'PvP Challenge'}"
 
-        if self.is_ai:
-            x_mention = self.player_x.mention if hasattr(self.player_x, "mention") and self.player_x.id != getattr(self.bot.user, 'id', 0) else "**Friday**"
-            o_mention = self.player_o.mention if hasattr(self.player_o, "mention") and self.player_o.id != getattr(self.bot.user, 'id', 0) else "**Friday**"
-            desc = (
-                f"**Player 1:** {x_mention} (❌)\n"
-                f"**Opponent:** {o_mention} (⭕) • Mode: **{self.difficulty}**\n\n"
-            )
-        else:
-            desc = (
-                f"**Player 1:** {self.player_x.mention} (❌)\n"
-                f"**Player 2:** {self.player_o.mention} (⭕)\n\n"
-            )
+        # Fetch Player Stats for Live Scoreboard
+        x_stats = get_player_stats(self.player_x.id)
+        p1_name = getattr(self.player_x, "display_name", "Player 1")
 
-        if notice:
-            desc += f"{notice}\n\n"
+        if self.is_ai:
+            p2_name = "Friday (AI)"
+            p2_line = f"• ⭕ **Friday (AI):** `{self.difficulty} Mode`"
+            matchup_str = f"❌ {self.player_x.mention} vs ⭕ **Friday** (`{self.difficulty}`)"
+        else:
+            p2_name = getattr(self.player_o, "display_name", "Player 2")
+            o_stats = get_player_stats(self.player_o.id) if hasattr(self.player_o, "id") else None
+            p2_stats_str = f"`{o_stats['wins']}W · {o_stats['losses']}L · {o_stats['ties']}T`" if o_stats else "`N/A`"
+            p2_line = f"• ⭕ **{p2_name}:** {p2_stats_str}"
+            matchup_str = f"❌ {self.player_x.mention} vs ⭕ {getattr(self.player_o, 'mention', '**Player 2**')}"
+
+        scoreboard_str = (
+            f"📊 **Scoreboard & Records:**\n"
+            f"• ❌ **{p1_name}:** `{x_stats['wins']}W · {x_stats['losses']}L · {x_stats['ties']}T`\n"
+            f"{p2_line}"
+        )
+
+        cur_user = self.player_x if self.current_turn == "X" else self.player_o
+        cur_mention = cur_user.mention if hasattr(cur_user, "mention") else "**Friday**"
+        cur_sym = "❌" if self.current_turn == "X" else "⭕"
 
         if not self.game_over:
-            cur_user = self.player_x if self.current_turn == "X" else self.player_o
-            cur_mention = cur_user.mention if hasattr(cur_user, "mention") else "**Friday**"
-            cur_sym = "❌" if self.current_turn == "X" else "⭕"
-            is_start = all(spot is None for spot in self.board)
-            turn_label = "First Turn" if is_start else "Current Turn"
-            desc += f"👉 **{turn_label}:** {cur_mention} ({cur_sym})\n*Click an empty tile on the board below!*"
+            turn_indicator = (
+                f"🎯 **CURRENT CHANCE:** {cur_sym} {cur_mention}\n"
+                f"👉 *Click an empty tile on the grid below to place your {cur_sym}!*"
+            )
+            desc_parts = [
+                f"👥 **Matchup:** {matchup_str}",
+                scoreboard_str,
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            ]
+            if notice:
+                desc_parts.append(notice)
+            desc_parts.append(turn_indicator)
+            desc = "\n\n".join(desc_parts)
+        else:
+            # End of Match Score Card
+            elapsed = int(time.time() - self.start_time)
+            score_card = (
+                f"📋 **MATCH SCORE CARD**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"{notice or 'Match concluded.'}\n"
+                f"• **Duration:** `{elapsed}s`\n\n"
+                f"{scoreboard_str}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👉 *Click **Play Rematch** below to play another round!*"
+            )
+            desc = f"👥 **Matchup:** {matchup_str}\n\n{score_card}"
 
         embed = discord.Embed(
             title=title,
@@ -596,11 +625,17 @@ class TicTacToeGameView(discord.ui.View):
                 btn.disabled = True
             if hasattr(self, "forfeit_btn") and self.forfeit_btn in self.children:
                 self.remove_item(self.forfeit_btn)
+            self.add_item(RematchButton())
+
+            cur_user = self.player_x if self.current_turn == "X" else self.player_o
+            cur_name = getattr(cur_user, "display_name", "Friday")
+            notice = f"⏰ **Game Timed Out:** Match concluded due to 90s inactivity on {cur_name}'s turn."
+
             if self.message:
                 try:
                     embed = self.build_status_embed(
                         status="warning",
-                        notice="⏰ **Game Abandoned:** Match timed out after 90 seconds of inactivity."
+                        notice=notice
                     )
                     await self.message.edit(embed=embed, view=self)
                 except Exception:

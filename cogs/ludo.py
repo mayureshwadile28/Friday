@@ -8,7 +8,22 @@ import asyncio
 from datetime import datetime
 import pytz
 from typing import Optional, List, Tuple, Dict, Any
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
+import os
+
+def get_bold_font(size: int):
+    """Loads clean bold system font across Windows & Linux platforms with fallback."""
+    for fn in ["arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf", "calibrib.ttf", "arial.ttf"]:
+        try:
+            return ImageFont.truetype(fn, size)
+        except Exception:
+            try:
+                path = os.path.join(os.environ.get("WINDIR", "C:\\Windows"), "Fonts", fn)
+                if os.path.exists(path):
+                    return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
 
 # ─────────────────────────────────────────────────────────────
 # BOARD GEOMETRY & TRACK DEFINITIONS (15x15 GRID ON 700x850 CANVAS)
@@ -376,27 +391,33 @@ def render_board_image(
             key = (int(round(x)), int(round(y)))
             pos_map.setdefault(key, []).append((col, i + 1, x, y, is_movable))
 
-    # 3. Render 3D Tokens with Side-by-Side Multi-Token Support & Glow
+    # 3. Render 3D Tokens with High-Contrast Centered Number Badges & Glow
+    font_single = get_bold_font(12)
+    font_multi = get_bold_font(10)
+
     for key, tokens_on_spot in pos_map.items():
         count = len(tokens_on_spot)
         for idx, (col, num, x, y, is_movable) in enumerate(tokens_on_spot):
             if count == 1:
-                token_radius = 15
+                token_radius = 16
                 px, py = int(round(x)), int(round(y))
-                text_dx, text_dy = -4, -6
+                in_badge_r = 9
+                cur_font = font_single
             elif count == 2:
-                # 2 Tokens in 1 box: Place side-by-side (offset ±10px, radius 11px)
-                token_radius = 11
-                offset_x = -10 if idx == 0 else 10
+                # 2 Tokens in 1 box: Place side-by-side (offset ±11px, radius 12px)
+                token_radius = 12
+                offset_x = -11 if idx == 0 else 11
                 px, py = int(round(x + offset_x)), int(round(y))
-                text_dx, text_dy = -3, -5
+                in_badge_r = 7
+                cur_font = font_multi
             else:
-                # 3 or 4 Tokens: 2x2 grid layout inside the 44px cell (radius 9px)
-                token_radius = 9
-                quad_offsets = [(-9, -9), (9, -9), (-9, 9), (9, 9)]
+                # 3 or 4 Tokens: 2x2 grid layout inside the 44px cell (radius 10px)
+                token_radius = 10
+                quad_offsets = [(-10, -10), (10, -10), (-10, 10), (10, 10)]
                 ox, oy = quad_offsets[idx % 4]
                 px, py = int(round(x + ox)), int(round(y + oy))
-                text_dx, text_dy = -3, -5
+                in_badge_r = 6
+                cur_font = font_multi
 
             # Glowing Neon Green Ring if token is legal to move!
             if is_movable:
@@ -410,7 +431,6 @@ def render_board_image(
             theme = COLOR_THEMES[col]
             fill_color = theme["rgb"]
             rim_color = (255, 255, 255) if col in ("red", "blue") else (30, 30, 30)
-            text_color = (255, 255, 255) if col in ("red", "blue") else (20, 20, 20)
 
             draw.ellipse(
                 [px - token_radius, py - token_radius, px + token_radius, py + token_radius],
@@ -427,8 +447,16 @@ def render_board_image(
                 fill=shine_color
             )
 
-            # Token number
-            draw.text((px + text_dx, py + text_dy), str(num), fill=text_color)
+            # Inner high-contrast solid white badge disc with dark rim
+            draw.ellipse(
+                [px - in_badge_r, py - in_badge_r, px + in_badge_r, py + in_badge_r],
+                fill=(255, 255, 255),
+                outline=(40, 40, 40),
+                width=1
+            )
+
+            # Crisp bold black number centered inside the white disc
+            draw.text((px, py), str(num), fill=(20, 20, 20), font=cur_font, anchor="mm")
 
     buf = io.BytesIO()
     canvas.save(buf, format="PNG", compress_level=1)
@@ -592,8 +620,12 @@ class LudoGame:
 # ─────────────────────────────────────────────────────────────
 
 class LudoRollButton(discord.ui.Button):
-    def __init__(self):
-        super().__init__(style=discord.ButtonStyle.primary, label="Roll Dice", emoji="🎲", row=0)
+    def __init__(self, color_name: str, player_name: str):
+        theme = COLOR_THEMES[color_name]
+        btn_style = discord.ButtonStyle.danger if color_name == "red" else (
+            discord.ButtonStyle.success if color_name == "green" else discord.ButtonStyle.primary
+        )
+        super().__init__(style=btn_style, label=f"Roll Dice ({theme['name']}: {player_name[:12]})", emoji="🎲", row=0)
 
     async def callback(self, interaction: discord.Interaction):
         view: LudoView = self.view
@@ -601,12 +633,16 @@ class LudoRollButton(discord.ui.Button):
 
 
 class LudoTokenSelectButton(discord.ui.Button):
-    def __init__(self, token_idx: int, label: str):
+    def __init__(self, token_idx: int, label: str, color_name: str):
+        theme = COLOR_THEMES[color_name]
+        btn_style = discord.ButtonStyle.danger if color_name == "red" else (
+            discord.ButtonStyle.success if color_name == "green" else discord.ButtonStyle.primary
+        )
         super().__init__(
-            style=discord.ButtonStyle.success,
+            style=btn_style,
             label=label,
-            emoji="🟢",
-            row=0
+            emoji=theme["emoji"],
+            row=0 if token_idx < 2 else 1
         )
         self.token_idx = token_idx
 
@@ -616,8 +652,9 @@ class LudoTokenSelectButton(discord.ui.Button):
 
 
 class LudoPassButton(discord.ui.Button):
-    def __init__(self):
-        super().__init__(style=discord.ButtonStyle.secondary, label="Pass Turn", emoji="⏩", row=0)
+    def __init__(self, color_name: str, player_name: str):
+        theme = COLOR_THEMES[color_name]
+        super().__init__(style=discord.ButtonStyle.secondary, label=f"Pass Turn ({theme['name']}: {player_name[:12]})", emoji="⏩", row=0)
 
     async def callback(self, interaction: discord.Interaction):
         view: LudoView = self.view
@@ -626,7 +663,7 @@ class LudoPassButton(discord.ui.Button):
 
 class LudoForfeitButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(style=discord.ButtonStyle.secondary, label="Forfeit", emoji="🏳️", row=1)
+        super().__init__(style=discord.ButtonStyle.secondary, label="Forfeit", emoji="🏳️", row=2)
 
     async def callback(self, interaction: discord.Interaction):
         view: LudoView = self.view
@@ -653,13 +690,17 @@ class LudoView(discord.ui.View):
     def setup_buttons_for_roll(self):
         self.clear_items()
         self.movable_tokens = []
-        self.add_item(LudoRollButton())
+        cur_col = self.game.current_turn
+        cur_p = self.game.players[cur_col]
+        self.add_item(LudoRollButton(cur_col, cur_p["name"]))
         self.add_item(LudoForfeitButton())
 
     def setup_buttons_no_moves(self):
         self.clear_items()
         self.movable_tokens = []
-        self.add_item(LudoPassButton())
+        cur_col = self.game.current_turn
+        cur_p = self.game.players[cur_col]
+        self.add_item(LudoPassButton(cur_col, cur_p["name"]))
         self.add_item(LudoForfeitButton())
 
     def setup_buttons_for_token_pick(self, legal_moves: List[int], roll: int):
@@ -672,9 +713,9 @@ class LudoView(discord.ui.View):
         for idx in legal_moves:
             pos = pdata["tokens"][idx]
             if pos == -1:
-                label = f"Token {idx+1}: Leave Base ➔ Start 🚀"
+                label = f"Token {idx+1}: Release Base ➔ Start 🚀"
             elif pos + roll == 56:
-                label = f"Token {idx+1}: Enter Home! 🌟"
+                label = f"Token {idx+1}: Enter Center Home! 🌟"
             else:
                 target_track = (COLOR_TRACK_OFFSET[current_col] + pos + roll) % 52
                 will_capture = False
@@ -692,7 +733,7 @@ class LudoView(discord.ui.View):
                 else:
                     label = f"Token {idx+1}: Advance {roll} Steps 🏃"
 
-            self.add_item(LudoTokenSelectButton(idx, label=label[:80]))
+            self.add_item(LudoTokenSelectButton(idx, label=label[:80], color_name=current_col))
         self.add_item(LudoForfeitButton())
 
     def setup_buttons_game_over(self):
@@ -728,17 +769,17 @@ class LudoView(discord.ui.View):
             )
         standings_str = "\n".join(standings_lines)
 
-        # Upper Live Guidance
+        # Upper Live Guidance (Clean compact box)
         if status_text:
             turn_box = status_text
         elif g.game_over:
             turn_box = f"🎉 **Match Concluded!** Winner: **{g.players[g.winner]['name']}**!"
         elif cur_p["is_ai"]:
-            turn_box = f"🤖 **{cur_p['name']}** is calculating optimal move..."
+            turn_box = f"🤖 **CURRENT CHANCE:** {theme['emoji']} **Friday (AI)** is calculating move..."
         elif self.movable_tokens:
-            turn_box = f"👉 **{cur_p['name']}'s Turn:** Pick a glowing token button below to move!"
+            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Pick a {theme['name']} token button below to move!*"
         else:
-            turn_box = f"👉 **{cur_p['name']}'s Turn:** Click **Roll Dice** below!"
+            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Click your {theme['name']} 'Roll Dice' button below!*"
 
         # Recent actions
         log_str = "\n".join(g.log_history[-3:])
@@ -777,8 +818,8 @@ class LudoView(discord.ui.View):
         elif self.message:
             try:
                 await self.message.edit(embed=embed, view=self, attachments=[file])
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[Ludo] Failed to edit message in update_view: {e}")
 
     async def handle_human_roll(self, interaction: discord.Interaction):
         try:
@@ -794,16 +835,12 @@ class LudoView(discord.ui.View):
             if self.game.game_over:
                 return await interaction.response.defer()
 
-            # 1. Rolling suspense animation
-            self.clear_items()
-            btn_rolling = discord.ui.Button(style=discord.ButtonStyle.secondary, label="Rolling...", emoji="🎲", disabled=True)
-            self.add_item(btn_rolling)
-            rolling_embed = self.build_embed(status_text=f"🎲 *{cur_p['name']} is shaking the dice cup...*")
-            await interaction.response.edit_message(embed=rolling_embed, view=self)
+            # Always defer immediately so Discord interaction never expires and view doesn't get stuck!
+            await interaction.response.defer()
+            if interaction.message:
+                self.message = interaction.message
 
-            await asyncio.sleep(0.4)
-
-            # 2. Generate Roll
+            # Generate Roll
             roll = random.randint(1, 6)
             self.game.last_rolls[cur_col] = roll
             theme = COLOR_THEMES[cur_col]
@@ -839,6 +876,8 @@ class LudoView(discord.ui.View):
             await self.update_view()
         except Exception as e:
             print(f"[Ludo] Error in handle_human_roll: {e}")
+            self.setup_buttons_for_roll()
+            await self.update_view()
 
     async def handle_human_pass(self, interaction: discord.Interaction):
         try:
