@@ -10,6 +10,7 @@ import os
 import time
 import random
 import re
+import html
 import base64
 import warnings
 from database import db
@@ -825,33 +826,8 @@ class Music(commands.Cog):
             cookie_path = get_cookie_file()
             format_chain = 'bestaudio[ext=m4a]/bestaudio/best/18/140'
 
-            # Protect master cookies.txt from corruption & strip volatile session tokens
-            # (SIDTS, SIDCC, etc.) that cause Google to throw "The page needs to be reloaded" on datacenter IPs
-            active_cookie_path = None
-            if cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0:
-                try:
-                    EXCLUDED_COOKIES = {
-                        "__Secure-1PSIDTS", "__Secure-3PSIDTS", "SIDCC",
-                        "__Secure-1PSIDCC", "__Secure-3PSIDCC", "ST-xuwub9"
-                    }
-                    with open(cookie_path, 'r', encoding='utf-8', errors='ignore') as f:
-                        lines = f.readlines()
-                    clean = []
-                    for line in lines:
-                        if line.startswith("#"):
-                            clean.append(line)
-                            continue
-                        parts = line.strip().split("\t")
-                        if len(parts) >= 7 and parts[5] in EXCLUDED_COOKIES:
-                            continue
-                        clean.append(line)
-                    runtime_path = os.path.join(os.path.dirname(cookie_path), "cookies_runtime.txt")
-                    with open(runtime_path, 'w', encoding='utf-8') as out:
-                        out.writelines(clean)
-                    active_cookie_path = runtime_path
-                except Exception as c_err:
-                    print(f"[Music] Runtime cookie sanitization note: {c_err}")
-                    active_cookie_path = cookie_path
+            # Authenticated cookies path for yt-dlp
+            active_cookie_path = cookie_path if (cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0) else None
 
             # Direct audio stream handling (.mp3, .m4a, .wav, .aac, .ogg, .flac, .opus, .m3u8, radio streams)
             DIRECT_AUDIO_EXTS = ('.mp3', '.m4a', '.wav', '.aac', '.ogg', '.flac', '.opus', '.m3u8')
@@ -980,10 +956,25 @@ class Music(commands.Cog):
                         if not entry or not entry.get('url'):
                             continue
                         t = entry.get('title', '').lower()
-                        score = sum(20 for w in q_words if w in t)
+                        uploader = (entry.get('uploader') or '').lower()
+                        dur = entry.get('duration', 0)
+                        dur_sec = int(dur / 1000) if dur > 10000 else int(dur)
+
+                        # Skip short 30-second SoundCloud Go+ previews
+                        if 0 < dur_sec <= 35:
+                            continue
+                        # Penalize 1-hour loops unless requested
+                        if dur_sec > 600 and "hour" not in q_lower:
+                            score_pen = 50
+                        else:
+                            score_pen = 0
+
+                        score = sum(20 for w in q_words if w in t) - score_pen
+                        if any(w in uploader for w in q_words):
+                            score += 25
                         for pt in ['cover', 'remix', 'drill', 'mashup', 'slowed', 'reverb', 'bass boosted']:
                             if pt in t and pt not in q_lower:
-                                score -= 25
+                                score -= 30
                         if score > best_score:
                             best_score = score
                             best_entry = entry
@@ -1013,11 +1004,10 @@ class Music(commands.Cog):
                         'geo_bypass': True,
                         'nocheckcertificate': True,
                         'http_headers': DEFAULT_HEADERS,
+                        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
                     }
                     if use_cookies and active_cookie_path:
                         opts['cookiefile'] = active_cookie_path
-                    else:
-                        opts['extractor_args'] = {'youtube': {'player_client': ['ios', 'android_vr', 'tv_embedded']}}
 
                     with yt_dlp.YoutubeDL(opts) as ydl:
                         info = ydl.extract_info(target, download=False)
@@ -1033,7 +1023,7 @@ class Music(commands.Cog):
                             }
                     return None
 
-                # Step 1: Ultra-fast flat metadata query (<2s)
+                # Step 1: Ultra-fast flat metadata query (<2s) with mobile client to bypass bot checks
                 clean_query = target.replace('ytsearch1:', '').replace('ytsearch5:', '').strip()
                 flat_opts = {
                     'extract_flat': 'in_playlist',
@@ -1041,6 +1031,7 @@ class Music(commands.Cog):
                     'no_warnings': True,
                     'noplaylist': True,
                     'http_headers': DEFAULT_HEADERS,
+                    'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
                 }
                 if use_cookies and active_cookie_path:
                     flat_opts['cookiefile'] = active_cookie_path
@@ -1091,11 +1082,10 @@ class Music(commands.Cog):
                     'geo_bypass': True,
                     'nocheckcertificate': True,
                     'http_headers': DEFAULT_HEADERS,
+                    'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
                 }
                 if use_cookies and active_cookie_path:
                     stream_opts['cookiefile'] = active_cookie_path
-                else:
-                    stream_opts['extractor_args'] = {'youtube': {'player_client': ['ios', 'android_vr', 'tv_embedded']}}
 
                 with yt_dlp.YoutubeDL(stream_opts) as ydl_stream:
                     info = ydl_stream.extract_info(f"https://www.youtube.com/watch?v={best_id}", download=False)
@@ -1110,8 +1100,32 @@ class Music(commands.Cog):
                 return None
 
             search_title = query
-            if is_url:
-                if "spotify.com" in query:
+            is_spotify = is_url and "spotify.com" in query
+            if is_spotify:
+                try:
+                    clean_u = query.split('?')[0]
+                    sp_req = urllib.request.Request(
+                        clean_u,
+                        headers={'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)'}
+                    )
+                    with urllib.request.urlopen(sp_req, timeout=5) as sp_resp:
+                        page = sp_resp.read().decode('utf-8', errors='ignore')
+                        og_title = re.search(r'<meta property=["\']og:title["\'] content=["\'](.*?)["\']', page)
+                        og_desc = re.search(r'<meta property=["\']og:description["\'] content=["\'](.*?)["\']', page)
+                        title = html.unescape(og_title.group(1)).strip() if og_title else None
+                        desc = html.unescape(og_desc.group(1)).strip() if og_desc else None
+                        if title and desc:
+                            parts = [p.strip() for p in desc.split('·')]
+                            artist = parts[0] if parts else ''
+                            if artist and artist.lower() not in title.lower():
+                                search_title = f"{title} {artist}"
+                            else:
+                                search_title = title
+                        elif title:
+                            search_title = title
+                        print(f"[Music] Spotify resolved metadata: '{search_title}'")
+                except Exception as sp_err:
+                    print(f"[Music] Spotify scraper note: {sp_err}")
                     try:
                         oe = f"https://open.spotify.com/oembed?url={urllib.parse.quote(query)}"
                         req = urllib.request.Request(oe, headers=DEFAULT_HEADERS)
@@ -1119,40 +1133,69 @@ class Music(commands.Cog):
                             raw_title = json.loads(r.read().decode()).get('title', '')
                             if raw_title:
                                 search_title = raw_title
-                    except Exception as sp_err:
-                        print(f"[Music] Spotify oEmbed note: {sp_err}")
+                    except Exception as oe_err:
+                        print(f"[Music] Spotify oEmbed note: {oe_err}")
 
-            search_target = query if (is_url and "spotify.com" not in query) else search_title
+            search_target = query if (is_url and not is_spotify) else search_title
 
-            # Tier 1a: If cookies exist, try authenticated YouTube extraction first (fastest on bot hosts)
+            # Tier 1a: Authenticated YouTube extraction (with active cookies + mobile clients)
             if active_cookie_path:
                 try:
                     res_cookie = _extract_yt(search_target, use_cookies=True)
                     if res_cookie:
+                        print(f"[Music] Resolved via YouTube (authenticated): {res_cookie.get('title')}")
                         return res_cookie
                 except Exception as e_cook:
                     print(f"[Music] YouTube cookie extraction note: {e_cook}")
 
-            # Tier 1b: Primary YouTube Extraction (Cookie-less fallback)
+            # Tier 1b: Primary YouTube Extraction (Mobile clients android/ios)
             try:
                 yt_res = _extract_yt(search_target, use_cookies=False)
                 if yt_res:
+                    print(f"[Music] Resolved via YouTube: {yt_res.get('title')}")
                     return yt_res
             except Exception as e1:
                 print(f"[Music] YouTube extraction note: {e1}")
 
-            # Tier 2: JioSaavn 320kbps CDN (Ultra fast official Indian & global tracks)
-            saavn_res = _extract_saavn(search_title)
-            if saavn_res:
-                return saavn_res
+            # Detect if song is Indian/Bollywood vs Western/Global/Spotify
+            indian_keywords = {
+                'arijit', 'shreya', 'kumar', 'singh', 'sonu', 'atif', 'badshah', 'neha', 'kakkar',
+                'jubin', 'nautiyal', 'diljit', 'dosanjh', 'sidhu', 'moosewala', 'ap dhillon',
+                'bollywood', 'hindi', 'punjabi', 'bhojpuri', 'tamil', 'telugu', 'malayalam',
+                'b praak', 'anuv jain', 'prateek kuhad', 'darshan raval', 'armaan malik', 'yo yo honey singh'
+            }
+            q_lower = search_title.lower()
+            is_indian = any(k in q_lower for k in indian_keywords)
 
-            # Tier 3: SoundCloud search fallback
-            try:
-                sc_res = _extract_sc(search_title)
-                if sc_res:
-                    return sc_res
-            except Exception as e2:
-                print(f"[Music] SoundCloud extraction note: {e2}")
+            # Smart Fallback Order:
+            # For Western, Pop, and Spotify links: SoundCloud is prioritized because it contains original studio audio without datacenter IP blocks!
+            # For Indian / Bollywood tracks: JioSaavn is prioritized for 320kbps Akamai CDN streams.
+            if is_spotify or not is_indian:
+                try:
+                    sc_res = _extract_sc(search_title)
+                    if sc_res:
+                        print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
+                        return sc_res
+                except Exception as e2:
+                    print(f"[Music] SoundCloud extraction note: {e2}")
+
+                saavn_res = _extract_saavn(search_title)
+                if saavn_res:
+                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
+                    return saavn_res
+            else:
+                saavn_res = _extract_saavn(search_title)
+                if saavn_res:
+                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
+                    return saavn_res
+
+                try:
+                    sc_res = _extract_sc(search_title)
+                    if sc_res:
+                        print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
+                        return sc_res
+                except Exception as e2:
+                    print(f"[Music] SoundCloud extraction note: {e2}")
 
             raise Exception("Could not find an audio stream for this track. Please check the song name or provide a direct audio link.")
 
