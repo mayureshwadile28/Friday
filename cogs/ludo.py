@@ -707,7 +707,7 @@ class LudoView(discord.ui.View):
 # LUDO COG SETUP (SLASH COMMAND)
 # ─────────────────────────────────────────────────────────────
 
-class Ludo(commands.Cog, name="Games"):
+class Ludo(commands.Cog, name="Ludo"):
     """Interactive Ludo board game with high-speed canvas image rendering."""
 
     def __init__(self, bot: commands.Bot):
