@@ -29,11 +29,11 @@ def get_bold_font(size: int):
 # BOARD GEOMETRY & TRACK DEFINITIONS (15x15 GRID ON 700x850 CANVAS)
 # ─────────────────────────────────────────────────────────────
 
-CELL_SIZE = 44
-BOARD_SIZE = CELL_SIZE * 15  # 660 x 660 px
-CANVAS_W = 700
-CANVAS_H = 850
-BOARD_X = 20
+CELL_SIZE = 54
+BOARD_SIZE = CELL_SIZE * 15  # 810 x 810 px
+CANVAS_W = 860
+CANVAS_H = 1010
+BOARD_X = 25
 BOARD_Y = 95
 
 # Authentic 52-square Ludo track coordinates (row, col)
@@ -176,8 +176,8 @@ def _create_base_board() -> Image.Image:
     for r, c in all_bases:
         x = int(BOARD_X + c * CELL_SIZE)
         y = int(BOARD_Y + r * CELL_SIZE)
-        d.ellipse([x - 20, y - 19, x + 20, y + 21], fill=(215, 220, 228))
-        d.ellipse([x - 20, y - 20, x + 20, y + 20], fill=c_base_slot, outline=c_base_slot_border, width=2)
+        d.ellipse([x - 24, y - 23, x + 24, y + 25], fill=(215, 220, 228))
+        d.ellipse([x - 24, y - 24, x + 24, y + 24], fill=c_base_slot, outline=c_base_slot_border, width=2)
 
     # 2. Track cells
     for r in range(15):
@@ -219,9 +219,9 @@ def _create_base_board() -> Image.Image:
         d.rectangle([x1, y1, x2, y2], fill=c_safe, outline=c_dark_line)
         cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
         d.polygon([
-            (cx, cy - 12), (cx + 3, cy - 3), (cx + 12, cy - 3), (cx + 5, cy + 3),
-            (cx + 8, cy + 12), (cx, cy + 6), (cx - 8, cy + 12), (cx - 5, cy + 3),
-            (cx - 12, cy - 3), (cx - 3, cy - 3)
+            (cx, cy - 15), (cx + 4, cy - 4), (cx + 15, cy - 4), (cx + 6, cy + 4),
+            (cx + 10, cy + 15), (cx, cy + 8), (cx - 10, cy + 15), (cx - 6, cy + 4),
+            (cx - 15, cy - 4), (cx - 4, cy - 4)
         ], fill=(212, 175, 55))
 
     # 5. Center Home Triangles
@@ -290,8 +290,8 @@ def draw_corner_player_hud(
     """Renders a dedicated 3D corner player profile card and their dice block."""
     if not player_info:
         # Empty/Unused Slot
-        draw.rounded_rectangle([x, y, x + w, y + h], radius=10, fill=(24, 25, 29), outline=(42, 45, 52), width=1)
-        draw.text((x + w // 2 - 35, y + h // 2 - 7), "[ Empty Slot ]", fill=(100, 105, 115))
+        draw.rounded_rectangle([x, y, x + w, y + h], radius=12, fill=(24, 25, 29), outline=(42, 45, 52), width=1)
+        draw.text((x + w // 2 - 40, y + h // 2 - 8), "[ Empty Slot ]", fill=(100, 105, 115), font=get_bold_font(12))
         return
 
     theme = COLOR_THEMES[color_name]
@@ -300,46 +300,49 @@ def draw_corner_player_hud(
     border_w = 3 if is_active else 1
 
     # Card background
-    draw.rounded_rectangle([x, y, x + w, y + h], radius=10, fill=card_bg, outline=border_col, width=border_w)
+    draw.rounded_rectangle([x, y, x + w, y + h], radius=12, fill=card_bg, outline=border_col, width=border_w)
 
-    # Position dice
+    # Position dice (56x56 px)
     if align_left:
-        dx, dy = x + 8, y + 8
-        tx = x + 68
+        dx, dy = x + 9, y + 9
+        tx = x + 76
     else:
-        dx, dy = x + w - 58, y + 8
-        tx = x + 14
+        dx, dy = x + w - 65, y + 9
+        tx = x + 16
 
     # 3D Dice block
-    draw.rounded_rectangle([dx + 2, dy + 2, dx + 52, dy + 52], radius=8, fill=(12, 13, 15))
-    draw.rounded_rectangle([dx, dy, dx + 50, dy + 50], radius=8, fill=(255, 255, 255), outline=(210, 215, 220), width=2)
+    draw.rounded_rectangle([dx + 2, dy + 2, dx + 58, dy + 58], radius=8, fill=(12, 13, 15))
+    draw.rounded_rectangle([dx, dy, dx + 56, dy + 56], radius=8, fill=(255, 255, 255), outline=(210, 215, 220), width=2)
 
     # 3D Dots in matching player theme color
     if roll and 1 <= roll <= 6:
-        dot_r = 4
+        dot_r = 5
         coords = {
-            1: [(25, 25)],
-            2: [(14, 14), (36, 36)],
-            3: [(14, 14), (25, 25), (36, 36)],
-            4: [(14, 14), (14, 36), (36, 14), (36, 36)],
-            5: [(14, 14), (14, 36), (25, 25), (36, 14), (36, 36)],
-            6: [(14, 14), (14, 25), (14, 36), (36, 14), (36, 25), (36, 36)]
+            1: [(28, 28)],
+            2: [(15, 15), (41, 41)],
+            3: [(15, 15), (28, 28), (41, 41)],
+            4: [(15, 15), (15, 41), (41, 15), (41, 41)],
+            5: [(15, 15), (15, 41), (28, 28), (41, 15), (41, 41)],
+            6: [(15, 15), (15, 28), (15, 41), (41, 15), (41, 28), (41, 41)]
         }
         for px, py in coords[roll]:
             draw.ellipse([dx + px - dot_r, dy + py - dot_r, dx + px + dot_r, dy + py + dot_r], fill=theme["rgb"])
     else:
-        draw.text((dx + 19, dy + 14), "?", fill=(120, 125, 135))
+        draw.text((dx + 22, dy + 16), "?", fill=(120, 125, 135), font=get_bold_font(18))
 
     # Player labels
-    name = player_info["name"][:13]
+    name = player_info["name"][:16]
     home_cnt = sum(1 for p in player_info["tokens"] if p == 56)
     total_tokens = len(player_info["tokens"])
 
-    draw.text((tx, y + 14), f"{theme['emoji']} {name}", fill=(255, 255, 255))
+    font_title = get_bold_font(14)
+    font_sub = get_bold_font(12)
+
+    draw.text((tx, y + 14), f"{theme['emoji']} {name}", fill=(255, 255, 255), font=font_title)
     if is_active:
-        draw.text((tx, y + 36), "👉 YOUR TURN!", fill=(87, 242, 135))
+        draw.text((tx, y + 38), "👉 YOUR TURN!", fill=(87, 242, 135), font=font_sub)
     else:
-        draw.text((tx, y + 36), f"Score: {home_cnt}/{total_tokens} Home", fill=(160, 165, 175))
+        draw.text((tx, y + 38), f"Score: {home_cnt}/{total_tokens} Home", fill=(160, 165, 175), font=font_sub)
 
 
 def render_board_image(
@@ -356,25 +359,25 @@ def render_board_image(
     # 1. Render All 4 Corner Player Cards & Dedicated Dice
     # Top-Left: Green
     draw_corner_player_hud(
-        draw, 20, 14, 310, 66, "green",
+        draw, 25, 10, 380, 74, "green",
         players.get("green"), last_rolls.get("green"),
         (current_turn == "green"), align_left=True
     )
     # Top-Right: Yellow
     draw_corner_player_hud(
-        draw, 370, 14, 310, 66, "yellow",
+        draw, 455, 10, 380, 74, "yellow",
         players.get("yellow"), last_rolls.get("yellow"),
         (current_turn == "yellow"), align_left=False
     )
     # Bottom-Left: Red
     draw_corner_player_hud(
-        draw, 20, 768, 310, 66, "red",
+        draw, 25, 920, 380, 74, "red",
         players.get("red"), last_rolls.get("red"),
         (current_turn == "red"), align_left=True
     )
     # Bottom-Right: Blue
     draw_corner_player_hud(
-        draw, 370, 768, 310, 66, "blue",
+        draw, 455, 920, 380, 74, "blue",
         players.get("blue"), last_rolls.get("blue"),
         (current_turn == "blue"), align_left=False
     )
@@ -392,37 +395,38 @@ def render_board_image(
             pos_map.setdefault(key, []).append((col, i + 1, x, y, is_movable))
 
     # 3. Render 3D Tokens with High-Contrast Centered Number Badges & Glow
-    font_single = get_bold_font(12)
-    font_multi = get_bold_font(10)
+    font_single = get_bold_font(14)
+    font_multi_2 = get_bold_font(11)
+    font_multi_4 = get_bold_font(9)
 
     for key, tokens_on_spot in pos_map.items():
         count = len(tokens_on_spot)
         for idx, (col, num, x, y, is_movable) in enumerate(tokens_on_spot):
             if count == 1:
-                token_radius = 16
+                token_radius = 20
                 px, py = int(round(x)), int(round(y))
-                in_badge_r = 9
+                in_badge_r = 11
                 cur_font = font_single
             elif count == 2:
-                # 2 Tokens in 1 box: Place side-by-side (offset ±11px, radius 12px)
-                token_radius = 12
-                offset_x = -11 if idx == 0 else 11
+                # 2 Tokens in 1 box: Place side-by-side (offset ±13px, radius 15px)
+                token_radius = 15
+                offset_x = -13 if idx == 0 else 13
                 px, py = int(round(x + offset_x)), int(round(y))
-                in_badge_r = 7
-                cur_font = font_multi
+                in_badge_r = 9
+                cur_font = font_multi_2
             else:
-                # 3 or 4 Tokens: 2x2 grid layout inside the 44px cell (radius 10px)
-                token_radius = 10
-                quad_offsets = [(-10, -10), (10, -10), (-10, 10), (10, 10)]
+                # 3 or 4 Tokens: 2x2 grid layout inside the 54px cell (radius 12px)
+                token_radius = 12
+                quad_offsets = [(-11, -11), (11, -11), (-11, 11), (11, 11)]
                 ox, oy = quad_offsets[idx % 4]
                 px, py = int(round(x + ox)), int(round(y + oy))
-                in_badge_r = 6
-                cur_font = font_multi
+                in_badge_r = 7
+                cur_font = font_multi_4
 
             # Glowing Neon Green Ring if token is legal to move!
             if is_movable:
                 ring_r = token_radius + 4
-                draw.ellipse([px - ring_r, py - ring_r, px + ring_r, py + ring_r], outline=(87, 242, 135), width=2)
+                draw.ellipse([px - ring_r, py - ring_r, px + ring_r, py + ring_r], outline=(87, 242, 135), width=3)
 
             # Drop shadow
             draw.ellipse([px - token_radius + 1, py - token_radius + 2, px + token_radius + 1, py + token_radius + 2], fill=(0, 0, 0, 160))
@@ -651,14 +655,26 @@ class LudoTokenSelectButton(discord.ui.Button):
         await view.handle_human_token_pick(interaction, self.token_idx)
 
 
-class LudoPassButton(discord.ui.Button):
-    def __init__(self, color_name: str, player_name: str):
-        theme = COLOR_THEMES[color_name]
-        super().__init__(style=discord.ButtonStyle.secondary, label=f"Pass Turn ({theme['name']}: {player_name[:12]})", emoji="⏩", row=0)
+class LudoForfeitConfirmView(discord.ui.View):
+    def __init__(self, main_view: "LudoView", user_id: int):
+        super().__init__(timeout=45)
+        self.main_view = main_view
+        self.user_id = user_id
 
-    async def callback(self, interaction: discord.Interaction):
-        view: LudoView = self.view
-        await view.handle_human_pass(interaction)
+    @discord.ui.button(label="Yes, Surrender Match", emoji="🏳️", style=discord.ButtonStyle.danger)
+    async def confirm_forfeit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
+        self.stop()
+        await interaction.response.edit_message(content="🏳️ **You surrendered the match.**", view=None)
+        await self.main_view.execute_forfeit(interaction.user)
+
+    @discord.ui.button(label="Cancel, Keep Playing", emoji="↩️", style=discord.ButtonStyle.secondary)
+    async def cancel_forfeit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("❌ This confirmation is not for you.", ephemeral=True)
+        self.stop()
+        await interaction.response.edit_message(content="✅ **Forfeit cancelled.** Match continues!", view=None)
 
 
 class LudoForfeitButton(discord.ui.Button):
@@ -693,14 +709,6 @@ class LudoView(discord.ui.View):
         cur_col = self.game.current_turn
         cur_p = self.game.players[cur_col]
         self.add_item(LudoRollButton(cur_col, cur_p["name"]))
-        self.add_item(LudoForfeitButton())
-
-    def setup_buttons_no_moves(self):
-        self.clear_items()
-        self.movable_tokens = []
-        cur_col = self.game.current_turn
-        cur_p = self.game.players[cur_col]
-        self.add_item(LudoPassButton(cur_col, cur_p["name"]))
         self.add_item(LudoForfeitButton())
 
     def setup_buttons_for_token_pick(self, legal_moves: List[int], roll: int):
@@ -861,13 +869,16 @@ class LudoView(discord.ui.View):
                 return await self.check_and_run_ai_turn()
 
             if not legal:
-                self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves).")
                 if roll == 6:
+                    self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves, roll again!).")
                     self.setup_buttons_for_roll()
                     await self.update_view()
                 else:
-                    self.setup_buttons_no_moves()
+                    self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves). Passing turn...")
+                    self.game.advance_turn()
+                    self.setup_buttons_for_roll()
                     await self.update_view()
+                    return await self.check_and_run_ai_turn()
                 return
 
             action_text = "Choose which token to release from base or move:" if roll == 6 else "Choose which token to move:"
@@ -878,22 +889,6 @@ class LudoView(discord.ui.View):
             print(f"[Ludo] Error in handle_human_roll: {e}")
             self.setup_buttons_for_roll()
             await self.update_view()
-
-    async def handle_human_pass(self, interaction: discord.Interaction):
-        try:
-            cur_col = self.game.current_turn
-            cur_p = self.game.players[cur_col]
-
-            if interaction.user.id != cur_p["member"].id:
-                return await interaction.response.send_message("❌ This is not your turn!", ephemeral=True)
-
-            await interaction.response.defer()
-            self.game.advance_turn()
-            self.setup_buttons_for_roll()
-            await self.update_view()
-            await self.check_and_run_ai_turn()
-        except Exception as e:
-            print(f"[Ludo] Error in handle_human_pass: {e}")
 
     async def handle_human_token_pick(self, interaction: discord.Interaction, token_idx: int):
         try:
@@ -1000,7 +995,6 @@ class LudoView(discord.ui.View):
     async def handle_forfeit(self, interaction: discord.Interaction):
         try:
             author = interaction.user
-            # Find author's color
             user_color = None
             for col, pdata in self.game.players.items():
                 if pdata["member"] and pdata["member"].id == author.id:
@@ -1009,6 +1003,29 @@ class LudoView(discord.ui.View):
 
             if not user_color:
                 return await interaction.response.send_message("❌ You are not part of this match.", ephemeral=True)
+
+            if self.game.game_over:
+                return await interaction.response.send_message("The game is already over.", ephemeral=True)
+
+            confirm_view = LudoForfeitConfirmView(self, author.id)
+            await interaction.response.send_message(
+                f"⚠️ **Are you sure you want to forfeit and exit the match, {author.mention}?**\nSurrendering will immediately concede victory to your opponents.",
+                view=confirm_view,
+                ephemeral=True
+            )
+        except Exception as e:
+            print(f"[Ludo] Error in handle_forfeit: {e}")
+
+    async def execute_forfeit(self, author: discord.User):
+        try:
+            user_color = None
+            for col, pdata in self.game.players.items():
+                if pdata["member"] and pdata["member"].id == author.id:
+                    user_color = col
+                    break
+
+            if not user_color or self.game.game_over:
+                return
 
             self.game.game_over = True
             # Winner is next active player
@@ -1019,9 +1036,9 @@ class LudoView(discord.ui.View):
 
             self.setup_buttons_game_over()
             self.game.log_history.append(f"🏳️ **{author.display_name}** surrendered the match.")
-            await self.update_view(interaction)
+            await self.update_view()
         except Exception as e:
-            print(f"[Ludo] Error in handle_forfeit: {e}")
+            print(f"[Ludo] Error in execute_forfeit: {e}")
 
     async def handle_rematch(self, interaction: discord.Interaction):
         try:
