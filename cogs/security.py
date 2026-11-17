@@ -196,58 +196,46 @@ class Security(commands.Cog):
         return False
 
     def member_has_embed_permission(self, member, channel) -> bool:
-        """Check if a member has embed_links or attach_files permission directly, via channel, or via any role."""
+        """Check if a member has Discord's Embed Links (embed_links) permission in the given channel.
+        Evaluates Discord permission hierarchy: Server Owner -> Administrator -> Channel Overwrites / Role Overwrites.
+        Note: Attach Files (attach_files) is strictly excluded so that non-embed members cannot bypass link rules."""
         if not member:
             return False
 
-        # Resolve User object to full Member object from guild if necessary
         guild = getattr(channel, "guild", None) or getattr(member, "guild", None)
+        if not guild:
+            return False
+
+        # Resolve User object to full Member object from guild if necessary
         if not isinstance(member, discord.Member):
-            if guild:
-                cached_m = guild.get_member(member.id)
-                if cached_m:
-                    member = cached_m
-                elif member.id == guild.owner_id:
-                    return True
-                else:
-                    if self.is_whitelisted(guild, member):
-                        return True
-                    return False
+            cached_m = guild.get_member(member.id)
+            if cached_m:
+                member = cached_m
+            elif member.id == guild.owner_id:
+                return True
             else:
+                if self.is_whitelisted(guild, member):
+                    return True
                 return False
 
-        # 1. Administrator or Server Owner always has permission
-        if member.id == guild.owner_id or getattr(member.guild_permissions, "administrator", False):
+        # 1. Server Owner always has all permissions
+        if member.id == guild.owner_id:
             return True
 
-        # 2. Check guild-level permissions (Embed Links or Attach Files)
-        gp = member.guild_permissions
-        if gp.embed_links or gp.attach_files:
+        # 2. Administrator always has all permissions
+        if getattr(member.guild_permissions, "administrator", False):
             return True
 
-        # 3. Check role-level permissions directly on all member roles (bypasses channel overrides)
-        for r in getattr(member, "roles", []):
-            perms = getattr(r, "permissions", None)
-            if perms and (perms.embed_links or perms.attach_files):
-                return True
-
-        # 4. Check channel-level computed permissions
+        # 3. Channel-level computed permissions (properly evaluates @everyone, roles, and channel overwrites)
         if hasattr(channel, "permissions_for"):
             try:
                 cp = channel.permissions_for(member)
-                if cp.embed_links or cp.attach_files:
-                    return True
+                return bool(cp.embed_links)
             except Exception:
                 pass
 
-        # 5. Check @everyone role default permissions in guild
-        everyone_role = getattr(guild, "default_role", None)
-        if everyone_role:
-            ep = getattr(everyone_role, "permissions", None)
-            if ep and (ep.embed_links or ep.attach_files):
-                return True
-
-        return False
+        # 4. Fallback to guild-level permissions (merges all member roles)
+        return bool(getattr(member.guild_permissions, "embed_links", False))
 
     async def safe_delete_violating_message(self, message: discord.Message, violation_label: str = "violation") -> bool:
         """Directly attempts to delete a violating message. Returns True if deleted or already gone.
@@ -1446,6 +1434,11 @@ class Security(commands.Cog):
             cached_author = guild.get_member(author.id)
             if cached_author:
                 author = cached_author
+            else:
+                try:
+                    author = await guild.fetch_member(author.id)
+                except Exception:
+                    pass
 
         if not db.antinuke_active.get(gid, True): return
         cfg = self.get_security_config(gid)
@@ -1481,14 +1474,11 @@ class Security(commands.Cog):
         is_media_channel = str(message.channel.id) in media_channels
 
         # 2. Detect Only: Anti GIF (Auto-Delete & Log)
-        # Note: has_gif_content checks attachments, URL text, AND embeds (e.g. Tenor GIFs from Discord picker).
-        # anti_gif_cfg.enabled must be True (default is False — admin must enable it in dashboard).
+        # Note: When Anti-GIF is turned on, ALL non-immune members (regardless of embed/link permissions)
+        # are forbidden from sending GIFs.
         anti_gif_cfg = cfg.get("detect", {}).get("anti_gif", {})
         if not is_media_channel and anti_gif_cfg.get("enabled", False) and self.has_gif_content(message):
-            # Members who have Discord in-server embed/attach permissions, or are explicitly whitelisted/immune, can send GIFs!
-            has_embed_perm = self.member_has_embed_permission(author, message.channel)
-            allow_gifs = cfg.get("detect", {}).get("anti_link", {}).get("allow_gifs", True)
-            can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif") or has_embed_perm or allow_gifs
+            can_send_gif = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
             if not can_send_gif:
                 deleted = await self.safe_delete_violating_message(message, violation_label="GIF Content")
                 try:
@@ -1532,31 +1522,31 @@ class Security(commands.Cog):
                     if not can_send_all_links:
                         is_gif_whitelisted = is_immune or self.is_whitelisted(guild, author, feature="anti_gif")
                         has_embed_perm = self.member_has_embed_permission(author, message.channel)
-                        allow_gifs = anti_link_cfg.get("allow_gifs", True)
 
                         gif_links = [l for l in non_invite_links if self.is_gif_url(l)]
                         non_gif_links = [l for l in non_invite_links if not self.is_gif_url(l)]
 
-                        # If Discord resolved a GIF embed/attachment or message has GIF content and all non-invite links are GIF related:
                         if (self.has_gif_content(message) or len(gif_links) > 0) and not non_gif_links:
-                            pass
+                            is_only_gif = True
                         elif self.has_gif_content(message) and len(non_invite_links) == 1:
                             gif_links = non_invite_links
                             non_gif_links = []
-
-                        # A member can send GIF links without being deleted by anti-link if:
-                        # 1. They are explicitly GIF-whitelisted (or immune)
-                        # 2. OR the member has in-server Discord embed/attach permissions enabled
-                        # 3. OR the allow_gifs switch is enabled
-                        is_gif_permitted = is_gif_whitelisted or has_embed_perm or allow_gifs
-
-                        if is_gif_permitted and (gif_links or self.has_gif_content(message)) and not non_gif_links:
-                            pass  # GIF is authorized, do NOT delete as external link!
+                            is_only_gif = True
                         else:
-                            deleted = await self.safe_delete_violating_message(message, violation_label="External Link")
+                            is_only_gif = False
+
+                        # If the message contains non-GIF links, embed_links permission does NOT allow external links!
+                        # Only immune or anti_link whitelisted can send external links.
+                        # If the message contains ONLY GIF links:
+                        # Members with embed_links permission (or anti_gif whitelisted) are ALLOWED to send GIFs!
+                        # Members WITHOUT embed_links permission are DELETED and WARNED!
+                        if is_only_gif and (has_embed_perm or is_gif_whitelisted):
+                            pass  # GIF authorized by role's Embed Links permission
+                        else:
+                            deleted = await self.safe_delete_violating_message(message, violation_label="External Link" if non_gif_links else "GIF Link")
                             try:
-                                if not non_gif_links and gif_links:
-                                    resp_tpl = "🎞️ {member}, GIFs and external media links are not allowed in this server."
+                                if is_only_gif:
+                                    resp_tpl = "🎞️ {member}, you need the **Embed Links** permission to send GIFs in this server."
                                 else:
                                     resp_tpl = db.custom_responses.get(gid, {}).get("security_link_warn", "🔗 {member}, external links are not allowed in this server.")
                                 warn_text = resp_tpl.replace("{member}", author.mention)
@@ -1688,14 +1678,23 @@ class Security(commands.Cog):
         elif embed_added:
             # Automated Discord link/GIF embed unfurl:
             # Never re-run anti-spam, anti-mention, or rate limits on automated unfurls.
-            # Only enforce Anti-GIF if Anti-GIF is enabled AND member lacks embed permission.
             cfg = self.get_security_config(str(after.guild.id))
             anti_gif_cfg = cfg.get("detect", {}).get("anti_gif", {})
-            if anti_gif_cfg.get("enabled", False) and self.has_gif_content(after):
-                has_embed_perm = self.member_has_embed_permission(after.author, after.channel)
-                is_immune = (after.author.id == after.guild.owner_id or after.author.id == self.bot.user.id or self.is_whitelisted(after.guild, after.author, feature="anti_gif"))
-                if not is_immune and not has_embed_perm:
-                    await self.safe_delete_violating_message(after, violation_label="GIF Content")
+            anti_link_cfg = cfg.get("detect", {}).get("anti_link", {})
+            if self.has_gif_content(after):
+                edit_author = after.author
+                if not isinstance(edit_author, discord.Member) and after.guild:
+                    edit_author = after.guild.get_member(after.author.id) or after.author
+                is_immune = (edit_author.id == after.guild.owner_id or edit_author.id == self.bot.user.id or self.is_whitelisted(after.guild, edit_author, feature="anti_gif"))
+                has_embed_perm = self.member_has_embed_permission(edit_author, after.channel)
+                # If Anti-GIF is ON: block everyone except immune
+                if anti_gif_cfg.get("enabled", False):
+                    if not is_immune:
+                        await self.safe_delete_violating_message(after, violation_label="GIF Content")
+                # If Anti-Link is ON (and Anti-GIF is OFF): block members who lack embed_links
+                elif anti_link_cfg.get("enabled", True):
+                    if not is_immune and not has_embed_perm:
+                        await self.safe_delete_violating_message(after, violation_label="GIF Content")
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
