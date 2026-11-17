@@ -396,12 +396,13 @@ class Utility(commands.Cog):
                 except Exception:
                     pass
         if interaction.guild:
-            self.bot.tree.clear_commands(guild=interaction.guild)
-            await self.bot.tree.sync(guild=interaction.guild)
-        synced = await self.bot.tree.sync()
+            self.bot.tree.copy_global_to(guild=interaction.guild)
+            synced_guild = await self.bot.tree.sync(guild=interaction.guild)
+        synced_global = await self.bot.tree.sync()
+        count = len(synced_guild) if interaction.guild else len(synced_global)
         await reply_box(
             interaction,
-            f"Command tree synced across **{len(synced)}** slash commands (instantly updated in **{interaction.guild.name if interaction.guild else 'this guild'}**).\nPress **Ctrl+R** in your Discord client to reload the command cache.",
+            f"⚡ **Instant Sync Complete!** Synced **{count}** slash commands directly to **{interaction.guild.name if interaction.guild else 'this guild'}**!\nAll commands (including `/ludo`) are now active and ready to use.",
             title="SYNC COMPLETE",
             status="success",
             ephemeral=True

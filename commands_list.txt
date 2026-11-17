@@ -212,6 +212,11 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /birthday toggle <on/off> - Staff: Enable or disable automatic birthday greetings
 /birthday test - Staff: Sends a test birthday celebration greeting card
 
+🎲 Interactive Server Games (Solo & PvP)
+/ludo [mode] [difficulty] - Play a solo match of authentic Ludo against Friday AI featuring high-speed 15x15 RAM-cached canvas rendering, 6-to-start rules, safe star squares, bonus turns on sixes/captures, and full mobile optimization (Mode: Quick 2 Tokens or Classic 4 Tokens)
+/tictactoe [opponent] [difficulty] [first_turn] - Play Tic-Tac-Toe against another server member or Friday AI with smart Minimax heuristic, customizable first turn (You, Opponent, or Coin Toss), rematch button, and stats tracking
+/tictactoe_stats [@member] - Review career Tic-Tac-Toe stats, win rate, and match history for yourself or another member
+
 💾 Server Structure Backups
 /backup create [name] - Take a complete snapshot backup of server channels, categories, roles, and permissions
 /backup list - View all saved server backups with creation timestamps
