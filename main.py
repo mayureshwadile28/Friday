@@ -148,18 +148,18 @@ async def on_ready():
             except Exception as e:
                 print(f"⚠️ Security sync warning for '{g.name}': {e}")
 
-    # Configure DM restrictions and sync commands directly to connected guilds for instant availability
+    # Configure DM restrictions and clean up guild duplicate commands so only global commands appear
     try:
         configure_command_dm_restrictions(bot.tree)
         for g in bot.guilds:
             try:
-                bot.tree.copy_global_to(guild=g)
+                bot.tree.clear_commands(guild=g)
                 await bot.tree.sync(guild=g)
-                print(f"⚡ Instantly synced {len(bot.tree.get_commands())} slash commands to '{g.name}'")
+                print(f"🧹 Cleaned guild command duplicates in '{g.name}'")
             except Exception as e:
-                print(f"Guild sync note for '{g.name}': {e}")
+                print(f"Guild cleanup note for '{g.name}': {e}")
         synced_global = await bot.tree.sync()
-        print(f"✅ One clean list: {len(synced_global)} global slash commands registered.")
+        print(f"✅ One clean list: {len(synced_global)} global slash commands registered (no duplicates).")
     except Exception as e:
         print(f"Global sync warning: {e}")
 

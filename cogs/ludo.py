@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime
 import pytz
 from typing import Optional, List, Tuple, Dict
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
 # ─────────────────────────────────────────────────────────────
 # BOARD GEOMETRY & TRACK DEFINITIONS (15x15 GRID)
@@ -16,6 +16,8 @@ from PIL import Image, ImageDraw, ImageFont
 
 CELL_SIZE = 44
 BOARD_SIZE = CELL_SIZE * 15  # 660 x 660 px
+HUD_HEIGHT = 80
+TOTAL_CANVAS_HEIGHT = BOARD_SIZE + HUD_HEIGHT  # 740 px
 
 # Authentic 52-square Ludo track coordinates (row, col)
 TRACK_COORDS: List[Tuple[int, int]] = []
@@ -53,7 +55,7 @@ SAFE_TRACK_INDICES = {0, 8, 13, 21, 26, 34, 39, 47}
 RED_HOME_PATH = [(13, 7), (12, 7), (11, 7), (10, 7), (9, 7)]
 YELLOW_HOME_PATH = [(1, 7), (2, 7), (3, 7), (4, 7), (5, 7)]
 
-# Center Home Triangle Center
+# Center Home Triangle Centers
 RED_HOME_CENTER = (8.0, 7.0)
 YELLOW_HOME_CENTER = (6.0, 7.0)
 
@@ -71,7 +73,7 @@ ACTIVE_LUDO_GAMES: Dict[int, "LudoGame"] = {}
 
 def _create_base_board() -> Image.Image:
     """Pre-generates the static 15x15 Ludo board into RAM once on startup."""
-    img = Image.new("RGB", (BOARD_SIZE, BOARD_SIZE), (24, 25, 28))
+    img = Image.new("RGB", (BOARD_SIZE, TOTAL_CANVAS_HEIGHT), (24, 25, 28))
     d = ImageDraw.Draw(img)
 
     c_red = (220, 53, 69)
@@ -81,6 +83,8 @@ def _create_base_board() -> Image.Image:
     c_white = (248, 249, 250)
     c_dark_line = (60, 64, 69)
     c_safe = (245, 230, 160)
+    c_base_slot = (240, 243, 246)
+    c_base_slot_border = (195, 200, 210)
 
     # 1. Base Yards
     d.rectangle([0, 0, CELL_SIZE * 6, CELL_SIZE * 6], fill=c_green)
@@ -95,17 +99,19 @@ def _create_base_board() -> Image.Image:
     d.rectangle([CELL_SIZE * 9, CELL_SIZE * 9, BOARD_SIZE, BOARD_SIZE], fill=c_blue)
     d.rectangle([CELL_SIZE * 10, CELL_SIZE * 10, CELL_SIZE * 14, CELL_SIZE * 14], fill=c_white)
 
-    # Base resting circles
+    # Base resting circles (Ivory pedestal slots with high contrast)
     all_bases = [
-        (1.8, 1.8, c_green), (1.8, 3.8, c_green), (3.8, 1.8, c_green), (3.8, 3.8, c_green),
-        (1.8, 10.8, c_yellow), (1.8, 12.8, c_yellow), (3.8, 10.8, c_yellow), (3.8, 12.8, c_yellow),
-        (10.8, 1.8, c_red), (10.8, 3.8, c_red), (12.8, 1.8, c_red), (12.8, 3.8, c_red),
-        (10.8, 10.8, c_blue), (10.8, 12.8, c_blue), (12.8, 10.8, c_blue), (12.8, 12.8, c_blue)
+        (1.8, 1.8), (1.8, 3.8), (3.8, 1.8), (3.8, 3.8),
+        (1.8, 10.8), (1.8, 12.8), (3.8, 10.8), (3.8, 12.8),
+        (10.8, 1.8), (10.8, 3.8), (12.8, 1.8), (12.8, 3.8),
+        (10.8, 10.8), (10.8, 12.8), (12.8, 10.8), (12.8, 12.8)
     ]
-    for r, c, col in all_bases:
+    for r, c in all_bases:
         x = int(c * CELL_SIZE)
         y = int(r * CELL_SIZE)
-        d.ellipse([x - 17, y - 17, x + 17, y + 17], fill=col, outline=(30, 30, 30), width=2)
+        # Drop shadow for depth
+        d.ellipse([x - 20, y - 19, x + 20, y + 21], fill=(215, 220, 228))
+        d.ellipse([x - 20, y - 20, x + 20, y + 20], fill=c_base_slot, outline=c_base_slot_border, width=2)
 
     # 2. Track cells
     for r in range(15):
@@ -161,11 +167,10 @@ def _create_base_board() -> Image.Image:
     d.polygon([(cx2, cy1), (cx2, cy2), (mid_x, mid_y)], fill=c_blue, outline=c_dark_line)
     d.polygon([(cx1, cy2), (cx2, cy2), (mid_x, mid_y)], fill=c_red, outline=c_dark_line)
 
-    # Outer border
+    # Outer board border
     d.rectangle([0, 0, BOARD_SIZE - 1, BOARD_SIZE - 1], outline=(40, 44, 52), width=3)
     return img
 
-# Initialize pre-cached RAM image
 _CACHED_BASE_BOARD = _create_base_board()
 
 
@@ -196,47 +201,134 @@ def get_token_xy(color: str, token_idx: int, steps: int) -> Tuple[float, float]:
     return (c * CELL_SIZE + CELL_SIZE // 2, r * CELL_SIZE + CELL_SIZE // 2)
 
 
-def render_board_image(red_tokens: List[int], yellow_tokens: List[int], tokens_per_player: int) -> io.BytesIO:
-    """Renders all active tokens onto the pre-cached base board in <25ms."""
+def draw_hud_dice(draw: ImageDraw.ImageDraw, x: int, y: int, roll: Optional[int]):
+    """Renders a prominent 3D rounded dice with authentic dots in the HUD banner."""
+    # Outer drop shadow
+    draw.rounded_rectangle([x + 2, y + 3, x + 54, y + 55], radius=10, fill=(15, 15, 18))
+    # White 3D dice block
+    draw.rounded_rectangle([x, y, x + 52, y + 52], radius=10, fill=(255, 255, 255), outline=(210, 215, 222), width=2)
+
+    if not roll or roll < 1 or roll > 6:
+        draw.text((x + 19, y + 14), "?", fill=(120, 125, 135))
+        return
+
+    dot_r = 4
+    dot_color = (220, 53, 69)  # Bold crimson red dots
+    coords = {
+        1: [(26, 26)],
+        2: [(15, 15), (37, 37)],
+        3: [(15, 15), (26, 26), (37, 37)],
+        4: [(15, 15), (15, 37), (37, 15), (37, 37)],
+        5: [(15, 15), (15, 37), (26, 26), (37, 15), (37, 37)],
+        6: [(15, 15), (15, 26), (15, 37), (37, 15), (37, 26), (37, 37)]
+    }
+    for px, py in coords.get(roll, []):
+        draw.ellipse([x + px - dot_r, y + py - dot_r, x + px + dot_r, y + py + dot_r], fill=dot_color)
+
+
+def render_board_image(
+    red_tokens: List[int],
+    yellow_tokens: List[int],
+    tokens_per_player: int,
+    last_roll: Optional[int] = None,
+    current_turn: str = "red",
+    movable_tokens: Optional[List[int]] = None,
+    hud_title: str = "",
+    hud_subtitle: str = ""
+) -> io.BytesIO:
+    """Renders all active 3D tokens with selection rings and bottom HUD banner in <25ms."""
     canvas = _CACHED_BASE_BOARD.copy()
     draw = ImageDraw.Draw(canvas)
 
-    # Collect positions to handle overlapping tokens on the same tile
-    pos_map: Dict[Tuple[int, int], List[Tuple[str, int, float, float]]] = {}
+    # 1. Render HUD Banner Area at Bottom
+    draw.rectangle([0, BOARD_SIZE, BOARD_SIZE, TOTAL_CANVAS_HEIGHT], fill=(28, 30, 34))
+    draw.line([(0, BOARD_SIZE), (BOARD_SIZE, BOARD_SIZE)], fill=(65, 70, 78), width=2)
+
+    # 2. Draw Large 3D Dice in HUD
+    dice_x, dice_y = 20, BOARD_SIZE + 14
+    draw_hud_dice(draw, dice_x, dice_y, last_roll)
+
+    # 3. Draw HUD Status & Guidance Texts
+    if not hud_title:
+        if current_turn == "red":
+            if last_roll:
+                hud_title = f"YOU ROLLED A {last_roll}!"
+            else:
+                hud_title = "YOUR TURN (RED)"
+        else:
+            hud_title = f"FRIDAY ROLLED A {last_roll or '?'}"
+
+    if not hud_subtitle:
+        if current_turn == "red":
+            if movable_tokens:
+                hud_subtitle = "👉 Click a highlighted token with the green ring to move!"
+            elif last_roll == 6:
+                hud_subtitle = "🎲 Bonus roll! Roll again!"
+            elif last_roll:
+                hud_subtitle = "⚠️ No valid moves. You need a 6 to leave base."
+            else:
+                hud_subtitle = "Click 'Roll Dice' below to make your move."
+        else:
+            hud_subtitle = "🤖 Friday is calculating its optimal move..."
+
+    # Title & Subtitle Colors
+    title_color = (255, 255, 255)
+    sub_color = (87, 242, 135) if movable_tokens else ((255, 215, 0) if "6" in hud_title else (180, 185, 195))
+
+    draw.text((dice_x + 68, BOARD_SIZE + 18), hud_title, fill=title_color)
+    draw.text((dice_x + 68, BOARD_SIZE + 44), hud_subtitle, fill=sub_color)
+
+    # 4. Map token positions for overlap handling
+    pos_map: Dict[Tuple[int, int], List[Tuple[str, int, float, float, bool]]] = {}
 
     all_tokens = []
+    movable_set = set(movable_tokens or [])
     for i in range(tokens_per_player):
-        all_tokens.append(("red", i + 1, red_tokens[i]))
-        all_tokens.append(("yellow", i + 1, yellow_tokens[i]))
+        is_movable = (current_turn == "red" and i in movable_set)
+        all_tokens.append(("red", i + 1, red_tokens[i], is_movable))
+        all_tokens.append(("yellow", i + 1, yellow_tokens[i], False))
 
-    for col, num, steps in all_tokens:
+    for col, num, steps, is_movable in all_tokens:
         x, y = get_token_xy(col, num - 1, steps)
         key = (int(round(x)), int(round(y)))
-        pos_map.setdefault(key, []).append((col, num, x, y))
+        pos_map.setdefault(key, []).append((col, num, x, y, is_movable))
 
-    # Draw tokens with slight offset if multiple tokens share the exact same cell
-    token_radius = 15
+    # 5. Render 3D Tokens with Highlights & Badges
+    token_radius = 18
     for key, tokens_on_spot in pos_map.items():
         count = len(tokens_on_spot)
-        for idx, (col, num, x, y) in enumerate(tokens_on_spot):
+        for idx, (col, num, x, y, is_movable) in enumerate(tokens_on_spot):
             dx, dy = 0, 0
             if count == 2:
-                dx = -6 if idx == 0 else 6
-                dy = -6 if idx == 0 else 6
+                dx = -7 if idx == 0 else 7
+                dy = -7 if idx == 0 else 7
             elif count > 2:
-                angles = [(-7, -7), (7, -7), (-7, 7), (7, 7)]
+                angles = [(-8, -8), (8, -8), (-8, 8), (8, 8)]
                 dx, dy = angles[idx % 4]
 
             px, py = x + dx, y + dy
+
+            # 5a. Glowing Neon Green Ring if token is legal to move!
+            if is_movable:
+                # Outer glow
+                draw.ellipse([px - token_radius - 5, py - token_radius - 5, px + token_radius + 5, py + token_radius + 5], outline=(87, 242, 135), width=3)
+                draw.ellipse([px - token_radius - 7, py - token_radius - 7, px + token_radius + 7, py + token_radius + 7], outline=(87, 242, 135), width=1)
+
+            # 5b. Drop shadow
+            draw.ellipse([px - token_radius + 2, py - token_radius + 3, px + token_radius + 2, py + token_radius + 3], fill=(0, 0, 0, 140))
+
+            # 5c. Token 3D Body
             fill_color = (235, 59, 69) if col == "red" else (245, 185, 15)
             rim_color = (255, 255, 255) if col == "red" else (30, 30, 30)
             text_color = (255, 255, 255) if col == "red" else (20, 20, 20)
 
-            # Drop shadow
-            draw.ellipse([px - token_radius + 1, py - token_radius + 2, px + token_radius + 1, py + token_radius + 2], fill=(0, 0, 0, 120))
-            # Token body
-            draw.ellipse([px - token_radius, py - token_radius, px + token_radius, py + token_radius], fill=fill_color, outline=rim_color, width=2)
-            # Token number
+            draw.ellipse([px - token_radius, py - token_radius, px + token_radius, py + token_radius], fill=fill_color, outline=rim_color, width=3)
+
+            # 5d. Specular 3D highlight (top-left shine)
+            shine_color = (255, 175, 175) if col == "red" else (255, 242, 175)
+            draw.ellipse([px - token_radius + 4, py - token_radius + 4, px - token_radius + 11, py - token_radius + 11], fill=shine_color)
+
+            # 5e. Token number
             draw.text((px - 4, py - 7), str(num), fill=text_color)
 
     buf = io.BytesIO()
@@ -248,6 +340,8 @@ def render_board_image(red_tokens: List[int], yellow_tokens: List[int], tokens_p
 # ─────────────────────────────────────────────────────────────
 # LUDO GAME STATE & LOGIC
 # ─────────────────────────────────────────────────────────────
+
+DICE_UNICODE = {1: "⚀", 2: "⚁", 3: "⚂", 4: "⚃", 5: "⚄", 6: "⚅"}
 
 class LudoGame:
     def __init__(self, player_red: discord.Member, bot: commands.Bot, tokens_per_player: int = 2, difficulty: str = "Smart"):
@@ -267,7 +361,7 @@ class LudoGame:
         self.winner: Optional[str] = None
         self.start_time = time.time()
         self.last_updated = time.time()
-        self.log_history: List[str] = ["🎲 **Match started!** Click **Roll Dice** to begin."]
+        self.log_history: List[str] = ["🎲 **Match initialized!** Click **Roll Dice** to begin."]
 
     def is_expired(self) -> bool:
         """Returns True if the game has been inactive for > 180 seconds."""
@@ -393,11 +487,11 @@ class LudoRollButton(discord.ui.Button):
 
 
 class LudoTokenSelectButton(discord.ui.Button):
-    def __init__(self, token_idx: int):
+    def __init__(self, token_idx: int, label: str):
         super().__init__(
-            style=discord.ButtonStyle.danger,
-            label=f"Move Token {token_idx + 1}",
-            emoji="🔴",
+            style=discord.ButtonStyle.success,
+            label=label,
+            emoji="🟢",
             row=0
         )
         self.token_idx = token_idx
@@ -418,7 +512,7 @@ class LudoForfeitButton(discord.ui.Button):
 
 class LudoRematchButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(style=discord.ButtonStyle.success, label="Play Rematch", emoji="🔄", row=0)
+        super().__init__(style=discord.ButtonStyle.primary, label="Play Rematch", emoji="🔄", row=0)
 
     async def callback(self, interaction: discord.Interaction):
         view: LudoView = self.view
@@ -430,24 +524,50 @@ class LudoView(discord.ui.View):
         super().__init__(timeout=120)
         self.game = game
         self.message: Optional[discord.Message] = None
+        self.movable_tokens: List[int] = []
         self.setup_buttons_for_roll()
 
     def setup_buttons_for_roll(self):
         self.clear_items()
+        self.movable_tokens = []
         self.add_item(LudoRollButton())
         self.add_item(LudoForfeitButton())
 
-    def setup_buttons_for_token_pick(self, legal_moves: List[int]):
+    def setup_buttons_for_token_pick(self, legal_moves: List[int], roll: int):
         self.clear_items()
+        self.movable_tokens = legal_moves
+        g = self.game
+
         for idx in legal_moves:
-            self.add_item(LudoTokenSelectButton(idx))
+            pos = g.red_tokens[idx]
+            if pos == -1:
+                label = f"Token {idx+1}: Leave Base ➔ Start 🚀"
+            elif pos + roll == 56:
+                label = f"Token {idx+1}: Enter Home! 🌟"
+            else:
+                target_track = (0 + pos + roll) % 52
+                will_capture = False
+                if target_track not in SAFE_TRACK_INDICES:
+                    for y_pos in g.yellow_tokens:
+                        if 0 <= y_pos <= 50 and (26 + y_pos) % 52 == target_track:
+                            will_capture = True
+                            break
+                if will_capture:
+                    label = f"Token {idx+1}: CAPTURE Friday! 💥"
+                elif target_track in SAFE_TRACK_INDICES:
+                    label = f"Token {idx+1}: Move {roll} (Safe Star ⭐)"
+                else:
+                    label = f"Token {idx+1}: Advance {roll} Steps"
+
+            self.add_item(LudoTokenSelectButton(idx, label=label[:80]))
         self.add_item(LudoForfeitButton())
 
     def setup_buttons_game_over(self):
         self.clear_items()
+        self.movable_tokens = []
         self.add_item(LudoRematchButton())
 
-    def build_embed(self) -> discord.Embed:
+    def build_embed(self, status_text: Optional[str] = None) -> discord.Embed:
         g = self.game
         red_home = sum(1 for p in g.red_tokens if p == 56)
         yellow_home = sum(1 for p in g.yellow_tokens if p == 56)
@@ -457,7 +577,7 @@ class LudoView(discord.ui.View):
 
         if g.game_over:
             if g.winner == "red":
-                title = "🏆  Victory! You Defeated Friday in Ludo!"
+                title = "🏆  Victory! You Won the Ludo Match!"
                 color = 0x57F287
             else:
                 title = "🤖  Friday Won the Match!"
@@ -466,17 +586,25 @@ class LudoView(discord.ui.View):
         # Format recent log history (last 3 items)
         log_str = "\n".join(g.log_history[-3:])
 
-        turn_indicator = (
-            f"👉 **Your Turn (🔴 Red):** Click **Roll Dice**!"
-            if g.current_turn == "red" and not g.game_over
-            else f"🤖 **Friday's Turn (🟡 Yellow)...**"
-        )
-        if g.game_over:
-            turn_indicator = f"🎉 **Game Finished!** Final tokens home: Red **{red_home}/{g.tokens_per_player}** • Yellow **{yellow_home}/{g.tokens_per_player}**."
+        dice_symbol = DICE_UNICODE.get(g.last_roll, "🎲")
+        dice_header = f"🎲 **Rolled:** `{dice_symbol} [{g.last_roll}]`\n" if g.last_roll else ""
+
+        if status_text:
+            turn_indicator = status_text
+        elif g.game_over:
+            turn_indicator = f"🎉 **Game Finished!** Final: Red **{red_home}/{g.tokens_per_player}** • Yellow **{yellow_home}/{g.tokens_per_player}**."
+        elif g.current_turn == "red":
+            if self.movable_tokens:
+                turn_indicator = f"👉 **Your Turn:** Pick a **glowing green token** to move below!"
+            else:
+                turn_indicator = f"👉 **Your Turn (🔴 Red):** Click **Roll Dice** below!"
+        else:
+            turn_indicator = f"🤖 **Friday's Turn (🟡 Yellow)...**"
 
         desc = (
             f"🔴 **{g.player_red.display_name}** (`Red`) vs 🟡 **Friday** (`Yellow`)\n"
             f"• Mode: **{g.tokens_per_player} Tokens** • Goal: Move all tokens to Center Home!\n\n"
+            f"{dice_header}"
             f"**Recent Actions:**\n{log_str}\n\n"
             f"{turn_indicator}\n\n"
             f"📊 **Score:** 🔴 `{red_home}/{g.tokens_per_player}` Home | 🟡 `{yellow_home}/{g.tokens_per_player}` Home"
@@ -492,13 +620,18 @@ class LudoView(discord.ui.View):
         embed.set_footer(text="Friday Ludo • 120s Turn Timer")
         return embed
 
-    async def update_view(self, interaction: Optional[discord.Interaction] = None):
+    async def update_view(self, interaction: Optional[discord.Interaction] = None, hud_title: str = "", hud_subtitle: str = ""):
         """Renders board in background thread and updates message."""
         buf = await asyncio.to_thread(
             render_board_image,
             self.game.red_tokens,
             self.game.yellow_tokens,
-            self.game.tokens_per_player
+            self.game.tokens_per_player,
+            self.game.last_roll,
+            self.game.current_turn,
+            self.movable_tokens,
+            hud_title,
+            hud_subtitle
         )
         file = discord.File(buf, filename="ludo_board.png")
         embed = self.build_embed()
@@ -519,10 +652,19 @@ class LudoView(discord.ui.View):
             if self.game.current_turn != "red" or self.game.game_over:
                 return await interaction.response.defer()
 
-            await interaction.response.defer()
+            # 1. Rolling suspense animation
+            self.clear_items()
+            btn_rolling = discord.ui.Button(style=discord.ButtonStyle.secondary, label="Rolling...", emoji="🎲", disabled=True)
+            self.add_item(btn_rolling)
+            rolling_embed = self.build_embed(status_text="🎲 *Shaking the dice cup... ⚁ ⚄ ⚀*")
+            await interaction.response.edit_message(embed=rolling_embed, view=self)
 
+            await asyncio.sleep(0.5)
+
+            # 2. Generate Roll
             roll = random.randint(1, 6)
             self.game.last_roll = roll
+            dice_icon = DICE_UNICODE.get(roll, "🎲")
 
             legal = self.game.get_legal_moves("red", roll)
 
@@ -531,27 +673,29 @@ class LudoView(discord.ui.View):
             else:
                 self.game.consecutive_sixes = 0
 
-            # 3 consecutive sixes penalty: pass turn
+            # 3 consecutive sixes penalty
             if self.game.consecutive_sixes >= 3:
-                self.game.log_history.append(f"⚠️ **{self.game.player_red.display_name}** rolled three 6s in a row! Turn forfeited.")
+                self.game.log_history.append(f"⚠️ Rolled three 6s in a row! Turn forfeited.")
                 self.game.consecutive_sixes = 0
                 self.game.current_turn = "yellow"
-                await self.update_view()
+                self.setup_buttons_for_roll()
+                await self.update_view(hud_title="THREE 6s IN A ROW!", hud_subtitle="Turn forfeited due to 3 consecutive sixes.")
                 return asyncio.create_task(self.run_friday_turn())
 
             if not legal:
-                self.game.log_history.append(f"🎲 **{self.game.player_red.display_name}** rolled a **{roll}** (no legal moves).")
+                self.game.log_history.append(f"🎲 Rolled a **{roll}** {dice_icon} (no legal moves).")
                 if roll == 6:
                     self.setup_buttons_for_roll()
-                    await self.update_view()
+                    await self.update_view(hud_title="ROLLED A 6 (BONUS ROLL)", hud_subtitle="No legal move, but you get a bonus roll!")
                 else:
                     self.game.current_turn = "yellow"
-                    await self.update_view()
+                    self.setup_buttons_for_roll()
+                    await self.update_view(hud_title=f"ROLLED A {roll}", hud_subtitle="No legal moves. Passing turn to Friday...")
                     asyncio.create_task(self.run_friday_turn())
                 return
 
             if len(legal) == 1:
-                # Auto-move single option for ultra-fluid mobile play!
+                # Auto-move single option for super-fluid play!
                 chosen_t = legal[0]
                 ev = self.game.apply_move("red", chosen_t, roll)
                 extra_str = ""
@@ -559,25 +703,27 @@ class LudoView(discord.ui.View):
                 elif ev["reached_home"]: extra_str = " (token reached Home! 🌟)"
                 elif ev["captured"]: extra_str = " (CAPTURED Friday's token! 💥)"
 
-                self.game.log_history.append(f"🎲 **{self.game.player_red.display_name}** rolled a **{roll}** & moved **Token {chosen_t+1}**{extra_str}")
+                self.game.log_history.append(f"🎲 Rolled **{roll}** {dice_icon} & moved **Token {chosen_t+1}**{extra_str}")
 
                 if self.game.game_over:
                     self.setup_buttons_game_over()
                     ACTIVE_LUDO_GAMES.pop(self.game.player_red.id, None)
-                    return await self.update_view()
+                    return await self.update_view(hud_title="VICTORY!", hud_subtitle="All your tokens have reached Home!")
 
                 if roll == 6 or ev["captured"]:
                     self.setup_buttons_for_roll()
-                    await self.update_view()
+                    hud_sub = "Bonus roll! You rolled a 6 — roll again!" if roll == 6 else "Bonus roll! You captured Friday's token!"
+                    await self.update_view(hud_title=f"ROLLED {roll} (BONUS TURN)", hud_subtitle=hud_sub)
                 else:
                     self.game.current_turn = "yellow"
-                    await self.update_view()
+                    self.setup_buttons_for_roll()
+                    await self.update_view(hud_title=f"ROLLED {roll}", hud_subtitle="Move complete. Friday's turn...")
                     asyncio.create_task(self.run_friday_turn())
             else:
-                # Multiple tokens can move: ask user to choose
-                self.game.log_history.append(f"🎲 **{self.game.player_red.display_name}** rolled a **{roll}**! Choose a token to move below:")
-                self.setup_buttons_for_token_pick(legal)
-                await self.update_view()
+                # Multiple tokens can move: display clear action buttons with green glowing rings
+                self.game.log_history.append(f"🎲 Rolled **{roll}** {dice_icon}! Choose which token to move:")
+                self.setup_buttons_for_token_pick(legal, roll)
+                await self.update_view(hud_title=f"ROLLED {roll}!", hud_subtitle="👉 Click a highlighted token with the green ring to move!")
         except Exception as e:
             print(f"[Ludo] Error in handle_human_roll: {e}")
 
@@ -588,10 +734,11 @@ class LudoView(discord.ui.View):
 
             await interaction.response.defer()
             roll = self.game.last_roll or 6
+            dice_icon = DICE_UNICODE.get(roll, "🎲")
 
             ev = self.game.apply_move("red", token_idx, roll)
             extra_str = ""
-            if ev["brought_out"]: extra_str = " (brought token onto the track! 🚀)"
+            if ev["brought_out"]: extra_str = " (brought token onto track! 🚀)"
             elif ev["reached_home"]: extra_str = " (token reached Home! 🌟)"
             elif ev["captured"]: extra_str = " (CAPTURED Friday's token! 💥)"
 
@@ -600,15 +747,16 @@ class LudoView(discord.ui.View):
             if self.game.game_over:
                 self.setup_buttons_game_over()
                 ACTIVE_LUDO_GAMES.pop(self.game.player_red.id, None)
-                return await self.update_view()
+                return await self.update_view(hud_title="VICTORY!", hud_subtitle="All your tokens reached Home!")
 
             if roll == 6 or ev["captured"]:
                 self.setup_buttons_for_roll()
-                await self.update_view()
+                hud_sub = "Bonus roll! You rolled a 6 — roll again!" if roll == 6 else "Bonus roll! You captured Friday's piece!"
+                await self.update_view(hud_title=f"ROLLED {roll} (BONUS TURN)", hud_subtitle=hud_sub)
             else:
                 self.game.current_turn = "yellow"
                 self.setup_buttons_for_roll()
-                await self.update_view()
+                await self.update_view(hud_title=f"MOVED TOKEN {token_idx+1}", hud_subtitle="Passing turn to Friday...")
                 asyncio.create_task(self.run_friday_turn())
         except Exception as e:
             print(f"[Ludo] Error in handle_human_token_pick: {e}")
@@ -622,18 +770,20 @@ class LudoView(discord.ui.View):
 
             roll = random.randint(1, 6)
             self.game.last_roll = roll
+            dice_icon = DICE_UNICODE.get(roll, "🎲")
 
             legal = self.game.get_legal_moves("yellow", roll)
 
             if not legal:
-                self.game.log_history.append(f"🤖 **Friday** rolled a **{roll}** (no legal moves).")
+                self.game.log_history.append(f"🤖 **Friday** rolled a **{roll}** {dice_icon} (no legal moves).")
                 if roll == 6:
-                    # Friday gets another roll on 6
+                    await self.update_view(hud_title="FRIDAY ROLLED A 6", hud_subtitle="Friday gets a bonus roll...")
+                    await asyncio.sleep(1.0)
                     return asyncio.create_task(self.run_friday_turn())
                 else:
                     self.game.current_turn = "red"
                     self.setup_buttons_for_roll()
-                    return await self.update_view()
+                    return await self.update_view(hud_title=f"FRIDAY ROLLED {roll}", hud_subtitle="Friday had no legal moves. Your turn!")
 
             chosen_t = self.game.choose_ai_move(roll, legal)
             ev = self.game.apply_move("yellow", chosen_t, roll)
@@ -643,21 +793,21 @@ class LudoView(discord.ui.View):
             elif ev["reached_home"]: extra_str = " (token entered Home! 🌟)"
             elif ev["captured"]: extra_str = " (CAPTURED your token! 💥)"
 
-            self.game.log_history.append(f"🤖 **Friday** rolled a **{roll}** & moved **Token {chosen_t+1}**{extra_str}")
+            self.game.log_history.append(f"🤖 **Friday** rolled a **{roll}** {dice_icon} & moved **Token {chosen_t+1}**{extra_str}")
 
             if self.game.game_over:
                 self.setup_buttons_game_over()
                 ACTIVE_LUDO_GAMES.pop(self.game.player_red.id, None)
-                return await self.update_view()
+                return await self.update_view(hud_title="GAME OVER", hud_subtitle="Friday won the match!")
 
             if roll == 6 or ev["captured"]:
-                await self.update_view()
-                await asyncio.sleep(1.0)
+                await self.update_view(hud_title=f"FRIDAY ROLLED {roll} (BONUS TURN)", hud_subtitle="Friday rolled a 6 and gets another turn...")
+                await asyncio.sleep(1.2)
                 return asyncio.create_task(self.run_friday_turn())
             else:
                 self.game.current_turn = "red"
                 self.setup_buttons_for_roll()
-                await self.update_view()
+                await self.update_view(hud_title="YOUR TURN (RED)", hud_subtitle="Click 'Roll Dice' below to play.")
         except Exception as e:
             print(f"[Ludo] Error in run_friday_turn: {e}")
 
@@ -671,7 +821,7 @@ class LudoView(discord.ui.View):
             ACTIVE_LUDO_GAMES.pop(self.game.player_red.id, None)
             self.setup_buttons_game_over()
             self.game.log_history.append(f"🏳️ **{self.game.player_red.display_name}** surrendered the match.")
-            await self.update_view(interaction)
+            await self.update_view(interaction, hud_title="MATCH FORFEITED", hud_subtitle="You surrendered the match.")
         except Exception as e:
             print(f"[Ludo] Error in handle_forfeit: {e}")
 
@@ -690,7 +840,7 @@ class LudoView(discord.ui.View):
 
             new_view = LudoView(new_game)
             new_view.message = interaction.message
-            await new_view.update_view(interaction)
+            await new_view.update_view(interaction, hud_title="REMATCH STARTED", hud_subtitle="Click 'Roll Dice' below to play!")
         except Exception as e:
             print(f"[Ludo] Error in handle_rematch: {e}")
 
@@ -700,7 +850,7 @@ class LudoView(discord.ui.View):
             self.game.game_over = True
             self.clear_items()
             self.game.log_history.append("⏰ **Match Abandoned:** Game timed out after 120s of inactivity.")
-            await self.update_view()
+            await self.update_view(hud_title="MATCH ABANDONED", hud_subtitle="Timed out after 120s of inactivity.")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -759,7 +909,12 @@ class Ludo(commands.Cog, name="Ludo"):
                 render_board_image,
                 game.red_tokens,
                 game.yellow_tokens,
-                game.tokens_per_player
+                game.tokens_per_player,
+                None,
+                "red",
+                [],
+                "YOUR TURN (RED)",
+                "Click 'Roll Dice' below to play."
             )
             file = discord.File(buf, filename="ludo_board.png")
             embed = view.build_embed()
@@ -774,4 +929,3 @@ class Ludo(commands.Cog, name="Ludo"):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Ludo(bot))
-
