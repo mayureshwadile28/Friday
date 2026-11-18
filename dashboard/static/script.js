@@ -18340,6 +18340,7 @@ function initAllRichEmojiEditors() {
 
 
     attachRichEmojiEditor('firstWelcomeMsgInput');
+    attachRichEmojiEditor('joinAnnounceMsgInput');
 
 
 
@@ -47460,6 +47461,13 @@ async function loadJoinAnnounceSettings() {
             const msgInput = document.getElementById('joinAnnounceMsgInput');
             if (msgInput) {
                 msgInput.value = cfg.message || "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉";
+                if (!document.getElementById('joinAnnounceMsgInput_rich') && typeof attachRichEmojiEditor === 'function') {
+                    attachRichEmojiEditor('joinAnnounceMsgInput');
+                }
+                const richMsg = document.getElementById('joinAnnounceMsgInput_rich');
+                if (richMsg && typeof rawMarkdownToRichHtml === 'function') {
+                    richMsg.innerHTML = rawMarkdownToRichHtml(msgInput.value);
+                }
             }
 
             const avtTgl = document.getElementById('joinAnnounceAvatarToggle');
@@ -47535,7 +47543,10 @@ function updateJoinAnnouncePreview() {
     }
 
     if (simMsg && msgInput) {
-        let m = msgInput.value || "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉";
+        const richMsg = document.getElementById('joinAnnounceMsgInput_rich');
+        let m = (richMsg && typeof richHtmlToRawMarkdown === 'function')
+            ? richHtmlToRawMarkdown(richMsg)
+            : (msgInput.value || "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉");
         const dummyGid = currentGuildId || "123456789";
         m = m.replace(/{server}/g, guildName)
              .replace(/{username}/g, "Alex")
@@ -47560,11 +47571,16 @@ async function saveJoinAnnounceSettings() {
     const chanSelect = document.getElementById('joinAnnounceChannelSelect');
     const msgInput = document.getElementById('joinAnnounceMsgInput');
     const avtTgl = document.getElementById('joinAnnounceAvatarToggle');
+    const richMsg = document.getElementById('joinAnnounceMsgInput_rich');
+
+    const messageText = (richMsg && typeof richHtmlToRawMarkdown === 'function')
+        ? richHtmlToRawMarkdown(richMsg)
+        : (msgInput ? msgInput.value : "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉");
 
     const payload = {
         enabled: tgl ? tgl.checked : false,
         channel_id: chanSelect ? (chanSelect.value || null) : null,
-        message: msgInput ? msgInput.value : "👋 Welcome {user} to **{server}**! Everyone say hello! 🎉",
+        message: messageText,
         show_avatar: avtTgl ? avtTgl.checked : true,
         custom_hex: currentJaColor
     };
@@ -47629,6 +47645,10 @@ function switchWelcomeSubtab(tabName) {
     if (panelLeave) panelLeave.style.display = (tabName === 'leave') ? 'block' : 'none';
     if (panelFirstChat) panelFirstChat.style.display = (tabName === 'first_chat') ? 'block' : 'none';
     if (panelJoinAnnounce) panelJoinAnnounce.style.display = (tabName === 'join_announce') ? 'block' : 'none';
+
+    if (tabName === 'join_announce') {
+        loadJoinAnnounceSettings();
+    }
 }
 
 // ───────────────────── 🌟 Server Join Welcome ─────────────────────
@@ -50806,7 +50826,7 @@ function setupFirstWelcomeAndAfkEvents() {
         });
     }
 
-    const jaInputs = ['joinAnnounceChannelSelect', 'joinAnnounceMsgInput', 'joinAnnounceAvatarToggle', 'joinAnnounceHexInput'];
+    const jaInputs = ['joinAnnounceChannelSelect', 'joinAnnounceMsgInput', 'joinAnnounceMsgInput_rich', 'joinAnnounceAvatarToggle', 'joinAnnounceHexInput'];
     jaInputs.forEach(id => {
         const el = document.getElementById(id);
         if (el) {
