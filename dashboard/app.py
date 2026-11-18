@@ -2117,27 +2117,41 @@ def broadcast_announcement(gid):
 
     # Check if this broadcast is scheduled for a future time
     scheduled_time = data.get("scheduled_time")
-    if scheduled_time:
-        try:
-            if "T" in str(scheduled_time):
-                sched_dt = datetime.datetime.fromisoformat(str(scheduled_time))
-            else:
-                sched_dt = datetime.datetime.strptime(str(scheduled_time), "%Y-%m-%d %H:%M")
-        except Exception as e:
-            return jsonify({"success": False, "error": f"Invalid scheduled date/time format: {e}"}), 400
-
-        tz_name = db.birthdays_config.get(gid_str, {}).get("timezone", "Asia/Kolkata")
+    scheduled_ts = data.get("scheduled_ts")
+    if scheduled_time or scheduled_ts:
+        tz_name = data.get("timezone") or db.birthdays_config.get(gid_str, {}).get("timezone", "Asia/Kolkata")
         try:
             loc_tz = pytz.timezone(tz_name)
         except Exception:
             loc_tz = pytz.timezone("Asia/Kolkata")
+            tz_name = "Asia/Kolkata"
 
-        if sched_dt.tzinfo is None:
-            sched_dt = loc_tz.localize(sched_dt)
-        sched_utc = sched_dt.astimezone(datetime.timezone.utc)
+        sched_utc = None
+        sched_dt = None
+
+        if scheduled_ts:
+            try:
+                sched_utc = datetime.datetime.fromtimestamp(float(scheduled_ts), tz=datetime.timezone.utc)
+                sched_dt = sched_utc.astimezone(loc_tz)
+            except Exception:
+                sched_utc = None
+
+        if sched_utc is None and scheduled_time:
+            try:
+                if "T" in str(scheduled_time):
+                    sched_dt = datetime.datetime.fromisoformat(str(scheduled_time))
+                else:
+                    sched_dt = datetime.datetime.strptime(str(scheduled_time), "%Y-%m-%d %H:%M")
+            except Exception as e:
+                return jsonify({"success": False, "error": f"Invalid scheduled date/time format: {e}"}), 400
+
+            if sched_dt.tzinfo is None:
+                sched_dt = loc_tz.localize(sched_dt)
+            sched_utc = sched_dt.astimezone(datetime.timezone.utc)
+
         now_utc = datetime.datetime.now(datetime.timezone.utc)
 
-        if sched_utc <= now_utc + datetime.timedelta(seconds=15):
+        if sched_utc is None or sched_utc <= now_utc + datetime.timedelta(seconds=15):
             return jsonify({"success": False, "error": "Scheduled time must be in the future! Please pick a future date and time."}), 400
 
         item_id = uuid.uuid4().hex[:10]
@@ -2163,7 +2177,7 @@ def broadcast_announcement(gid):
         queue.append(scheduled_item)
         db.save_data()
 
-        display_time = sched_dt.strftime("%b %d, %Y at %I:%M %p")
+        display_time = sched_dt.strftime("%b %d, %Y at %I:%M %p") if sched_dt else sched_utc.strftime("%b %d, %Y at %I:%M %p UTC")
         return jsonify({
             "success": True,
             "scheduled": True,

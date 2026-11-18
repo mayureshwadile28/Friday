@@ -56,7 +56,7 @@ def is_announcement_dispatch_command(text: str, is_reply: bool = False) -> bool:
 
     return False
 
-def format_announcement_broadcast_text(raw_text: str, guild: discord.Guild, bot: commands.Bot) -> str:
+def format_announcement_broadcast_text(raw_text: str, guild: discord.Guild, bot: commands.Bot, force_everyone: bool = True) -> str:
     """Prepare and format announcement text for broadcast with @everyone and custom emojis."""
     if not raw_text:
         return ""
@@ -65,23 +65,24 @@ def format_announcement_broadcast_text(raw_text: str, guild: discord.Guild, bot:
     processed = raw_text.replace('@\u200beveryone', '@everyone').replace('@\u200bhere', '@here')
 
     # 2. Convert conversational greetings like "Hey everyone" or "Hello everyone" to "Hey @everyone!"
-    processed = re.sub(
-        r'\b(hey|hello|hi|namaste)\s+everyone\b(!|\?|\.|\,)?',
-        r'\1 @everyone\2',
-        processed,
-        flags=re.IGNORECASE
-    )
+    if force_everyone:
+        processed = re.sub(
+            r'\b(hey|hello|hi|namaste)\s+everyone\b(!|\?|\.|\,)?',
+            r'\1 @everyone\2',
+            processed,
+            flags=re.IGNORECASE
+        )
 
-    # 3. If @everyone is not yet present, ensure @everyone is included
-    if '@everyone' not in processed and '@here' not in processed:
-        if processed.startswith('# '):
-            lines = processed.split('\n')
-            lines.insert(1, '\n@everyone')
-            processed = '\n'.join(lines)
-        elif processed:
-            processed = f"@everyone\n\n{processed}"
-        else:
-            processed = "@everyone"
+        # 3. If @everyone is not yet present, ensure @everyone is included
+        if '@everyone' not in processed and '@here' not in processed:
+            if processed.startswith('# '):
+                lines = processed.split('\n')
+                lines.insert(1, '\n@everyone')
+                processed = '\n'.join(lines)
+            elif processed:
+                processed = f"@everyone\n\n{processed}"
+            else:
+                processed = "@everyone"
 
     # 4. Replace plain emoji representations with server/custom emojis
     return replace_plain_emojis(processed, bot, guild=guild)
@@ -738,9 +739,19 @@ class Announcements(commands.Cog):
             return
 
         content = item.get("content", "")
-        formatted_content = format_announcement_broadcast_text(content, guild, self.bot)
-        format_mode = item.get("format_mode") or item.get("format") or "normal"
-        author_name = item.get("author_name", "Staff")
+        ping = str(item.get("ping", "none")).strip().lower()
+        should_ping_everyone = ping in ("everyone", "@everyone")
+        should_ping_here = ping in ("here", "@here")
+
+        mention_str = ""
+        if should_ping_everyone:
+            mention_str = "@everyone"
+        elif should_ping_here:
+            mention_str = "@here"
+
+        force_everyone = (ping not in ("none", "", "null")) and should_ping_everyone
+        formatted_content = format_announcement_broadcast_text(content, guild, self.bot, force_everyone=force_everyone)
+        processed_title = replace_plain_emojis(item.get("title", ""), self.bot, guild=guild) if item.get("title") else ""
 
         # Download attachments if any
         files = []
@@ -757,16 +768,12 @@ class Announcements(commands.Cog):
             except Exception as e:
                 print(f"[Scheduled Attachment Fetch Error] {e}")
 
-        ping = item.get("ping", "none")
-        mention_str = ""
-        if ping == "everyone" or ping == "@everyone":
-            mention_str = "@everyone"
-        elif ping == "here" or ping == "@here":
-            mention_str = "@here"
+        format_mode = str(item.get("format_mode") or item.get("format") or "embed").strip().lower()
+        author_name = item.get("author_name", "Staff")
 
         if format_mode == "embed":
             lines = [l for l in formatted_content.split('\n')]
-            embed_title = item.get("title")
+            embed_title = processed_title
             embed_desc = formatted_content
             if not embed_title and lines and lines[0].startswith('# '):
                 embed_title = lines[0].replace('# ', '').strip()
@@ -783,15 +790,28 @@ class Announcements(commands.Cog):
                 description=embed_desc if embed_desc else None,
                 color=discord.Color(color_int)
             )
-            if guild.icon:
-                embed.set_author(name=guild.name, icon_url=guild.icon.url)
-            if self.bot.user and self.bot.user.display_avatar:
-                embed.set_thumbnail(url=self.bot.user.display_avatar.url)
-            footer_text = item.get("footer") or f"Official Server Announcement • Scheduled by {author_name}"
-            embed.set_footer(text=footer_text)
+
+            avatar_mode = str(item.get("avatar_mode", "friday")).lower()
+            chosen_avatar_url = None
+            if avatar_mode == "friday":
+                if self.bot.user and self.bot.user.display_avatar:
+                    chosen_avatar_url = str(self.bot.user.display_avatar.url)
+            elif avatar_mode == "server":
+                if guild.icon:
+                    chosen_avatar_url = str(guild.icon.url)
+                elif self.bot.user and self.bot.user.display_avatar:
+                    chosen_avatar_url = str(self.bot.user.display_avatar.url)
+
+            if chosen_avatar_url:
+                embed.set_thumbnail(url=chosen_avatar_url)
+
+            footer_text = item.get("footer")
+            if not footer_text:
+                footer_text = f"Official Server Announcement • Scheduled by {author_name}"
+            embed.set_footer(text=footer_text, icon_url=chosen_avatar_url if chosen_avatar_url else None)
 
             await channel.send(
-                content=mention_str if mention_str else ("@everyone" if "@everyone" in formatted_content and embed_title else None),
+                content=mention_str if mention_str else None,
                 embed=embed,
                 files=files if files else [],
                 allowed_mentions=discord.AllowedMentions(everyone=True, roles=True, users=True)
@@ -800,9 +820,8 @@ class Announcements(commands.Cog):
             msg_parts = []
             if mention_str:
                 msg_parts.append(mention_str)
-            title = item.get("title")
-            if title and f"# {title}" not in formatted_content:
-                msg_parts.append(f"# {title}")
+            if processed_title:
+                msg_parts.append(f"# {processed_title}")
             if formatted_content:
                 msg_parts.append(formatted_content)
 

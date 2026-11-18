@@ -27390,14 +27390,10 @@ async function loadAnnouncementsSettings() {
 
 
         syncAllRichEmojiEditors();
-
-
-
-
-
-
-
         updateAnnPreview();
+        if (typeof loadScheduledAnnouncements === 'function') {
+            loadScheduledAnnouncements();
+        }
 
 
 
@@ -28788,286 +28784,95 @@ async function broadcastAnnouncement() {
 
 
         return showToast('⚠️ Enter a title or announcement message body!');
-
-
-
-
-
-
-
     }
 
+    const scheduleToggle = document.getElementById('annScheduleToggle');
+    const isScheduled = !!(scheduleToggle && scheduleToggle.checked);
+    let scheduledTimeVal = null;
+    let scheduledTs = null;
 
-
-
-
-
-
-
-
-
-
-
-
-
+    if (isScheduled) {
+        const dtInput = document.getElementById('annScheduleDateTimeInput');
+        scheduledTimeVal = dtInput ? dtInput.value.trim() : '';
+        if (!scheduledTimeVal) {
+            return showToast('⚠️ Please select a scheduled date and time!');
+        }
+        const pickedDate = new Date(scheduledTimeVal);
+        if (isNaN(pickedDate.getTime())) {
+            return showToast('⚠️ Invalid scheduled date/time! Please pick a valid date & time.');
+        }
+        if (pickedDate.getTime() <= Date.now() + 15000) {
+            return showToast('⚠️ Scheduled time must be in the future! (at least 1 minute ahead)');
+        }
+        scheduledTs = Math.floor(pickedDate.getTime() / 1000);
+    }
 
     const btn = document.getElementById('broadcastAnnouncementBtn');
-
-
-
-
-
-
-
     btn.disabled = true;
-
-
-
-
-
-
-
     const origHtml = btn.innerHTML;
-
-
-
-
-
-
-
-    btn.innerHTML = `<span>⏳</span> Broadcasting...`;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    btn.innerHTML = isScheduled ? '<span>⏳</span> Scheduling...' : '<span>⏳</span> Broadcasting...';
 
     try {
+        const payload = {
+            channel_id: targetChannelId,
+            title: title,
+            content: content,
+            format: currentAnnFormat,
+            ping: currentAnnPing,
+            color: currentAnnColor,
+            show_thumbnail: currentAnnAvatarMode !== 'none',
+            avatar_mode: currentAnnAvatarMode,
+            footer: currentAnnFooterText
+        };
+        if (isScheduled && scheduledTimeVal) {
+            payload.scheduled_time = scheduledTimeVal;
+            payload.scheduled_ts = scheduledTs;
+            try {
+                payload.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            } catch (e) {}
+        }
 
-
-
-
-
-
-
-        const resp = await fetch(`/api/guild/${currentGuildId}/announcements/send`, {
-
-
-
-
-
-
-
+        const resp = await fetch('/api/guild/' + currentGuildId + '/announcements/send', {
             method: 'POST',
-
-
-
-
-
-
-
             headers: { 'Content-Type': 'application/json' },
-
-
-
-
-
-
-
-            body: JSON.stringify({
-
-
-
-
-
-
-
-                channel_id: targetChannelId,
-
-
-
-
-
-
-
-                title: title,
-
-
-
-
-
-
-
-                content: content,
-
-
-
-
-
-
-
-                format: currentAnnFormat,
-
-
-
-
-
-
-
-                ping: currentAnnPing,
-
-
-
-
-
-
-
-                color: currentAnnColor,
-
-
-
-
-
-
-
-                show_thumbnail: currentAnnAvatarMode !== 'none',
-                avatar_mode: currentAnnAvatarMode,
-
-
-
-
-
-
-
-                footer: currentAnnFooterText
-
-
-
-
-
-
-
-            })
-
-
-
-
-
-
-
+            body: JSON.stringify(payload)
         });
-
-
-
-
-
-
 
         const data = await resp.json();
 
-
-
-
-
-
-
         if (data.success) {
-
-
-
-
-
-
-
-            showToast(`🎉 Announcement broadcasted to #${data.channel_name}!`);
-
-
-
-
-
-
-
+            if (data.scheduled) {
+                showToast('🗓️ ' + (data.message || 'Announcement scheduled successfully!'));
+                if (typeof loadScheduledAnnouncements === 'function') {
+                    loadScheduledAnnouncements();
+                }
+                const tInput = document.getElementById('annTitleInput');
+                if (tInput) tInput.value = '';
+                const cInput = document.getElementById('annContentInput');
+                if (cInput) cInput.value = '';
+                if (typeof updateAnnPreview === 'function') {
+                    updateAnnPreview();
+                }
+                if (scheduleToggle) {
+                    scheduleToggle.checked = false;
+                    const optWrap = document.getElementById('annScheduleOptionsWrap');
+                    if (optWrap) optWrap.style.display = 'none';
+                    const btnText = document.getElementById('annBroadcastBtnText');
+                    if (btnText) btnText.textContent = 'Broadcast Now';
+                }
+            } else {
+                showToast('🎉 Announcement broadcasted to #' + data.channel_name + '!');
+            }
         } else {
-
-
-
-
-
-
-
-            showToast(`❌ Error: ${data.error || 'Failed to broadcast announcement'}`);
-
-
-
-
-
-
-
+            showToast('❌ Error: ' + (data.error || (isScheduled ? 'Failed to schedule announcement' : 'Failed to broadcast announcement')));
         }
-
-
-
-
-
-
-
     } catch (err) {
-
-
-
-
-
-
-
-        showToast("❌ Network error broadcasting announcement");
-
-
-
-
-
-
-
+        console.error('Announcement error:', err);
+        showToast(isScheduled ? '❌ Network error scheduling announcement' : '❌ Network error broadcasting announcement');
     } finally {
-
-
-
-
-
-
-
         btn.disabled = false;
-
-
-
-
-
-
-
         btn.innerHTML = origHtml;
-
-
-
-
-
-
-
     }
-
-
-
-
-
-
-
 }
 
 
@@ -69055,12 +68860,16 @@ function setupAnnouncementScheduling() {
             if (scheduleToggle.checked) {
                 if (scheduleOptionsWrap) scheduleOptionsWrap.style.display = 'block';
                 if (broadcastBtnText) broadcastBtnText.textContent = 'Schedule Announcement';
-                // Set default datetime to 1 hour from now if empty
+                // Set default datetime to 1 hour from now if empty, and enforce min date
                 const dtInput = document.getElementById('annScheduleDateTimeInput');
-                if (dtInput && !dtInput.value) {
-                    const d = new Date(Date.now() + 3600 * 1000);
+                if (dtInput) {
+                    const now = new Date();
                     const pad = (n) => String(n).padStart(2, '0');
-                    dtInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    dtInput.min = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+                    if (!dtInput.value) {
+                        const d = new Date(Date.now() + 3600 * 1000);
+                        dtInput.value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                    }
                 }
             } else {
                 if (scheduleOptionsWrap) scheduleOptionsWrap.style.display = 'none';
