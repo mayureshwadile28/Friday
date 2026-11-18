@@ -149,26 +149,24 @@ async def on_ready():
             except Exception as e:
                 print(f"⚠️ Security sync warning for '{g.name}': {e}")
 
-    # Sync commands globally and directly to connected servers for instant visibility
+    # Sync commands globally and purge duplicate guild commands
     try:
         configure_command_dm_restrictions(bot.tree)
-        synced_global = await bot.tree.sync()
-        print(f"✅ One clean list: {len(synced_global)} global slash commands registered.")
-        
-        # Also sync directly to connected guilds so commands appear in 1 second (no 1-hour Discord global rollout delay)
+        # Purge guild-level duplicate overrides so Discord only keeps the clean global command list
         for g in bot.guilds:
             try:
-                bot.tree.copy_global_to(guild=g)
-                synced_guild = await bot.tree.sync(guild=g)
-                print(f"⚡ Instantly synced {len(synced_guild)} slash commands directly to '{g.name}'")
+                bot.tree.clear_commands(guild=g)
+                await bot.tree.sync(guild=g)
             except Exception as e:
-                print(f"Guild direct sync note for '{g.name}': {e}")
+                pass
+        synced_global = await bot.tree.sync()
+        print(f"✅ One clean list: {len(synced_global)} global slash commands registered (all duplicate guild commands cleared).")
     except Exception as e:
         print(f"Global sync warning: {e}")
 
 @bot.command(name="sync")
 async def force_sync_commands(ctx: commands.Context):
-    """Admin command to force-sync slash commands directly to the current server instantly."""
+    """Admin command to force-sync slash commands cleanly without duplicates."""
     # Check permissions with clear error response instead of silent drop
     is_admin = False
     if ctx.guild and ctx.author.id == ctx.guild.owner_id:
@@ -181,7 +179,7 @@ async def force_sync_commands(ctx: commands.Context):
     if not is_admin:
         return await ctx.send("❌ You need **Administrator** or **Server Owner** permissions to sync slash commands.")
 
-    msg = await ctx.send("⏳ Registering and syncing all slash commands directly to this server...")
+    msg = await ctx.send("⏳ Registering and syncing all slash commands cleanly without duplicates...")
     try:
         # If cogs.economy somehow wasn't loaded, dynamically load it now
         if not bot.get_cog("Economy"):
@@ -193,14 +191,17 @@ async def force_sync_commands(ctx: commands.Context):
                 await ctx.send(f"⚠️ Note on `cogs.economy`: `{ce}`")
 
         configure_command_dm_restrictions(bot.tree)
-        bot.tree.copy_global_to(guild=ctx.guild)
-        synced = await bot.tree.sync(guild=ctx.guild)
+        # Clear legacy guild duplicates from this server
+        bot.tree.clear_commands(guild=ctx.guild)
+        await bot.tree.sync(guild=ctx.guild)
+        # Global sync
+        synced = await bot.tree.sync()
         
-        eco_cmds = [c.name for c in synced if c.name in ("balance", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "blackjack", "coinflip")]
+        eco_cmds = [c.name for c in synced if c.name in ("balance", "wallet", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "coinflip")]
         await msg.edit(content=(
-            f"✅ **{len(synced)} slash commands** synced directly to **{ctx.guild.name}**!\n"
+            f"✅ **{len(synced)} slash commands** synced cleanly without duplicates!\n"
             f"🪙 **Economy commands online ({len(eco_cmds)}):** `/{'`, `/'.join(eco_cmds[:8])}`...\n"
-            f"⚡ *They are now live in your server! If not visible in your slash menu, press `Ctrl + R` in Discord to refresh your client.*"
+            f"⚡ *All commands are live! If not visible in your slash menu, press `Ctrl + R` in Discord to refresh your client.*"
         ))
     except Exception as e:
         await msg.edit(content=f"❌ Failed to sync slash commands: `{e}`")

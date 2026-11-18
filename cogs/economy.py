@@ -231,21 +231,23 @@ class EconomyDB:
             return row["wallet"] if row else 0
 
     def delta_bank(self, gid: str, uid: str, delta: int, max_cap: Optional[int] = None) -> int:
-        """Atomically modifies bank balance."""
+        """Atomically modifies bank balance, auto-expanding bank_max if needed so vault capacity never displays over-capacity."""
         with self.get_conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
             if max_cap is not None and delta > 0:
                 conn.execute("""
                     UPDATE economy_users
-                    SET bank = MIN(?, MAX(0, bank + ?))
+                    SET bank = MIN(?, MAX(0, bank + ?)),
+                        bank_max = MAX(bank_max, MIN(?, MAX(0, bank + ?)))
                     WHERE guild_id=? AND user_id=?
-                """, (max_cap, delta, gid, uid))
+                """, (max_cap, delta, max_cap, delta, gid, uid))
             else:
                 conn.execute("""
                     UPDATE economy_users
-                    SET bank = MAX(0, bank + ?)
+                    SET bank = MAX(0, bank + ?),
+                        bank_max = MAX(bank_max, bank + ?)
                     WHERE guild_id=? AND user_id=?
-                """, (delta, gid, uid))
+                """, (delta, delta, gid, uid))
             row = conn.execute(
                 "SELECT bank FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)
             ).fetchone()
@@ -495,10 +497,10 @@ class CoinDropView(discord.ui.View):
 
     @discord.ui.button(label="🪙 Grab Coin Drop!", style=discord.ButtonStyle.success)
     async def claim_drop(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
         async with self._lock:
             if self.claimed:
-                await interaction.response.send_message("❌ Someone already claimed this drop!", ephemeral=True)
-                return
+                return await interaction.followup.send("❌ Someone already claimed this drop!", ephemeral=True)
             self.claimed = True
             
         uid = str(interaction.user.id)
@@ -514,7 +516,16 @@ class CoinDropView(discord.ui.View):
         embed.color = discord.Color.green()
         embed.description = f"🎉 **{interaction.user.mention}** grabbed the drop and pocketed **+{self.amount:,} {self.currency_emoji} {self.currency_name}**!"
         
-        await interaction.response.edit_message(embed=embed, view=self)
+        try:
+            if interaction.message:
+                await interaction.message.edit(embed=embed, view=self)
+            else:
+                await interaction.edit_original_response(embed=embed, view=self)
+        except Exception:
+            try:
+                await interaction.edit_original_response(embed=embed, view=self)
+            except Exception:
+                pass
 
 
 class PayConfirmView(discord.ui.View):
@@ -537,16 +548,19 @@ class PayConfirmView(discord.ui.View):
         if interaction.user.id != self.sender.id:
             return await interaction.response.send_message("❌ This confirmation prompt is not for you.", ephemeral=True)
         
+        # Defer immediately so Discord's 3-second interaction window never times out!
+        await interaction.response.defer()
+        
         async with self._lock:
             if self.processed:
-                return await interaction.response.send_message("⚠️ This transfer has already been processed.", ephemeral=True)
+                return await interaction.followup.send("⚠️ This transfer has already been processed.", ephemeral=True)
             self.processed = True
             
         # Re-check sender balance
         sender_profile = self.cog.db.get_or_init_user(self.gid, str(self.sender.id))
         if sender_profile["wallet"] < self.gross:
             self.disable_all_items()
-            await interaction.response.edit_message(view=self)
+            await interaction.edit_original_response(view=self)
             return await interaction.followup.send(
                 f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet.",
                 ephemeral=True
@@ -571,15 +585,25 @@ class PayConfirmView(discord.ui.View):
         embed.add_field(name="Net Received", value=f"`{self.net:,}`", inline=True)
         embed.set_footer(text="Friday Anti-Inflation Economy • Funds delivered instantly")
         
-        await interaction.response.edit_message(embed=embed, view=self)
+        try:
+            if interaction.message:
+                await interaction.message.edit(embed=embed, view=self)
+            else:
+                await interaction.edit_original_response(embed=embed, view=self)
+        except Exception:
+            try:
+                await interaction.edit_original_response(embed=embed, view=self)
+            except Exception:
+                pass
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, emoji="✖️")
     async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.sender.id:
             return await interaction.response.send_message("❌ This confirmation prompt is not for you.", ephemeral=True)
+        await interaction.response.defer()
         self.processed = True
         self.disable_all_items()
-        await interaction.response.edit_message(content="❌ Transfer cancelled.", embed=None, view=self)
+        await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
 
 
 class ShopSelect(discord.ui.Select):
@@ -654,16 +678,16 @@ class ShopSelect(discord.ui.Select):
             if custom_count == 0:
                 embed.description += "*No custom roles or store items configured yet. Server administrators can add items in the Friday Dashboard!*"
         else:
-            embed.title = "🎲 Friday Casino & High-Roller Games"
+            embed.title = "🎲 Friday Casino & Mini-Games"
             embed.description = (
-                "Take measured risks to multiply your coin balance!\n\n"
-                "**1. `/coinflip <heads/tails> <bet>`**\n"
+                "Take calculated risks to multiply your coin balance!\n\n"
+                "**1. `/coinflip <heads/tails> <bet>` (or `!cf <bet> <h/t>`)**\n"
                 "• 48% Win Chance with a **1.95x Payout**.\n"
                 "• Fast, direct double-or-nothing coin toss.\n\n"
-                "**2. `/blackjack <bet>`**\n"
-                "• Full interactive casino blackjack with `[Hit]`, `[Stand]`, and `[Double Down]` buttons.\n"
-                "• Bets are locked out of your wallet on start to prevent foul play.\n"
-                "• Blackjack pays 3:2! Dealer stands on 17+."
+                "**2. `/tictactoe play @opponent [bet]`**\n"
+                "• Play Tic-Tac-Toe! Beat Friday on Hard mode for a bounty, or challenge friends with a coin bet.\n\n"
+                "**3. `/ludo [bet]`**\n"
+                "• Authentic 4-token Ludo Royale! Defeat Friday AI for cash, or place a wager in the lobby for winner-takes-all."
             )
             
         embed.set_footer(text=f"Use /buy <item> to purchase • Currency: {cur}")
@@ -674,172 +698,6 @@ class ShopView(discord.ui.View):
     def __init__(self, cog, gid: str):
         super().__init__(timeout=60)
         self.add_item(ShopSelect(cog, gid))
-
-
-class BlackjackView(discord.ui.View):
-    def __init__(self, cog, gid: str, user_id: str, bet: int, deck: list, player_hand: list, dealer_hand: list, cur_name: str, cur_emoji: str):
-        super().__init__(timeout=90)
-        self.cog = cog
-        self.gid = gid
-        self.user_id = user_id
-        self.bet = bet
-        self.deck = deck
-        self.player_hand = player_hand
-        self.dealer_hand = dealer_hand
-        self.cur_name = cur_name
-        self.cur_emoji = cur_emoji
-        self.doubled = False
-        self._lock = asyncio.Lock()
-
-    def _hand_val(self, hand: list) -> int:
-        val = 0
-        aces = 0
-        for card in hand:
-            r = card[:-1]
-            if r in ('J', 'Q', 'K'):
-                val += 10
-            elif r == 'A':
-                aces += 1
-                val += 11
-            else:
-                val += int(r)
-        while val > 21 and aces > 0:
-            val -= 10
-            aces -= 1
-        return val
-
-    def _render_hand(self, hand: list, hide_second: bool = False) -> str:
-        if hide_second:
-            return f"`{hand[0]}` `🂠 ?`"
-        return " ".join(f"`{c}`" for c in hand)
-
-    def _build_embed(self, status: str, hide_dealer: bool = True, color: discord.Color = discord.Color.blue()) -> discord.Embed:
-        p_val = self._hand_val(self.player_hand)
-        d_val = self._hand_val([self.dealer_hand[0]]) if hide_dealer else self._hand_val(self.dealer_hand)
-        
-        embed = discord.Embed(title="♠️ Friday High-Stakes Blackjack", color=color)
-        embed.add_field(
-            name=f"Dealer's Hand ({d_val if not hide_dealer else '?'})",
-            value=self._render_hand(self.dealer_hand, hide_dealer),
-            inline=False
-        )
-        embed.add_field(
-            name=f"Your Hand ({p_val})",
-            value=self._render_hand(self.player_hand, False),
-            inline=False
-        )
-        embed.add_field(name="Current Bet", value=f"`{self.bet:,} {self.cur_emoji} {self.cur_name}`", inline=True)
-        embed.add_field(name="Game Status", value=f"**{status}**", inline=True)
-        embed.set_footer(text="Blackjack pays 3:2 • Dealer stands on soft 17")
-        return embed
-
-    @discord.ui.button(label="Hit", style=discord.ButtonStyle.primary, emoji="🃏")
-    async def hit(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            return await interaction.response.send_message("❌ This blackjack hand belongs to someone else.", ephemeral=True)
-        
-        async with self._lock:
-            # Draw card
-            card = self.deck.pop()
-            self.player_hand.append(card)
-            p_val = self._hand_val(self.player_hand)
-            
-            # Disable double down once hit
-            for child in self.children:
-                if getattr(child, "label", None) == "Double Down":
-                    child.disabled = True
-            
-            if p_val > 21:
-                # Bust!
-                self.disable_all_items()
-                self.cog.db.end_game(self.gid, self.user_id)
-                self.cog.db.log_tx(self.gid, self.user_id, "blackjack_bust", -self.bet, self.cog.db.get_user(self.gid, self.user_id)["wallet"])
-                embed = self._build_embed("Bust! You exceeded 21 and lost your bet.", hide_dealer=False, color=discord.Color.red())
-                return await interaction.response.edit_message(embed=embed, view=self)
-            
-            # Update state in DB
-            self.cog.db.update_game(self.gid, self.user_id, {
-                "deck": self.deck,
-                "player": self.player_hand,
-                "dealer": self.dealer_hand,
-                "bet": self.bet
-            })
-            
-            embed = self._build_embed("Card dealt. Hit again or Stand?")
-            await interaction.response.edit_message(embed=embed, view=self)
-
-    @discord.ui.button(label="Stand", style=discord.ButtonStyle.secondary, emoji="🛑")
-    async def stand(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            return await interaction.response.send_message("❌ This blackjack hand belongs to someone else.", ephemeral=True)
-        
-        async with self._lock:
-            self.disable_all_items()
-            await self._resolve_dealer(interaction)
-
-    @discord.ui.button(label="Double Down", style=discord.ButtonStyle.danger, emoji="⬆️")
-    async def double_down(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if str(interaction.user.id) != self.user_id:
-            return await interaction.response.send_message("❌ This blackjack hand belongs to someone else.", ephemeral=True)
-        
-        async with self._lock:
-            user = self.cog.db.get_user(self.gid, self.user_id)
-            if user["wallet"] < self.bet:
-                return await interaction.response.send_message("❌ You do not have enough coins in your wallet to Double Down.", ephemeral=True)
-            
-            # Lock extra bet
-            self.cog.db.delta_wallet(self.gid, self.user_id, -self.bet)
-            self.bet *= 2
-            self.doubled = True
-            
-            # Draw one final card
-            card = self.deck.pop()
-            self.player_hand.append(card)
-            p_val = self._hand_val(self.player_hand)
-            
-            self.disable_all_items()
-            
-            if p_val > 21:
-                self.cog.db.end_game(self.gid, self.user_id)
-                self.cog.db.log_tx(self.gid, self.user_id, "blackjack_bust", -self.bet, self.cog.db.get_user(self.gid, self.user_id)["wallet"])
-                embed = self._build_embed(f"Bust! Double down resulted in {p_val}. Bet lost.", hide_dealer=False, color=discord.Color.red())
-                return await interaction.response.edit_message(embed=embed, view=self)
-            
-            await self._resolve_dealer(interaction)
-
-    async def _resolve_dealer(self, interaction: discord.Interaction):
-        # Dealer draws to soft 17
-        while self._hand_val(self.dealer_hand) < 17:
-            self.dealer_hand.append(self.deck.pop())
-            
-        p_val = self._hand_val(self.player_hand)
-        d_val = self._hand_val(self.dealer_hand)
-        
-        self.cog.db.end_game(self.gid, self.user_id)
-        
-        if d_val > 21:
-            # Dealer busts, player wins 2x bet
-            payout = self.bet * 2
-            w = self.cog.db.delta_wallet(self.gid, self.user_id, payout)
-            self.cog.db.log_tx(self.gid, self.user_id, "blackjack_win", self.bet, w, note="Dealer bust")
-            embed = self._build_embed(f"Dealer Busted ({d_val})! You won +{self.bet:,} {self.cur_emoji} {self.cur_name}!", hide_dealer=False, color=discord.Color.green())
-        elif p_val > d_val:
-            payout = self.bet * 2
-            w = self.cog.db.delta_wallet(self.gid, self.user_id, payout)
-            self.cog.db.log_tx(self.gid, self.user_id, "blackjack_win", self.bet, w, note=f"{p_val} vs {d_val}")
-            embed = self._build_embed(f"You Beat the Dealer! Won +{self.bet:,} {self.cur_emoji} {self.cur_name}!", hide_dealer=False, color=discord.Color.green())
-        elif p_val == d_val:
-            # Push - return original bet
-            w = self.cog.db.delta_wallet(self.gid, self.user_id, self.bet)
-            self.cog.db.log_tx(self.gid, self.user_id, "blackjack_push", 0, w, note=f"Push at {p_val}")
-            embed = self._build_embed(f"Push! Tied at {p_val}. Bet refunded.", hide_dealer=False, color=discord.Color.gold())
-        else:
-            # Dealer wins
-            w = self.cog.db.get_user(self.gid, self.user_id)["wallet"]
-            self.cog.db.log_tx(self.gid, self.user_id, "blackjack_loss", -self.bet, w, note=f"{p_val} vs {d_val}")
-            embed = self._build_embed(f"Dealer Won ({d_val} vs {p_val}). Bet lost.", hide_dealer=False, color=discord.Color.red())
-            
-        await interaction.response.edit_message(embed=embed, view=self)
 
 
 async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
@@ -853,9 +711,13 @@ async def shop_item_autocomplete(interaction: discord.Interaction, current: str)
         if it.get("enabled", True):
             name = it.get("name", item_id)
             price = it.get("price", 0)
-            em = it.get("emoji", "📦")
-            clean_em = "🎁" if ("<:" in em or "<a:" in em) else em
-            label = f"{clean_em} {name} ({price:,} coins)"
+            em = it.get("emoji", "")
+            is_role = (it.get("type") == "role" or "role_id" in it)
+            if not em or "<:" in em or "<a:" in em:
+                icon = "👑 [Role]" if is_role else "🎁"
+            else:
+                icon = em
+            label = f"{icon} {name} ({price:,} coins)"
             if current.lower() in item_id.lower() or current.lower() in name.lower():
                 choices.append(app_commands.Choice(name=label[:100], value=item_id))
     return choices[:25]
@@ -946,6 +808,49 @@ class Economy(commands.Cog):
                     new_w = self.db.delta_wallet(gid, uid, reward)
                     self.db.log_tx(gid, uid, "vc_reward", reward, new_w, note=f"VC: {vc.name}")
 
+    async def spawn_coin_drop(self, guild: discord.Guild, drop_amt: Optional[int] = None, channel: Optional[discord.TextChannel] = None) -> Optional[discord.Message]:
+        gid = str(guild.id)
+        if self.is_paused(gid):
+            return None
+        cfg = self.get_config(gid)
+        if not cfg.get("enabled", True):
+            return None
+            
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        if drop_amt is None or drop_amt <= 0:
+            drop_amt = int(cfg.get("coin_drop_amount", 250))
+            
+        target_ch = channel
+        if not target_ch:
+            drop_channel_id = getattr(db, "economy_log_channels", {}).get(gid) or cfg.get("drop_channel_id")
+            if drop_channel_id:
+                target_ch = guild.get_channel(int(drop_channel_id))
+        if not target_ch:
+            target_ch = guild.system_channel
+        if not target_ch:
+            for ch in guild.text_channels:
+                if ch.permissions_for(guild.me).send_messages:
+                    target_ch = ch
+                    break
+        if not target_ch:
+            return None
+            
+        view = CoinDropView(self, gid, drop_amt, cur_name, cur_emoji)
+        embed = discord.Embed(
+            title="💰 Surprise Coin Drop Event!",
+            description=(
+                f"A supply crate loaded with **{drop_amt:,} {cur_emoji} {cur_name}** just dropped!\n"
+                f"First one to click the button claims the loot!"
+            ),
+            color=discord.Color.gold()
+        )
+        embed.set_footer(text="Click fast before someone else claims it!")
+        try:
+            return await target_ch.send(embed=embed, view=view)
+        except Exception:
+            return None
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Passive text chat earnings + 1% Coin Drop button trigger."""
@@ -989,25 +894,7 @@ class Economy(commands.Cog):
         # 1% chance of global Coin Drop button in configured drop channel
         drop_chance = float(cfg.get("coin_drop_chance", 0.01))
         if random.random() < drop_chance:
-            drop_amt = int(cfg.get("coin_drop_amount", 250))
-            drop_channel_id = getattr(db, "economy_log_channels", {}).get(gid) or cfg.get("drop_channel_id")
-            target_ch = message.guild.get_channel(int(drop_channel_id)) if drop_channel_id else message.channel
-            
-            if target_ch:
-                view = CoinDropView(self, gid, drop_amt, cur_name, cur_emoji)
-                embed = discord.Embed(
-                    title="💰 Surprise Coin Drop Event!",
-                    description=(
-                        f"A supply crate loaded with **{drop_amt:,} {cur_emoji} {cur_name}** just dropped!\n"
-                        f"First one to click the button claims the loot!"
-                    ),
-                    color=discord.Color.gold()
-                )
-                embed.set_footer(text="Click fast before someone else claims it!")
-                try:
-                    await target_ch.send(embed=embed, view=view)
-                except Exception:
-                    pass
+            await self.spawn_coin_drop(message.guild)
 
     # ───────────────────── Slash Command Groups ─────────────────────
     eco_admin = app_commands.Group(
@@ -1022,15 +909,8 @@ class Economy(commands.Cog):
 
     # ───────────────────── Core Member Commands ─────────────────────
 
-    @app_commands.command(name="balance", description="Check your cash wallet, secure bank vault, rank, and active buffs.")
-    @app_commands.describe(user="The member whose balance you want to view.")
-    async def balance(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
-        if not await self._check_economy_active(interaction):
-            return
-        target = user or interaction.user
-        gid = str(interaction.guild.id)
+    def _build_balance_embed(self, gid: str, target: discord.Member) -> discord.Embed:
         uid = str(target.id)
-        
         cfg = self.get_config(gid)
         cur_name = cfg.get("currency_name", "Coins")
         cur_emoji = cfg.get("currency_emoji", "🪙")
@@ -1042,22 +922,24 @@ class Economy(commands.Cog):
         wallet = profile["wallet"]
         bank = profile["bank"]
         bank_max = profile["bank_max"]
+        # Invariant safety: vault max must always accommodate current bank balance
+        if bank > bank_max:
+            bank_max = bank
+            self.db.update_field(gid, uid, "bank_max", bank_max)
+            
         net_worth = wallet + bank
         
-        # Collect active buffs / status
+        # Collect active buffs / status (strictly item-based; no free passive mode)
         buffs = []
-        if profile.get("passive_mode"):
-            buffs.append("🛡️ **Passive Mode:** Active (Immune to `/rob`)")
-            
         has_vip = False
         for item in inventory:
             iid = item["item_id"]
             qty = item["quantity"]
             exp = item["expires_at"]
             if iid == "padlock":
-                buffs.append(f"🔒 **Padlock:** Equipped ({qty} held)")
+                buffs.append(f"🔒 **Padlock:** Equipped ({qty} held — blocks next `/rob`)")
             elif iid == "landmine":
-                buffs.append(f"💣 **Landmine:** Armed ({qty} held)")
+                buffs.append(f"💣 **Landmine:** Armed ({qty} held — 50% robber blast)")
             elif iid == "xp_booster":
                 if exp > time.time():
                     mins = max(1, int((exp - time.time()) / 60))
@@ -1089,10 +971,41 @@ class Economy(commands.Cog):
             value=f"**{net_worth:,} {cur_emoji} {cur_name}**\nServer Standing: **#{rank}**",
             inline=True
         )
-        embed.add_field(name="🛡️ Active Protection & Buffs", value=buffs_str, inline=False)
+        embed.add_field(name="🛡️ Active Protection & Defense Items", value=buffs_str, inline=False)
         embed.set_footer(text=f"Deposit wallet cash via /deposit • Safe bank vault capacity: {bank_max:,}")
-        
+        return embed
+
+    @app_commands.command(name="balance", description="Check your cash wallet, secure bank vault, rank, and active buffs.")
+    @app_commands.describe(user="The member whose balance you want to view.")
+    async def balance(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        if not await self._check_economy_active(interaction):
+            return
+        target = user or interaction.user
+        gid = str(interaction.guild.id)
+        embed = self._build_balance_embed(gid, target)
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="wallet", description="Quick shortcut to check your cash wallet and vault balance.")
+    @app_commands.describe(user="The member whose wallet you want to view.")
+    async def wallet(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        if not await self._check_economy_active(interaction):
+            return
+        target = user or interaction.user
+        gid = str(interaction.guild.id)
+        embed = self._build_balance_embed(gid, target)
+        await interaction.response.send_message(embed=embed)
+
+    @commands.command(name="wallet", aliases=["bal", "balance", "bank"])
+    async def prefix_balance(self, ctx: commands.Context, user: Optional[discord.Member] = None):
+        if not ctx.guild:
+            return
+        gid = str(ctx.guild.id)
+        cfg = self.get_config(gid)
+        if not cfg.get("enabled", True) or cfg.get("paused", False):
+            return await ctx.send("⏸️ The server economy is currently on hold.")
+        target = user or ctx.author
+        embed = self._build_balance_embed(gid, target)
+        await ctx.send(embed=embed)
 
     @app_commands.command(name="deposit", description="Transfer cash from your vulnerable wallet to your safe bank vault.")
     @app_commands.describe(amount="Amount to deposit, or type 'all' / 'max'.")
@@ -1370,16 +1283,6 @@ class Economy(commands.Cog):
                 )
                 
             # Pre-flight checks
-            if robber.get("passive_mode"):
-                return await interaction.response.send_message(
-                    "🛡️ You are in **Passive Mode**! You must disable it with `/passive` before you can commit crimes.",
-                    ephemeral=True
-                )
-            if victim.get("passive_mode"):
-                return await interaction.response.send_message(
-                    f"🛡️ **{clean_display_name(target.display_name)}** is in **Passive Mode** and is completely immune to robbery.",
-                    ephemeral=True
-                )
             if robber["wallet"] < min_robber:
                 return await interaction.response.send_message(
                     f"❌ You need at least **{min_robber:,} {cur_emoji} {cur_name}** in your cash wallet to stage a heist!",
@@ -1530,28 +1433,6 @@ class Economy(commands.Cog):
         embed.set_footer(text="Taxes protect the server economy against multi-account funnels.")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-    @app_commands.command(name="passive", description="Toggle Passive Mode (Cannot rob anyone and cannot be robbed).")
-    async def passive(self, interaction: discord.Interaction):
-        if not await self._check_economy_active(interaction):
-            return
-        gid = str(interaction.guild.id)
-        uid = str(interaction.user.id)
-        
-        profile = self.db.get_or_init_user(gid, uid)
-        cur_state = bool(profile.get("passive_mode", 0))
-        new_state = not cur_state
-        
-        self.db.update_field(gid, uid, "passive_mode", 1 if new_state else 0)
-        
-        state_str = "ENABLED (Immune to `/rob`)" if new_state else "DISABLED (PvP Active)"
-        desc = (
-            f"🛡️ **Passive Mode is now {state_str}!**\n\n"
-            f"• When ON: Other players cannot `/rob` you, and you cannot `/rob` anyone.\n"
-            f"• When OFF: You can stage robberies and participate in server PvP."
-        )
-        embed = discord.Embed(title="🛡️ Passive Mode Toggled", description=desc, color=discord.Color.teal() if new_state else discord.Color.orange())
-        await interaction.response.send_message(embed=embed)
-
     @app_commands.command(name="shop", description="Open the Friday Server Shop to browse and buy items.")
     async def shop(self, interaction: discord.Interaction):
         if not await self._check_economy_active(interaction):
@@ -1578,18 +1459,15 @@ class Economy(commands.Cog):
         await interaction.response.send_message(embed=embed, view=view)
 
     @app_commands.command(name="buy", description="Purchase an item or role from the server shop.")
-    @app_commands.describe(item="Item ID or role to purchase.", quantity="Quantity to purchase.")
+    @app_commands.describe(item="Item ID or role to purchase.", quantity="Quantity to purchase (defaults to 1; roles always default to 1).")
     @app_commands.autocomplete(item=shop_item_autocomplete)
-    async def buy(self, interaction: discord.Interaction, item: str, quantity: int = 1):
+    async def buy(self, interaction: discord.Interaction, item: str, quantity: Optional[int] = 1):
         if not await self._check_economy_active(interaction):
             return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         item_id = item.lower().strip()
         
-        if quantity <= 0:
-            return await interaction.response.send_message("❌ Quantity must be at least 1.", ephemeral=True)
-            
         cfg = self.get_config(gid)
         cur_name = cfg.get("currency_name", "Coins")
         cur_emoji = cfg.get("currency_emoji", "🪙")
@@ -1598,6 +1476,12 @@ class Economy(commands.Cog):
         item_cfg = shop_items.get(item_id, DEFAULT_SHOP_ITEMS.get(item_id))
         if not item_cfg or not item_cfg.get("enabled", True):
             return await interaction.response.send_message(f"❌ Item `{item_id}` is not available in the shop.", ephemeral=True)
+
+        is_role = (item_cfg.get("type") == "role" or "role_id" in item_cfg) and item_cfg.get("role_id")
+        if is_role:
+            quantity = 1
+        elif not quantity or quantity <= 0:
+            quantity = 1
             
         price = int(item_cfg.get("price", 0))
         total_cost = price * quantity
@@ -1620,7 +1504,7 @@ class Economy(commands.Cog):
                 )
 
             # 1. Special Case: Discord Role Purchase
-            if (item_cfg.get("type") == "role" or "role_id" in item_cfg) and item_cfg.get("role_id"):
+            if is_role:
                 role_id = item_cfg.get("role_id")
                 role = interaction.guild.get_role(int(role_id))
                 if not role:
@@ -1650,11 +1534,15 @@ class Economy(commands.Cog):
                 self.db.add_item(gid, uid, item_id, 1)
                 self.db.log_tx(gid, uid, "shop_buy_role", -total_cost, new_w, note=f"Role: @{role.name}")
                 
+                embed_color = role.color if role.color and role.color.value != 0 else discord.Color.purple()
                 embed = discord.Embed(
                     title="🎉 Role Purchase Successful!",
-                    color=discord.Color.green(),
+                    color=embed_color,
                     description=f"Congratulations {interaction.user.mention}!\nYou purchased the **@{role.name}** role for **{total_cost:,} {cur_emoji} {cur_name}**!\nThe role has been assigned to your profile."
                 )
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                embed.set_footer(text="Friday Economy Marketplace")
+                return await interaction.response.send_message(embed=embed)
                 embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
                 embed.set_footer(text="Friday Economy Marketplace")
                 return await interaction.response.send_message(embed=embed)
@@ -1822,10 +1710,18 @@ class Economy(commands.Cog):
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
+        cfg = self.get_config(gid)
+        allowed_channels = cfg.get("coinflip_channels", [])
+        if allowed_channels and str(interaction.channel_id) not in [str(c) for c in allowed_channels]:
+            ch_mentions = ", ".join(f"<#{c}>" for c in allowed_channels)
+            return await interaction.response.send_message(
+                f"❌ Coinflip can only be played in: {ch_mentions}!",
+                ephemeral=True
+            )
+            
         if bet <= 0:
             return await interaction.response.send_message("❌ Bet must be greater than zero.", ephemeral=True)
             
-        cfg = self.get_config(gid)
         cur_name = cfg.get("currency_name", "Coins")
         cur_emoji = cfg.get("currency_emoji", "🪙")
         win_chance = float(cfg.get("coinflip_win_chance", 0.48))
@@ -1876,92 +1772,97 @@ class Economy(commands.Cog):
             embed.set_footer(text=f"Wallet: {new_w:,} coins • Odds: 48% with 1.95x payout")
             await interaction.response.send_message(embed=embed)
 
-    @casino_group.command(name="blackjack", description="Interactive 21 card game with Hit, Stand, and Double Down.")
-    @app_commands.describe(bet="Amount of coins to bet.")
-    async def blackjack(self, interaction: discord.Interaction, bet: int):
-        if not await self._check_economy_active(interaction):
+    @commands.command(name="cf", aliases=["coinflip"])
+    async def cmd_coinflip(self, ctx: commands.Context, arg1: str = "", arg2: str = ""):
+        """Text command for quick coinflip: !cf <amount|all> <heads|tails|h|t>"""
+        if not ctx.guild:
             return
-        gid = str(interaction.guild.id)
-        uid = str(interaction.user.id)
-        
-        if bet <= 0:
-            return await interaction.response.send_message("❌ Bet must be greater than zero.", ephemeral=True)
-            
+        gid = str(ctx.guild.id)
+        uid = str(ctx.author.id)
         cfg = self.get_config(gid)
-        cur_name = cfg.get("currency_name", "Coins")
-        cur_emoji = cfg.get("currency_emoji", "🪙")
         
+        if not cfg.get("enabled", True):
+            return
+        if self.is_paused(gid):
+            return await ctx.reply("⏸️ **The server economy is currently paused on emergency hold.** Please try again later!")
+            
+        allowed_channels = cfg.get("coinflip_channels", [])
+        if allowed_channels and str(ctx.channel.id) not in [str(c) for c in allowed_channels]:
+            ch_mentions = ", ".join(f"<#{c}>" for c in allowed_channels)
+            return await ctx.reply(f"❌ Coinflip can only be played in: {ch_mentions}!")
+            
+        if not arg1 or not arg2:
+            return await ctx.reply("🪙 **Usage:** `!cf <amount|all> <h|t>` (Example: `!cf 100 h` or `!cf all tails`)")
+            
+        choice_val = None
+        bet_raw = None
+        for a in [arg1.lower().strip(), arg2.lower().strip()]:
+            if a in ("h", "head", "heads"):
+                choice_val = "heads"
+            elif a in ("t", "tail", "tails"):
+                choice_val = "tails"
+            else:
+                bet_raw = a
+                
+        if not choice_val or not bet_raw:
+            return await ctx.reply("❌ Invalid choice! Choose `heads` (`h`) or `tails` (`t`). **Usage:** `!cf <amount|all> <h|t>`")
+            
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
-            if profile["wallet"] < bet:
-                return await interaction.response.send_message(
-                    f"❌ You only have **{profile['wallet']:,} {cur_name}** in your cash wallet.",
-                    ephemeral=True
-                )
-                
-            # Lock bet immediately to prevent mid-game /deposit cheat
-            self.db.delta_wallet(gid, uid, -bet)
+            wallet = profile["wallet"]
             
-            # Prepare standard 52-card deck
-            ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
-            suits = ['♠', '♥', '♦', '♣']
-            deck = [f"{r}{s}" for r in ranks for s in suits]
-            random.shuffle(deck)
-            
-            player_hand = [deck.pop(), deck.pop()]
-            dealer_hand = [deck.pop(), deck.pop()]
-            
-            # Start game state in SQLite
-            started = self.db.start_game(gid, uid, "blackjack", bet, {
-                "deck": deck,
-                "player": player_hand,
-                "dealer": dealer_hand,
-                "bet": bet
-            })
-            if not started:
-                # Refund if another game was already in progress
-                self.db.delta_wallet(gid, uid, bet)
-                return await interaction.response.send_message(
-                    "⚠️ You already have an unfinished Blackjack game! Finish it before starting a new hand.",
-                    ephemeral=True
-                )
-                
-            # Check Natural Blackjack
-            def hand_val(h):
-                val = 0
-                aces = 0
-                for c in h:
-                    r = c[:-1]
-                    if r in ('J', 'Q', 'K'): val += 10
-                    elif r == 'A': aces += 1; val += 11
-                    else: val += int(r)
-                while val > 21 and aces > 0:
-                    val -= 10
-                    aces -= 1
-                return val
-
-            p_val = hand_val(player_hand)
-            d_val = hand_val(dealer_hand)
-            
-            if p_val == 21:
-                self.db.end_game(gid, uid)
-                if d_val == 21:
-                    # Push
-                    w = self.db.delta_wallet(gid, uid, bet)
-                    embed = discord.Embed(title="♠️ Natural Blackjack Push!", color=discord.Color.gold(), description="Both you and the dealer got Natural 21! Bet refunded.")
-                    return await interaction.response.send_message(embed=embed)
-                else:
-                    # Blackjack pays 3:2 -> payout = bet + 1.5 * bet = 2.5 * bet
-                    payout = int(bet * 2.5)
-                    profit = payout - bet
-                    w = self.db.delta_wallet(gid, uid, payout)
-                    self.db.log_tx(gid, uid, "blackjack_natural", profit, w)
-                    embed = discord.Embed(title="🎉 NATURAL BLACKJACK!", color=discord.Color.green(), description=f"You hit 21 right off the deal!\nWon **+{payout:,} {cur_emoji} {cur_name}** (3:2 Payout)!")
-                    return await interaction.response.send_message(embed=embed)
+            if bet_raw in ("all", "max"):
+                bet = wallet
+            else:
+                try:
+                    bet = int(bet_raw)
+                except ValueError:
+                    return await ctx.reply("❌ Bet must be a positive integer or `all`.")
                     
-            view = BlackjackView(self, gid, uid, bet, deck, player_hand, dealer_hand, cur_name, cur_emoji)
-            embed = view._build_embed("Your turn! Hit, Stand, or Double Down.")
-            await interaction.response.send_message(embed=embed, view=view)
+            if bet <= 0:
+                return await ctx.reply("❌ Bet must be greater than zero.")
+            if wallet < bet:
+                cur_name = cfg.get("currency_name", "Coins")
+                return await ctx.reply(f"❌ You only have **{wallet:,} {cur_name}** in your cash wallet!")
+                
+            cur_name = cfg.get("currency_name", "Coins")
+            cur_emoji = cfg.get("currency_emoji", "🪙")
+            win_chance = float(cfg.get("coinflip_win_chance", 0.48))
+            mult = float(cfg.get("coinflip_win_multiplier", 1.95))
+            
+            self.db.delta_wallet(gid, uid, -bet)
+            won = random.random() < win_chance
+            flipped = choice_val if won else ("tails" if choice_val == "heads" else "heads")
+            
+            if won:
+                payout = int(bet * mult)
+                profit = payout - bet
+                new_w = self.db.delta_wallet(gid, uid, payout)
+                self.db.log_tx(gid, uid, "coinflip_win", profit, new_w)
+                
+                embed = discord.Embed(
+                    title="🪙 Coinflip Result: WINNER!",
+                    color=discord.Color.green(),
+                    description=(
+                        f"The coin landed on **{flipped.upper()}**!\n\n"
+                        f"🎉 {ctx.author.mention} won **+{payout:,} {cur_emoji} {cur_name}**!\n"
+                        f"Net Profit: `+{profit:,} {cur_name}`"
+                    )
+                )
+            else:
+                new_w = self.db.get_user(gid, uid)["wallet"]
+                self.db.log_tx(gid, uid, "coinflip_loss", -bet, new_w)
+                
+                embed = discord.Embed(
+                    title="🪙 Coinflip Result: LOSS",
+                    color=discord.Color.red(),
+                    description=(
+                        f"The coin landed on **{flipped.upper()}**.\n\n"
+                        f"💔 {ctx.author.mention} lost their bet of **{bet:,} {cur_emoji} {cur_name}**."
+                    )
+                )
+            embed.set_footer(text=f"Wallet: {new_w:,} coins • Odds: 48% with 1.95x payout")
+            await ctx.reply(embed=embed)
 
     # ───────────────────── Admin Configuration Commands ─────────────────────
 
@@ -2011,6 +1912,21 @@ class Economy(commands.Cog):
         embed.add_field(name="Coin Drop Channel", value=ch_str, inline=True)
         embed.set_footer(text="All sliders and shop items can also be edited live via the Web Dashboard.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @eco_admin.command(name="drop", description="Trigger an instant clickable coin drop in a channel.")
+    @app_commands.describe(
+        amount="Amount of coins to drop (default from config).",
+        channel="Target channel where crate drops (defaults to configured drop channel or current)."
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def economy_drop(self, interaction: discord.Interaction, amount: Optional[int] = None, channel: Optional[discord.TextChannel] = None):
+        if not await ensure_admin_or_owner(interaction):
+            return
+        msg = await self.spawn_coin_drop(interaction.guild, drop_amt=amount, channel=channel)
+        if msg:
+            await interaction.response.send_message(f"✅ Spawned a surprise coin drop in {msg.channel.mention}!", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ Failed to spawn coin drop. Check channel send permissions or ensure economy is unpaused.", ephemeral=True)
 
     @eco_admin.command(name="give", description="Grant or remove coins from a member's profile.")
     @app_commands.describe(user="Target member.", amount="Coins to give (negative number to deduct).", destination="Where to deposit.")

@@ -193,6 +193,21 @@ class InviteTracker(commands.Cog):
                 db.invite_counts[gid_str][inviter_id_str]["fake"] += 1
             else:
                 db.invite_counts[gid_str][inviter_id_str]["regular"] += 1
+                
+                # Economy Invite Reward hook
+                try:
+                    eco_cfg = getattr(db, "economy_config", {}).get(gid_str, {})
+                    if eco_cfg.get("enabled", True) and not eco_cfg.get("paused", False):
+                        invite_reward = int(eco_cfg.get("invite_reward_coins", 0))
+                        if invite_reward > 0:
+                            from cogs.economy import get_economy_db
+                            eco_db = get_economy_db()
+                            eco_db.get_or_init_user(gid_str, inviter_id_str)
+                            new_w = eco_db.delta_wallet(gid_str, inviter_id_str, invite_reward)
+                            cur_name = eco_cfg.get("currency_name", "Coins")
+                            eco_db.log_tx(gid_str, inviter_id_str, "invite_reward", invite_reward, new_w, related_uid=mid_str, note=f"Invited {member.name} ({used_code})")
+                except Exception as ex:
+                    print(f"⚠️ [InviteTracker] Failed to award economy invite reward: {ex}")
 
         # Store member history
         db.invite_history[gid_str][mid_str] = {

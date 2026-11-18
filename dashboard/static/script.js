@@ -52514,6 +52514,7 @@ async function loadBackups() {
 
 
             renderBackups(currentBackups);
+            if (typeof loadAutoBackupConfig === 'function') loadAutoBackupConfig();
 
 
 
@@ -55082,12 +55083,61 @@ async function deleteBackup(backupId) {
 
 
 function setupBackupEvents() {
+    // Automated Backup Routine Handling
+    window.loadAutoBackupConfig = async function() {
+        if (!currentGuildId) return;
+        try {
+            const resp = await fetch(`/api/guild/${currentGuildId}/backups/config?t=${Date.now()}`);
+            const data = await resp.json();
+            if (data.success && data.config) {
+                const toggle = document.getElementById('autoBackupToggle');
+                const select = document.getElementById('autoBackupIntervalSelect');
+                const pill = document.getElementById('autoBackupStatusPill');
+                if (toggle) toggle.checked = data.config.auto_backup_enabled !== false;
+                if (select) select.value = data.config.interval_hours || 24;
+                if (pill) {
+                    const en = toggle ? toggle.checked : true;
+                    pill.textContent = en ? "Active" : "Disabled";
+                    pill.className = en ? "status-pill active" : "status-pill";
+                }
+            }
+        } catch (e) {
+            console.error("loadAutoBackupConfig error:", e);
+        }
+    };
 
-
-
-
-
-
+    const saveAutoBackupBtn = document.getElementById('saveAutoBackupConfigBtn');
+    if (saveAutoBackupBtn && !saveAutoBackupBtn.dataset.bound) {
+        saveAutoBackupBtn.dataset.bound = "true";
+        saveAutoBackupBtn.addEventListener('click', async () => {
+            if (!currentGuildId) return;
+            const toggle = document.getElementById('autoBackupToggle');
+            const select = document.getElementById('autoBackupIntervalSelect');
+            const pill = document.getElementById('autoBackupStatusPill');
+            const enabled = toggle ? toggle.checked : true;
+            const interval = select ? parseInt(select.value) || 24 : 24;
+            
+            try {
+                const resp = await fetch(`/api/guild/${currentGuildId}/backups/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ auto_backup_enabled: enabled, interval_hours: interval })
+                });
+                const res = await resp.json();
+                if (res.success) {
+                    if (typeof showToast === 'function') showToast("Auto-backup schedule updated! 💾", "success");
+                    if (pill) {
+                        pill.textContent = enabled ? "Active" : "Disabled";
+                        pill.className = enabled ? "status-pill active" : "status-pill";
+                    }
+                } else {
+                    if (typeof showToast === 'function') showToast("Failed to save schedule.", "error");
+                }
+            } catch (err) {
+                console.error("Save auto-backup error:", err);
+            }
+        });
+    }
 
     const refreshBtn = document.getElementById('backupRefreshBtn');
 
@@ -71593,6 +71643,14 @@ async function loadEconomySettings() {
                 });
             }
 
+            // Coinflip Channels Multi-select
+            const coinflipSelect = document.getElementById('eco_coinflip_channels_select');
+            if (coinflipSelect && Array.isArray(data.coinflip_channels)) {
+                Array.from(coinflipSelect.options).forEach(opt => {
+                    opt.selected = data.coinflip_channels.includes(opt.value);
+                });
+            }
+
             // Faucets & Rewards
             setVal('eco_starter_bank', cfg.starter_bank ?? 100);
             setVal('eco_bank_max_initial', cfg.bank_max_initial ?? 2500);
@@ -71622,6 +71680,7 @@ async function loadEconomySettings() {
             setVal('eco_crime_earn_min', cfg.crime_earn_min ?? 300);
             setVal('eco_crime_earn_max', cfg.crime_earn_max ?? 600);
             setVal('eco_crime_fail_fine', cfg.crime_fail_fine ?? 200);
+            setVal('eco_invite_reward_coins', cfg.invite_reward_coins ?? 100);
 
             // Robbery & Sinks
             setVal('eco_rob_cooldown', cfg.rob_cooldown_hours ?? 2);
@@ -71680,6 +71739,7 @@ async function populateEconomyChannels(gid) {
         
         const dropSelect = document.getElementById('eco_drop_channel');
         const multiSelect = document.getElementById('eco_channels_select');
+        const coinflipSelect = document.getElementById('eco_coinflip_channels_select');
         
         if (dropSelect) {
             const curVal = dropSelect.value;
@@ -71694,6 +71754,13 @@ async function populateEconomyChannels(gid) {
             multiSelect.innerHTML = '';
             channels.forEach(ch => {
                 multiSelect.innerHTML += `<option value="${ch.id}"># ${escapeHtml(ch.name)}</option>`;
+            });
+        }
+
+        if (coinflipSelect) {
+            coinflipSelect.innerHTML = '';
+            channels.forEach(ch => {
+                coinflipSelect.innerHTML += `<option value="${ch.id}"># ${escapeHtml(ch.name)}</option>`;
             });
         }
     } catch (e) {
@@ -72025,6 +72092,35 @@ function initEconomyModule() {
         });
     }
 
+    // Trigger Instant Coin Drop Button
+    const triggerDropBtn = document.getElementById('triggerEconomyDropBtn');
+    if (triggerDropBtn && !triggerDropBtn.dataset.bound) {
+        triggerDropBtn.dataset.bound = "true";
+        triggerDropBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const gid = currentGuildId;
+            if (!gid) return;
+            triggerDropBtn.disabled = true;
+            try {
+                const res = await fetch(`/api/guild/${gid}/economy/trigger-drop`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast(data.message || "Loot crate dropped! 💰", "success");
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to drop crate.", "error");
+                }
+            } catch (err) {
+                console.error("Trigger drop error:", err);
+            } finally {
+                triggerDropBtn.disabled = false;
+            }
+        });
+    }
+
     // Emergency Pause / Resume Button
     const pauseBtn = document.getElementById('toggleEconomyPauseBtn');
     if (pauseBtn && !pauseBtn.dataset.bound) {
@@ -72201,9 +72297,13 @@ function initEconomyModule() {
             const multiCh = document.getElementById('eco_channels_select');
             const allowedChs = multiCh ? Array.from(multiCh.selectedOptions).map(o => o.value) : [];
 
+            const coinflipCh = document.getElementById('eco_coinflip_channels_select');
+            const coinflipChs = coinflipCh ? Array.from(coinflipCh.selectedOptions).map(o => o.value) : [];
+
             const payload = {
                 drop_channel_id: dropChVal,
                 allowed_channels: allowedChs,
+                coinflip_channels: coinflipChs,
                 config: {
                     enabled: (document.getElementById('eco_enabled') || {}).checked !== false,
                     paused: currentEconomyConfig.paused === true,
@@ -72238,6 +72338,7 @@ function initEconomyModule() {
                     crime_earn_min: getNum('eco_crime_earn_min', 300),
                     crime_earn_max: getNum('eco_crime_earn_max', 600),
                     crime_fail_fine: getNum('eco_crime_fail_fine', 200),
+                    invite_reward_coins: getNum('eco_invite_reward_coins', 100),
                     
                     rob_cooldown_hours: getNum('eco_rob_cooldown', 2),
                     rob_min_robber_wallet: getNum('eco_rob_min_robber', 500),

@@ -635,7 +635,7 @@ class LudoRollButton(discord.ui.Button):
         btn_style = discord.ButtonStyle.danger if color_name == "red" else (
             discord.ButtonStyle.success if color_name == "green" else discord.ButtonStyle.primary
         )
-        super().__init__(style=btn_style, label=f"Roll Dice ({theme['name']}: {player_name[:12]})", emoji="🎲", row=0)
+        super().__init__(style=btn_style, label=f"Roll Dice ({theme['name']}: {player_name[:10]}) [15s]", emoji="🎲", row=0)
 
     async def callback(self, interaction: discord.Interaction):
         view: LudoView = self.view
@@ -703,11 +703,89 @@ class LudoRematchButton(discord.ui.Button):
 
 class LudoView(discord.ui.View):
     def __init__(self, game: LudoGame):
-        super().__init__(timeout=90)
+        super().__init__(timeout=180)
         self.game = game
         self.message: Optional[discord.Message] = None
         self.movable_tokens: List[int] = []
+        self.turn_timer_task: Optional[asyncio.Task] = None
+        self.turn_deadline: float = 0
         self.setup_buttons_for_roll()
+
+    def _cancel_turn_timer(self):
+        if self.turn_timer_task and not self.turn_timer_task.done():
+            self.turn_timer_task.cancel()
+        self.turn_timer_task = None
+
+    def _start_turn_timer(self, stage: str, legal_moves: Optional[List[int]] = None, roll: Optional[int] = None):
+        self._cancel_turn_timer()
+        if self.game.game_over:
+            return
+        cur_col = self.game.current_turn
+        cur_p = self.game.players.get(cur_col)
+        if not cur_p or cur_p.get("is_ai"):
+            return
+        self.turn_deadline = time.time() + 15
+        self.turn_timer_task = asyncio.create_task(self._turn_timeout_worker(cur_col, stage, legal_moves, roll))
+
+    async def _turn_timeout_worker(self, color: str, stage: str, legal_moves: Optional[List[int]], roll: Optional[int]):
+        try:
+            await asyncio.sleep(15)
+            if self.game.game_over or self.game.current_turn != color:
+                return
+
+            cur_p = self.game.players.get(color)
+            if not cur_p:
+                return
+
+            if stage == "roll":
+                theme = COLOR_THEMES[color]
+                self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** went AFK (15s elapsed)! Turn passed.")
+                self.game.advance_turn()
+                self.setup_buttons_for_roll()
+                await self.update_view()
+                await self.check_and_run_ai_turn()
+
+            elif stage == "pick":
+                theme = COLOR_THEMES[color]
+                if not legal_moves:
+                    self.game.advance_turn()
+                    self.setup_buttons_for_roll()
+                    await self.update_view()
+                    await self.check_and_run_ai_turn()
+                    return
+
+                # Auto-pick best legal move
+                chosen_t = self.game.choose_ai_move(color, roll or 6, legal_moves)
+                ev = self.game.apply_move(color, chosen_t, roll or 6)
+                extra_str = ""
+                if ev["brought_out"]: extra_str = " (brought token onto track! 🚀)"
+                elif ev["reached_home"]: extra_str = " (token reached Home! 🌟)"
+                elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
+
+                self.game.log_history.append(
+                    f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out choosing token (15s)! "
+                    f"Auto-moved **Token {chosen_t+1}** by **[ {roll or 6} ]**{extra_str}"
+                )
+
+                if self.game.game_over:
+                    await self.settle_economy()
+                    self.setup_buttons_game_over()
+                    host_id = list(self.game.players.values())[0]["member"].id
+                    ACTIVE_LUDO_GAMES.pop(host_id, None)
+                    return await self.update_view()
+
+                if (roll == 6) or ev["captured"]:
+                    self.setup_buttons_for_roll()
+                    await self.update_view()
+                else:
+                    self.game.advance_turn()
+                    self.setup_buttons_for_roll()
+                    await self.update_view()
+                    await self.check_and_run_ai_turn()
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"[Ludo] Error in turn timeout worker: {e}")
 
     def setup_buttons_for_roll(self):
         self.clear_items()
@@ -716,6 +794,8 @@ class LudoView(discord.ui.View):
         cur_p = self.game.players[cur_col]
         self.add_item(LudoRollButton(cur_col, cur_p["name"]))
         self.add_item(LudoForfeitButton())
+        if not cur_p.get("is_ai") and not self.game.game_over:
+            self._start_turn_timer(stage="roll")
 
     def setup_buttons_for_token_pick(self, legal_moves: List[int], roll: int):
         self.clear_items()
@@ -749,8 +829,11 @@ class LudoView(discord.ui.View):
 
             self.add_item(LudoTokenSelectButton(idx, label=label[:80], color_name=current_col))
         self.add_item(LudoForfeitButton())
+        if not pdata.get("is_ai") and not g.game_over:
+            self._start_turn_timer(stage="pick", legal_moves=legal_moves, roll=roll)
 
     def setup_buttons_game_over(self):
+        self._cancel_turn_timer()
         self.clear_items()
         self.movable_tokens = []
         self.add_item(LudoRematchButton())
@@ -856,9 +939,9 @@ class LudoView(discord.ui.View):
         elif cur_p["is_ai"]:
             turn_box = f"🤖 **CURRENT CHANCE:** {theme['emoji']} **Friday (AI)** is calculating move..."
         elif self.movable_tokens:
-            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Pick a {theme['name']} token button below to move!*"
+            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Pick a {theme['name']} token button below to move! (⏰ 15s Timer)*"
         else:
-            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Click your {theme['name']} 'Roll Dice' button below!*"
+            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Click your {theme['name']} 'Roll Dice' button below! (⏰ 15s Timer)*"
 
         # Recent actions
         log_str = "\n".join(g.log_history[-3:])
@@ -876,9 +959,9 @@ class LudoView(discord.ui.View):
             timestamp=datetime.now(pytz.utc)
         )
         embed.set_image(url="attachment://ludo_board.png")
-        footer_text = "Friday Ludo Royale • 90s Turn Timer"
+        footer_text = "Friday Ludo Royale • ⏰ 15s AFK Turn Timer"
         if g.bet_pot > 0:
-            footer_text = f"Friday Ludo Royale • 🏆 Prize Pot: {g.bet_pot:,} Coins • 90s Turn Timer"
+            footer_text = f"Friday Ludo Royale • 🏆 Prize Pot: {g.bet_pot:,} Coins • ⏰ 15s AFK Turn Timer"
         embed.set_footer(text=footer_text)
         return embed
 
@@ -919,6 +1002,7 @@ class LudoView(discord.ui.View):
 
             # Always defer immediately so Discord interaction never expires and view doesn't get stuck!
             await interaction.response.defer()
+            self._cancel_turn_timer()
             if interaction.message:
                 self.message = interaction.message
 
@@ -973,6 +1057,7 @@ class LudoView(discord.ui.View):
                 return await interaction.response.send_message("❌ This is not your turn!", ephemeral=True)
 
             await interaction.response.defer()
+            self._cancel_turn_timer()
             roll = self.game.last_rolls.get(cur_col) or 6
             theme = COLOR_THEMES[cur_col]
 

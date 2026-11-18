@@ -1,7 +1,8 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import datetime
+import time
 import asyncio
 import traceback
 from database import db
@@ -665,6 +666,40 @@ class Backup(commands.Cog, name="Backup"):
 
     def __init__(self, bot):
         self.bot = bot
+        self.auto_backup_loop.start()
+
+    def cog_unload(self):
+        self.auto_backup_loop.cancel()
+
+    @tasks.loop(minutes=15)
+    async def auto_backup_loop(self):
+        """Checks every 15 minutes whether 24 hours (or configured interval) has passed since last auto-backup."""
+        await self.bot.wait_until_ready()
+        now_ts = time.time()
+        for guild in self.bot.guilds:
+            try:
+                gid_str = str(guild.id)
+                if not hasattr(db, "backup_config") or not isinstance(db.backup_config, dict):
+                    db.backup_config = {}
+                cfg = db.backup_config.get(gid_str, {})
+                enabled = cfg.get("auto_backup_enabled", True)
+                if not enabled:
+                    continue
+                interval_hours = float(cfg.get("interval_hours", 24))
+                last_time = float(cfg.get("last_backup_time", 0))
+
+                if now_ts - last_time >= (interval_hours * 3600):
+                    if gid_str not in db.backup_config:
+                        db.backup_config[gid_str] = {}
+                    db.backup_config[gid_str]["last_backup_time"] = now_ts
+                    db.save_data()
+
+                    creator = "Friday Auto-Scheduler (24h Routine)"
+                    snapshot_name = f"Auto-Backup {datetime.datetime.now().strftime('%b %d, %Y %I:%M %p')}"
+                    capture_server_backup(guild, name=snapshot_name, creator_name=creator)
+                    print(f"💾 [Auto-Backup] Captured automatic snapshot for '{guild.name}' ({guild.id})")
+            except Exception as e:
+                print(f"⚠️ [Auto-Backup] Error running backup for {guild.id}: {e}")
 
     backup_group = app_commands.Group(
         name="backup",

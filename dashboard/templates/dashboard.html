@@ -2924,6 +2924,11 @@
     Sync Slash Commands
 </button>
 
+<button class="btn btn-secondary" id="triggerEconomyDropBtn" type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600; border: 1px solid #f59e0b; color: #fbbf24; cursor: pointer;" title="Drop a surprise clickable coin loot crate in the drop channel immediately">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v12M8 10h8"></path></svg>
+    Drop Coins Now
+</button>
+
 <button class="btn" id="toggleEconomyPauseBtn" type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600; border-radius: 6px; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; color: #ef4444; cursor: pointer; transition: all 0.2s ease;">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
     <span id="ecoPauseBtnText">Pause Economy</span>
@@ -3028,6 +3033,13 @@
     <select class="sec-select" id="eco_channels_select" multiple style="height: 80px;">
     </select>
     <small style="color: var(--text-muted); font-size: 11px;">Hold Ctrl / Cmd to select multiple channels. Leave blank to allow passive coin drops in ALL channels.</small>
+</div>
+
+<div class="form-group" style="margin-top: 16px;">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Coinflip Allowed Channels (Optional Restriction)</label>
+    <select class="sec-select" id="eco_coinflip_channels_select" multiple style="height: 80px;">
+    </select>
+    <small style="color: var(--text-muted); font-size: 11px;">Hold Ctrl / Cmd to select channels where !cf and /casino coinflip can be played. Leave blank to allow in all channels.</small>
 </div>
 
 </div>
@@ -3149,6 +3161,12 @@
         <input class="text-input" id="eco_crime_fail_fine" placeholder="Fine" type="number" value="200"/>
     </div>
     <small style="color: var(--text-muted); font-size: 11px;">Reward on win vs Fine on bust</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Invite Reward (Per Real Member)</label>
+    <input class="text-input" id="eco_invite_reward_coins" type="number" value="100"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Coins rewarded to inviter when a non-alt member joins</small>
 </div>
 
 </div>
@@ -11372,6 +11390,38 @@ Click the button below to submit your confidential application.
     </div>
 
 
+
+    <!-- Automated Scheduled Server Backup Card -->
+    <div class="card" style="margin-bottom: 24px; padding: 20px; border-left: 4px solid #10b981; background: rgba(16, 185, 129, 0.04);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+            <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 18px;">⏰</span>
+                    <h3 style="font-size: 15px; font-weight: 700; color: #ffffff; margin: 0;">Automated Scheduled Server Backup</h3>
+                    <span class="status-pill active" id="autoBackupStatusPill" style="background: rgba(16, 185, 129, 0.2); color: #10b981; font-size: 11px;">Active</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                    Friday automatically captures fresh snapshots of all channels, roles, categories, and permissions on your schedule so your server is protected against nukes even if you forget.
+                </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label class="form-label" style="font-size: 12px; margin: 0; color: var(--text-secondary);">Frequency:</label>
+                    <select class="sec-select" id="autoBackupIntervalSelect" style="width: 145px; padding: 6px 10px; font-size: 12px;">
+                        <option value="12">Every 12 Hours</option>
+                        <option value="24" selected>Every 24 Hours</option>
+                        <option value="48">Every 48 Hours</option>
+                        <option value="168">Weekly (7 Days)</option>
+                    </select>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <label class="form-label" style="font-size: 12px; margin: 0; color: var(--text-secondary);">Auto-Backup:</label>
+                    <label class="switch"><input id="autoBackupToggle" type="checkbox" checked/><span class="slider"></span></label>
+                </div>
+                <button class="btn btn-action-primary" id="saveAutoBackupConfigBtn" type="button" style="padding: 7px 16px; font-size: 12px;">Save Schedule</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Backups List Card -->
 

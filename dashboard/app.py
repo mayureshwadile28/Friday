@@ -3555,6 +3555,28 @@ def delete_guild_backup(gid):
         return jsonify({"success": True})
     return jsonify({"success": False, "error": f"Backup '{backup_id}' not found."})
 
+@app.route('/api/guild/<gid>/backups/config', methods=['GET', 'POST'])
+def guild_backup_config(gid):
+    gid_str = str(gid)
+    if not hasattr(db, "backup_config") or not isinstance(db.backup_config, dict):
+        db.backup_config = {}
+    if gid_str not in db.backup_config:
+        db.backup_config[gid_str] = {"auto_backup_enabled": True, "interval_hours": 24}
+        
+    if flask_request.method == 'POST':
+        payload = flask_request.get_json(silent=True) or {}
+        if "auto_backup_enabled" in payload:
+            db.backup_config[gid_str]["auto_backup_enabled"] = bool(payload["auto_backup_enabled"])
+        if "interval_hours" in payload:
+            try:
+                db.backup_config[gid_str]["interval_hours"] = max(1, int(payload["interval_hours"]))
+            except Exception:
+                pass
+        db.save_data()
+        return jsonify({"success": True, "config": db.backup_config[gid_str]})
+        
+    return jsonify({"success": True, "config": db.backup_config[gid_str]})
+
 # ───────────────────── API: Live LLM Usage & Rate Limit Telemetry ─────────────────────
 
 @app.route('/api/llm/telemetry', methods=['GET'])
@@ -5442,6 +5464,11 @@ def get_economy_db():
     db_path = os.path.join(PARENT_DIR, "data", "economy.db")
     conn = sqlite3.connect(db_path, timeout=10)
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("UPDATE economy_users SET bank_max = MAX(bank_max, bank) WHERE bank > bank_max")
+        conn.commit()
+    except Exception:
+        pass
     return conn
 
 @app.route('/api/guild/<gid>/economy/config', methods=['GET'])
@@ -5451,11 +5478,13 @@ def get_economy_config(gid):
     cfg = db.economy_config.get(gid_str, {})
     drop_ch = db.economy_log_channels.get(gid_str) or cfg.get("drop_channel_id")
     allowed_ch = db.economy_channels.get(gid_str, [])
+    coinflip_ch = cfg.get("coinflip_channels", [])
     return jsonify({
         "success": True,
         "config": cfg,
         "drop_channel_id": str(drop_ch) if drop_ch else None,
-        "allowed_channels": [str(c) for c in allowed_ch]
+        "allowed_channels": [str(c) for c in allowed_ch],
+        "coinflip_channels": [str(c) for c in coinflip_ch]
     })
 
 @app.route('/api/guild/<gid>/economy/config', methods=['POST'])
@@ -5467,7 +5496,7 @@ def save_economy_config(gid):
     if "config" in payload and isinstance(payload["config"], dict):
         new_cfg = payload["config"]
     else:
-        new_cfg = {k: v for k, v in payload.items() if k not in ("drop_channel_id", "allowed_channels")}
+        new_cfg = {k: v for k, v in payload.items() if k not in ("drop_channel_id", "allowed_channels", "coinflip_channels")}
         
     if gid_str not in db.economy_config:
         db.economy_config[gid_str] = {}
@@ -5483,6 +5512,11 @@ def save_economy_config(gid):
         chs = payload["allowed_channels"]
         if isinstance(chs, list):
             db.economy_channels[gid_str] = [int(c) for c in chs if str(c).isdigit()]
+
+    if "coinflip_channels" in payload:
+        cf_chs = payload["coinflip_channels"]
+        if isinstance(cf_chs, list):
+            db.economy_config[gid_str]["coinflip_channels"] = [int(c) for c in cf_chs if str(c).isdigit()]
             
     db.save_data()
     return jsonify({"success": True, "message": "Economy settings saved successfully."})
@@ -5626,7 +5660,12 @@ def economy_admin_give():
             """, (gid, uid, time.time()))
             
         if dest == "bank":
-            conn.execute("UPDATE economy_users SET bank = MAX(0, bank + ?) WHERE guild_id=? AND user_id=?", (amount, gid, uid))
+            conn.execute("""
+                UPDATE economy_users 
+                SET bank = MAX(0, bank + ?),
+                    bank_max = MAX(bank_max, MAX(0, bank + ?))
+                WHERE guild_id=? AND user_id=?
+            """, (amount, amount, gid, uid))
             cur_bal = conn.execute("SELECT bank FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()["bank"]
         else:
             conn.execute("UPDATE economy_users SET wallet = MAX(0, wallet + ?) WHERE guild_id=? AND user_id=?", (amount, gid, uid))
@@ -5681,6 +5720,42 @@ def toggle_economy_pause(gid):
         "message": f"Economy {'paused (emergency hold active)' if new_p else 'resumed (active)'}."
     })
 
+@app.route('/api/guild/<gid>/economy/trigger-drop', methods=['POST'])
+@app.route('/api/economy/trigger-drop/<gid>', methods=['POST'])
+def trigger_economy_drop(gid):
+    gid_str = str(gid)
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Bot is not currently connected."}), 500
+    try:
+        guild = bot_instance.get_guild(int(gid_str))
+    except Exception:
+        guild = None
+    if not guild:
+        return jsonify({"success": False, "error": f"Server {gid_str} not found."}), 404
+        
+    cog = bot_instance.get_cog("Economy")
+    if not cog:
+        return jsonify({"success": False, "error": "Economy system is not loaded."}), 500
+        
+    payload = flask_request.get_json(silent=True) or {}
+    amount = payload.get("amount")
+    if amount is not None:
+        try:
+            amount = int(amount)
+        except Exception:
+            amount = None
+            
+    import asyncio
+    future = asyncio.run_coroutine_threadsafe(cog.spawn_coin_drop(guild, drop_amt=amount), bot_instance.loop)
+    try:
+        msg = future.result(timeout=10)
+        if msg:
+            return jsonify({"success": True, "message": f"Successfully dropped coin crate in #{msg.channel.name}!"})
+        else:
+            return jsonify({"success": False, "error": "Could not spawn drop. Check channel permissions or ensure economy is unpaused."}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
 @app.route('/api/guild/<gid>/economy/sync-commands', methods=['POST'])
 @app.route('/api/economy/sync-commands/<gid>', methods=['POST'])
 def sync_economy_commands_endpoint(gid):
@@ -5706,19 +5781,21 @@ def sync_economy_commands_endpoint(gid):
             except Exception as ce:
                 print(f"Failed to load cogs.economy during dashboard sync: {ce}")
                 
-        bot_instance.tree.copy_global_to(guild=guild)
-        synced = await bot_instance.tree.sync(guild=guild)
+        # Clear duplicate guild overrides and sync global clean list
+        bot_instance.tree.clear_commands(guild=guild)
+        await bot_instance.tree.sync(guild=guild)
+        synced = await bot_instance.tree.sync()
         return [c.name for c in synced]
         
     try:
         future = asyncio.run_coroutine_threadsafe(do_sync(), loop)
         cmd_names = future.result(timeout=25)
-        eco_count = sum(1 for c in cmd_names if c in ("balance", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "blackjack", "coinflip"))
+        eco_count = sum(1 for c in cmd_names if c in ("balance", "wallet", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "coinflip"))
         return jsonify({
             "success": True, 
             "total_commands": len(cmd_names),
             "economy_commands": eco_count,
-            "message": f"Successfully synced {len(cmd_names)} slash commands directly to '{guild.name}' ({eco_count} economy commands online)!"
+            "message": f"Successfully synced {len(cmd_names)} slash commands cleanly ({eco_count} economy commands online, duplicates removed)!"
         })
     except Exception as e:
         import traceback
