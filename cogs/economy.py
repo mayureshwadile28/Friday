@@ -470,6 +470,16 @@ class EconomyDB:
             conn.execute("DELETE FROM economy_active_games WHERE guild_id=? AND user_id=?", (gid, uid))
 
 
+_SHARED_ECONOMY_DB: Optional[EconomyDB] = None
+
+def get_economy_db() -> EconomyDB:
+    """Returns a singleton/shared instance of EconomyDB."""
+    global _SHARED_ECONOMY_DB
+    if _SHARED_ECONOMY_DB is None:
+        _SHARED_ECONOMY_DB = EconomyDB(DB_FILE)
+    return _SHARED_ECONOMY_DB
+
+
 # Interactive UI Views
 
 class CoinDropView(discord.ui.View):
@@ -859,7 +869,7 @@ class Economy(commands.Cog):
     """
     def __init__(self, bot):
         self.bot = bot
-        self.db = EconomyDB()
+        self.db = get_economy_db()
         self._user_locks: Dict[str, asyncio.Lock] = {}
         self._msg_cooldowns: Dict[str, float] = {}
         self.vc_coin_tick.start()

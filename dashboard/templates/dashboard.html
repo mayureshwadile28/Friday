@@ -3314,7 +3314,39 @@
 
 </div>
 
-<!-- Card 5: Live Wealth Leaderboard & Transactions -->
+<!-- Card 5: Mini-Game AI Bounties & PvP Betting -->
+<div class="card" style="margin-bottom: 24px;">
+
+<div class="composer-section-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px;">
+    <span class="composer-section-title" style="font-size: 16px; font-weight: 700; color: #ffffff;">5. Mini-Game Rewards &amp; PvP Betting (Tic-Tac-Toe &amp; Ludo)</span>
+    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Set rewards for defeating Friday AI and configure maximum allowed player-vs-player coin wagers.</div>
+</div>
+
+<div class="grid-3" style="gap: 16px;">
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Tic-Tac-Toe Hard Mode Bounty</label>
+    <input class="text-input" id="eco_tictactoe_hard_reward" min="0" type="number" value="500"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Coins awarded when a member beats Friday on Hard Mode (Minimax AI).</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Ludo Friday AI Defeat Bounty</label>
+    <input class="text-input" id="eco_ludo_friday_reward" min="0" type="number" value="500"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Coins awarded when a member wins a 4-token Ludo match against Friday AI.</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Maximum PvP Wager Limit</label>
+    <input class="text-input" id="eco_minigame_max_bet" min="100" type="number" value="50000"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Maximum bet allowed in /tictactoe and /ludo high-stakes matches.</small>
+</div>
+
+</div>
+
+</div>
+
+<!-- Card 6: Live Wealth Leaderboard & Transactions -->
 <div class="grid-2" style="margin-bottom: 24px; gap: 24px;">
 
 <!-- Leaderboard -->

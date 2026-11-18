@@ -285,7 +285,10 @@ class TicTacToeGameView(discord.ui.View):
         player_o: Union[discord.Member, discord.ClientUser],
         is_ai: bool = False,
         difficulty: str = "Normal",
-        bot: Optional[commands.Bot] = None
+        bot: Optional[commands.Bot] = None,
+        guild_id: Optional[int] = None,
+        bet_pot: int = 0,
+        bet_per_player: int = 0
     ):
         super().__init__(timeout=90)
         self.player_x = player_x
@@ -293,6 +296,9 @@ class TicTacToeGameView(discord.ui.View):
         self.is_ai = is_ai
         self.difficulty = difficulty
         self.bot = bot
+        self.guild_id = guild_id
+        self.bet_pot = bet_pot
+        self.bet_per_player = bet_per_player
 
         self.board: List[Optional[str]] = [None] * 9
         self.current_turn = "X"
@@ -355,6 +361,18 @@ class TicTacToeGameView(discord.ui.View):
             f"• ❌ **{p1_name}:** `{x_stats['wins']}W · {x_stats['losses']}L · {x_stats['ties']}T`\n"
             f"{p2_line}"
         )
+
+        # Economy Wager & Hard Mode Bounty Indicators
+        gid_str = str(self.guild_id or (self.player_x.guild.id if hasattr(self.player_x, "guild") and self.player_x.guild else ""))
+        cfg = getattr(db, "economy_config", {}).get(gid_str, {})
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        if self.bet_pot > 0:
+            scoreboard_str += f"\n💰 **Wager Pot in Escrow:** **{self.bet_pot:,} {cur_emoji} {cur_name}** ({self.bet_per_player:,} from each)"
+        elif self.is_ai and self.difficulty == "Hard":
+            bounty = int(cfg.get("tictactoe_hard_reward", 500))
+            if bounty > 0:
+                scoreboard_str += f"\n🏆 **Hard Mode Bounty:** Beat Friday AI to win **+{bounty:,} {cur_emoji} {cur_name}**!"
 
         cur_user = self.player_x if self.current_turn == "X" else self.player_o
         cur_mention = cur_user.mention if hasattr(cur_user, "mention") else "**Friday**"
@@ -506,6 +524,50 @@ class TicTacToeGameView(discord.ui.View):
             notice = f"🤝 **Stalemate!** Both players tied after {elapsed}s of intense play."
             status = "neutral"
 
+        # Economy Settlement (Hard Mode Bounty & High-Stakes Pot)
+        gid = str(self.guild_id or (self.player_x.guild.id if hasattr(self.player_x, "guild") and self.player_x.guild else ""))
+        if gid:
+            cfg = getattr(db, "economy_config", {}).get(gid, {})
+            eco_enabled = cfg.get("enabled", True) and not cfg.get("paused", False)
+            cur_name = cfg.get("currency_name", "Coins")
+            cur_emoji = cfg.get("currency_emoji", "🪙")
+
+            if eco_enabled:
+                try:
+                    from cogs.economy import get_economy_db
+                    eco_db = get_economy_db()
+
+                    # 1. Hard Mode AI Bounty
+                    if self.is_ai and self.difficulty == "Hard":
+                        human_user = self.player_x if getattr(self.player_o, "id", 0) == getattr(self.bot.user, "id", 0) else self.player_o
+                        human_sym = "X" if human_user.id == self.player_x.id else "O"
+                        if winner == human_sym:
+                            reward = int(cfg.get("tictactoe_hard_reward", 500))
+                            if reward > 0:
+                                eco_db.get_or_init_user(gid, str(human_user.id))
+                                new_w = eco_db.delta_wallet(gid, str(human_user.id), reward)
+                                eco_db.log_tx(gid, str(human_user.id), "tictactoe_hard_win", reward, new_w, note="Defeated Friday AI on Hard Mode")
+                                notice += f"\n💰 **Hard Mode Bounty:** Awarded **+{reward:,} {cur_emoji} {cur_name}** into cash wallet!"
+
+                    # 2. PvP Bet Pot Payout / Refund
+                    elif self.bet_pot > 0:
+                        if winner in ("X", "O"):
+                            win_user = self.player_x if winner == "X" else self.player_o
+                            lose_user = self.player_o if winner == "X" else self.player_x
+                            new_w = eco_db.delta_wallet(gid, str(win_user.id), self.bet_pot)
+                            eco_db.log_tx(gid, str(win_user.id), "tictactoe_pot_win", self.bet_pot, new_w, related_uid=str(lose_user.id), note="Won Tic-Tac-Toe Wager Pot")
+                            notice += f"\n💰 **High-Stakes Payout:** {win_user.mention} claimed the entire **+{self.bet_pot:,} {cur_emoji} {cur_name}** prize pot!"
+                            self.bet_pot = 0
+                        elif winner == "Tie":
+                            eco_db.delta_wallet(gid, str(self.player_x.id), self.bet_per_player)
+                            eco_db.delta_wallet(gid, str(self.player_o.id), self.bet_per_player)
+                            eco_db.log_tx(gid, str(self.player_x.id), "tictactoe_refund", self.bet_per_player, 0, note="Tic-Tac-Toe Tie Refund")
+                            eco_db.log_tx(gid, str(self.player_o.id), "tictactoe_refund", self.bet_per_player, 0, note="Tic-Tac-Toe Tie Refund")
+                            notice += f"\n🤝 **Wager Refunded:** **{self.bet_per_player:,} {cur_emoji} {cur_name}** returned to both players."
+                            self.bet_pot = 0
+                except Exception as ex:
+                    print(f"[TicTacToe] Economy settlement error: {ex}")
+
         update_game_stats(self.player_x, self.player_o, winner, self.is_ai)
 
         embed = self.build_status_embed(status=status, notice=notice)
@@ -556,6 +618,22 @@ class TicTacToeGameView(discord.ui.View):
 
             winner_mention = "Friday" if self.is_ai else winner_user.mention
             notice = f"🏳️ **Forfeit:** {forfeiter.mention} surrendered the match.\n🏆 **Winner by Forfeit:** {winner_mention} ({winner_sym})!"
+
+            if self.bet_pot > 0 and not self.is_ai:
+                gid = str(self.guild_id or (self.player_x.guild.id if hasattr(self.player_x, "guild") and self.player_x.guild else ""))
+                if gid:
+                    try:
+                        from cogs.economy import get_economy_db
+                        eco_db = get_economy_db()
+                        cfg = getattr(db, "economy_config", {}).get(gid, {})
+                        cur_name = cfg.get("currency_name", "Coins")
+                        cur_emoji = cfg.get("currency_emoji", "🪙")
+                        new_w = eco_db.delta_wallet(gid, str(winner_user.id), self.bet_pot)
+                        eco_db.log_tx(gid, str(winner_user.id), "tictactoe_pot_win", self.bet_pot, new_w, related_uid=str(forfeiter.id), note="Won Tic-Tac-Toe via Forfeit")
+                        notice += f"\n💰 **Prize Claimed:** {winner_user.mention} collected the **{self.bet_pot:,} {cur_emoji} {cur_name}** pot!"
+                        self.bet_pot = 0
+                    except Exception as ex:
+                        print(f"[TicTacToe] Forfeit economy error: {ex}")
 
             update_game_stats(self.player_x, self.player_o, winner_db, self.is_ai)
 
@@ -631,6 +709,26 @@ class TicTacToeGameView(discord.ui.View):
             cur_name = getattr(cur_user, "display_name", "Friday")
             notice = f"⏰ **Game Timed Out:** Match concluded due to 90s inactivity on {cur_name}'s turn."
 
+            if self.bet_pot > 0:
+                gid = str(self.guild_id or (self.player_x.guild.id if hasattr(self.player_x, "guild") and self.player_x.guild else ""))
+                if gid:
+                    try:
+                        from cogs.economy import get_economy_db
+                        eco_db = get_economy_db()
+                        cfg = getattr(db, "economy_config", {}).get(gid, {})
+                        cur_name = cfg.get("currency_name", "Coins")
+                        cur_emoji = cfg.get("currency_emoji", "🪙")
+                        eco_db.delta_wallet(gid, str(self.player_x.id), self.bet_per_player)
+                        if hasattr(self.player_o, "id"):
+                            eco_db.delta_wallet(gid, str(self.player_o.id), self.bet_per_player)
+                        eco_db.log_tx(gid, str(self.player_x.id), "tictactoe_refund", self.bet_per_player, 0, note="Tic-Tac-Toe Inactivity Refund")
+                        if hasattr(self.player_o, "id"):
+                            eco_db.log_tx(gid, str(self.player_o.id), "tictactoe_refund", self.bet_per_player, 0, note="Tic-Tac-Toe Inactivity Refund")
+                        notice += f"\n🤝 **Wager Refunded:** Inactive match refunded **{self.bet_per_player:,} {cur_emoji} {cur_name}** to players."
+                        self.bet_pot = 0
+                    except Exception as ex:
+                        print(f"[TicTacToe] Timeout refund error: {ex}")
+
             if self.message:
                 try:
                     embed = self.build_status_embed(
@@ -661,13 +759,17 @@ class ChallengeInviteView(discord.ui.View):
         challenger: Union[discord.Member, discord.User],
         target: Union[discord.Member, discord.User],
         bot: commands.Bot,
-        first_turn: str = "challenger"
+        first_turn: str = "challenger",
+        bet: int = 0,
+        guild_id: Optional[int] = None
     ):
         super().__init__(timeout=60)
         self.challenger = challenger
         self.target = target
         self.bot = bot
         self.first_turn = first_turn
+        self.bet = bet
+        self.guild_id = guild_id
         self.message: Optional[discord.Message] = None
 
         set_player_active(self.challenger.id)
@@ -685,6 +787,45 @@ class ChallengeInviteView(discord.ui.View):
                     f"❌ Only {self.target.mention} can accept this invitation.",
                     ephemeral=True
                 )
+
+            # If wager is set, verify cash balances and lock escrow
+            bet_pot = 0
+            bet_per_player = 0
+            cur_name = "Coins"
+            cur_emoji = "🪙"
+            if self.bet > 0:
+                gid = str(self.guild_id or (self.challenger.guild.id if hasattr(self.challenger, "guild") else ""))
+                if gid:
+                    from cogs.economy import get_economy_db
+                    eco_db = get_economy_db()
+                    cfg = getattr(db, "economy_config", {}).get(gid, {})
+                    cur_name = cfg.get("currency_name", "Coins")
+                    cur_emoji = cfg.get("currency_emoji", "🪙")
+
+                    p1_prof = eco_db.get_or_init_user(gid, str(self.challenger.id))
+                    p2_prof = eco_db.get_or_init_user(gid, str(self.target.id))
+
+                    if p1_prof["wallet"] < self.bet:
+                        self.cleanup()
+                        return await interaction.response.send_message(
+                            f"❌ {self.challenger.mention} no longer has enough {cur_name} in their wallet ({p1_prof['wallet']:,} / {self.bet:,})!",
+                            ephemeral=True
+                        )
+                    if p2_prof["wallet"] < self.bet:
+                        self.cleanup()
+                        return await interaction.response.send_message(
+                            f"❌ You do not have enough {cur_name} in your cash wallet to accept this wager ({p2_prof['wallet']:,} / {self.bet:,})!",
+                            ephemeral=True
+                        )
+
+                    # Deduct from both into escrow
+                    eco_db.delta_wallet(gid, str(self.challenger.id), -self.bet)
+                    eco_db.delta_wallet(gid, str(self.target.id), -self.bet)
+                    eco_db.log_tx(gid, str(self.challenger.id), "tictactoe_escrow", -self.bet, p1_prof["wallet"] - self.bet, related_uid=str(self.target.id), note="Tic-Tac-Toe Wager Escrow")
+                    eco_db.log_tx(gid, str(self.target.id), "tictactoe_escrow", -self.bet, p2_prof["wallet"] - self.bet, related_uid=str(self.challenger.id), note="Tic-Tac-Toe Wager Escrow")
+
+                    bet_pot = self.bet * 2
+                    bet_per_player = self.bet
 
             # Decide who is Player 1 (X, goes first)
             toss_notice = ""
@@ -704,10 +845,16 @@ class ChallengeInviteView(discord.ui.View):
                 player_x=p1,
                 player_o=p2,
                 is_ai=False,
-                bot=self.bot or interaction.client
+                bot=self.bot or interaction.client,
+                guild_id=self.guild_id,
+                bet_pot=bet_pot,
+                bet_per_player=bet_per_player
             )
             notice_lines = [f"⚔️ **Challenge Accepted!** {self.target.mention} joined the battlefield."]
+            if bet_pot > 0:
+                notice_lines.append(f"💰 **High-Stakes Wager Active:** **{bet_pot:,} {cur_emoji} {cur_name}** prize pot locked in escrow!")
             if toss_notice:
+                notice_lines.append(toss_notice)
                 notice_lines.append(toss_notice)
 
             embed = game_view.build_status_embed(
@@ -783,7 +930,8 @@ class TicTacToe(commands.Cog, name="Games"):
     @app_commands.describe(
         opponent="Member to challenge (leave blank to play against Friday AI)",
         difficulty="Friday AI difficulty mode (Easy, Normal, Hard)",
-        first_turn="Who plays first as 'X' (You, Opponent, or Random coin toss)"
+        first_turn="Who plays first as 'X' (You, Opponent, or Random coin toss)",
+        bet="Optional coin wager (each player contributes this amount to the winner pot)"
     )
     @app_commands.choices(difficulty=[
         app_commands.Choice(name="Easy (Casual & Fun)", value="Easy"),
@@ -800,10 +948,11 @@ class TicTacToe(commands.Cog, name="Games"):
         interaction: discord.Interaction,
         opponent: Optional[Union[discord.Member, discord.User]] = None,
         difficulty: Optional[str] = "Normal",
-        first_turn: Optional[str] = "challenger"
+        first_turn: Optional[str] = "challenger",
+        bet: Optional[int] = None
     ):
         try:
-            await self._start_game_flow(interaction, opponent, difficulty or "Normal", first_turn or "challenger")
+            await self._start_game_flow(interaction, opponent, difficulty or "Normal", first_turn or "challenger", bet)
         except Exception as e:
             print(f"[TicTacToe] Slash command error: {e}")
             if not interaction.response.is_done():
@@ -814,7 +963,8 @@ class TicTacToe(commands.Cog, name="Games"):
         interaction: discord.Interaction,
         opponent: Optional[Union[discord.Member, discord.User]],
         difficulty: str,
-        first_turn: str = "challenger"
+        first_turn: str = "challenger",
+        bet: Optional[int] = None
     ):
         author = interaction.user
 
@@ -825,8 +975,22 @@ class TicTacToe(commands.Cog, name="Games"):
                 ephemeral=True
             )
 
+        gid = str(interaction.guild_id or (interaction.guild.id if interaction.guild else ""))
+        cfg = getattr(db, "economy_config", {}).get(gid, {})
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+
         # ─── CASE A: PLAY WITH FRIDAY (PvE) ───
         if opponent is None or opponent.id == self.bot.user.id:
+            if bet and bet > 0:
+                hard_bounty = int(cfg.get("tictactoe_hard_reward", 500))
+                return await interaction.response.send_message(
+                    f"💡 You cannot wager coins against Friday AI directly.\n"
+                    f"Beat Friday on **Hard Mode** to claim the **+{hard_bounty:,} {cur_emoji} {cur_name}** bounty!\n"
+                    f"To place wagers with friends, invite another member (e.g. `/tictactoe play opponent:@Member bet:500`).",
+                    ephemeral=True
+                )
+
             toss_notice = ""
             if first_turn == "random":
                 ai_first = random.choice([True, False])
@@ -846,7 +1010,8 @@ class TicTacToe(commands.Cog, name="Games"):
                 player_o=p2,
                 is_ai=True,
                 difficulty=difficulty,
-                bot=self.bot
+                bot=self.bot,
+                guild_id=interaction.guild_id
             )
 
             # If Friday is Player 1, Friday makes its opening move immediately!
@@ -859,6 +1024,10 @@ class TicTacToe(commands.Cog, name="Games"):
                 game_view.current_turn = "O"
 
             notice_lines = [f"🎮 **Match Initialized!** Playing against **Friday** on **{difficulty}** mode."]
+            if difficulty == "Hard":
+                bounty = int(cfg.get("tictactoe_hard_reward", 500))
+                if bounty > 0:
+                    notice_lines.append(f"🏆 **Hard Mode Bounty:** Beat Friday AI to win **+{bounty:,} {cur_emoji} {cur_name}**!")
             if toss_notice:
                 notice_lines.append(toss_notice)
 
@@ -894,8 +1063,41 @@ class TicTacToe(commands.Cog, name="Games"):
                 ephemeral=True
             )
 
+        # Wager pre-flight validation
+        if bet and bet > 0:
+            if cfg.get("paused", False):
+                return await interaction.response.send_message("⚠️ The server economy is currently paused by administrators.", ephemeral=True)
+            if bet < 10:
+                return await interaction.response.send_message("❌ Minimum wager is 10 coins.", ephemeral=True)
+            max_b = int(cfg.get("minigame_max_bet", 50000))
+            if max_b > 0 and bet > max_b:
+                return await interaction.response.send_message(f"❌ Maximum wager allowed is {max_b:,} {cur_name}.", ephemeral=True)
+
+            from cogs.economy import get_economy_db
+            eco_db = get_economy_db()
+            p1_prof = eco_db.get_or_init_user(gid, str(author.id))
+            p2_prof = eco_db.get_or_init_user(gid, str(opponent.id))
+
+            if p1_prof["wallet"] < bet:
+                return await interaction.response.send_message(
+                    f"❌ You do not have enough {cur_name} in your cash wallet for this wager!\nYour Wallet: **{p1_prof['wallet']:,} {cur_emoji} {cur_name}** · Required: **{bet:,} {cur_name}**.",
+                    ephemeral=True
+                )
+            if p2_prof["wallet"] < bet:
+                return await interaction.response.send_message(
+                    f"❌ {opponent.display_name} does not have enough {cur_name} in their cash wallet for this wager!\nTheir Wallet: **{p2_prof['wallet']:,} {cur_emoji} {cur_name}** · Required: **{bet:,} {cur_name}**.",
+                    ephemeral=True
+                )
+
         # ─── CASE C: SEND PVP INVITATION ───
-        invite_view = ChallengeInviteView(challenger=author, target=opponent, bot=self.bot, first_turn=first_turn)
+        invite_view = ChallengeInviteView(
+            challenger=author,
+            target=opponent,
+            bot=self.bot,
+            first_turn=first_turn,
+            bet=bet or 0,
+            guild_id=interaction.guild_id
+        )
 
         turn_pref_str = f"{author.display_name} (❌)"
         if first_turn == "opponent":
@@ -903,19 +1105,29 @@ class TicTacToe(commands.Cog, name="Games"):
         elif first_turn == "random":
             turn_pref_str = "🎲 Coin toss will decide"
 
+        wager_text = ""
+        if bet and bet > 0:
+            wager_text = (
+                f"\n\n💰 **HIGH-STAKES WAGER PROPOSAL:**\n"
+                f"• **Wager:** **{bet:,} {cur_emoji} {cur_name}** from each player\n"
+                f"• **Winner Prize Pot:** **{bet * 2:,} {cur_emoji} {cur_name}** *(Winner takes all!)*\n"
+                f"• Cash wallets will be escrowed upon accepting.\n"
+            )
+
         embed = discord.Embed(
-            title="🎮  Tic-Tac-Toe • Match Challenge",
+            title="🎮  Tic-Tac-Toe • High-Stakes Duel" if (bet and bet > 0) else "🎮  Tic-Tac-Toe • Match Challenge",
             description=(
                 f"**{author.mention}** has invited **{opponent.mention}** to an epic game of **X and O**!\n\n"
                 f"• **Challenger:** {author.display_name} (❌)\n"
                 f"• **Opponent:** {opponent.display_name} (⭕)\n"
-                f"• **First Move:** {turn_pref_str}\n\n"
+                f"• **First Move:** {turn_pref_str}"
+                f"{wager_text}\n"
                 f"👉 **{opponent.mention}**, will you accept the duel?"
             ),
-            color=0x5865F2,
+            color=0xF1C40F if (bet and bet > 0) else 0x5865F2,
             timestamp=datetime.now(pytz.utc)
         )
-        embed.set_footer(text="Friday Games • Awaiting response (60s)")
+        embed.set_footer(text=f"Friday Games • {cur_name} Protected • 60s to accept" if (bet and bet > 0) else "Friday Games • Awaiting response (60s)")
 
         await interaction.response.send_message(content=f"{opponent.mention}", embed=embed, view=invite_view)
         invite_view.message = await interaction.original_response()

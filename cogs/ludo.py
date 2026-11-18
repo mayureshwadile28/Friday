@@ -473,10 +473,16 @@ def render_board_image(
 # ─────────────────────────────────────────────────────────────
 
 class LudoGame:
-    def __init__(self, players_config: List[Dict[str, Any]], tokens_per_player: int = 2):
+    def __init__(self, players_config: List[Dict[str, Any]], tokens_per_player: int = 4):
         self.tokens_per_player = tokens_per_player
         self.players: Dict[str, Dict[str, Any]] = {}
         self.turn_order: List[str] = []
+        self.guild_id: Optional[int] = None
+        self.bet_pot: int = 0
+        self.bet_per_player: int = 0
+        self.bet_participants: List[int] = []
+        self.bounty_awarded: bool = False
+        self.pot_awarded: bool = False
 
         for p in players_config:
             col = p["color"]
@@ -749,6 +755,69 @@ class LudoView(discord.ui.View):
         self.movable_tokens = []
         self.add_item(LudoRematchButton())
 
+    async def settle_economy(self) -> Optional[str]:
+        """Settles Friday AI bounty and PvP wager prize pots atomically."""
+        if not self.game.game_over or not self.game.winner:
+            return None
+
+        winner_col = self.game.winner
+        winner_data = self.game.players.get(winner_col)
+        if not winner_data:
+            return None
+
+        gid = str(self.game.guild_id or "")
+        if not gid:
+            return None
+
+        notes = []
+        try:
+            from core.database import db
+            cfg = getattr(db, "economy_config", {}).get(gid, {})
+            eco_enabled = cfg.get("enabled", True) and not cfg.get("paused", False)
+            cur_name = cfg.get("currency_name", "Coins")
+            cur_emoji = cfg.get("currency_emoji", "🪙")
+
+            if not eco_enabled:
+                return None
+
+            from cogs.economy import get_economy_db
+            eco_db = get_economy_db()
+
+            # 1. Friday AI Bounty Reward
+            is_winner_human = not winner_data.get("is_ai", False) and winner_data.get("member") is not None
+            has_friday_ai = any(p.get("is_ai", False) for p in self.game.players.values())
+
+            if is_winner_human and has_friday_ai and not self.game.bounty_awarded:
+                reward = int(cfg.get("ludo_friday_reward", 500))
+                if reward > 0:
+                    self.game.bounty_awarded = True
+                    winner_id = str(winner_data["member"].id)
+                    eco_db.get_or_init_user(gid, winner_id)
+                    new_w = eco_db.delta_wallet(gid, winner_id, reward)
+                    eco_db.log_tx(gid, winner_id, "ludo_friday_win", reward, new_w, note="Defeated Friday AI in Ludo Royale")
+                    notes.append(f"🤖 **Friday AI Bounty:** Awarded **+{reward:,} {cur_emoji} {cur_name}** to {winner_data['member'].mention}!")
+
+            # 2. PvP Wager Prize Pot
+            if self.game.bet_pot > 0 and not self.game.pot_awarded:
+                self.game.pot_awarded = True
+                if is_winner_human:
+                    winner_id = str(winner_data["member"].id)
+                    new_w = eco_db.delta_wallet(gid, winner_id, self.game.bet_pot)
+                    eco_db.log_tx(gid, winner_id, "ludo_pot_win", self.game.bet_pot, new_w, note=f"Won Ludo Royale wager pot ({len(self.game.players)} players)")
+                    notes.append(f"💰 **Prize Pot:** {winner_data['member'].mention} collected the entire **+{self.game.bet_pot:,} {cur_emoji} {cur_name}** pot!")
+                else:
+                    notes.append(f"🤖 Friday AI won! The **{self.game.bet_pot:,} {cur_emoji} {cur_name}** pot was captured by Friday Treasury.")
+                self.game.bet_pot = 0
+
+        except Exception as ex:
+            print(f"[Ludo] Economy settlement error: {ex}")
+
+        if notes:
+            msg = "\n".join(notes)
+            self.game.log_history.append(msg)
+            return msg
+        return None
+
     def build_embed(self, status_text: Optional[str] = None) -> discord.Embed:
         g = self.game
         cur_col = g.current_turn
@@ -756,6 +825,8 @@ class LudoView(discord.ui.View):
         theme = COLOR_THEMES[cur_col]
 
         title = f"🎲  Ludo Royale • {len(g.turn_order)} Players"
+        if g.bet_pot > 0 and not g.game_over:
+            title = f"🎲  Ludo Royale • 💰 Pot: {g.bet_pot:,} Coins"
         color = discord.Color.from_rgb(*theme["rgb"])
 
         if g.game_over:
@@ -805,7 +876,10 @@ class LudoView(discord.ui.View):
             timestamp=datetime.now(pytz.utc)
         )
         embed.set_image(url="attachment://ludo_board.png")
-        embed.set_footer(text="Friday Ludo Royale • 90s Turn Timer")
+        footer_text = "Friday Ludo Royale • 90s Turn Timer"
+        if g.bet_pot > 0:
+            footer_text = f"Friday Ludo Royale • 🏆 Prize Pot: {g.bet_pot:,} Coins • 90s Turn Timer"
+        embed.set_footer(text=footer_text)
         return embed
 
     async def update_view(self, interaction: Optional[discord.Interaction] = None):
@@ -911,6 +985,7 @@ class LudoView(discord.ui.View):
             self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** moved **Token {token_idx+1}** by **[ {roll} ]** steps{extra_str}")
 
             if self.game.game_over:
+                await self.settle_economy()
                 self.setup_buttons_game_over()
                 host_id = list(self.game.players.values())[0]["member"].id
                 ACTIVE_LUDO_GAMES.pop(host_id, None)
@@ -975,6 +1050,7 @@ class LudoView(discord.ui.View):
             self.game.log_history.append(f"🤖 **{cur_p['name']}** rolled a **[ {roll} ]** & moved **Token {chosen_t+1}**{extra_str}")
 
             if self.game.game_over:
+                await self.settle_economy()
                 self.setup_buttons_game_over()
                 host_id = list(self.game.players.values())[0]["member"].id
                 ACTIVE_LUDO_GAMES.pop(host_id, None)
@@ -1034,6 +1110,7 @@ class LudoView(discord.ui.View):
             host_id = list(self.game.players.values())[0]["member"].id
             ACTIVE_LUDO_GAMES.pop(host_id, None)
 
+            await self.settle_economy()
             self.setup_buttons_game_over()
             self.game.log_history.append(f"🏳️ **{author.display_name}** surrendered the match.")
             await self.update_view()
@@ -1058,6 +1135,11 @@ class LudoView(discord.ui.View):
                 })
 
             new_game = LudoGame(new_configs, tokens_per_player=self.game.tokens_per_player)
+            new_game.guild_id = self.game.guild_id
+            new_game.bet_pot = 0
+            new_game.bet_per_player = 0
+            new_game.bet_participants = []
+            new_game.log_history = ["🎲 **Rematch started!** (Friendly mode — start a new game to wager)"]
             host_id = list(self.game.players.values())[0]["member"].id
             ACTIVE_LUDO_GAMES[host_id] = new_game
 
@@ -1074,6 +1156,18 @@ class LudoView(discord.ui.View):
             self.game.game_over = True
             self.clear_items()
             self.game.log_history.append("⏰ **Match Abandoned:** Game timed out after inactivity.")
+            if self.game.bet_pot > 0 and not self.game.pot_awarded and self.game.guild_id:
+                try:
+                    from cogs.economy import get_economy_db
+                    eco_db = get_economy_db()
+                    gid = str(self.game.guild_id)
+                    for uid in self.game.bet_participants:
+                        eco_db.delta_wallet(gid, str(uid), self.game.bet_per_player)
+                        eco_db.log_tx(gid, str(uid), "ludo_refund", self.game.bet_per_player, 0, note="Ludo Inactivity Timeout Refund")
+                    self.game.log_history.append(f"💰 **Wagers Refunded:** **{self.game.bet_per_player:,} Coins** returned to all participants.")
+                    self.game.bet_pot = 0
+                except Exception as ex:
+                    print(f"[Ludo] Timeout refund error: {ex}")
             await self.update_view()
 
 
@@ -1087,13 +1181,17 @@ class LudoLobbyView(discord.ui.View):
         bot: commands.Bot,
         host: discord.Member,
         invited_members: List[discord.Member],
-        tokens_per_player: int = 2,
-        add_friday: bool = False
+        tokens_per_player: int = 4,
+        add_friday: bool = False,
+        bet: int = 0,
+        guild_id: Optional[int] = None
     ):
         super().__init__(timeout=100)
         self.bot = bot
         self.host = host
         self.tokens_per_player = tokens_per_player
+        self.bet = max(0, int(bet or 0))
+        self.guild_id = guild_id
         self.message: Optional[discord.Message] = None
         self.start_timestamp = int(time.time()) + 100
 
@@ -1169,9 +1267,23 @@ class LudoLobbyView(discord.ui.View):
 
         slots_str = "\n".join(lines)
         ready_cnt = self.get_active_count()
+        ready_humans = sum(1 for s in self.slots.values() if s is not None and s.get("ready") and not s.get("is_ai"))
+
+        wager_str = ""
+        if self.bet > 0 and self.guild_id:
+            from core.database import db
+            cfg = getattr(db, "economy_config", {}).get(str(self.guild_id), {})
+            cur_name = cfg.get("currency_name", "Coins")
+            cur_emoji = cfg.get("currency_emoji", "🪙")
+            pot = self.bet * ready_humans
+            wager_str = (
+                f"💰 **Wager Stakes:** `{self.bet:,}` {cur_emoji} {cur_name} / human player\n"
+                f"🏆 **Current Prize Pot:** `{pot:,}` {cur_emoji} {cur_name} ({ready_humans} player{'s' if ready_humans != 1 else ''})\n"
+            )
 
         desc = (
-            f"👑 **Host:** {self.host.mention} · Mode: **{self.tokens_per_player} Tokens**\n"
+            f"👑 **Host:** {self.host.mention} · Mode: **Classic 4 Tokens**\n"
+            f"{wager_str}"
             f"⏳ **Starts automatically:** <t:{self.start_timestamp}:R> (100s timer)\n\n"
             f"👥 **Player Rosters ({ready_cnt}/4 Ready):**\n"
             f"{slots_str}\n\n"
@@ -1189,6 +1301,25 @@ class LudoLobbyView(discord.ui.View):
 
     async def handle_join(self, interaction: discord.Interaction):
         user = interaction.user
+
+        # Check wallet balance if wager is set
+        if self.bet > 0 and self.guild_id:
+            try:
+                from cogs.economy import get_economy_db
+                eco_db = get_economy_db()
+                gid = str(self.guild_id)
+                prof = eco_db.get_or_init_user(gid, str(user.id))
+                wallet_bal = prof.get("wallet", 0)
+                if wallet_bal < self.bet:
+                    from core.database import db
+                    cfg = getattr(db, "economy_config", {}).get(gid, {})
+                    cur_name = cfg.get("currency_name", "Coins")
+                    return await interaction.response.send_message(
+                        f"❌ **Insufficient Wallet Balance!** This match requires a **{self.bet:,} {cur_name}** entry wager, but your wallet only holds **{wallet_bal:,} {cur_name}**.\nUse `/withdraw` to move coins from your bank vault to your wallet.",
+                        ephemeral=True
+                    )
+            except Exception as ex:
+                print(f"[Ludo] Join balance check error: {ex}")
 
         # Check if already joined
         for col, slot in self.slots.items():
@@ -1272,7 +1403,7 @@ class LudoLobbyView(discord.ui.View):
         )
 
     async def launch_game(self):
-        """Builds game configurations from active ready slots and launches match."""
+        """Builds game configurations from active ready slots, escrows wagers, and launches match."""
         ACTIVE_LUDO_LOBBIES.pop(self.host.id, None)
         self.stop()
 
@@ -1296,7 +1427,49 @@ class LudoLobbyView(discord.ui.View):
                 "is_ai": True
             })
 
+        # Escrow wagers if bet > 0
+        bet_pot = 0
+        bet_participants = []
+        if self.bet > 0 and self.guild_id:
+            try:
+                from cogs.economy import get_economy_db
+                eco_db = get_economy_db()
+                gid = str(self.guild_id)
+                from core.database import db
+                cfg = getattr(db, "economy_config", {}).get(gid, {})
+                cur_name = cfg.get("currency_name", "Coins")
+
+                failed_players = []
+                for p in active_configs:
+                    if not p["is_ai"] and p["member"]:
+                        prof = eco_db.get_or_init_user(gid, str(p["member"].id))
+                        if prof.get("wallet", 0) < self.bet:
+                            failed_players.append(p["member"].display_name)
+
+                if failed_players:
+                    if self.message:
+                        await self.message.edit(
+                            content=f"❌ **Match Cancelled:** The following players do not have enough wallet coins for the **{self.bet:,} {cur_name}** wager: {', '.join(failed_players)}",
+                            embed=None,
+                            view=None
+                        )
+                    return
+
+                for p in active_configs:
+                    if not p["is_ai"] and p["member"]:
+                        uid = str(p["member"].id)
+                        new_w = eco_db.delta_wallet(gid, uid, -self.bet)
+                        eco_db.log_tx(gid, uid, "ludo_escrow", -self.bet, new_w, note=f"Ludo Royale Wager Escrow ({self.bet} coins)")
+                        bet_pot += self.bet
+                        bet_participants.append(p["member"].id)
+            except Exception as ex:
+                print(f"[Ludo] Launch escrow error: {ex}")
+
         game = LudoGame(active_configs, tokens_per_player=self.tokens_per_player)
+        game.guild_id = self.guild_id
+        game.bet_pot = bet_pot
+        game.bet_per_player = self.bet
+        game.bet_participants = bet_participants
         ACTIVE_LUDO_GAMES[self.host.id] = game
 
         game_view = LudoView(game)
@@ -1338,22 +1511,18 @@ class Ludo(commands.Cog, name="Ludo"):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="ludo", description="Play a 2 to 4-player game of Ludo Royale with friends or Friday AI!")
+    @app_commands.command(name="ludo", description="Play authentic 4-token Ludo Royale with friends or Friday AI (supports coin wagers)!")
     @app_commands.describe(
-        mode="Game length: Quick (2 tokens) or Classic (4 tokens)",
+        bet="Optional coin wager per human player (winner takes all)",
         player2="Mention 2nd player to invite",
         player3="Mention 3rd player to invite",
         player4="Mention 4th player to invite",
         add_friday="Include Friday AI in the match"
     )
-    @app_commands.choices(mode=[
-        app_commands.Choice(name="⚡ Quick Mode (2 Tokens — Fast & Fun)", value="2"),
-        app_commands.Choice(name="🏆 Classic Mode (4 Tokens — Full Experience)", value="4")
-    ])
     async def ludo_slash(
         self,
         interaction: discord.Interaction,
-        mode: Optional[str] = "2",
+        bet: Optional[int] = None,
         player2: Optional[discord.Member] = None,
         player3: Optional[discord.Member] = None,
         player4: Optional[discord.Member] = None,
@@ -1361,6 +1530,26 @@ class Ludo(commands.Cog, name="Ludo"):
     ):
         try:
             author = interaction.user
+            gid = str(interaction.guild_id or "")
+
+            # Check bet validity if supplied
+            if bet is not None:
+                if bet <= 0:
+                    return await interaction.response.send_message("❌ Wager amount must be greater than 0!", ephemeral=True)
+                if gid:
+                    from core.database import db
+                    cfg = getattr(db, "economy_config", {}).get(gid, {})
+                    if cfg.get("paused", False):
+                        return await interaction.response.send_message("⏸️ The server economy is currently paused. Please wait until staff resumes it!", ephemeral=True)
+                    max_bet = int(cfg.get("minigame_max_bet", 50000))
+                    cur_name = cfg.get("currency_name", "Coins")
+                    if bet > max_bet:
+                        return await interaction.response.send_message(f"❌ Maximum wager limit is **{max_bet:,} {cur_name}**!", ephemeral=True)
+                    from cogs.economy import get_economy_db
+                    eco_db = get_economy_db()
+                    prof = eco_db.get_or_init_user(gid, str(author.id))
+                    if prof.get("wallet", 0) < bet:
+                        return await interaction.response.send_message(f"❌ You do not have enough coins in your wallet for a **{bet:,} {cur_name}** wager! Your wallet: **{prof.get('wallet', 0):,} {cur_name}**.", ephemeral=True)
 
             # Check if active game exists
             active_game = ACTIVE_LUDO_GAMES.get(author.id)
@@ -1379,7 +1568,6 @@ class Ludo(commands.Cog, name="Ludo"):
 
             await interaction.response.defer()
 
-            num_tokens = int(mode or "2")
             invited_list = [p for p in (player2, player3, player4) if p is not None]
 
             # If user mentioned the bot itself as one of the players, set add_friday = True
@@ -1388,13 +1576,14 @@ class Ludo(commands.Cog, name="Ludo"):
                     add_friday = True
             invited_list = [p for p in invited_list if not p.bot]
 
-            # If no opponents mentioned and add_friday is False: still create lobby so friends can join or Friday can be added!
             lobby = LudoLobbyView(
                 bot=self.bot,
                 host=author,
                 invited_members=invited_list,
-                tokens_per_player=num_tokens,
-                add_friday=bool(add_friday)
+                tokens_per_player=4,
+                add_friday=bool(add_friday),
+                bet=bet or 0,
+                guild_id=interaction.guild_id
             )
             ACTIVE_LUDO_LOBBIES[author.id] = lobby
 
@@ -1404,7 +1593,8 @@ class Ludo(commands.Cog, name="Ludo"):
             content = None
             if invited_list:
                 mentions_str = " ".join(p.mention for p in invited_list)
-                content = f"👋 {mentions_str} You have been invited to a game of **Ludo Royale** by {author.mention}!"
+                wager_note = f" with a **{bet:,} Coins** wager" if bet else ""
+                content = f"👋 {mentions_str} You have been invited to a game of **Ludo Royale**{wager_note} by {author.mention}!"
 
             msg = await interaction.followup.send(content=content, embed=embed, view=lobby)
             lobby.message = msg

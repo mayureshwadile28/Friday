@@ -71635,6 +71635,11 @@ async function loadEconomySettings() {
             setVal('eco_landmine_mult', cfg.landmine_fine_multiplier ?? 2);
             setVal('eco_pay_tax_pct', (cfg.pay_tax_pct !== undefined ? Math.round(cfg.pay_tax_pct * 100) : 8));
 
+            // Mini-Games & PvP Betting
+            setVal('eco_tictactoe_hard_reward', cfg.tictactoe_hard_reward ?? 500);
+            setVal('eco_ludo_friday_reward', cfg.ludo_friday_reward ?? 500);
+            setVal('eco_minigame_max_bet', cfg.minigame_max_bet ?? 50000);
+
             // Shop items
             currentShopItems = cfg.shop_items || {
                 padlock: { name: "Padlock", emoji: "🔒", price: 750, enabled: true, desc: "Blocks next /rob attempt, then shatters." },
@@ -72244,6 +72249,10 @@ function initEconomyModule() {
                     padlock_fine: getNum('eco_padlock_fine', 250),
                     landmine_fine_multiplier: getNum('eco_landmine_mult', 2),
                     pay_tax_pct: getNum('eco_pay_tax_pct', 8) / 100,
+
+                    tictactoe_hard_reward: getNum('eco_tictactoe_hard_reward', 500),
+                    ludo_friday_reward: getNum('eco_ludo_friday_reward', 500),
+                    minigame_max_bet: getNum('eco_minigame_max_bet', 50000),
                     
                     shop_items: updatedShop
                 }
