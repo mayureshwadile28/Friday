@@ -574,6 +574,7 @@ class ShopSelect(discord.ui.Select):
         options = [
             discord.SelectOption(label="Defense & Utility", value="cat_defense", emoji="🛡️", description="Padlocks, Landmines, and Protection items"),
             discord.SelectOption(label="Progression & Perks", value="cat_upgrades", emoji="🏦", description="Bank Expansions, VIP Badges, Custom Colors"),
+            discord.SelectOption(label="Custom Roles & Items", value="cat_custom", emoji="🎁", description="Server roles and custom catalog items"),
             discord.SelectOption(label="Casino & Mini-Games", value="cat_casino", emoji="🎲", description="Guide on /coinflip, /blackjack, and risk games")
         ]
         super().__init__(placeholder="Select a shop category to browse...", min_values=1, max_values=1, options=options)
@@ -615,6 +616,28 @@ class ShopSelect(discord.ui.Select):
                     value=f"**Price:** `{p:,} {cur_e} {cur}`\n{it.get('desc', '')}",
                     inline=False
                 )
+        elif cat == "cat_custom":
+            embed.title = "🎁 Shop — Server Roles & Custom Store Items"
+            embed.description = f"Exclusive custom roles and specialty server items.\nBuy with `/buy <item_id>`\n\n"
+            custom_count = 0
+            for k, it in items.items():
+                if k in ("padlock", "landmine", "xp_booster", "bank_expansion", "custom_role_color", "vip_badge"):
+                    continue
+                if not it.get("enabled", True):
+                    continue
+                p = it.get("price", 0)
+                em = it.get("emoji", "🎁")
+                role_desc = ""
+                if (it.get("type") == "role" or "role_id" in it) and it.get("role_id"):
+                    role_desc = f"\n👑 **Grants Discord Role:** <@&{it['role_id']}>"
+                embed.add_field(
+                    name=f"{em} {it.get('name')} (`{k}`)",
+                    value=f"**Price:** `{p:,} {cur_e} {cur}`{role_desc}\n{it.get('desc', 'Custom store item.')}",
+                    inline=False
+                )
+                custom_count += 1
+            if custom_count == 0:
+                embed.description += "*No custom roles or store items configured yet. Server administrators can add items in the Friday Dashboard!*"
         else:
             embed.title = "🎲 Friday Casino & High-Roller Games"
             embed.description = (
@@ -804,6 +827,25 @@ class BlackjackView(discord.ui.View):
         await interaction.response.edit_message(embed=embed, view=self)
 
 
+async def shop_item_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    """Autocomplete for /buy command showing all available and enabled shop items & roles."""
+    gid = str(interaction.guild_id) if interaction.guild_id else ""
+    cog = interaction.client.get_cog("Economy")
+    cfg = cog.get_config(gid) if cog else {}
+    items = cfg.get("shop_items", DEFAULT_SHOP_ITEMS)
+    choices = []
+    for item_id, it in items.items():
+        if it.get("enabled", True):
+            name = it.get("name", item_id)
+            price = it.get("price", 0)
+            em = it.get("emoji", "📦")
+            clean_em = "🎁" if ("<:" in em or "<a:" in em) else em
+            label = f"{clean_em} {name} ({price:,} coins)"
+            if current.lower() in item_id.lower() or current.lower() in name.lower():
+                choices.append(app_commands.Choice(name=label[:100], value=item_id))
+    return choices[:25]
+
+
 class Economy(commands.Cog):
     """
     Friday Closed-Loop Server Economy.
@@ -830,6 +872,35 @@ class Economy(commands.Cog):
         cfg = db.economy_config.get(str(gid), {})
         return cfg
 
+    def is_paused(self, gid: str) -> bool:
+        """Returns True if the economy is disabled or under emergency maintenance hold."""
+        cfg = self.get_config(gid)
+        if not cfg.get("enabled", True):
+            return True
+        if cfg.get("paused", False):
+            return True
+        return False
+
+    async def _check_economy_active(self, interaction: discord.Interaction) -> bool:
+        """Guard check for all economy commands to block execution during emergency maintenance."""
+        if not interaction.guild:
+            await interaction.response.send_message("❌ Economy commands can only be used inside a server!", ephemeral=True)
+            return False
+        gid = str(interaction.guild.id)
+        if self.is_paused(gid):
+            embed = discord.Embed(
+                title="⏸️ Friday's Economy is currently on hold",
+                description="The server economy is currently paused by server administration.\nPlease wait until maintenance concludes.",
+                color=discord.Color.orange()
+            )
+            embed.set_footer(text="Admin Emergency Hold Active • Friday Economy")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            return False
+        return True
+
     # ───────────────────── Background Tasks & Event Listeners ─────────────────────
 
     @tasks.loop(minutes=5)
@@ -838,9 +909,9 @@ class Economy(commands.Cog):
         await self.bot.wait_until_ready()
         for guild in self.bot.guilds:
             gid = str(guild.id)
-            cfg = self.get_config(gid)
-            if not cfg.get("enabled", True):
+            if self.is_paused(gid):
                 continue
+            cfg = self.get_config(gid)
             
             reward = int(cfg.get("vc_reward_per_5min", 20))
             min_members = int(cfg.get("vc_min_members", 2))
@@ -866,15 +937,15 @@ class Economy(commands.Cog):
             return
         
         gid = str(message.guild.id)
+        if self.is_paused(gid):
+            return
+            
         uid = str(message.author.id)
         cfg = self.get_config(gid)
         
-        if not cfg.get("enabled", True):
-            return
-        
-        # Channel Whitelist Check
+        # Channel Whitelist Check (empty means ALL channels earn, selected means ONLY those earn)
         allowed_channels = db.economy_channels.get(gid, [])
-        if allowed_channels and message.channel.id not in allowed_channels:
+        if allowed_channels and str(message.channel.id) not in [str(c) for c in allowed_channels]:
             return
         
         now = time.time()
@@ -927,6 +998,8 @@ class Economy(commands.Cog):
     @app_commands.command(name="balance", description="Check your cash wallet, secure bank vault, rank, and active buffs.")
     @app_commands.describe(user="The member whose balance you want to view.")
     async def balance(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        if not await self._check_economy_active(interaction):
+            return
         target = user or interaction.user
         gid = str(interaction.guild.id)
         uid = str(target.id)
@@ -997,6 +1070,8 @@ class Economy(commands.Cog):
     @app_commands.command(name="deposit", description="Transfer cash from your vulnerable wallet to your safe bank vault.")
     @app_commands.describe(amount="Amount to deposit, or type 'all' / 'max'.")
     async def deposit(self, interaction: discord.Interaction, amount: str):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1036,6 +1111,8 @@ class Economy(commands.Cog):
     @app_commands.command(name="withdraw", description="Withdraw coins from your bank vault into your wallet.")
     @app_commands.describe(amount="Amount to withdraw, or type 'all' / 'max'.")
     async def withdraw(self, interaction: discord.Interaction, amount: str):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1066,6 +1143,8 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="bank_upgrade", description="Expand your bank vault capacity by burning wallet cash.")
     async def bank_upgrade(self, interaction: discord.Interaction):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1087,6 +1166,8 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="daily", description="Claim your daily login reward and build a 7-day streak!")
     async def daily(self, interaction: discord.Interaction):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1136,6 +1217,8 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="work", description="Do an hourly job prompt to earn clean money.")
     async def work(self, interaction: discord.Interaction):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1172,6 +1255,8 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="crime", description="High-risk, high-reward illegal activity with risk of police fine.")
     async def crime(self, interaction: discord.Interaction):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1226,6 +1311,8 @@ class Economy(commands.Cog):
     @app_commands.command(name="rob", description="Attempt a PvP heist against another member's vulnerable cash wallet.")
     @app_commands.describe(target="The member you want to steal from.")
     async def rob(self, interaction: discord.Interaction, target: discord.Member):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         t_id = str(target.id)
@@ -1374,6 +1461,8 @@ class Economy(commands.Cog):
     @app_commands.command(name="pay", description="Transfer wallet coins to another member with flat 8% server anti-inflation tax.")
     @app_commands.describe(target="Member receiving the coins.", amount="Number of coins to send.")
     async def pay(self, interaction: discord.Interaction, target: discord.Member, amount: int):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         sender_id = str(interaction.user.id)
         target_id = str(target.id)
@@ -1416,6 +1505,8 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="passive", description="Toggle Passive Mode (Cannot rob anyone and cannot be robbed).")
     async def passive(self, interaction: discord.Interaction):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1436,6 +1527,8 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="shop", description="Open the Friday Server Shop to browse and buy items.")
     async def shop(self, interaction: discord.Interaction):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         cfg = self.get_config(gid)
         cur_name = cfg.get("currency_name", "Coins")
@@ -1449,6 +1542,7 @@ class Economy(commands.Cog):
                 f"Select a category from the dropdown menu below to view available items and upgrades.\n\n"
                 f"• **Defensive Items:** Padlocks, Landmines & Shields\n"
                 f"• **Progression Perks:** Bank Expansions & VIP Badges\n"
+                f"• **Custom Roles & Items:** Server exclusive roles & items\n"
                 f"• **Casino Games:** Risk and reward gambling\n\n"
                 f"*Buy any item directly via `/buy <item_id>`.*"
             )
@@ -1456,9 +1550,12 @@ class Economy(commands.Cog):
         embed.set_footer(text=f"Server Currency: {cur_name}")
         await interaction.response.send_message(embed=embed, view=view)
 
-    @app_commands.command(name="buy", description="Purchase an item from the server shop.")
-    @app_commands.describe(item="Item ID (e.g. padlock, landmine, xp_booster, bank_expansion).", quantity="Quantity to purchase.")
+    @app_commands.command(name="buy", description="Purchase an item or role from the server shop.")
+    @app_commands.describe(item="Item ID or role to purchase.", quantity="Quantity to purchase.")
+    @app_commands.autocomplete(item=shop_item_autocomplete)
     async def buy(self, interaction: discord.Interaction, item: str, quantity: int = 1):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         item_id = item.lower().strip()
@@ -1483,7 +1580,7 @@ class Economy(commands.Cog):
             profile = self.db.get_or_init_user(gid, uid)
             if profile["wallet"] < total_cost:
                 return await interaction.response.send_message(
-                    f"❌ Insufficient wallet funds: You need **{total_cost:,} {cur_name}** but only have **{profile['wallet']:,}**.",
+                    f"❌ Insufficient wallet funds: You need **{total_cost:,} {cur_name}** but only have **{profile['wallet']:,}** in your cash wallet.",
                     ephemeral=True
                 )
                 
@@ -1494,12 +1591,50 @@ class Economy(commands.Cog):
                     f"❌ You can only hold a maximum of **{max_hold}** `{item_cfg['name']}` at a time (You currently hold {cur_qty}).",
                     ephemeral=True
                 )
+
+            # 1. Special Case: Discord Role Purchase
+            if (item_cfg.get("type") == "role" or "role_id" in item_cfg) and item_cfg.get("role_id"):
+                role_id = item_cfg.get("role_id")
+                role = interaction.guild.get_role(int(role_id))
+                if not role:
+                    return await interaction.response.send_message("❌ The assigned Discord role was deleted or no longer exists on this server.", ephemeral=True)
                 
-            # Deduct wallet
-            new_w = self.db.delta_wallet(gid, uid, -total_cost)
-            
-            # Special auto-apply logic
-            if item_id == "bank_expansion":
+                if not interaction.guild.me.guild_permissions.manage_roles:
+                    return await interaction.response.send_message("❌ Friday is missing the **Manage Roles** permission to assign roles.", ephemeral=True)
+                
+                if interaction.guild.me.top_role <= role:
+                    return await interaction.response.send_message(
+                        f"❌ Friday's highest role is lower than or equal to **@{role.name}**. Administrators must drag Friday's role higher in Server Settings.",
+                        ephemeral=True
+                    )
+                
+                if role in interaction.user.roles:
+                    return await interaction.response.send_message(f"❌ You already hold the **@{role.name}** role!", ephemeral=True)
+                
+                # Deduct wallet
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                try:
+                    await interaction.user.add_roles(role, reason=f"Purchased in Friday Economy Shop ({total_cost} {cur_name})")
+                except Exception as e:
+                    # Rollback wallet deduction if role grant failed
+                    self.db.delta_wallet(gid, uid, total_cost)
+                    return await interaction.response.send_message(f"❌ Failed to assign role: {e}. Coins have been refunded to your wallet.", ephemeral=True)
+                    
+                self.db.add_item(gid, uid, item_id, 1)
+                self.db.log_tx(gid, uid, "shop_buy_role", -total_cost, new_w, note=f"Role: @{role.name}")
+                
+                embed = discord.Embed(
+                    title="🎉 Role Purchase Successful!",
+                    color=discord.Color.green(),
+                    description=f"Congratulations {interaction.user.mention}!\nYou purchased the **@{role.name}** role for **{total_cost:,} {cur_emoji} {cur_name}**!\nThe role has been assigned to your profile."
+                )
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                embed.set_footer(text="Friday Economy Marketplace")
+                return await interaction.response.send_message(embed=embed)
+                
+            # 2. Special Case: Bank Vault Expansion Pass
+            elif item_id == "bank_expansion":
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
                 inc = int(item_cfg.get("bank_increase", 5000)) * quantity
                 self.db.update_field(gid, uid, "bank_max", profile["bank_max"] + inc)
                 self.db.log_tx(gid, uid, "shop_buy_expansion", -total_cost, new_w, note=f"+{inc} cap")
@@ -1508,7 +1643,12 @@ class Economy(commands.Cog):
                     color=discord.Color.gold(),
                     description=f"Purchased **{quantity}x {item_cfg['name']}**!\nYour bank vault capacity increased by **+{inc:,}** to **{profile['bank_max'] + inc:,} Coins**!"
                 )
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                return await interaction.response.send_message(embed=embed)
+
+            # 3. Standard Items & Custom Perks
             else:
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
                 self.db.add_item(gid, uid, item_id, quantity)
                 self.db.log_tx(gid, uid, "shop_buy", -total_cost, new_w, note=f"Bought {quantity}x {item_id}")
                 embed = discord.Embed(
@@ -1518,12 +1658,13 @@ class Economy(commands.Cog):
                 )
                 embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
                 embed.set_footer(text=f"View owned items via /inventory • Use consumable items via /use <item>")
-                
-            await interaction.response.send_message(embed=embed)
+                await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="use", description="Activate or consume an item from your inventory.")
     @app_commands.describe(item="The ID of the item to use (e.g. xp_booster).")
     async def use(self, interaction: discord.Interaction, item: str):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         item_id = item.lower().strip()
@@ -1560,11 +1701,17 @@ class Economy(commands.Cog):
                     ephemeral=True
                 )
             else:
-                return await interaction.response.send_message(f"ℹ️ Item `{item_id}` cannot be used manually.", ephemeral=True)
+                cfg = self.get_config(gid)
+                item_cfg = cfg.get("shop_items", {}).get(item_id, {})
+                if item_cfg.get("type") == "role" or "role_id" in item_cfg:
+                    return await interaction.response.send_message(f"👑 This role item was assigned to you upon purchase and is active!", ephemeral=True)
+                return await interaction.response.send_message(f"ℹ️ Item `{item_id}` is stored in your personal inventory.", ephemeral=True)
 
     @app_commands.command(name="inventory", description="View items, boosters, and defense gear in your inventory.")
     @app_commands.describe(user="The member whose inventory you want to view.")
     async def inventory(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        if not await self._check_economy_active(interaction):
+            return
         target = user or interaction.user
         gid = str(interaction.guild.id)
         uid = str(target.id)
@@ -1600,6 +1747,8 @@ class Economy(commands.Cog):
 
     @app_commands.command(name="leaderboard_economy", description="View the server's wealthiest members by Net Worth.")
     async def leaderboard_economy(self, interaction: discord.Interaction):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         top = self.db.get_top_users(gid, limit=10)
         
@@ -1641,6 +1790,8 @@ class Economy(commands.Cog):
         app_commands.Choice(name="Tails", value="tails")
     ])
     async def coinflip(self, interaction: discord.Interaction, choice: app_commands.Choice[str], bet: int):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1701,6 +1852,8 @@ class Economy(commands.Cog):
     @app_commands.command(name="blackjack", description="Interactive 21 card game with Hit, Stand, and Double Down.")
     @app_commands.describe(bet="Amount of coins to bet.")
     async def blackjack(self, interaction: discord.Interaction, bet: int):
+        if not await self._check_economy_active(interaction):
+            return
         gid = str(interaction.guild.id)
         uid = str(interaction.user.id)
         
@@ -1927,6 +2080,44 @@ class Economy(commands.Cog):
                 await interaction.response.send_message(f"❌ Removed {channel.mention} from allowed economy chat channels.", ephemeral=True)
             else:
                 await interaction.response.send_message(f"⚠️ {channel.mention} was not in the allowed list.", ephemeral=True)
+
+    @app_commands.command(name="economy_pause", description="Emergency pause or resume all economy commands, chat drops, and voice rewards.")
+    @app_commands.describe(action="Choose whether to pause or resume the economy.")
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Pause Economy (Emergency Hold)", value="pause"),
+        app_commands.Choice(name="Resume Economy (Active)", value="resume")
+    ])
+    @app_commands.default_permissions(administrator=True)
+    async def economy_pause(self, interaction: discord.Interaction, action: Optional[app_commands.Choice[str]] = None):
+        if not await ensure_admin_or_owner(interaction):
+            return
+            
+        gid = str(interaction.guild.id)
+        if gid not in db.economy_config:
+            db.economy_config[gid] = {}
+        cfg = db.economy_config[gid]
+        
+        cur_p = cfg.get("paused", False)
+        if action:
+            new_p = (action.value == "pause")
+        else:
+            new_p = not cur_p
+            
+        cfg["paused"] = new_p
+        db.save_data()
+        
+        status_text = "PAUSED ⏸️ (Emergency Hold Active)" if new_p else "RESUMED ▶️ (Active)"
+        color = discord.Color.red() if new_p else discord.Color.green()
+        embed = discord.Embed(
+            title="⚙️ Friday Economy Emergency State",
+            description=(
+                f"The server economy is now **{status_text}**.\n\n"
+                f"{'⚠️ **All economy commands, faucets, chat drops, and voice rewards are currently frozen.**' if new_p else '✅ **Economy commands, faucets, and trading have resumed normal operation.**'}"
+            ),
+            color=color
+        )
+        embed.set_footer(text="Manage anytime from Discord or the Friday Web Dashboard")
+        await interaction.response.send_message(embed=embed)
 
 
 async def setup(bot):

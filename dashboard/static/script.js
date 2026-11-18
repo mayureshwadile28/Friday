@@ -71561,6 +71561,10 @@ async function loadEconomySettings() {
             const cfg = data.config || {};
             currentEconomyConfig = cfg;
             
+            // Emergency Pause Status
+            const isPaused = cfg.paused === true;
+            updateEconomyPauseUI(isPaused);
+
             // Core Identity
             const enInput = document.getElementById('eco_enabled');
             if (enInput) enInput.checked = cfg.enabled !== false;
@@ -71692,6 +71696,76 @@ async function populateEconomyChannels(gid) {
     }
 }
 
+function updateEconomyPauseUI(isPaused) {
+    const banner = document.getElementById('ecoEmergencyBanner');
+    const btn = document.getElementById('toggleEconomyPauseBtn');
+    const txt = document.getElementById('ecoPauseBtnText');
+    if (banner) banner.style.display = isPaused ? 'flex' : 'none';
+    if (btn) {
+        if (isPaused) {
+            btn.style.background = '#10b981';
+            btn.style.borderColor = '#10b981';
+            btn.style.color = '#ffffff';
+            if (txt) txt.textContent = 'Resume Economy';
+        } else {
+            btn.style.background = 'rgba(239, 68, 68, 0.15)';
+            btn.style.borderColor = '#ef4444';
+            btn.style.color = '#ef4444';
+            if (txt) txt.textContent = 'Pause Economy';
+        }
+    }
+}
+
+async function toggleEconomyPause() {
+    const gid = currentGuildId;
+    if (!gid) return;
+    try {
+        const res = await fetch(`/api/guild/${gid}/economy/toggle-pause`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            currentEconomyConfig.paused = data.paused;
+            updateEconomyPauseUI(data.paused);
+            if (typeof showToast === 'function') {
+                if (data.paused) {
+                    showToast("⏸️ Economy paused! All commands and faucets are now on hold.", "warning");
+                } else {
+                    showToast("▶️ Economy resumed! Member commands and faucets are active.", "success");
+                }
+            }
+        } else {
+            if (typeof showToast === 'function') showToast(data.error || "Failed to toggle economy pause state.", "error");
+        }
+    } catch (e) {
+        console.error("toggleEconomyPause error:", e);
+        if (typeof showToast === 'function') showToast("Network error while toggling economy pause.", "error");
+    }
+}
+
+async function populateStoreRoles(gid) {
+    const roleSelect = document.getElementById('new_item_role_id');
+    if (!roleSelect || !gid) return;
+    try {
+        const res = await fetch(`/api/guild/${gid}/roles`);
+        const roles = await res.json();
+        roleSelect.innerHTML = '<option value="">Select a Discord role...</option>';
+        if (Array.isArray(roles)) {
+            roles.forEach(r => {
+                const assignNote = r.assignable ? '' : ' ⚠️ (Bot hierarchy lower)';
+                roleSelect.innerHTML += `<option value="${r.id}" style="color: ${r.color || '#fff'}">@${escapeHtml(r.name)}${assignNote}</option>`;
+            });
+        }
+    } catch (e) {
+        console.error("populateStoreRoles error:", e);
+    }
+}
+
+function deleteShopItem(itemId) {
+    if (!confirm(`Are you sure you want to remove item "${itemId}" from the shop?`)) return;
+    delete currentShopItems[itemId];
+    renderShopItemsTable(currentShopItems);
+    if (typeof showToast === 'function') showToast(`Removed "${itemId}". Click "Save Economy Settings" to save changes!`, "info");
+}
+
 function renderShopItemsTable(items) {
     const tbody = document.getElementById('ecoShopItemsTableBody');
     if (!tbody) return;
@@ -71700,9 +71774,11 @@ function renderShopItemsTable(items) {
     const itemEntries = Object.entries(items);
     
     if (itemEntries.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="padding: 16px; text-align: center; color: var(--text-muted);">No store items registered.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="padding: 16px; text-align: center; color: var(--text-muted);">No store items registered. Click "Add Store Item / Role" above!</td></tr>';
         return;
     }
+
+    const builtInKeys = ['padlock', 'landmine', 'xp_booster', 'bank_expansion', 'custom_role_color', 'vip_badge'];
 
     itemEntries.forEach(([itemId, it]) => {
         const tr = document.createElement('tr');
@@ -71713,9 +71789,20 @@ function renderShopItemsTable(items) {
             ? renderEmojiHtmlOrChar(emojiVal, 22) 
             : emojiVal;
             
+        const isBuiltIn = builtInKeys.includes(itemId);
+        const isRole = it.type === 'role' || !!it.role_id;
+        const roleBadge = isRole 
+            ? `<span style="background: rgba(168, 85, 247, 0.15); color: #c084fc; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;">ROLE</span>`
+            : '';
+
+        const actionCell = isBuiltIn
+            ? `<span style="color: var(--text-muted); font-size: 11px;">Default</span>`
+            : `<button type="button" class="btn btn-secondary" onclick="deleteShopItem('${escapeHtml(itemId)}')" style="padding: 3px 8px; font-size: 11px; color: #f87171; border-color: rgba(239, 68, 68, 0.3); border-radius: 4px;" title="Delete this custom item">🗑️ Delete</button>`;
+
         tr.innerHTML = `
             <td style="padding: 12px 10px;">
                 <code style="background: rgba(255, 255, 255, 0.06); padding: 3px 6px; border-radius: 4px; font-size: 11.5px; color: #60a5fa;">${escapeHtml(itemId)}</code>
+                ${roleBadge}
             </td>
             <td style="padding: 12px 10px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -71740,8 +71827,11 @@ function renderShopItemsTable(items) {
                     <span class="slider"></span>
                 </label>
             </td>
-            <td style="padding: 12px 10px; font-size: 12px; color: var(--text-muted); max-width: 280px;">
-                ${escapeHtml(it.desc || '')}
+            <td style="padding: 12px 10px; font-size: 12px; color: var(--text-muted); max-width: 260px;">
+                ${escapeHtml(it.desc || (isRole ? 'Grants Discord role upon purchase.' : ''))}
+            </td>
+            <td style="padding: 12px 10px; text-align: center;">
+                ${actionCell}
             </td>
         `;
         tbody.appendChild(tr);
@@ -71895,6 +71985,149 @@ function initEconomyModule() {
         });
     }
 
+    // Emergency Pause / Resume Button
+    const pauseBtn = document.getElementById('toggleEconomyPauseBtn');
+    if (pauseBtn && !pauseBtn.dataset.bound) {
+        pauseBtn.dataset.bound = "true";
+        pauseBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleEconomyPause();
+        });
+    }
+
+    // Banner Resume Button
+    const bannerResumeBtn = document.getElementById('bannerResumeEconomyBtn');
+    if (bannerResumeBtn && !bannerResumeBtn.dataset.bound) {
+        bannerResumeBtn.dataset.bound = "true";
+        bannerResumeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            toggleEconomyPause();
+        });
+    }
+
+    // Add Store Item Drawer
+    const openAddBtn = document.getElementById('openAddShopItemBtn');
+    const addDrawer = document.getElementById('addShopItemDrawer');
+    const cancelAddBtn = document.getElementById('cancelAddShopItemBtn');
+    const confirmAddBtn = document.getElementById('confirmAddShopItemBtn');
+    const itemTypeSelect = document.getElementById('new_item_type');
+    const roleGroup = document.getElementById('newItemRoleGroup');
+    const itemEmojiBtn = document.getElementById('newItemEmojiBtn');
+    const itemEmojiInput = document.getElementById('new_item_emoji');
+    const itemEmojiVisual = document.getElementById('new_item_emoji_visual');
+
+    if (openAddBtn && !openAddBtn.dataset.bound) {
+        openAddBtn.dataset.bound = "true";
+        openAddBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (addDrawer) {
+                const isOpen = addDrawer.style.display !== 'none';
+                addDrawer.style.display = isOpen ? 'none' : 'block';
+                if (!isOpen) {
+                    populateStoreRoles(currentGuildId);
+                }
+            }
+        });
+    }
+
+    if (cancelAddBtn && !cancelAddBtn.dataset.bound) {
+        cancelAddBtn.dataset.bound = "true";
+        cancelAddBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (addDrawer) addDrawer.style.display = 'none';
+        });
+    }
+
+    if (itemTypeSelect && !itemTypeSelect.dataset.bound) {
+        itemTypeSelect.dataset.bound = "true";
+        itemTypeSelect.addEventListener('change', () => {
+            if (roleGroup) {
+                roleGroup.style.display = itemTypeSelect.value === 'role' ? 'block' : 'none';
+            }
+        });
+    }
+
+    if (itemEmojiBtn && !itemEmojiBtn.dataset.bound) {
+        itemEmojiBtn.dataset.bound = "true";
+        itemEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof openEmojiPicker === 'function') {
+                openEmojiPicker(itemEmojiBtn, (chosen) => {
+                    if (itemEmojiInput) itemEmojiInput.value = chosen;
+                    if (itemEmojiVisual) {
+                        itemEmojiVisual.innerHTML = (typeof renderEmojiHtmlOrChar === 'function')
+                            ? renderEmojiHtmlOrChar(chosen, 22)
+                            : chosen;
+                    }
+                });
+            }
+        });
+    }
+
+    if (confirmAddBtn && !confirmAddBtn.dataset.bound) {
+        confirmAddBtn.dataset.bound = "true";
+        confirmAddBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const idInput = document.getElementById('new_item_id');
+            const nameInput = document.getElementById('new_item_name');
+            const priceInput = document.getElementById('new_item_price');
+            const descInput = document.getElementById('new_item_desc');
+            const roleSelect = document.getElementById('new_item_role_id');
+
+            const id = idInput ? idInput.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') : '';
+            const name = nameInput ? nameInput.value.trim() : '';
+            const price = priceInput ? parseInt(priceInput.value) || 0 : 0;
+            const type = itemTypeSelect ? itemTypeSelect.value : 'perk';
+            const roleId = roleSelect ? roleSelect.value : null;
+            const emoji = itemEmojiInput ? itemEmojiInput.value : '🎁';
+            const desc = descInput ? descInput.value.trim() : '';
+
+            if (!id) {
+                if (typeof showToast === 'function') showToast("Please enter an Item ID / Slug (lowercase letters & numbers).", "error");
+                return;
+            }
+            if (currentShopItems[id]) {
+                if (typeof showToast === 'function') showToast(`Item with ID "${id}" already exists in the catalog!`, "error");
+                return;
+            }
+            if (!name) {
+                if (typeof showToast === 'function') showToast("Please provide a Display Name for this item.", "error");
+                return;
+            }
+            if (price <= 0) {
+                if (typeof showToast === 'function') showToast("Please provide a Price greater than 0.", "error");
+                return;
+            }
+            if (type === 'role' && !roleId) {
+                if (typeof showToast === 'function') showToast("Please select a target Discord role to assign.", "error");
+                return;
+            }
+
+            currentShopItems[id] = {
+                name: name,
+                emoji: emoji,
+                price: price,
+                type: type,
+                role_id: type === 'role' ? roleId : null,
+                desc: desc || (type === 'role' ? 'Grants Discord role upon purchase.' : 'Specialty server store item.'),
+                enabled: true
+            };
+
+            renderShopItemsTable(currentShopItems);
+            if (addDrawer) addDrawer.style.display = 'none';
+
+            // Reset inputs
+            if (idInput) idInput.value = '';
+            if (nameInput) nameInput.value = '';
+            if (descInput) descInput.value = '';
+            if (priceInput) priceInput.value = '1000';
+            if (itemEmojiInput) itemEmojiInput.value = '🎁';
+            if (itemEmojiVisual) itemEmojiVisual.innerHTML = '🎁';
+
+            if (typeof showToast === 'function') showToast(`Added "${name}" to shop! Click "Save Economy Settings" to save changes. 🪙`, "success");
+        });
+    }
+
     // Save Settings Button
     const saveBtn = document.getElementById('saveEconomyBtn');
     if (saveBtn && !saveBtn.dataset.bound) {
@@ -71933,6 +72166,7 @@ function initEconomyModule() {
                 allowed_channels: allowedChs,
                 config: {
                     enabled: (document.getElementById('eco_enabled') || {}).checked !== false,
+                    paused: currentEconomyConfig.paused === true,
                     currency_name: (document.getElementById('eco_currency_name') || {}).value || 'Coins',
                     currency_emoji: (document.getElementById('eco_currency_emoji') || {}).value || '🪙',
                     

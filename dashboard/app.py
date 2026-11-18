@@ -5664,6 +5664,23 @@ def economy_admin_reset():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/api/guild/<gid>/economy/toggle-pause', methods=['POST'])
+@app.route('/api/economy/toggle-pause/<gid>', methods=['POST'])
+def toggle_economy_pause(gid):
+    gid_str = str(gid)
+    if gid_str not in db.economy_config:
+        db.economy_config[gid_str] = {}
+    cfg = db.economy_config[gid_str]
+    cur_p = cfg.get("paused", False)
+    new_p = not cur_p
+    cfg["paused"] = new_p
+    db.save_data()
+    return jsonify({
+        "success": True, 
+        "paused": new_p, 
+        "message": f"Economy {'paused (emergency hold active)' if new_p else 'resumed (active)'}."
+    })
+
 
 # ───────────────────── Bot Lifecycle ─────────────────────
 

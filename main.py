@@ -149,20 +149,34 @@ async def on_ready():
             except Exception as e:
                 print(f"⚠️ Security sync warning for '{g.name}': {e}")
 
-    # Configure DM restrictions and clean up guild duplicate commands so only global commands appear
+    # Sync commands globally and directly to connected servers for instant visibility
     try:
         configure_command_dm_restrictions(bot.tree)
+        synced_global = await bot.tree.sync()
+        print(f"✅ One clean list: {len(synced_global)} global slash commands registered.")
+        
+        # Also sync directly to connected guilds so commands appear in 1 second (no 1-hour Discord global rollout delay)
         for g in bot.guilds:
             try:
-                bot.tree.clear_commands(guild=g)
-                await bot.tree.sync(guild=g)
-                print(f"🧹 Cleaned guild command duplicates in '{g.name}'")
+                bot.tree.copy_global_to(guild=g)
+                synced_guild = await bot.tree.sync(guild=g)
+                print(f"⚡ Instantly synced {len(synced_guild)} slash commands directly to '{g.name}'")
             except Exception as e:
-                print(f"Guild cleanup note for '{g.name}': {e}")
-        synced_global = await bot.tree.sync()
-        print(f"✅ One clean list: {len(synced_global)} global slash commands registered (no duplicates).")
+                print(f"Guild direct sync note for '{g.name}': {e}")
     except Exception as e:
         print(f"Global sync warning: {e}")
+
+@bot.command(name="sync")
+@commands.has_permissions(administrator=True)
+async def force_sync_commands(ctx: commands.Context):
+    """Admin command to force-sync slash commands directly to the current server instantly."""
+    msg = await ctx.send("⏳ Registering and syncing all slash commands directly to this server...")
+    try:
+        bot.tree.copy_global_to(guild=ctx.guild)
+        synced = await bot.tree.sync(guild=ctx.guild)
+        await msg.edit(content=f"✅ **{len(synced)} slash commands** synced directly to **{ctx.guild.name}**! They are now live and visible in your `/` menu immediately.")
+    except Exception as e:
+        await msg.edit(content=f"❌ Failed to sync slash commands: {e}")
 
 import threading
 
