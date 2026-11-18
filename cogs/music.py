@@ -280,7 +280,7 @@ def get_ffmpeg_options(filter_key="studio", seek_seconds=0):
     before_parts = []
     if seek_seconds > 0:
         before_parts.append(f'-ss {seek_seconds}')
-    before_parts.append('-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -thread_queue_size 8192')
+    before_parts.append('-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -thread_queue_size 8192 -nostdin')
     before = ' '.join(before_parts)
     af = AUDIO_FILTERS.get(filter_key, {}).get("af", "")
     if af:
@@ -306,9 +306,10 @@ class Song:
 class MusicControlView(discord.ui.View):
     """
     Studio High-Fidelity Music Controller View.
-    Row 0: Pause/Resume, Skip, Shuffle, Loop, Stop (5 buttons)
-    Row 1: Queue, Like, Vol -, Vol + (4 buttons)
-    Row 2: Equalizer / DSP Mastering Filter Dropdown (Real-time live switch)
+    Row 0: Pause/Resume, Skip, Loop, Stop (4 buttons - Core Playback)
+    Row 1: Shuffle, Queue, Vol -, Vol + (4 buttons - Queue & Audio Level)
+    Row 2: Add to Liked Songs (1 button - Favorites)
+    Row 3: Equalizer / DSP Mastering Filter Dropdown (Real-time live switch)
     """
     def __init__(self, cog=None, guild_id: int = None):
         super().__init__(timeout=None)
@@ -320,286 +321,56 @@ class MusicControlView(discord.ui.View):
         cog = self.cog or (interaction.client.get_cog("Music") if interaction.client else None)
         return gid, cog
 
-    @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏯️", custom_id="music_pause_resume", row=0)
-    async def pause_resume_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            vc = interaction.guild.voice_client if interaction.guild else None
-            if not vc or not (vc.is_playing() or vc.is_paused()):
-                msg = cog.get_resp(gid, "music_nothing_playing", "Nothing is currently playing.") if cog else "Nothing is currently playing."
-                await reply_box(interaction, msg, title="Playback Inactive", status="error", ephemeral=True)
-                return
-
-            if vc.is_paused():
-                vc.resume()
-                button.label = "Pause"
-                button.style = discord.ButtonStyle.secondary
-                try:
-                    await interaction.message.edit(view=self)
-                except Exception:
-                    pass
-                msg = cog.get_resp(gid, "music_resumed", "Music resumed.") if cog else "Music resumed."
-                await reply_box(interaction, msg, title="Playback Resumed", status="success", ephemeral=True)
-            else:
-                vc.pause()
-                button.label = "Resume"
-                button.style = discord.ButtonStyle.success
-                try:
-                    await interaction.message.edit(view=self)
-                except Exception:
-                    pass
-                msg = cog.get_resp(gid, "music_paused", "Music paused.") if cog else "Music paused."
-                await reply_box(interaction, msg, title="Playback Paused", status="info", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: pause] {e}")
+    async def _forward(self, interaction: discord.Interaction, custom_id: str):
+        if not interaction.response.is_done():
             try:
-                await reply_box(interaction, f"Could not toggle pause: `{e}`", title="Command Notice", status="error", ephemeral=True)
+                await interaction.response.defer(ephemeral=True)
             except Exception:
                 pass
+        gid, cog = self._get_context(interaction)
+        if cog:
+            await cog.handle_music_component_interaction(interaction, custom_id)
+
+    @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏯️", custom_id="music_pause_resume", row=0)
+    async def pause_resume_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._forward(interaction, "music_pause_resume")
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭️", custom_id="music_skip", row=0)
     async def skip_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            vc = interaction.guild.voice_client if interaction.guild else None
-            if not vc or not (vc.is_playing() or vc.is_paused()):
-                msg = cog.get_resp(gid, "music_nothing_playing", "Nothing is currently playing.") if cog else "Nothing is currently playing."
-                await reply_box(interaction, msg, title="Playback Inactive", status="error", ephemeral=True)
-                return
-
-            asyncio.get_event_loop().run_in_executor(None, vc.stop)
-            msg = cog.get_resp(gid, "music_skipped", "Skipped current track!") if cog else "Skipped current track!"
-            await reply_box(interaction, msg, title="Track Skipped", status="success", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: skip] {e}")
-
-    @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.secondary, emoji="🔀", custom_id="music_shuffle", row=0)
-    async def shuffle_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            if len(state["queue"]) < 2:
-                await reply_box(interaction, "Add at least 2 songs to the queue to shuffle.", title="Queue Notice", status="info", ephemeral=True)
-                return
-
-            random.shuffle(state["queue"])
-            await reply_box(interaction, f"Reordered **{len(state['queue'])}** upcoming tracks in queue.", title="Queue Shuffled", status="success", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: shuffle] {e}")
+        await self._forward(interaction, "music_skip")
 
     @discord.ui.button(label="Loop", style=discord.ButtonStyle.secondary, emoji="🔁", custom_id="music_loop", row=0)
     async def loop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            is_loop = not state.get("loop", False)
-            state["loop"] = is_loop
-            if is_loop:
-                button.style = discord.ButtonStyle.primary
-                button.label = "Looping"
-            else:
-                button.style = discord.ButtonStyle.secondary
-                button.label = "Loop"
-            try:
-                await interaction.message.edit(view=self)
-            except Exception:
-                pass
-            await reply_box(interaction, f"Track looping is now **{'Enabled' if is_loop else 'Disabled'}**.", title="Loop Mode", status="info", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: loop] {e}")
+        await self._forward(interaction, "music_loop")
 
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="music_stop", row=0)
     async def stop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
+        await self._forward(interaction, "music_stop")
 
-        try:
-            gid, cog = self._get_context(interaction)
-            vc = interaction.guild.voice_client if interaction.guild else None
-            if cog:
-                state = cog.get_state(gid)
-                state["queue"].clear()
-                state["current"] = None
-
-            if vc and (vc.is_playing() or vc.is_paused()):
-                asyncio.get_event_loop().run_in_executor(None, vc.stop)
-
-            for child in self.children:
-                child.disabled = True
-            try:
-                await interaction.message.edit(view=self)
-            except Exception:
-                pass
-
-            msg = cog.get_resp(gid, "music_stopped", "Playback stopped and queue cleared.") if cog else "Playback stopped and queue cleared."
-            await reply_box(interaction, msg, title="Playback Stopped", status="warning", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: stop] {e}")
+    @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.secondary, emoji="🔀", custom_id="music_shuffle", row=1)
+    async def shuffle_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._forward(interaction, "music_shuffle")
 
     @discord.ui.button(label="Queue", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="music_queue", row=1)
     async def queue_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            current = state.get("current")
-            queue = state.get("queue", [])
-            if not current and not queue:
-                msg = cog.get_resp(gid, "music_queue_empty", "The queue is currently empty.")
-                await reply_box(interaction, msg, title="Queue Empty", status="info", ephemeral=True)
-                return
-
-            embed = discord.Embed(
-                title="◈  Playback Queue",
-                color=discord.Color.from_rgb(139, 92, 246)
-            )
-            if current:
-                mins, secs = divmod(current.duration or 0, 60)
-                req_mention = current.requester.mention if hasattr(current.requester, 'mention') else "Someone"
-                embed.add_field(
-                    name="▶ Currently Playing",
-                    value=f"• **[{current.title}]({current.webpage_url})**\n  ⏱ `{mins:02d}:{secs:02d}` • Requested by: {req_mention}",
-                    inline=False
-                )
-            if queue:
-                lines = []
-                for idx, s in enumerate(queue[:10], start=1):
-                    mins, secs = divmod(s.duration or 0, 60)
-                    s_req = s.requester.mention if hasattr(s.requester, 'mention') else "Someone"
-                    lines.append(f"`{idx}.` **[{s.title}]({s.webpage_url})** (`{mins:02d}:{secs:02d}`) — {s_req}")
-                if len(queue) > 10:
-                    lines.append(f"*... and {len(queue) - 10} more songs in queue*")
-                embed.add_field(name="Upcoming in Queue", value="\n".join(lines), inline=False)
-            else:
-                embed.add_field(name="Upcoming in Queue", value="*No upcoming songs. Use `/play` to add more!*", inline=False)
-
-            embed.set_footer(text=f"Total: {len(queue)} upcoming • Friday High-Fidelity Audio")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: queue] {e}")
-
-    @discord.ui.button(label="Like", style=discord.ButtonStyle.success, emoji="💚", custom_id="music_like", row=1)
-    async def like_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            current = state.get("current")
-            if not current:
-                await reply_box(interaction, "No track currently playing to like.", title="Liked Songs", status="error", ephemeral=True)
-                return
-
-            uid_str = str(interaction.user.id)
-            user_likes = db.liked_songs.setdefault(uid_str, [])
-            if any(item.get("url") == current.webpage_url for item in user_likes):
-                await reply_box(interaction, f"**[{current.title}]({current.webpage_url})** is already in your Liked Songs! Use `/likes` to view them.", title="Already Saved", status="info", ephemeral=True)
-                return
-
-            user_likes.append({
-                "title": current.title,
-                "url": current.webpage_url,
-                "duration": current.duration
-            })
-            db.save_data()
-            await reply_box(interaction, f"Saved **[{current.title}]({current.webpage_url})** to your Liked Songs! Use `/likes` to play them anytime.", title="Song Saved", status="success", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: like] {e}")
+        await self._forward(interaction, "music_queue")
 
     @discord.ui.button(label="Vol -", style=discord.ButtonStyle.secondary, emoji="🔉", custom_id="music_vol_down", row=1)
     async def vol_down_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            current_vol = state.get("volume", 1.0)
-            new_vol = max(0.2, round(current_vol - 0.15, 2))
-            state["volume"] = new_vol
-            transformer = state.get("transformer")
-            if transformer:
-                transformer.volume = new_vol
-            await reply_box(interaction, f"Master volume adjusted to **{int(new_vol * 100)}%**.", title="Volume Lowered", status="audio", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: vol_down] {e}")
+        await self._forward(interaction, "music_vol_down")
 
     @discord.ui.button(label="Vol +", style=discord.ButtonStyle.secondary, emoji="🔊", custom_id="music_vol_up", row=1)
     async def vol_up_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
+        await self._forward(interaction, "music_vol_up")
 
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            current_vol = state.get("volume", 1.0)
-            new_vol = min(2.0, round(current_vol + 0.15, 2))
-            state["volume"] = new_vol
-            transformer = state.get("transformer")
-            if transformer:
-                transformer.volume = new_vol
-            await reply_box(interaction, f"Master volume adjusted to **{int(new_vol * 100)}%**.", title="Volume Raised", status="audio", ephemeral=True)
-        except Exception as e:
-            print(f"[Music Button Error: vol_up] {e}")
+    @discord.ui.button(label="Add to Liked Songs", style=discord.ButtonStyle.success, emoji="💚", custom_id="music_like", row=2)
+    async def like_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._forward(interaction, "music_like")
 
     @discord.ui.select(
         placeholder="🎛️ Equalizer & DSP Audio Filters...",
         custom_id="music_eq_select",
-        row=2,
+        row=3,
         options=[
             discord.SelectOption(label="Studio Master (Spotify Premium)", value="studio", description="Crisp 48kHz highs, warm punch, anti-clipping", emoji="🎧"),
             discord.SelectOption(label="Bass Boost", value="bassboost", description="Deep sub-bass punch for EDM, Phonk, Hip-Hop", emoji="🔊"),
@@ -612,80 +383,7 @@ class MusicControlView(discord.ui.View):
         ]
     )
     async def eq_dropdown(self, interaction: discord.Interaction, select: discord.ui.Select):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-        except Exception:
-            pass
-
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            new_eq = select.values[0]
-            state["filter"] = new_eq
-            profile = AUDIO_FILTERS.get(new_eq, AUDIO_FILTERS["studio"])
-
-            vc = interaction.guild.voice_client if interaction.guild else None
-            current = state.get("current")
-
-            # Seamless live switch: preserve playback position without restarting track
-            if vc and (vc.is_playing() or vc.is_paused()) and current:
-                vol = state.get("volume", 1.0)
-                elapsed = int(time.time() - state.get("start_time", time.time()))
-                dur = current.duration or 3600
-                ss_pos = max(0, min(elapsed, dur - 2))
-
-                async def _apply_eq_seamless():
-                    try:
-                        state["_switching_filter"] = True
-                        vc.stop()
-                        for _ in range(15):
-                            if not vc.is_playing() and not vc.is_paused():
-                                break
-                            await asyncio.sleep(0.04)
-
-                        ffmpeg_opts = cog.get_ffmpeg_options(gid, seek_seconds=ss_pos)
-                        raw_source = discord.FFmpegPCMAudio(current.url, **ffmpeg_opts)
-                        source = discord.PCMVolumeTransformer(raw_source, volume=vol)
-                        state["transformer"] = source
-                        state["start_time"] = time.time() - ss_pos
-
-                        if vc.ws:
-                            try:
-                                await vc.ws.speak(discord.SpeakingState.voice)
-                            except Exception:
-                                pass
-
-                        def after_play(err):
-                            if state.get("_switching_filter"):
-                                return
-                            cog.play_next(gid)
-
-                        vc.play(source, after=after_play)
-
-                        # Update Now Playing message embed in real-time
-                        np_msg = interaction.message or state.get("np_message")
-                        if np_msg:
-                            updated_embed = cog.create_now_playing_embed(current, vol, gid)
-                            await np_msg.edit(embed=updated_embed, view=self)
-                    except Exception as err:
-                        print(f"[Music EQ Switch Error] {err}")
-                    finally:
-                        state["_switching_filter"] = False
-
-                asyncio.create_task(_apply_eq_seamless())
-
-            await reply_box(
-                interaction,
-                description=f"Equalizer Profile: **{profile['emoji']} {profile['name']}**\n{profile['description']}\n*Seamless real-time mastering engaged without restarting track.*",
-                title="Equalizer Updated",
-                status="audio",
-                ephemeral=True
-            )
-        except Exception as e:
-            print(f"[Music Button Error: eq_select] {e}")
+        await self._forward(interaction, "music_eq_select")
 
 
 class QueueItemView(discord.ui.View):
@@ -764,6 +462,259 @@ class Music(commands.Cog):
         except Exception as e:
             print(f"[Music] Note: Persistent view registration: {e}")
 
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction):
+        """
+        Global interaction listener for all music controller components.
+        Guarantees immediate deferral to beat Discord's 3-second deadline,
+        preventing 'Friday didn't respond in time' permanently across restarts.
+        """
+        if interaction.type != discord.InteractionType.component:
+            return
+
+        custom_id = str(interaction.data.get("custom_id", "") if interaction.data else "")
+        if not custom_id.startswith("music_"):
+            return
+
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
+        await self.handle_music_component_interaction(interaction, custom_id)
+
+    async def handle_music_component_interaction(self, interaction: discord.Interaction, custom_id: str):
+        gid = interaction.guild_id
+        if not gid:
+            return
+
+        if not interaction.response.is_done():
+            try:
+                await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
+        if getattr(interaction, "_music_handled", False):
+            return
+        interaction._music_handled = True
+
+        state = self.get_state(gid)
+        vc = interaction.guild.voice_client if interaction.guild else None
+
+        requires_active = ("music_pause_resume", "music_skip", "music_vol_down", "music_vol_up", "music_like", "music_eq_select")
+        if custom_id in requires_active and (not vc or not (vc.is_playing() or vc.is_paused())):
+            msg = self.get_resp(gid, "music_nothing_playing", "Nothing is currently playing.")
+            await reply_box(interaction, msg, title="Playback Inactive", status="error", ephemeral=True)
+            return
+
+        try:
+            if custom_id == "music_pause_resume":
+                if vc.is_paused():
+                    vc.resume()
+                    if interaction.message:
+                        try:
+                            view = MusicControlView(self, gid)
+                            view.children[0].label = "Pause"
+                            view.children[0].style = discord.ButtonStyle.secondary
+                            await interaction.message.edit(view=view)
+                        except Exception:
+                            pass
+                    msg = self.get_resp(gid, "music_resumed", "Music resumed.")
+                    await reply_box(interaction, msg, title="Playback Resumed", status="success", ephemeral=True)
+                else:
+                    vc.pause()
+                    if interaction.message:
+                        try:
+                            view = MusicControlView(self, gid)
+                            view.children[0].label = "Resume"
+                            view.children[0].style = discord.ButtonStyle.success
+                            await interaction.message.edit(view=view)
+                        except Exception:
+                            pass
+                    msg = self.get_resp(gid, "music_paused", "Music paused.")
+                    await reply_box(interaction, msg, title="Playback Paused", status="info", ephemeral=True)
+
+            elif custom_id == "music_skip":
+                if state.get("loop"):
+                    state["loop"] = False
+                if vc and (vc.is_playing() or vc.is_paused()):
+                    vc.stop()
+                msg = self.get_resp(gid, "music_skipped", "Skipped current track to next in queue!")
+                await reply_box(interaction, msg, title="Track Skipped", status="success", ephemeral=True)
+
+            elif custom_id == "music_stop":
+                state["queue"].clear()
+                state["current"] = None
+                if vc and (vc.is_playing() or vc.is_paused()):
+                    vc.stop()
+                if interaction.message:
+                    try:
+                        disabled_view = MusicControlView(self, gid)
+                        for child in disabled_view.children:
+                            child.disabled = True
+                        await interaction.message.edit(view=disabled_view)
+                    except Exception:
+                        pass
+                msg = self.get_resp(gid, "music_stopped", "Playback stopped and queue cleared.")
+                await reply_box(interaction, msg, title="Playback Stopped", status="warning", ephemeral=True)
+
+            elif custom_id == "music_loop":
+                is_loop = not state.get("loop", False)
+                state["loop"] = is_loop
+                if interaction.message:
+                    try:
+                        view = MusicControlView(self, gid)
+                        view.children[2].label = "Looping" if is_loop else "Loop"
+                        view.children[2].style = discord.ButtonStyle.primary if is_loop else discord.ButtonStyle.secondary
+                        await interaction.message.edit(view=view)
+                    except Exception:
+                        pass
+                await reply_box(interaction, f"Track looping is now **{'Enabled' if is_loop else 'Disabled'}**.", title="Loop Mode", status="info", ephemeral=True)
+
+            elif custom_id == "music_shuffle":
+                if len(state["queue"]) < 2:
+                    await reply_box(interaction, "Add at least 2 songs to the queue to shuffle.", title="Queue Notice", status="info", ephemeral=True)
+                    return
+                random.shuffle(state["queue"])
+                await reply_box(interaction, f"Reordered **{len(state['queue'])}** upcoming tracks in queue.", title="Queue Shuffled", status="success", ephemeral=True)
+
+            elif custom_id == "music_queue":
+                current = state.get("current")
+                queue = state.get("queue", [])
+                if not current and not queue:
+                    msg = self.get_resp(gid, "music_queue_empty", "The queue is currently empty.")
+                    await reply_box(interaction, msg, title="Queue Empty", status="info", ephemeral=True)
+                    return
+
+                embed = discord.Embed(
+                    title="◈  Playback Queue",
+                    color=discord.Color.from_rgb(139, 92, 246)
+                )
+                if current:
+                    mins, secs = divmod(current.duration or 0, 60)
+                    req_mention = current.requester.mention if hasattr(current.requester, 'mention') else "Someone"
+                    embed.add_field(
+                        name="▶ Currently Playing",
+                        value=f"• **[{current.title}]({current.webpage_url})**\n  ⏱ `{mins:02d}:{secs:02d}` • Requested by: {req_mention}",
+                        inline=False
+                    )
+                if queue:
+                    lines = []
+                    for idx, s in enumerate(queue[:10], start=1):
+                        mins, secs = divmod(s.duration or 0, 60)
+                        s_req = s.requester.mention if hasattr(s.requester, 'mention') else "Someone"
+                        lines.append(f"`{idx}.` **[{s.title}]({s.webpage_url})** (`{mins:02d}:{secs:02d}`) — {s_req}")
+                    if len(queue) > 10:
+                        lines.append(f"*... and {len(queue) - 10} more songs in queue*")
+                    embed.add_field(name="Upcoming in Queue", value="\n".join(lines), inline=False)
+                else:
+                    embed.add_field(name="Upcoming in Queue", value="*No upcoming songs. Use `/play` to add more!*", inline=False)
+
+                embed.set_footer(text=f"Total: {len(queue)} upcoming • Friday Studio Audio Engine")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+            elif custom_id == "music_like":
+                current = state.get("current")
+                if not current:
+                    await reply_box(interaction, "No track currently playing to like.", title="Liked Songs", status="error", ephemeral=True)
+                    return
+                uid_str = str(interaction.user.id)
+                user_likes = db.liked_songs.setdefault(uid_str, [])
+                if any(item.get("url") == current.webpage_url for item in user_likes):
+                    await reply_box(interaction, f"**[{current.title}]({current.webpage_url})** is already in your Liked Songs! Use `/likes` to view them.", title="Already Saved", status="info", ephemeral=True)
+                    return
+                user_likes.append({
+                    "title": current.title,
+                    "url": current.webpage_url,
+                    "duration": current.duration
+                })
+                db.save_data()
+                await reply_box(interaction, f"Saved **[{current.title}]({current.webpage_url})** to your Liked Songs! Use `/likes` to play them anytime.", title="Song Saved", status="success", ephemeral=True)
+
+            elif custom_id == "music_vol_down":
+                current_vol = state.get("volume", 1.0)
+                new_vol = max(0.2, round(current_vol - 0.15, 2))
+                state["volume"] = new_vol
+                transformer = state.get("transformer")
+                if transformer:
+                    transformer.volume = new_vol
+                await reply_box(interaction, f"Master volume adjusted to **{int(new_vol * 100)}%**.", title="Volume Lowered", status="audio", ephemeral=True)
+
+            elif custom_id == "music_vol_up":
+                current_vol = state.get("volume", 1.0)
+                new_vol = min(2.0, round(current_vol + 0.15, 2))
+                state["volume"] = new_vol
+                transformer = state.get("transformer")
+                if transformer:
+                    transformer.volume = new_vol
+                await reply_box(interaction, f"Master volume adjusted to **{int(new_vol * 100)}%**.", title="Volume Raised", status="audio", ephemeral=True)
+
+            elif custom_id == "music_eq_select":
+                values = interaction.data.get("values", []) if interaction.data else []
+                if not values:
+                    return
+                new_eq = values[0]
+                state["filter"] = new_eq
+                profile = AUDIO_FILTERS.get(new_eq, AUDIO_FILTERS["studio"])
+                current = state.get("current")
+
+                if vc and (vc.is_playing() or vc.is_paused()) and current:
+                    vol = state.get("volume", 1.0)
+                    elapsed = int(time.time() - state.get("start_time", time.time()))
+                    dur = current.duration or 3600
+                    ss_pos = max(0, min(elapsed, dur - 2))
+
+                    async def _apply_eq_seamless():
+                        try:
+                            state["_switching_filter"] = True
+                            vc.stop()
+                            for _ in range(15):
+                                if not vc.is_playing() and not vc.is_paused():
+                                    break
+                                await asyncio.sleep(0.04)
+
+                            ffmpeg_opts = self.get_ffmpeg_options(gid, seek_seconds=ss_pos)
+                            raw_source = discord.FFmpegPCMAudio(current.url, **ffmpeg_opts)
+                            source = discord.PCMVolumeTransformer(raw_source, volume=vol)
+                            state["transformer"] = source
+                            state["start_time"] = time.time() - ss_pos
+
+                            if vc.ws:
+                                try:
+                                    await vc.ws.speak(discord.SpeakingState.voice)
+                                except Exception:
+                                    pass
+
+                            def after_play(err):
+                                if state.get("_switching_filter"):
+                                    return
+                                self.play_next(gid)
+
+                            vc.play(source, after=after_play)
+
+                            np_msg = interaction.message or state.get("np_message")
+                            if np_msg:
+                                updated_embed = self.create_now_playing_embed(current, vol, gid)
+                                new_view = MusicControlView(self, gid)
+                                await np_msg.edit(embed=updated_embed, view=new_view)
+                        except Exception as err:
+                            print(f"[Music EQ Switch Error] {err}")
+                        finally:
+                            state["_switching_filter"] = False
+
+                    asyncio.create_task(_apply_eq_seamless())
+
+                await reply_box(
+                    interaction,
+                    description=f"Equalizer Profile: **{profile['emoji']} {profile['name']}**\n{profile['description']}\n*Seamless real-time mastering engaged without restarting track.*",
+                    title="Equalizer Updated",
+                    status="audio",
+                    ephemeral=True
+                )
+        except Exception as e:
+            print(f"[Music Interaction Dispatch Error: {custom_id}] {e}")
+
     def get_state(self, guild_id: int):
         if guild_id not in self.states:
             self.states[guild_id] = {
@@ -824,7 +775,7 @@ class Music(commands.Cog):
         def _extract():
             is_url = query.startswith("http://") or query.startswith("https://")
             cookie_path = get_cookie_file()
-            format_chain = 'bestaudio[ext=m4a]/bestaudio/best/18/140'
+            format_chain = 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best/18/140'
 
             # Authenticated cookies path for yt-dlp
             active_cookie_path = cookie_path if (cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0) else None
@@ -1215,13 +1166,14 @@ class Music(commands.Cog):
             profile = AUDIO_FILTERS.get(f_key, AUDIO_FILTERS["studio"])
             profile_name = f"{profile['emoji']} {profile['name']}"
 
+        req_mention = song.requester.mention if (hasattr(song, "requester") and hasattr(song.requester, "mention")) else "DJ"
         embed.description = (
             f"• **[{song.title}]({song.webpage_url})**\n"
-            f"• ⏱ **Duration:** `{mins:02d}m {secs:02d}s` — ({song.requester.mention})\n"
+            f"• ⏱ **Duration:** `{mins:02d}m {secs:02d}s` — ({req_mention})\n"
             f"• ◈ **Volume:** `{int(volume * 100)}%`  •  **EQ:** `{profile_name}`\n"
             f"• 🎚 **Engine:** `48kHz Studio Master (YouTube High-Fidelity Audio)`"
         )
-        if song.thumbnail:
+        if song.thumbnail and isinstance(song.thumbnail, str) and song.thumbnail.startswith(("http://", "https://")):
             embed.set_thumbnail(url=song.thumbnail)
         embed.set_footer(text="Friday Studio Audio • 48kHz Stereo Master Engine • Pure High-Fidelity")
         return embed
@@ -1249,13 +1201,8 @@ class Music(commands.Cog):
         def after_play(err):
             if state.get("_switching_filter"):
                 return
-            print(f"[Music Debug] Track '{next_song.title}' ended. Error: {err}")
             if err:
-                if state.get("channel"):
-                    asyncio.run_coroutine_threadsafe(
-                        state["channel"].send(f"⚠️ Audio playback notice: `{err}`"),
-                        self.bot.loop
-                    )
+                print(f"[Music Debug] Track '{next_song.title}' ended with note: {err}")
             self.play_next(guild_id)
 
         try:
@@ -1277,20 +1224,41 @@ class Music(commands.Cog):
             if state["channel"]:
                 embed = self.create_now_playing_embed(next_song, vol, guild_id)
                 view = MusicControlView(self, guild_id)
+
                 async def _send_and_track():
                     try:
+                        old_msg = state.get("np_message")
+                        if old_msg:
+                            try:
+                                await old_msg.delete()
+                            except Exception:
+                                pass
                         msg = await state["channel"].send(embed=embed, view=view)
                         state["np_message"] = msg
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"[Music] Error sending Now Playing card: {e}")
+                        try:
+                            embed.set_thumbnail(url=None)
+                            msg = await state["channel"].send(embed=embed, view=view)
+                            state["np_message"] = msg
+                        except Exception as e2:
+                            print(f"[Music] Fallback Now Playing send failed: {e2}")
+
                 asyncio.run_coroutine_threadsafe(_send_and_track(), self.bot.loop)
         except Exception as e:
-            print(f"[Music] Error playing {next_song.title}: {e}")
-            if state["channel"]:
-                asyncio.run_coroutine_threadsafe(
-                    state["channel"].send(f"❌ Error playing `{next_song.title}`: {e}"),
-                    self.bot.loop
-                )
+            print(f"[Music] Playback error on '{next_song.title}': {e}. Attempting stream refresh...")
+            if not getattr(next_song, "_refreshed", False):
+                next_song._refreshed = True
+                async def _refresh_and_retry():
+                    try:
+                        fresh_info = await self.extract_audio_info(next_song.webpage_url or next_song.title)
+                        next_song.url = fresh_info['url']
+                        state["queue"].insert(0, next_song)
+                    except Exception as ref_err:
+                        print(f"[Music] Stream refresh failed for '{next_song.title}': {ref_err}")
+                    self.play_next(guild_id)
+                asyncio.run_coroutine_threadsafe(_refresh_and_retry(), self.bot.loop)
+                return
             self.play_next(guild_id)
 
     # ───────────────────── Slash Commands ─────────────────────
@@ -1516,10 +1484,21 @@ class Music(commands.Cog):
 
                 state["start_time"] = time.time()
                 vc.play(source, after=after_play)
+                old_msg = state.get("np_message")
+                if old_msg:
+                    try:
+                        await old_msg.delete()
+                    except Exception:
+                        pass
                 embed = self.create_now_playing_embed(song, vol, interaction.guild.id)
                 view = MusicControlView(self, interaction.guild.id)
-                msg = await interaction.followup.send(embed=embed, view=view)
-                state["np_message"] = msg
+                try:
+                    msg = await interaction.followup.send(embed=embed, view=view)
+                    state["np_message"] = msg
+                except Exception:
+                    embed.set_thumbnail(url=None)
+                    msg = await interaction.followup.send(embed=embed, view=view)
+                    state["np_message"] = msg
             except Exception as e:
                 await reply_box(interaction, f"Error initializing audio stream: {e}", title="STREAM ERROR", status="danger")
                 self.play_next(interaction.guild.id)
