@@ -123,7 +123,8 @@ async def on_ready():
         "cogs.booster_perks",
         "cogs.court",
         "cogs.tictactoe",
-        "cogs.ludo"
+        "cogs.ludo",
+        "cogs.economy"
     ]
     for cog in cogs_list:
         try:

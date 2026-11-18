@@ -999,6 +999,22 @@ class Leveling(commands.Cog):
             if uid not in db.xp_data[gid]: db.xp_data[gid][uid] = {"xp": 0, "level": 0}
 
             gained_xp = random.randint(15, 25)
+
+            # Check for active 2x XP Booster from Economy system
+            try:
+                eco_cog = self.bot.get_cog("Economy")
+                if eco_cog:
+                    booster = eco_cog.db.get_item(gid, uid, "xp_booster")
+                    if booster and booster["quantity"] > 0:
+                        exp = booster.get("expires_at", 0)
+                        if exp > time.time():
+                            gained_xp *= 2
+                        elif exp != 0 and exp <= time.time():
+                            # Expired booster cleanup
+                            eco_cog.db.consume_item(gid, uid, "xp_booster", 1)
+            except Exception:
+                pass
+
             db.xp_data[gid][uid]["xp"] += gained_xp
             self.xp_cooldowns[uid] = now
             

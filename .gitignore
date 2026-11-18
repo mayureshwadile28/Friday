@@ -22,6 +22,7 @@ data/*.db
 # Scratch, temp, and agent files
 scratch/
 .agents/
+.antigravityrules
 skills-lock.json
 .vscode/
 .idea/

@@ -1,6 +1,29 @@
 Friday Bot - Complete Command List (100+ Commands)
 ===================================================
 
+🪙 Server Economy & Marketplace
+/balance [@member] - Check wallet cash, safe bank vault balance, server standing rank, and active buffs
+/deposit <amount/all> - Transfer vulnerable cash from your wallet into your safe bank vault
+/withdraw <amount/all> - Withdraw coins from your safe bank vault into your wallet
+/bank_upgrade - Burn wallet coins to increase your permanent bank vault storage capacity
+/daily - Claim daily login rewards with progressive 7-day streak multiplier bonuses
+/work - Complete an hourly server work shift to earn clean coins with funny custom prompts
+/crime - High-risk, high-reward street activity (55% success payout vs 45% police fine)
+/rob @member - Attempt a PvP heist on another member's wallet (guarded by Padlocks, Landmines & Passive mode)
+/pay @member <amount> - Transfer coins to another member with flat 8% server anti-inflation tax
+/passive - Toggle Passive Mode (protects you from all robberies, but disables committing robberies)
+/shop - Open the interactive server marketplace with category dropdowns to browse items
+/buy <item_id> [quantity] - Purchase items, upgrades, and perks directly from the market
+/use <item_id> - Activate consumable boosters (e.g. 2x XP Booster for leveling progression)
+/inventory [@member] - Inspect owned items, shields, badges, and active booster timers
+/coinflip <heads/tails> <bet> - High-roller coinflip (48% win chance with 1.95x payout)
+/blackjack <bet> - Interactive casino blackjack with Hit, Stand, and Double Down (Natural pays 3:2)
+/leaderboard_economy - View the server's wealthiest members ranked by Net Worth
+/economy_setup - Configure master toggle, coin drop spawn channel, starter bank, and currency name (Admin)
+/economy_give @member <amount> <wallet/bank> - Grant or deduct coins directly on a member's profile (Admin)
+/economy_reset @member - Completely wipe all balances, items, and games for a member (Admin)
+/economy_channels <add/remove/list> - Manage channel whitelist for passive text chat drops (Admin)
+
 🛡️ Moderation & Server Management
 /ban @member [reason] - Bans a member from the server
 /unban <user> [reason] - Unbans a user by username, tag, or numeric ID (with live autocomplete dropdown)

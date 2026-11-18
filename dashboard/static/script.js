@@ -1806,7 +1806,8 @@ const tabTitles = {
     'giveawaysSection': 'Giveaways Studio & Hub',
     'birthdaysSection': 'Birthday Studio & Tracker',
     'inviteTrackerSection': 'Invite Tracker & Analytics',
-    'boosterSection': 'Server Booster Perks & Celebration Cards'
+    'boosterSection': 'Server Booster Perks & Celebration Cards',
+    'economySection': 'Economy & Marketplace'
 
 
 
@@ -12020,6 +12021,7 @@ async function loadDataForActiveTab() {
     else if (activeTab === 'inviteTrackerSection') await loadInviteTrackerSettings();
     else if (activeTab === 'boosterSection') await loadBoosterSettings();
     else if (activeTab === 'announcementsSection') await loadScheduledAnnouncements();
+    else if (activeTab === 'economySection') await loadEconomySettings();
 
 
 
@@ -71533,6 +71535,551 @@ function initCourtEventListeners() {
             e.preventDefault();
             loadCourtSettings();
             if (typeof showToast === 'function') showToast("Case dockets refreshed! 🔄", "info");
+        });
+    }
+}
+
+
+// ───────────────────── ECONOMY & MARKETPLACE MODULE ─────────────────────
+
+let currentEconomyConfig = {};
+let currentShopItems = {};
+
+async function loadEconomySettings() {
+    const gid = currentGuildId;
+    if (!gid) return;
+
+    try {
+        // Load Channels dropdown
+        await populateEconomyChannels(gid);
+
+        // Fetch Economy Config
+        const res = await fetch(`/api/guild/${gid}/economy/config`);
+        const data = await res.json();
+        
+        if (data.success) {
+            const cfg = data.config || {};
+            currentEconomyConfig = cfg;
+            
+            // Core Identity
+            const enInput = document.getElementById('eco_enabled');
+            if (enInput) enInput.checked = cfg.enabled !== false;
+            
+            const nameInput = document.getElementById('eco_currency_name');
+            if (nameInput) nameInput.value = cfg.currency_name || 'Coins';
+            
+            const emojiInput = document.getElementById('eco_currency_emoji');
+            if (emojiInput) emojiInput.value = cfg.currency_emoji || '🪙';
+            
+            const emojiVisual = document.getElementById('ecoCurrencyEmojiVisual');
+            if (emojiVisual) {
+                emojiVisual.innerHTML = (typeof renderEmojiHtmlOrChar === 'function') 
+                    ? renderEmojiHtmlOrChar(cfg.currency_emoji || '🪙', 24) 
+                    : (cfg.currency_emoji || '🪙');
+            }
+            
+            const dropCh = document.getElementById('eco_drop_channel');
+            if (dropCh && data.drop_channel_id) dropCh.value = data.drop_channel_id;
+
+            // Channels Whitelist Multi-select
+            const allowedSelect = document.getElementById('eco_channels_select');
+            if (allowedSelect && Array.isArray(data.allowed_channels)) {
+                Array.from(allowedSelect.options).forEach(opt => {
+                    opt.selected = data.allowed_channels.includes(opt.value);
+                });
+            }
+
+            // Faucets & Rewards
+            setVal('eco_starter_bank', cfg.starter_bank ?? 100);
+            setVal('eco_bank_max_initial', cfg.bank_max_initial ?? 2500);
+            setVal('eco_bank_upgrade_cost', cfg.bank_upgrade_cost ?? 1500);
+            setVal('eco_bank_upgrade_increase', cfg.bank_upgrade_increase ?? 2500);
+            
+            setVal('eco_passive_earn_chance', (cfg.passive_earn_chance !== undefined ? Math.round(cfg.passive_earn_chance * 100) : 40));
+            setVal('eco_passive_min', cfg.passive_min ?? 5);
+            setVal('eco_passive_max', cfg.passive_max ?? 15);
+            
+            setVal('eco_coin_drop_chance', (cfg.coin_drop_chance !== undefined ? cfg.coin_drop_chance * 100 : 1));
+            setVal('eco_coin_drop_amount', cfg.coin_drop_amount ?? 250);
+            
+            setVal('eco_vc_reward', cfg.vc_reward_per_5min ?? 20);
+            setVal('eco_vc_min_members', cfg.vc_min_members ?? 2);
+            
+            setVal('eco_daily_base', cfg.daily_base ?? 250);
+            setVal('eco_daily_streak_bonus', cfg.daily_streak_bonus ?? 50);
+            setVal('eco_daily_max_streak', cfg.daily_streak_max_days ?? 7);
+            
+            setVal('eco_work_cooldown', cfg.work_cooldown_minutes ?? 60);
+            setVal('eco_work_min', cfg.work_min ?? 80);
+            setVal('eco_work_max', cfg.work_max ?? 200);
+            
+            setVal('eco_crime_cooldown', cfg.crime_cooldown_minutes ?? 30);
+            setVal('eco_crime_success_pct', cfg.crime_success_pct ?? 55);
+            setVal('eco_crime_earn_min', cfg.crime_earn_min ?? 300);
+            setVal('eco_crime_earn_max', cfg.crime_earn_max ?? 600);
+            setVal('eco_crime_fail_fine', cfg.crime_fail_fine ?? 200);
+
+            // Robbery & Sinks
+            setVal('eco_rob_cooldown', cfg.rob_cooldown_hours ?? 2);
+            setVal('eco_rob_min_robber', cfg.rob_min_robber_wallet ?? 500);
+            setVal('eco_rob_min_victim', cfg.rob_min_victim_wallet ?? 500);
+            setVal('eco_rob_success_chance', (cfg.rob_success_chance !== undefined ? Math.round(cfg.rob_success_chance * 100) : 40));
+            setVal('eco_rob_steal_min', cfg.rob_steal_min_pct ?? 0.15);
+            setVal('eco_rob_steal_max', cfg.rob_steal_max_pct ?? 0.35);
+            setVal('eco_rob_fail_fine_pct', cfg.rob_fail_fine_pct ?? 0.20);
+            setVal('eco_padlock_fine', cfg.padlock_fine ?? 250);
+            setVal('eco_landmine_mult', cfg.landmine_fine_multiplier ?? 2);
+            setVal('eco_pay_tax_pct', (cfg.pay_tax_pct !== undefined ? Math.round(cfg.pay_tax_pct * 100) : 8));
+
+            // Shop items
+            currentShopItems = cfg.shop_items || {
+                padlock: { name: "Padlock", emoji: "🔒", price: 750, enabled: true, desc: "Blocks next /rob attempt, then shatters." },
+                landmine: { name: "Landmine", emoji: "💣", price: 1200, enabled: true, desc: "50% chance to detonate, doubling robber fine." },
+                xp_booster: { name: "2x XP Booster", emoji: "⚡", price: 3000, enabled: true, desc: "Grants 2x leveling XP for 2 hours." },
+                bank_expansion: { name: "Bank Expansion", emoji: "🏦", price: 2500, enabled: true, desc: "Permanently adds +5,000 vault capacity." },
+                custom_role_color: { name: "Custom Role Color", emoji: "🎨", price: 15000, enabled: true, desc: "Unlocks cosmetic role color." },
+                vip_badge: { name: "VIP Badge", emoji: "👑", price: 50000, enabled: true, desc: "Displays VIP crown on balance." }
+            };
+            renderShopItemsTable(currentShopItems);
+        }
+
+        // Parallel stats, leaderboard, and audit log loading
+        loadEconomyStats();
+        loadEconomyLeaderboard();
+        loadEconomyTransactions();
+        initEconomyModule();
+
+    } catch (e) {
+        console.error("loadEconomySettings error:", e);
+    }
+}
+
+function setVal(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+}
+
+function getNum(id, fallback = 0) {
+    const el = document.getElementById(id);
+    return el && el.value !== '' ? parseFloat(el.value) : fallback;
+}
+
+async function populateEconomyChannels(gid) {
+    try {
+        const res = await fetch(`/api/guild/${gid}/channels`);
+        const channels = await res.json();
+        
+        const dropSelect = document.getElementById('eco_drop_channel');
+        const multiSelect = document.getElementById('eco_channels_select');
+        
+        if (dropSelect) {
+            const curVal = dropSelect.value;
+            dropSelect.innerHTML = '<option value="">Current Message Channel (Default)</option>';
+            channels.forEach(ch => {
+                dropSelect.innerHTML += `<option value="${ch.id}"># ${escapeHtml(ch.name)}</option>`;
+            });
+            if (curVal) dropSelect.value = curVal;
+        }
+
+        if (multiSelect) {
+            multiSelect.innerHTML = '';
+            channels.forEach(ch => {
+                multiSelect.innerHTML += `<option value="${ch.id}"># ${escapeHtml(ch.name)}</option>`;
+            });
+        }
+    } catch (e) {
+        console.error("populateEconomyChannels error:", e);
+    }
+}
+
+function renderShopItemsTable(items) {
+    const tbody = document.getElementById('ecoShopItemsTableBody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    const itemEntries = Object.entries(items);
+    
+    if (itemEntries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="padding: 16px; text-align: center; color: var(--text-muted);">No store items registered.</td></tr>';
+        return;
+    }
+
+    itemEntries.forEach(([itemId, it]) => {
+        const tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid rgba(255, 255, 255, 0.05)';
+        
+        const emojiVal = it.emoji || '📦';
+        const renderedEmoji = (typeof renderEmojiHtmlOrChar === 'function') 
+            ? renderEmojiHtmlOrChar(emojiVal, 22) 
+            : emojiVal;
+            
+        tr.innerHTML = `
+            <td style="padding: 12px 10px;">
+                <code style="background: rgba(255, 255, 255, 0.06); padding: 3px 6px; border-radius: 4px; font-size: 11.5px; color: #60a5fa;">${escapeHtml(itemId)}</code>
+            </td>
+            <td style="padding: 12px 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <div id="ecoItemVisual_${itemId}" style="width: 32px; height: 32px; border-radius: 6px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center;">
+                        ${renderedEmoji}
+                    </div>
+                    <button type="button" class="btn btn-secondary emoji-picker-btn" id="ecoItemEmojiBtn_${itemId}" style="padding: 3px 8px; font-size: 11px;">
+                        Emoji
+                    </button>
+                    <input type="hidden" id="ecoItemEmojiInput_${itemId}" value="${escapeHtml(emojiVal)}"/>
+                </div>
+            </td>
+            <td style="padding: 12px 10px;">
+                <input class="text-input" id="ecoItemName_${itemId}" type="text" value="${escapeHtml(it.name || itemId)}" style="width: 160px; padding: 6px 10px; font-size: 12.5px;"/>
+            </td>
+            <td style="padding: 12px 10px;">
+                <input class="text-input" id="ecoItemPrice_${itemId}" type="number" value="${it.price ?? 0}" style="width: 120px; padding: 6px 10px; font-size: 12.5px;"/>
+            </td>
+            <td style="padding: 12px 10px;">
+                <label class="switch">
+                    <input id="ecoItemEnabled_${itemId}" type="checkbox" ${it.enabled !== false ? 'checked' : ''}/>
+                    <span class="slider"></span>
+                </label>
+            </td>
+            <td style="padding: 12px 10px; font-size: 12px; color: var(--text-muted); max-width: 280px;">
+                ${escapeHtml(it.desc || '')}
+            </td>
+        `;
+        tbody.appendChild(tr);
+
+        // Bind emoji picker button for this shop item
+        const itemBtn = tr.querySelector(`#ecoItemEmojiBtn_${itemId}`);
+        const itemVisual = tr.querySelector(`#ecoItemVisual_${itemId}`);
+        const itemInput = tr.querySelector(`#ecoItemEmojiInput_${itemId}`);
+        
+        if (itemBtn) {
+            itemBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (typeof openEmojiPicker === 'function') {
+                    openEmojiPicker(itemBtn, (chosenEmoji) => {
+                        itemInput.value = chosenEmoji;
+                        itemVisual.innerHTML = (typeof renderEmojiHtmlOrChar === 'function') 
+                            ? renderEmojiHtmlOrChar(chosenEmoji, 22) 
+                            : chosenEmoji;
+                    });
+                }
+            });
+        }
+    });
+}
+
+async function loadEconomyStats() {
+    const gid = currentGuildId;
+    if (!gid) return;
+    try {
+        const res = await fetch(`/api/guild/${gid}/economy/stats`);
+        const data = await res.json();
+        if (data.success && data.stats) {
+            const s = data.stats;
+            
+            const elCirc = document.getElementById('eco_stat_circulation');
+            if (elCirc) elCirc.textContent = `${Number(s.total_circulation).toLocaleString()}`;
+            
+            const elUsers = document.getElementById('eco_stat_users');
+            if (elUsers) elUsers.textContent = `${Number(s.total_users).toLocaleString()}`;
+            
+            const elBank = document.getElementById('eco_stat_bank');
+            if (elBank) elBank.textContent = `${Number(s.total_bank).toLocaleString()}`;
+            
+            const elTop = document.getElementById('eco_stat_top');
+            if (elTop) elTop.textContent = `${Number(s.highest_net_worth).toLocaleString()}`;
+        }
+    } catch (e) {
+        console.error("loadEconomyStats error:", e);
+    }
+}
+
+async function loadEconomyLeaderboard() {
+    const gid = currentGuildId;
+    const tbody = document.getElementById('ecoLeaderboardTableBody');
+    if (!gid || !tbody) return;
+
+    try {
+        const res = await fetch(`/api/guild/${gid}/economy/leaderboard`);
+        const data = await res.json();
+        
+        if (!data.success || !Array.isArray(data.leaderboard) || data.leaderboard.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">No recorded leaderboard entries yet.</td></tr>';
+            return;
+        }
+
+        const medals = ['🥇', '🥈', '🥉'];
+        tbody.innerHTML = data.leaderboard.map(item => {
+            const icon = medals[item.rank - 1] || `<span style="font-weight: 700; color: var(--text-muted);">#${item.rank}</span>`;
+            const avImg = item.avatar ? `<img src="${item.avatar}" style="width: 24px; height: 24px; border-radius: 50%; vertical-align: middle; margin-right: 8px;">` : '';
+            return `
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 12.5px;">
+                    <td style="padding: 10px 8px; text-align: center;">${icon}</td>
+                    <td style="padding: 10px 8px; font-weight: 600; color: #ffffff;">${avImg}${escapeHtml(item.username)}</td>
+                    <td style="padding: 10px 8px; color: #34d399;">${Number(item.wallet).toLocaleString()}</td>
+                    <td style="padding: 10px 8px; color: #60a5fa;">${Number(item.bank).toLocaleString()}</td>
+                    <td style="padding: 10px 8px; font-weight: 700; color: #f59e0b;">${Number(item.net_worth).toLocaleString()}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error("loadEconomyLeaderboard error:", e);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">Failed to load leaderboard.</td></tr>';
+    }
+}
+
+async function loadEconomyTransactions() {
+    const gid = currentGuildId;
+    const tbody = document.getElementById('ecoTransactionsTableBody');
+    if (!gid || !tbody) return;
+
+    try {
+        const res = await fetch(`/api/guild/${gid}/economy/transactions`);
+        const data = await res.json();
+        
+        if (!data.success || !Array.isArray(data.transactions) || data.transactions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">No recent transactions recorded.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = data.transactions.map(tx => {
+            const isPos = tx.amount >= 0;
+            const amtStr = isPos ? `+${Number(tx.amount).toLocaleString()}` : `${Number(tx.amount).toLocaleString()}`;
+            const amtColor = isPos ? '#34d399' : '#f87171';
+            return `
+                <tr style="border-bottom: 1px solid rgba(255, 255, 255, 0.04); font-size: 11.5px;">
+                    <td style="padding: 8px; color: var(--text-muted);">${tx.formatted_time || ''}</td>
+                    <td style="padding: 8px; font-weight: 600; color: #ffffff;">${escapeHtml(tx.username)}</td>
+                    <td style="padding: 8px;"><code style="background: rgba(255,255,255,0.06); padding: 2px 5px; border-radius: 4px; font-size: 10.5px;">${escapeHtml(tx.type)}</code></td>
+                    <td style="padding: 8px; font-weight: 700; color: ${amtColor};">${amtStr}</td>
+                    <td style="padding: 8px; color: var(--text-secondary);">${Number(tx.balance_after).toLocaleString()}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error("loadEconomyTransactions error:", e);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">Failed to load transactions.</td></tr>';
+    }
+}
+
+function initEconomyModule() {
+    // Currency Emoji Picker
+    const curEmojiBtn = document.getElementById('ecoCurrencyEmojiBtn');
+    const curEmojiVisual = document.getElementById('ecoCurrencyEmojiVisual');
+    const curEmojiInput = document.getElementById('eco_currency_emoji');
+    
+    if (curEmojiBtn && !curEmojiBtn.dataset.bound) {
+        curEmojiBtn.dataset.bound = "true";
+        curEmojiBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (typeof openEmojiPicker === 'function') {
+                openEmojiPicker(curEmojiBtn, (emojiVal) => {
+                    if (curEmojiInput) curEmojiInput.value = emojiVal;
+                    if (curEmojiVisual) {
+                        curEmojiVisual.innerHTML = (typeof renderEmojiHtmlOrChar === 'function') 
+                            ? renderEmojiHtmlOrChar(emojiVal, 24) 
+                            : emojiVal;
+                    }
+                });
+            }
+        });
+    }
+
+    // Refresh Stats Button
+    const refreshBtn = document.getElementById('refreshEconomyBtn');
+    if (refreshBtn && !refreshBtn.dataset.bound) {
+        refreshBtn.dataset.bound = "true";
+        refreshBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            loadEconomySettings();
+            if (typeof showToast === 'function') showToast("Economy metrics refreshed! 🔄", "info");
+        });
+    }
+
+    // Save Settings Button
+    const saveBtn = document.getElementById('saveEconomyBtn');
+    if (saveBtn && !saveBtn.dataset.bound) {
+        saveBtn.dataset.bound = "true";
+        saveBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const gid = currentGuildId;
+            if (!gid) return;
+
+            // Reconstruct updated shop items
+            const updatedShop = {};
+            Object.keys(currentShopItems).forEach(iid => {
+                const nameEl = document.getElementById(`ecoItemName_${iid}`);
+                const priceEl = document.getElementById(`ecoItemPrice_${iid}`);
+                const enEl = document.getElementById(`ecoItemEnabled_${iid}`);
+                const emInput = document.getElementById(`ecoItemEmojiInput_${iid}`);
+                
+                updatedShop[iid] = {
+                    ...currentShopItems[iid],
+                    name: nameEl ? nameEl.value : currentShopItems[iid].name,
+                    price: priceEl ? parseInt(priceEl.value) || 0 : currentShopItems[iid].price,
+                    enabled: enEl ? enEl.checked : true,
+                    emoji: emInput ? emInput.value : (currentShopItems[iid].emoji || '📦')
+                };
+            });
+
+            // Gather channels
+            const dropCh = document.getElementById('eco_drop_channel');
+            const dropChVal = dropCh ? dropCh.value : null;
+
+            const multiCh = document.getElementById('eco_channels_select');
+            const allowedChs = multiCh ? Array.from(multiCh.selectedOptions).map(o => o.value) : [];
+
+            const payload = {
+                drop_channel_id: dropChVal,
+                allowed_channels: allowedChs,
+                config: {
+                    enabled: (document.getElementById('eco_enabled') || {}).checked !== false,
+                    currency_name: (document.getElementById('eco_currency_name') || {}).value || 'Coins',
+                    currency_emoji: (document.getElementById('eco_currency_emoji') || {}).value || '🪙',
+                    
+                    starter_bank: getNum('eco_starter_bank', 100),
+                    bank_max_initial: getNum('eco_bank_max_initial', 2500),
+                    bank_upgrade_cost: getNum('eco_bank_upgrade_cost', 1500),
+                    bank_upgrade_increase: getNum('eco_bank_upgrade_increase', 2500),
+                    
+                    passive_earn_chance: getNum('eco_passive_earn_chance', 40) / 100,
+                    passive_min: getNum('eco_passive_min', 5),
+                    passive_max: getNum('eco_passive_max', 15),
+                    
+                    coin_drop_chance: getNum('eco_coin_drop_chance', 1) / 100,
+                    coin_drop_amount: getNum('eco_coin_drop_amount', 250),
+                    
+                    vc_reward_per_5min: getNum('eco_vc_reward', 20),
+                    vc_min_members: getNum('eco_vc_min_members', 2),
+                    
+                    daily_base: getNum('eco_daily_base', 250),
+                    daily_streak_bonus: getNum('eco_daily_streak_bonus', 50),
+                    daily_streak_max_days: getNum('eco_daily_max_streak', 7),
+                    
+                    work_cooldown_minutes: getNum('eco_work_cooldown', 60),
+                    work_min: getNum('eco_work_min', 80),
+                    work_max: getNum('eco_work_max', 200),
+                    
+                    crime_cooldown_minutes: getNum('eco_crime_cooldown', 30),
+                    crime_success_pct: getNum('eco_crime_success_pct', 55),
+                    crime_earn_min: getNum('eco_crime_earn_min', 300),
+                    crime_earn_max: getNum('eco_crime_earn_max', 600),
+                    crime_fail_fine: getNum('eco_crime_fail_fine', 200),
+                    
+                    rob_cooldown_hours: getNum('eco_rob_cooldown', 2),
+                    rob_min_robber_wallet: getNum('eco_rob_min_robber', 500),
+                    rob_min_victim_wallet: getNum('eco_rob_min_victim', 500),
+                    rob_success_chance: getNum('eco_rob_success_chance', 40) / 100,
+                    rob_steal_min_pct: getNum('eco_rob_steal_min', 0.15),
+                    rob_steal_max_pct: getNum('eco_rob_steal_max', 0.35),
+                    rob_fail_fine_pct: getNum('eco_rob_fail_fine_pct', 0.20),
+                    padlock_fine: getNum('eco_padlock_fine', 250),
+                    landmine_fine_multiplier: getNum('eco_landmine_mult', 2),
+                    pay_tax_pct: getNum('eco_pay_tax_pct', 8) / 100,
+                    
+                    shop_items: updatedShop
+                }
+            };
+
+            try {
+                const res = await fetch(`/api/guild/${gid}/economy/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast("Economy & Shop settings saved successfully! 🪙", "success");
+                    loadEconomySettings();
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to save economy settings.", "error");
+                }
+            } catch (err) {
+                console.error("Save economy settings error:", err);
+                if (typeof showToast === 'function') showToast("Network error while saving economy settings.", "error");
+            }
+        });
+    }
+
+    // Admin Give Button
+    const adminGiveBtn = document.getElementById('ecoAdminGiveBtn');
+    if (adminGiveBtn && !adminGiveBtn.dataset.bound) {
+        adminGiveBtn.dataset.bound = "true";
+        adminGiveBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const gid = currentGuildId;
+            const uidInput = document.getElementById('eco_admin_user_id');
+            const amtInput = document.getElementById('eco_admin_amount');
+            const destSelect = document.getElementById('eco_admin_dest');
+            
+            const uid = uidInput ? uidInput.value.trim() : '';
+            const amount = amtInput ? parseInt(amtInput.value) : 0;
+            const dest = destSelect ? destSelect.value : 'wallet';
+
+            if (!gid || !uid || !amount) {
+                if (typeof showToast === 'function') showToast("Please provide a valid Member ID and non-zero Amount.", "error");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/economy/admin/give', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ guild_id: gid, user_id: uid, amount, destination: dest })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast(`Successfully adjusted balance! New balance: ${data.new_balance.toLocaleString()} 💸`, "success");
+                    if (amtInput) amtInput.value = '';
+                    loadEconomyStats();
+                    loadEconomyLeaderboard();
+                    loadEconomyTransactions();
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to adjust balance.", "error");
+                }
+            } catch (err) {
+                console.error("Admin give error:", err);
+            }
+        });
+    }
+
+    // Admin Reset Button
+    const adminResetBtn = document.getElementById('ecoAdminResetBtn');
+    if (adminResetBtn && !adminResetBtn.dataset.bound) {
+        adminResetBtn.dataset.bound = "true";
+        adminResetBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const gid = currentGuildId;
+            const uidInput = document.getElementById('eco_admin_reset_user_id');
+            const uid = uidInput ? uidInput.value.trim() : '';
+
+            if (!gid || !uid) {
+                if (typeof showToast === 'function') showToast("Please enter a valid Member ID to reset.", "error");
+                return;
+            }
+
+            if (!confirm(`Are you SURE you want to completely wipe the economy profile for member ${uid}? This cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/economy/admin/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ guild_id: gid, user_id: uid })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast("Member economy profile wiped! 🧹", "success");
+                    if (uidInput) uidInput.value = '';
+                    loadEconomyStats();
+                    loadEconomyLeaderboard();
+                    loadEconomyTransactions();
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to reset profile.", "error");
+                }
+            } catch (err) {
+                console.error("Admin reset error:", err);
+            }
         });
     }
 }

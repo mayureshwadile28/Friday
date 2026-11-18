@@ -103,6 +103,12 @@ class Database:
         self.court_cases = ccas if isinstance(ccas, dict) else {}
         crec = self.data.get("court_records")
         self.court_records = crec if isinstance(crec, dict) else {}
+        eco_cfg = self.data.get("economy_config")
+        self.economy_config = eco_cfg if isinstance(eco_cfg, dict) else {}
+        eco_ch = self.data.get("economy_channels")
+        self.economy_channels = eco_ch if isinstance(eco_ch, dict) else {}
+        eco_log = self.data.get("economy_log_channels")
+        self.economy_log_channels = eco_log if isinstance(eco_log, dict) else {}
 
     def load_data(self):
         try:
@@ -173,7 +179,10 @@ class Database:
                 "bot_command_channels": {},
                 "court_config": {},
                 "court_cases": {},
-                "court_records": {}
+                "court_records": {},
+                "economy_config": {},
+                "economy_channels": {},
+                "economy_log_channels": {}
             }
 
     def reload(self):

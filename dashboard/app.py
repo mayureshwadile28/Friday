@@ -5435,6 +5435,236 @@ def pardon_guild_court_case(gid):
     return jsonify({"success": True, "message": "Pardon granted and penalty role cleared."})
 
 
+# ───────────────────── API: Economy System ─────────────────────
+
+def get_economy_db():
+    import sqlite3
+    db_path = os.path.join(PARENT_DIR, "data", "economy.db")
+    conn = sqlite3.connect(db_path, timeout=10)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+@app.route('/api/guild/<gid>/economy/config', methods=['GET'])
+@app.route('/api/economy/config/<gid>', methods=['GET'])
+def get_economy_config(gid):
+    gid_str = str(gid)
+    cfg = db.economy_config.get(gid_str, {})
+    drop_ch = db.economy_log_channels.get(gid_str) or cfg.get("drop_channel_id")
+    allowed_ch = db.economy_channels.get(gid_str, [])
+    return jsonify({
+        "success": True,
+        "config": cfg,
+        "drop_channel_id": str(drop_ch) if drop_ch else None,
+        "allowed_channels": [str(c) for c in allowed_ch]
+    })
+
+@app.route('/api/guild/<gid>/economy/config', methods=['POST'])
+@app.route('/api/economy/config/<gid>', methods=['POST'])
+def save_economy_config(gid):
+    gid_str = str(gid)
+    payload = flask_request.get_json(silent=True) or {}
+    
+    if "config" in payload and isinstance(payload["config"], dict):
+        new_cfg = payload["config"]
+    else:
+        new_cfg = {k: v for k, v in payload.items() if k not in ("drop_channel_id", "allowed_channels")}
+        
+    if gid_str not in db.economy_config:
+        db.economy_config[gid_str] = {}
+        
+    db.economy_config[gid_str].update(new_cfg)
+    
+    if "drop_channel_id" in payload:
+        ch = payload["drop_channel_id"]
+        db.economy_log_channels[gid_str] = int(ch) if ch and str(ch).isdigit() else None
+        db.economy_config[gid_str]["drop_channel_id"] = db.economy_log_channels[gid_str]
+        
+    if "allowed_channels" in payload:
+        chs = payload["allowed_channels"]
+        if isinstance(chs, list):
+            db.economy_channels[gid_str] = [int(c) for c in chs if str(c).isdigit()]
+            
+    db.save_data()
+    return jsonify({"success": True, "message": "Economy settings saved successfully."})
+
+@app.route('/api/economy/guild-emojis/<gid>', methods=['GET'])
+def get_economy_guild_emojis(gid):
+    return get_guild_emojis(gid)
+
+@app.route('/api/guild/<gid>/economy/leaderboard', methods=['GET'])
+@app.route('/api/economy/leaderboard/<gid>', methods=['GET'])
+def get_economy_leaderboard(gid):
+    gid_str = str(gid)
+    try:
+        conn = get_economy_db()
+        rows = conn.execute("""
+            SELECT user_id, wallet, bank, bank_max, (wallet + bank) AS net_worth
+            FROM economy_users
+            WHERE guild_id=?
+            ORDER BY net_worth DESC
+            LIMIT 25
+        """, (gid_str,)).fetchall()
+        conn.close()
+        
+        result = []
+        for idx, r in enumerate(rows, start=1):
+            uid = str(r["user_id"])
+            uinfo = fetch_user_info(uid)
+            result.append({
+                "rank": idx,
+                "user_id": uid,
+                "username": uinfo.get("username", f"User {uid}"),
+                "avatar": uinfo.get("avatar"),
+                "wallet": r["wallet"],
+                "bank": r["bank"],
+                "bank_max": r["bank_max"],
+                "net_worth": r["net_worth"]
+            })
+        return jsonify({"success": True, "leaderboard": result})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "leaderboard": []})
+
+@app.route('/api/guild/<gid>/economy/transactions', methods=['GET'])
+@app.route('/api/economy/transactions/<gid>', methods=['GET'])
+def get_economy_transactions(gid):
+    gid_str = str(gid)
+    try:
+        conn = get_economy_db()
+        rows = conn.execute("""
+            SELECT id, user_id, type, amount, balance_after, related_uid, note, ts
+            FROM economy_transactions
+            WHERE guild_id=?
+            ORDER BY id DESC
+            LIMIT 50
+        """, (gid_str,)).fetchall()
+        conn.close()
+        
+        txs = []
+        for r in rows:
+            uid = str(r["user_id"])
+            uinfo = fetch_user_info(uid)
+            rel_name = None
+            if r["related_uid"]:
+                rel_info = fetch_user_info(str(r["related_uid"]))
+                rel_name = rel_info.get("username")
+            txs.append({
+                "id": r["id"],
+                "user_id": uid,
+                "username": uinfo.get("username", f"User {uid}"),
+                "type": r["type"],
+                "amount": r["amount"],
+                "balance_after": r["balance_after"],
+                "related_uid": r["related_uid"],
+                "related_username": rel_name,
+                "note": r["note"],
+                "ts": r["ts"],
+                "formatted_time": datetime.fromtimestamp(r["ts"], tz=timezone.utc).strftime("%b %d, %H:%M UTC") if r["ts"] else ""
+            })
+        return jsonify({"success": True, "transactions": txs})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "transactions": []})
+
+@app.route('/api/guild/<gid>/economy/stats', methods=['GET'])
+@app.route('/api/economy/stats/<gid>', methods=['GET'])
+def get_economy_stats(gid):
+    gid_str = str(gid)
+    try:
+        conn = get_economy_db()
+        row = conn.execute("""
+            SELECT 
+                COUNT(*) AS total_users,
+                COALESCE(SUM(wallet), 0) AS total_wallet,
+                COALESCE(SUM(bank), 0) AS total_bank,
+                COALESCE(SUM(wallet + bank), 0) AS total_circulation,
+                COALESCE(MAX(wallet + bank), 0) AS highest_net_worth
+            FROM economy_users
+            WHERE guild_id=?
+        """, (gid_str,)).fetchone()
+        
+        tx_row = conn.execute("SELECT COUNT(*) AS total_tx FROM economy_transactions WHERE guild_id=?", (gid_str,)).fetchone()
+        tx_count = tx_row["total_tx"] if tx_row else 0
+        conn.close()
+        
+        return jsonify({
+            "success": True,
+            "stats": {
+                "total_users": row["total_users"] if row else 0,
+                "total_wallet": row["total_wallet"] if row else 0,
+                "total_bank": row["total_bank"] if row else 0,
+                "total_circulation": row["total_circulation"] if row else 0,
+                "highest_net_worth": row["highest_net_worth"] if row else 0,
+                "total_transactions": tx_count
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e), "stats": {}})
+
+@app.route('/api/economy/admin/give', methods=['POST'])
+def economy_admin_give():
+    data = flask_request.get_json(silent=True) or {}
+    gid = str(data.get("guild_id", ""))
+    uid = str(data.get("user_id", ""))
+    amount = data.get("amount", 0)
+    dest = data.get("destination", "wallet")
+    
+    if not gid or not uid:
+        return jsonify({"success": False, "error": "Missing guild_id or user_id."}), 400
+    try:
+        amount = int(amount)
+    except ValueError:
+        return jsonify({"success": False, "error": "Invalid amount."}), 400
+        
+    try:
+        conn = get_economy_db()
+        conn.execute("BEGIN IMMEDIATE")
+        
+        existing = conn.execute("SELECT * FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+        if not existing:
+            conn.execute("""
+                INSERT INTO economy_users (guild_id, user_id, wallet, bank, bank_max, created_at)
+                VALUES (?, ?, 0, 100, 2500, ?)
+            """, (gid, uid, time.time()))
+            
+        if dest == "bank":
+            conn.execute("UPDATE economy_users SET bank = MAX(0, bank + ?) WHERE guild_id=? AND user_id=?", (amount, gid, uid))
+            cur_bal = conn.execute("SELECT bank FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()["bank"]
+        else:
+            conn.execute("UPDATE economy_users SET wallet = MAX(0, wallet + ?) WHERE guild_id=? AND user_id=?", (amount, gid, uid))
+            cur_bal = conn.execute("SELECT wallet FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()["wallet"]
+            
+        conn.execute("""
+            INSERT INTO economy_transactions (guild_id, user_id, type, amount, balance_after, note, ts)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (gid, uid, "dashboard_admin_give", amount, cur_bal, f"Admin modified {dest}", time.time()))
+        
+        conn.execute("COMMIT")
+        conn.close()
+        return jsonify({"success": True, "new_balance": cur_bal})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/economy/admin/reset', methods=['POST'])
+def economy_admin_reset():
+    data = flask_request.get_json(silent=True) or {}
+    gid = str(data.get("guild_id", ""))
+    uid = str(data.get("user_id", ""))
+    
+    if not gid or not uid:
+        return jsonify({"success": False, "error": "Missing guild_id or user_id."}), 400
+        
+    try:
+        conn = get_economy_db()
+        conn.execute("BEGIN IMMEDIATE")
+        conn.execute("DELETE FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid))
+        conn.execute("DELETE FROM economy_inventory WHERE guild_id=? AND user_id=?", (gid, uid))
+        conn.execute("DELETE FROM economy_active_games WHERE guild_id=? AND user_id=?", (gid, uid))
+        conn.execute("COMMIT")
+        conn.close()
+        return jsonify({"success": True, "message": "User economy data successfully reset."})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ───────────────────── Bot Lifecycle ─────────────────────
 
 @app.route('/api/bot/stop', methods=['POST'])

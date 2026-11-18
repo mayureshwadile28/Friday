@@ -167,6 +167,24 @@
 
                 </a>
 
+<a class="nav-item" data-tab="economySection" href="#">
+
+<div class="nav-icon-wrap">
+
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24" width="16">
+
+<circle cx="12" cy="12" r="9"></circle>
+
+<path d="M12 7v10M9 9.5a2.5 2.5 0 0 1 5 0c0 2-3 2.5-3 4.5M10 16.5h4"></path>
+
+</svg>
+
+</div>
+
+                    Economy System
+
+                </a>
+
 <a class="nav-item" data-tab="reactionRolesSection" href="#">
 
 <div class="nav-icon-wrap">
@@ -2873,6 +2891,437 @@
                             Save Leveling Settings
 
                         </button>
+
+</div>
+
+</div>
+
+</div>
+
+<!-- ──────────────── MODULE: ECONOMY & MARKETPLACE ──────────────── -->
+
+<div class="section tab-content" id="economySection" style="display:none;">
+
+<div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+
+<div>
+
+<h1 class="section-title">🪙 Economy &amp; Server Marketplace</h1>
+
+<p class="section-desc">Manage community earnings, banking vaults, PvP robbery risk, casino mini-games, and official shop items.</p>
+
+</div>
+
+<div style="display: flex; gap: 10px; align-items: center;">
+
+<button class="btn btn-secondary" id="refreshEconomyBtn" type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; font-weight: 600;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+    Refresh Stats
+</button>
+
+<button class="btn btn-action-primary" id="saveEconomyBtn" type="button" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; font-weight: 600;">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+    Save Economy Settings
+</button>
+
+</div>
+
+</div>
+
+<!-- Economy Telemetry Stat Counters -->
+<div class="grid-4" style="margin-bottom: 24px;">
+
+<div class="card" style="padding: 16px; border-left: 4px solid #10b981; background: rgba(16, 185, 129, 0.05);">
+    <div style="font-size: 11.5px; font-weight: 700; color: #10b981; text-transform: uppercase; letter-spacing: 0.5px;">Coins in Circulation</div>
+    <div id="eco_stat_circulation" style="font-size: 24px; font-weight: 800; color: #ffffff; margin-top: 6px;">0</div>
+    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Total Wallet + Bank Wealth</div>
+</div>
+
+<div class="card" style="padding: 16px; border-left: 4px solid #5865f2; background: rgba(88, 101, 242, 0.05);">
+    <div style="font-size: 11.5px; font-weight: 700; color: #5865f2; text-transform: uppercase; letter-spacing: 0.5px;">Active Profiles</div>
+    <div id="eco_stat_users" style="font-size: 24px; font-weight: 800; color: #ffffff; margin-top: 6px;">0</div>
+    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Registered Server Members</div>
+</div>
+
+<div class="card" style="padding: 16px; border-left: 4px solid #f59e0b; background: rgba(245, 158, 11, 0.05);">
+    <div style="font-size: 11.5px; font-weight: 700; color: #f59e0b; text-transform: uppercase; letter-spacing: 0.5px;">Vault Reserves</div>
+    <div id="eco_stat_bank" style="font-size: 24px; font-weight: 800; color: #ffffff; margin-top: 6px;">0</div>
+    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Stored in Protected Banks</div>
+</div>
+
+<div class="card" style="padding: 16px; border-left: 4px solid #ec4899; background: rgba(236, 72, 153, 0.05);">
+    <div style="font-size: 11.5px; font-weight: 700; color: #ec4899; text-transform: uppercase; letter-spacing: 0.5px;">Top Net Worth</div>
+    <div id="eco_stat_top" style="font-size: 24px; font-weight: 800; color: #ffffff; margin-top: 6px;">0</div>
+    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Wealthiest Member Balance</div>
+</div>
+
+</div>
+
+<!-- Card 1: Core System & Currency Identity -->
+<div class="card" style="margin-bottom: 24px;">
+
+<div class="composer-section-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px;">
+    <div>
+        <span class="composer-section-title" style="font-size: 16px; font-weight: 700; color: #ffffff;">1. Core System &amp; Currency Identity</span>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Configure the currency name, visual server emoji symbol, and channel rules.</div>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 12px; font-weight: 600; color: var(--text-muted);">Enable Economy:</span>
+        <label class="switch"><input id="eco_enabled" type="checkbox" checked/><span class="slider"></span></label>
+    </div>
+</div>
+
+<div class="grid-3" style="gap: 16px;">
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Currency Display Name</label>
+    <input class="text-input" id="eco_currency_name" placeholder="Coins" type="text" value="Coins"/>
+    <small style="color: var(--text-muted); font-size: 11px;">e.g. Coins, FridayCoins, Bits, Credits, Gold</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Currency Icon / Server Emoji</label>
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <input type="hidden" id="eco_currency_emoji" value="🪙"/>
+        <div id="ecoCurrencyEmojiVisual" style="width: 38px; height: 38px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; font-size: 20px;">🪙</div>
+        <button class="btn btn-secondary emoji-picker-btn" id="ecoCurrencyEmojiBtn" style="padding: 8px 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" type="button">
+            <span>Pick Emoji</span>
+        </button>
+    </div>
+    <small style="color: var(--text-muted); font-size: 11px;">Select any custom server emoji or standard symbol.</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Coin Drop Spawn Channel</label>
+    <select class="sec-select" id="eco_drop_channel">
+        <option value="">Current Message Channel (Default)</option>
+    </select>
+    <small style="color: var(--text-muted); font-size: 11px;">Channel where the 1% click-to-claim drop button will appear.</small>
+</div>
+
+</div>
+
+<div class="form-group" style="margin-top: 16px;">
+    <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Allowed Chat Earning Channels (Whitelist)</label>
+    <select class="sec-select" id="eco_channels_select" multiple style="height: 80px;">
+    </select>
+    <small style="color: var(--text-muted); font-size: 11px;">Hold Ctrl / Cmd to select multiple channels. Leave blank to allow passive coin drops in ALL channels.</small>
+</div>
+
+</div>
+
+<!-- Card 2: Faucets & Earnings -->
+<div class="card" style="margin-bottom: 24px;">
+
+<div class="composer-section-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px;">
+    <span class="composer-section-title" style="font-size: 16px; font-weight: 700; color: #ffffff;">2. Faucets, Rewards &amp; Active Jobs</span>
+    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Tune passive drops, VC rewards, daily login streaks, and hourly work payouts.</div>
+</div>
+
+<div class="grid-4" style="gap: 16px;">
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Starter Bank Bonus</label>
+    <input class="text-input" id="eco_starter_bank" type="number" value="100"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Free gift given on first interaction</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Initial Bank Max Cap</label>
+    <input class="text-input" id="eco_bank_max_initial" type="number" value="2500"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Starting safe vault capacity</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Bank Upgrade Cost</label>
+    <input class="text-input" id="eco_bank_upgrade_cost" type="number" value="1500"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Wallet coins burned per upgrade</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Bank Upgrade Increase</label>
+    <input class="text-input" id="eco_bank_upgrade_increase" type="number" value="2500"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Extra capacity added to vault</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Chat Drop Chance (%)</label>
+    <input class="text-input" id="eco_passive_earn_chance" max="100" min="0" step="5" type="number" value="40"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Chance per message (60s cooldown)</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Chat Drop Range (Min - Max)</label>
+    <div style="display: flex; gap: 8px;">
+        <input class="text-input" id="eco_passive_min" placeholder="Min" type="number" value="5"/>
+        <input class="text-input" id="eco_passive_max" placeholder="Max" type="number" value="15"/>
+    </div>
+    <small style="color: var(--text-muted); font-size: 11px;">Coins rewarded directly into wallet</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Coin Drop Chance (%)</label>
+    <input class="text-input" id="eco_coin_drop_chance" max="100" min="0" step="0.5" type="number" value="1"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Chance per chat message to drop</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Coin Drop Crate Bounty</label>
+    <input class="text-input" id="eco_coin_drop_amount" type="number" value="250"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Awarded to the fastest clicker</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">VC Reward (per 5 min)</label>
+    <input class="text-input" id="eco_vc_reward" type="number" value="20"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Quietly added to active members</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Min Members in VC</label>
+    <input class="text-input" id="eco_vc_min_members" min="1" type="number" value="2"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Non-bot, undeafened members required</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Daily Base &amp; Streak Bonus</label>
+    <div style="display: flex; gap: 8px;">
+        <input class="text-input" id="eco_daily_base" placeholder="Base" type="number" value="250"/>
+        <input class="text-input" id="eco_daily_streak_bonus" placeholder="+Bonus" type="number" value="50"/>
+    </div>
+    <small style="color: var(--text-muted); font-size: 11px;">Base + (Bonus * Streak)</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Daily Max Streak (Days)</label>
+    <input class="text-input" id="eco_daily_max_streak" max="30" min="1" type="number" value="7"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Streak cap before resetting</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Work Cooldown (Minutes)</label>
+    <input class="text-input" id="eco_work_cooldown" min="5" type="number" value="60"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Wait time between /work shifts</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Work Payout (Min - Max)</label>
+    <div style="display: flex; gap: 8px;">
+        <input class="text-input" id="eco_work_min" placeholder="Min" type="number" value="80"/>
+        <input class="text-input" id="eco_work_max" placeholder="Max" type="number" value="200"/>
+    </div>
+    <small style="color: var(--text-muted); font-size: 11px;">Coins earned per work command</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Crime Success Rate (%)</label>
+    <input class="text-input" id="eco_crime_success_pct" max="100" min="1" type="number" value="55"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Success chance for /crime</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Crime Payout vs Police Fine</label>
+    <div style="display: flex; gap: 8px;">
+        <input class="text-input" id="eco_crime_earn_min" placeholder="Min" type="number" value="300"/>
+        <input class="text-input" id="eco_crime_earn_max" placeholder="Max" type="number" value="600"/>
+        <input class="text-input" id="eco_crime_fail_fine" placeholder="Fine" type="number" value="200"/>
+    </div>
+    <small style="color: var(--text-muted); font-size: 11px;">Reward on win vs Fine on bust</small>
+</div>
+
+</div>
+
+</div>
+
+<!-- Card 3: Robbery, Defense & Sinks -->
+<div class="card" style="margin-bottom: 24px;">
+
+<div class="composer-section-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px;">
+    <span class="composer-section-title" style="font-size: 16px; font-weight: 700; color: #ffffff;">3. PvP Robbery, Defense Items &amp; Server Tax</span>
+    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Balance high-stakes heists, padlock durability, landmine hazards, and anti-funneling taxes.</div>
+</div>
+
+<div class="grid-4" style="gap: 16px;">
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Rob Cooldown (Hours)</label>
+    <input class="text-input" id="eco_rob_cooldown" min="0.5" step="0.5" type="number" value="2"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Wait time between /rob attempts</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Min Robber Wallet</label>
+    <input class="text-input" id="eco_rob_min_robber" type="number" value="500"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Skin in the game required to rob</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Min Target Wallet</label>
+    <input class="text-input" id="eco_rob_min_victim" type="number" value="500"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Prevents bullying broke newcomers</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Rob Heist Success Rate (%)</label>
+    <input class="text-input" id="eco_rob_success_chance" max="100" min="1" type="number" value="40"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Base roll chance if no shield</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Steal Percentage (Min - Max)</label>
+    <div style="display: flex; gap: 8px;">
+        <input class="text-input" id="eco_rob_steal_min" max="1" min="0.05" step="0.05" type="number" value="0.15"/>
+        <input class="text-input" id="eco_rob_steal_max" max="1" min="0.05" step="0.05" type="number" value="0.35"/>
+    </div>
+    <small style="color: var(--text-muted); font-size: 11px;">Fraction of victim wallet stolen</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Rob Failure Fine (% of wallet)</label>
+    <input class="text-input" id="eco_rob_fail_fine_pct" max="1" min="0.05" step="0.05" type="number" value="0.20"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Half to victim, half burned</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Padlock Fine Paid to Victim</label>
+    <input class="text-input" id="eco_padlock_fine" type="number" value="250"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Paid by robber when padlock shatters</small>
+</div>
+
+<div class="form-group">
+    <label class="form-label" style="font-size: 12px;">Server Transfer Tax Rate (%)</label>
+    <input class="text-input" id="eco_pay_tax_pct" max="50" min="0" step="1" type="number" value="8"/>
+    <small style="color: var(--text-muted); font-size: 11px;">Burned on every /pay transfer</small>
+</div>
+
+</div>
+
+</div>
+
+<!-- Card 4: Shop & Item Catalog -->
+<div class="card" style="margin-bottom: 24px;">
+
+<div class="composer-section-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px;">
+    <span class="composer-section-title" style="font-size: 16px; font-weight: 700; color: #ffffff;">4. Official Server Store &amp; Item Catalog</span>
+    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Customize item prices, enabled status, and visual emoji icons rendered in high-definition.</div>
+</div>
+
+<div style="overflow-x: auto;">
+<table style="width: 100%; border-collapse: collapse; text-align: left;">
+    <thead>
+        <tr style="border-bottom: 1px solid var(--border-color); font-size: 12px; color: var(--text-muted); text-transform: uppercase;">
+            <th style="padding: 10px;">Item</th>
+            <th style="padding: 10px;">Icon / Emoji</th>
+            <th style="padding: 10px;">Display Name</th>
+            <th style="padding: 10px;">Price (Coins)</th>
+            <th style="padding: 10px;">Enabled</th>
+            <th style="padding: 10px;">Effect &amp; Utility</th>
+        </tr>
+    </thead>
+    <tbody id="ecoShopItemsTableBody">
+        <!-- Rendered dynamically by script.js -->
+    </tbody>
+</table>
+</div>
+
+</div>
+
+<!-- Card 5: Live Wealth Leaderboard & Transactions -->
+<div class="grid-2" style="margin-bottom: 24px; gap: 24px;">
+
+<!-- Leaderboard -->
+<div class="card">
+    <div class="composer-section-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
+        <span class="composer-section-title" style="font-size: 15px; font-weight: 700; color: #ffffff;">🏆 Server Wealth Leaderboard</span>
+        <button class="btn btn-secondary" onclick="loadEconomyLeaderboard()" style="padding: 4px 10px; font-size: 11.5px;" type="button">Refresh</button>
+    </div>
+    <div style="overflow-x: auto; max-height: 420px; overflow-y: auto;">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-color); font-size: 11.5px; color: var(--text-muted);">
+                    <th style="padding: 8px;">Rank</th>
+                    <th style="padding: 8px;">Member</th>
+                    <th style="padding: 8px;">Wallet</th>
+                    <th style="padding: 8px;">Vault</th>
+                    <th style="padding: 8px;">Net Worth</th>
+                </tr>
+            </thead>
+            <tbody id="ecoLeaderboardTableBody">
+                <tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">Loading leaderboard...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Transactions Stream -->
+<div class="card">
+    <div class="composer-section-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 16px;">
+        <span class="composer-section-title" style="font-size: 15px; font-weight: 700; color: #ffffff;">📜 Recent Transaction Audit Log</span>
+        <button class="btn btn-secondary" onclick="loadEconomyTransactions()" style="padding: 4px 10px; font-size: 11.5px;" type="button">Refresh</button>
+    </div>
+    <div style="overflow-x: auto; max-height: 420px; overflow-y: auto;">
+        <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-color); font-size: 11.5px; color: var(--text-muted);">
+                    <th style="padding: 8px;">Time</th>
+                    <th style="padding: 8px;">Member</th>
+                    <th style="padding: 8px;">Type</th>
+                    <th style="padding: 8px;">Amount</th>
+                    <th style="padding: 8px;">Balance After</th>
+                </tr>
+            </thead>
+            <tbody id="ecoTransactionsTableBody">
+                <tr><td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">Loading audit trail...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+</div>
+
+<!-- Card 6: Staff Economy Administration Tools -->
+<div class="card" style="margin-bottom: 24px;">
+
+<div class="composer-section-header" style="border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 18px;">
+    <span class="composer-section-title" style="font-size: 16px; font-weight: 700; color: #ffffff;">🛠️ Staff Economy Management &amp; Audit Console</span>
+    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Directly adjust member balances or reset corrupted/exploited profiles.</div>
+</div>
+
+<div class="grid-2" style="gap: 24px;">
+
+<!-- Grant / Deduct Coins Form -->
+<div style="padding: 16px; border-radius: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color);">
+    <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 12px;">💸 Grant or Deduct Member Coins</h4>
+    <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label" style="font-size: 11.5px;">Member ID</label>
+        <input class="text-input" id="eco_admin_user_id" placeholder="Discord User ID (e.g. 1234567890)" type="text"/>
+    </div>
+    <div class="grid-2" style="gap: 12px; margin-bottom: 12px;">
+        <div class="form-group">
+            <label class="form-label" style="font-size: 11.5px;">Amount</label>
+            <input class="text-input" id="eco_admin_amount" placeholder="+5000 or -2000" type="number"/>
+        </div>
+        <div class="form-group">
+            <label class="form-label" style="font-size: 11.5px;">Destination</label>
+            <select class="sec-select" id="eco_admin_dest">
+                <option value="wallet">Cash Wallet</option>
+                <option value="bank">Safe Bank Vault</option>
+            </select>
+        </div>
+    </div>
+    <button class="btn btn-action-primary" id="ecoAdminGiveBtn" type="button" style="width: 100%; padding: 8px; font-weight: 600;">Apply Coin Adjustment</button>
+</div>
+
+<!-- Reset Profile Form -->
+<div style="padding: 16px; border-radius: 8px; background: rgba(239, 68, 68, 0.03); border: 1px solid rgba(239, 68, 68, 0.2);">
+    <h4 style="font-size: 13.5px; font-weight: 700; color: #ef4444; margin-bottom: 12px;">🧹 Wipe Economy Profile</h4>
+    <p style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px;">Permanently deletes a member's wallet, bank vault, active items, and game state.</p>
+    <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label" style="font-size: 11.5px;">Member ID to Wipe</label>
+        <input class="text-input" id="eco_admin_reset_user_id" placeholder="Discord User ID" type="text"/>
+    </div>
+    <button class="btn btn-secondary" id="ecoAdminResetBtn" type="button" style="width: 100%; padding: 8px; font-weight: 600; color: #ef4444; border-color: rgba(239,68,68,0.4);">Wipe Profile Data</button>
+</div>
 
 </div>
 
