@@ -5681,6 +5681,50 @@ def toggle_economy_pause(gid):
         "message": f"Economy {'paused (emergency hold active)' if new_p else 'resumed (active)'}."
     })
 
+@app.route('/api/guild/<gid>/economy/sync-commands', methods=['POST'])
+@app.route('/api/economy/sync-commands/<gid>', methods=['POST'])
+def sync_economy_commands_endpoint(gid):
+    gid_str = str(gid)
+    if not bot_instance:
+        return jsonify({"success": False, "error": "Bot instance is not currently loaded in the dashboard."}), 500
+        
+    try:
+        guild = bot_instance.get_guild(int(gid_str))
+    except Exception:
+        guild = None
+        
+    if not guild:
+        return jsonify({"success": False, "error": f"Bot is not in server with ID {gid_str}."}), 404
+        
+    import asyncio
+    loop = bot_instance.loop
+    
+    async def do_sync():
+        if not bot_instance.get_cog("Economy"):
+            try:
+                await bot_instance.load_extension("cogs.economy")
+            except Exception as ce:
+                print(f"Failed to load cogs.economy during dashboard sync: {ce}")
+                
+        bot_instance.tree.copy_global_to(guild=guild)
+        synced = await bot_instance.tree.sync(guild=guild)
+        return [c.name for c in synced]
+        
+    try:
+        future = asyncio.run_coroutine_threadsafe(do_sync(), loop)
+        cmd_names = future.result(timeout=25)
+        eco_count = sum(1 for c in cmd_names if c in ("balance", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "blackjack", "coinflip"))
+        return jsonify({
+            "success": True, 
+            "total_commands": len(cmd_names),
+            "economy_commands": eco_count,
+            "message": f"Successfully synced {len(cmd_names)} slash commands directly to '{guild.name}' ({eco_count} economy commands online)!"
+        })
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": str(e)}), 500
+
 
 # ───────────────────── Bot Lifecycle ─────────────────────
 

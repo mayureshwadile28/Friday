@@ -13,6 +13,11 @@ from database import db
 from font_utils import clean_display_name
 from response_utils import ensure_admin_or_owner
 
+# Safe initialization of database attributes if not present on older database.py instances
+for attr in ("economy_config", "economy_channels", "economy_log_channels", "economy_paused"):
+    if not hasattr(db, attr):
+        setattr(db, attr, {})
+
 # SQLite Database Setup
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -869,7 +874,8 @@ class Economy(commands.Cog):
         return self._user_locks[key]
 
     def get_config(self, gid: str) -> dict:
-        cfg = db.economy_config.get(str(gid), {})
+        eco_cfg = getattr(db, "economy_config", {})
+        cfg = eco_cfg.get(str(gid), {})
         return cfg
 
     def is_paused(self, gid: str) -> bool:
@@ -944,7 +950,7 @@ class Economy(commands.Cog):
         cfg = self.get_config(gid)
         
         # Channel Whitelist Check (empty means ALL channels earn, selected means ONLY those earn)
-        allowed_channels = db.economy_channels.get(gid, [])
+        allowed_channels = getattr(db, "economy_channels", {}).get(gid, [])
         if allowed_channels and str(message.channel.id) not in [str(c) for c in allowed_channels]:
             return
         
@@ -974,7 +980,7 @@ class Economy(commands.Cog):
         drop_chance = float(cfg.get("coin_drop_chance", 0.01))
         if random.random() < drop_chance:
             drop_amt = int(cfg.get("coin_drop_amount", 250))
-            drop_channel_id = db.economy_log_channels.get(gid) or cfg.get("drop_channel_id")
+            drop_channel_id = getattr(db, "economy_log_channels", {}).get(gid) or cfg.get("drop_channel_id")
             target_ch = message.guild.get_channel(int(drop_channel_id)) if drop_channel_id else message.channel
             
             if target_ch:

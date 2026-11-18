@@ -167,16 +167,49 @@ async def on_ready():
         print(f"Global sync warning: {e}")
 
 @bot.command(name="sync")
-@commands.has_permissions(administrator=True)
 async def force_sync_commands(ctx: commands.Context):
     """Admin command to force-sync slash commands directly to the current server instantly."""
+    # Check permissions with clear error response instead of silent drop
+    is_admin = False
+    if ctx.guild and ctx.author.id == ctx.guild.owner_id:
+        is_admin = True
+    elif await bot.is_owner(ctx.author):
+        is_admin = True
+    elif getattr(ctx.author, "guild_permissions", None) and (ctx.author.guild_permissions.administrator or ctx.author.guild_permissions.manage_guild):
+        is_admin = True
+
+    if not is_admin:
+        return await ctx.send("❌ You need **Administrator** or **Server Owner** permissions to sync slash commands.")
+
     msg = await ctx.send("⏳ Registering and syncing all slash commands directly to this server...")
     try:
+        # If cogs.economy somehow wasn't loaded, dynamically load it now
+        if not bot.get_cog("Economy"):
+            try:
+                await bot.load_extension("cogs.economy")
+                print("⚡ Dynamically loaded cogs.economy during sync command.")
+            except Exception as ce:
+                print(f"⚠️ Error loading cogs.economy: {ce}")
+                await ctx.send(f"⚠️ Note on `cogs.economy`: `{ce}`")
+
+        configure_command_dm_restrictions(bot.tree)
         bot.tree.copy_global_to(guild=ctx.guild)
         synced = await bot.tree.sync(guild=ctx.guild)
-        await msg.edit(content=f"✅ **{len(synced)} slash commands** synced directly to **{ctx.guild.name}**! They are now live and visible in your `/` menu immediately.")
+        
+        eco_cmds = [c.name for c in synced if c.name in ("balance", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "blackjack", "coinflip")]
+        await msg.edit(content=(
+            f"✅ **{len(synced)} slash commands** synced directly to **{ctx.guild.name}**!\n"
+            f"🪙 **Economy commands online ({len(eco_cmds)}):** `/{'`, `/'.join(eco_cmds[:8])}`...\n"
+            f"⚡ *They are now live in your server! If not visible in your slash menu, press `Ctrl + R` in Discord to refresh your client.*"
+        ))
     except Exception as e:
-        await msg.edit(content=f"❌ Failed to sync slash commands: {e}")
+        await msg.edit(content=f"❌ Failed to sync slash commands: `{e}`")
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        return
+    print(f"⚠️ Command error on '{getattr(ctx.message, 'content', '')}': {error}")
 
 import threading
 

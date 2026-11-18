@@ -71985,6 +71985,41 @@ function initEconomyModule() {
         });
     }
 
+    // Force Sync Slash Commands Button
+    const syncSlashBtn = document.getElementById('syncEconomySlashBtn');
+    if (syncSlashBtn && !syncSlashBtn.dataset.bound) {
+        syncSlashBtn.dataset.bound = "true";
+        syncSlashBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const gid = currentGuildId;
+            if (!gid) return;
+            syncSlashBtn.disabled = true;
+            syncSlashBtn.innerHTML = '⏳ Syncing...';
+            try {
+                const res = await fetch(`/api/guild/${gid}/economy/sync-commands`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') {
+                        showToast(`⚡ ${data.message} Press Ctrl+R in Discord!`, "success");
+                    }
+                } else {
+                    if (typeof showToast === 'function') {
+                        showToast(data.error || "Failed to sync commands.", "error");
+                    }
+                }
+            } catch (err) {
+                console.error("Sync error:", err);
+                if (typeof showToast === 'function') showToast("Network error while syncing commands.", "error");
+            } finally {
+                syncSlashBtn.disabled = false;
+                syncSlashBtn.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                    Sync Slash Commands
+                `;
+            }
+        });
+    }
+
     // Emergency Pause / Resume Button
     const pauseBtn = document.getElementById('toggleEconomyPauseBtn');
     if (pauseBtn && !pauseBtn.dataset.bound) {
