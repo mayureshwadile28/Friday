@@ -41,6 +41,13 @@ def resolve_card_background(bg_path: str) -> Optional[str]:
     return None
 
 class Leveling(commands.Cog):
+    # Staff Level & XP Admin Group
+    level_admin = app_commands.Group(
+        name="level_admin",
+        description="Staff controls for server leveling, XP, and ranks.",
+        default_permissions=discord.Permissions(administrator=True)
+    )
+
     def __init__(self, bot):
         self.bot = bot
         self.xp_cooldowns = {}
@@ -56,7 +63,7 @@ class Leveling(commands.Cog):
         """
         return int(5 * (level ** 2) + 50 * level + 100)
 
-    @app_commands.command(name="level_setup", description="Activate leveling and set the channel for Level Up updates.")
+    @level_admin.command(name="setup", description="Activate leveling and set the channel for Level Up updates.")
     @app_commands.default_permissions(administrator=True)
     async def level_setup(self, interaction: discord.Interaction, channel: discord.TextChannel):
         if not await ensure_admin_or_owner(interaction):
@@ -863,7 +870,7 @@ class Leveling(commands.Cog):
         )
         return discord.File(fp=buf, filename=f"xp_leaderboard_{guild.id}_p{current_page}.png")
 
-    @app_commands.command(name="level_mode", description="Configure whether Level Up updates use text, image card, or both.")
+    @level_admin.command(name="mode", description="Configure whether Level Up updates use text, image card, or both.")
     @app_commands.choices(mode=[
         app_commands.Choice(name="Text Message Only", value="text"),
         app_commands.Choice(name="Image Card Only", value="image"),
@@ -879,11 +886,6 @@ class Leveling(commands.Cog):
         await interaction.response.send_message(f"✅ Level Up notification mode set to **{mode.name}**.", ephemeral=True)
 
     # ────────────────────────── Staff Level & XP Admin Group ──────────────────────────
-    level_admin = app_commands.Group(
-        name="level_admin",
-        description="Staff controls for server leveling, XP, and ranks.",
-        default_permissions=discord.Permissions(administrator=True)
-    )
 
     @level_admin.command(name="add_xp", description="Add XP to a member.")
     @app_commands.describe(member="Member to award XP", amount="Amount of XP to add")

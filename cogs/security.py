@@ -526,7 +526,13 @@ class Security(commands.Cog):
                     return True
         return False
 
-    @app_commands.command(name="antinuke_toggle", description="Turn the Anti-Nuke system ON or OFF.")
+    security_group = app_commands.Group(
+        name="security",
+        description="Server security, Anti-Nuke, Anti-Raid, and Anti-Spam protection",
+        default_permissions=discord.Permissions(administrator=True)
+    )
+
+    @security_group.command(name="antinuke", description="Turn the Anti-Nuke system ON or OFF.")
     @app_commands.choices(status=[
         app_commands.Choice(name="Turn ON", value=1),
         app_commands.Choice(name="Turn OFF", value=0)
@@ -550,7 +556,7 @@ class Security(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="antiraid", description="Configure Friday's high-speed Anti-Raid join protection.")
+    @security_group.command(name="antiraid", description="Configure Friday's high-speed Anti-Raid join protection.")
     @app_commands.choices(status=[
         app_commands.Choice(name="Enable Anti-Raid", value=1),
         app_commands.Choice(name="Disable Anti-Raid", value=0)
@@ -574,7 +580,7 @@ class Security(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="antispam", description="Configure Friday's rapid message and flood Anti-Spam filter.")
+    @security_group.command(name="antispam", description="Configure Friday's rapid message and flood Anti-Spam filter.")
     @app_commands.choices(status=[
         app_commands.Choice(name="Enable Anti-Spam", value=1),
         app_commands.Choice(name="Disable Anti-Spam", value=0)
@@ -598,7 +604,7 @@ class Security(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="security_status", description="Inspect all Friday Security modules, thresholds, and log links.")
+    @security_group.command(name="status", description="Inspect all Friday Security modules, thresholds, and log links.")
     @app_commands.default_permissions(administrator=True)
     async def security_status(self, interaction: discord.Interaction):
         gid = str(interaction.guild.id)
@@ -617,7 +623,7 @@ class Security(commands.Cog):
         embed.set_footer(text="Manage full matrix settings anytime in the web dashboard!")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="antinuke_sync", description="Instantly re-sync and link all existing Friday security audit channels.")
+    @security_group.command(name="sync", description="Instantly re-sync and link all existing Friday security audit channels.")
     @app_commands.default_permissions(administrator=True)
     async def antinuke_sync(self, interaction: discord.Interaction):
         if not self.can_manage_antinuke(interaction):
@@ -630,7 +636,7 @@ class Security(commands.Cog):
         count = await self.auto_sync_security_channels(interaction.guild)
         await interaction.followup.send(f"🛡️ Security sync complete! **{count}** security audit channels are actively linked to Friday.", ephemeral=True)
 
-    @app_commands.command(name="antinuke_refresh", description="Auto-create and link all missing Friday security log channels.")
+    @security_group.command(name="refresh", description="Auto-create and link all missing Friday security log channels.")
     @app_commands.default_permissions(administrator=True)
     async def antinuke_refresh(self, interaction: discord.Interaction):
         if not self.can_manage_antinuke(interaction):
@@ -663,7 +669,7 @@ class Security(commands.Cog):
         if created_list: await interaction.followup.send(f"✅ Infrastructure built! Created: {', '.join(created_list)}")
         else: await interaction.followup.send(f"✅ All {len(CHANNELS_TO_CHECK)} security log channels already exist and are fully linked to Friday's systems.")
 
-    @app_commands.command(name="antinuke_limit", description="Set limits for anti-nuke protection (within a 60s window).")
+    @security_group.command(name="limit", description="Set limits for anti-nuke protection (within a 60s window).")
     @app_commands.choices(action_type=[
         app_commands.Choice(name="Channel Deletions", value="channel_delete"),
         app_commands.Choice(name="Channel Creations", value="channel_create"),
@@ -692,7 +698,7 @@ class Security(commands.Cog):
         db.save_data()
         await interaction.response.send_message(f"🛡️ Anti-nuke updated: A user will be punished if they trigger {limit} **{action_type.name}** within 60 seconds.", ephemeral=True)
 
-    @app_commands.command(name="whitelist_add", description="Add a user to the Anti-Nuke whitelist.")
+    @security_group.command(name="whitelist_add", description="Add a user to the Anti-Nuke whitelist.")
     @app_commands.default_permissions(administrator=True)
     async def whitelist_add(self, interaction: discord.Interaction, user: discord.Member):
         if not self.can_manage_antinuke(interaction):
@@ -727,7 +733,7 @@ class Security(commands.Cog):
             )
             await interaction.response.send_message(embed=resp_embed, ephemeral=True)
 
-    @app_commands.command(name="whitelist_remove", description="Remove a user from the Anti-Nuke whitelist.")
+    @security_group.command(name="whitelist_remove", description="Remove a user from the Anti-Nuke whitelist.")
     @app_commands.default_permissions(administrator=True)
     async def whitelist_remove(self, interaction: discord.Interaction, user: discord.Member):
         if not self.can_manage_antinuke(interaction):

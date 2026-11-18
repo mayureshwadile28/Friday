@@ -42,8 +42,8 @@ HELP_MODULES = [
         "emoji": "⛨",
         "desc": "Fastest Antinuke & Core Server Protection",
         "sections": [
-            ("Antinuke", ["antinuke_toggle", "antinuke_limit", "antinuke_refresh", "antinuke_sync", "antiraid", "antispam", "security_status", "diagnose"]),
-            ("Whitelist", ["whitelist_add", "whitelist_remove"])
+            ("Antinuke", ["security antinuke", "security limit", "security refresh", "security sync", "security antiraid", "security antispam", "security status"]),
+            ("Whitelist", ["security whitelist_add", "security whitelist_remove"])
         ]
     },
     {
@@ -52,8 +52,8 @@ HELP_MODULES = [
         "emoji": "⚔",
         "desc": "Word Filter & Message Abuse Protection",
         "sections": [
-            ("Word Filters", ["anti_abuse", "anti_abuse_remove", "anti_abuse_list"]),
-            ("Filter Immunity", ["anti_abuse_whitelist_add", "anti_abuse_whitelist_remove"])
+            ("Word Filters", ["anti_abuse add", "anti_abuse remove", "anti_abuse list"]),
+            ("Filter Immunity", ["anti_abuse whitelist_add", "anti_abuse whitelist_remove"])
         ]
     },
     {
@@ -62,9 +62,9 @@ HELP_MODULES = [
         "emoji": "⚒",
         "desc": "Member Moderation & Infraction System",
         "sections": [
-            ("Member Moderation", ["ban", "unban", "timeout", "untimeout", "purge"]),
+            ("Member Moderation", ["ban", "unban", "timeout", "untimeout", "purge", "lock", "unlock", "slowmode", "kick", "move", "moveall"]),
             ("Role Management", ["role add", "role remove", "role info", "role list", "role emoji"]),
-            ("Infractions", ["warn", "warnings", "clearwarns"])
+            ("Infractions", ["warn issue", "warn list", "warn clear"])
         ]
     },
     {
@@ -78,12 +78,25 @@ HELP_MODULES = [
         ]
     },
     {
+        "id": "economy",
+        "name": "Economy & Casino",
+        "emoji": "🪙",
+        "desc": "Closed-Loop Server Economy, Daily Grind & Casino Minigames",
+        "sections": [
+            ("Banking & Wallet", ["balance", "deposit", "withdraw", "bank_upgrade", "baltop", "pay", "passive"]),
+            ("Earning & Grind", ["daily", "work", "crime", "rob"]),
+            ("Shop & Items", ["shop", "buy", "use", "inventory"]),
+            ("Casino", ["casino coinflip", "casino blackjack"]),
+            ("Staff Controls", ["economy setup", "economy give", "economy reset", "economy channels", "economy pause"])
+        ]
+    },
+    {
         "id": "tickets",
         "name": "Ticket",
         "emoji": "⊞",
         "desc": "Interactive Support Ticket System",
         "sections": [
-            ("Interactive Panels", ["create_ticket_panel"])
+            ("Interactive Panels", ["ticket panel", "ticket handle_role", "ticket add", "ticket remove", "ticket close"])
         ]
     },
     {
@@ -103,9 +116,9 @@ HELP_MODULES = [
         "emoji": "⚿",
         "desc": "Channel & Category Privacy Lockdowns",
         "sections": [
-            ("Lockdown Actions", ["private", "unprivate", "force_private"]),
-            ("Categories", ["private_category", "unprivate_category"]),
-            ("Exemptions", ["ignore_private_add", "ignore_private_remove"])
+            ("Lockdown Actions", ["privacy lock", "privacy unlock", "privacy force"]),
+            ("Categories", ["privacy category", "privacy uncategory"]),
+            ("Exemptions", ["privacy ignore_add", "privacy ignore_remove"])
         ]
     },
     {
@@ -123,7 +136,7 @@ HELP_MODULES = [
         "emoji": "▲",
         "desc": "XP Progression, Ranks & Leaderboards",
         "sections": [
-            ("Rank & Progression", ["rank", "leaderboard", "level_setup", "level_mode"])
+            ("Rank & Progression", ["rank", "leaderboard xp", "level_admin setup", "level_admin mode", "level_admin add_xp", "level_admin remove_xp", "level_admin set_level", "level_admin reset"])
         ]
     },
     {
@@ -137,12 +150,21 @@ HELP_MODULES = [
         ]
     },
     {
+        "id": "giveaways",
+        "name": "Giveaways",
+        "emoji": "🎉",
+        "desc": "Server Giveaways, Wizard & Winner Picking",
+        "sections": [
+            ("Giveaway System", ["giveaway setup", "giveaway create", "giveaway end", "giveaway reroll", "giveaway cancel", "giveaway list"])
+        ]
+    },
+    {
         "id": "utility",
         "name": "Utility",
         "emoji": "⚙",
         "desc": "Server Utility & Identity Tools",
         "sections": [
-            ("System", ["ping", "serverinfo", "bot_status", "sync", "joke", "afk"]),
+            ("System", ["ping", "serverinfo", "system status", "system diagnose", "afk"]),
             ("Expressions & Media", ["avatar", "emoji_steal", "media"])
         ]
     },
@@ -321,25 +343,21 @@ class HelpView(discord.ui.View):
 # ───────────────────── Utility Cog Implementation ─────────────────────
 
 class Utility(commands.Cog):
+    system_group = app_commands.Group(
+        name="system",
+        description="Friday system status and diagnosis",
+        default_permissions=discord.Permissions(manage_messages=True)
+    )
+
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="joke", description="Get a hilarious Hinglish, Desi, or tech joke!")
-    @app_commands.choices(category=[
-        app_commands.Choice(name="🎲 Random Surprise (Default)", value="any"),
-        app_commands.Choice(name="🎓 Student & College Life", value="student"),
-        app_commands.Choice(name="🏠 Desi Family & Parents", value="desi_family"),
-        app_commands.Choice(name="💼 Office & Corporate Life", value="corporate"),
-        app_commands.Choice(name="🎅 Santa Banta & Pappu", value="classics"),
-        app_commands.Choice(name="❤️ Dating & Relationships", value="dating"),
-        app_commands.Choice(name="🛵 Daily Desi Life", value="daily_life"),
-        app_commands.Choice(name="💻 Tech & Programmer", value="tech")
-    ])
-    async def joke(self, interaction: discord.Interaction, category: str = "any"):
+    @commands.command(name="joke", description="Get a hilarious Hinglish, Desi, or tech joke!")
+    async def joke_prefix(self, ctx, category: str = "any"):
         joke_data = get_random_joke(category=category)
-        embed = build_joke_embed(joke_data, user=interaction.user)
-        view = JokeView(category=category, author_id=interaction.user.id)
-        await interaction.response.send_message(embed=embed, view=view)
+        embed = build_joke_embed(joke_data, user=ctx.author)
+        view = JokeView(category=category, author_id=ctx.author.id)
+        await ctx.send(embed=embed, view=view)
 
     @app_commands.command(name="ping", description="Check Friday's response latency.")
     async def ping(self, interaction: discord.Interaction):
@@ -383,31 +401,7 @@ class Utility(commands.Cog):
         except Exception:
             pass
 
-    @app_commands.command(name="sync", description="Forcefully sync the global slash command list to this server.")
-    @app_commands.default_permissions(administrator=True)
-    async def sync(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        for cmd in self.bot.tree.get_commands():
-            if cmd.name in ("avatar", "vip"):
-                cmd.guild_only = False
-            else:
-                try:
-                    cmd.guild_only = True
-                except Exception:
-                    pass
-        if interaction.guild:
-            self.bot.tree.clear_commands(guild=interaction.guild)
-            await self.bot.tree.sync(guild=interaction.guild)
-        synced_global = await self.bot.tree.sync()
-        await reply_box(
-            interaction,
-            f"🧹 **Clean Sync Complete!** Removed duplicate commands and synchronized **{len(synced_global)}** global slash commands.\nPress **Ctrl+R** on Discord PC or restart your mobile app to view the clean list.",
-            title="SYNC COMPLETE",
-            status="success",
-            ephemeral=True
-        )
-
-    @app_commands.command(name="bot_status", description="Staff Dashboard: View Friday's current security and system status.")
+    @system_group.command(name="status", description="Staff Dashboard: View Friday's current security and system status.")
     @app_commands.default_permissions(manage_messages=True)
     async def status_dashboard(self, interaction: discord.Interaction):
         from database import db
@@ -449,7 +443,7 @@ class Utility(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="diagnose", description="Diagnose Friday's permissions, roles, and message deletion capabilities in this channel.")
+    @system_group.command(name="diagnose", description="Diagnose Friday's permissions, roles, and message deletion capabilities in this channel.")
     @app_commands.default_permissions(manage_guild=True)
     async def diagnose_cmd(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)

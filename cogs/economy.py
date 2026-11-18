@@ -999,6 +999,17 @@ class Economy(commands.Cog):
                 except Exception:
                     pass
 
+    # ───────────────────── Slash Command Groups ─────────────────────
+    eco_admin = app_commands.Group(
+        name="economy",
+        description="Server economy administration and configuration",
+        default_permissions=discord.Permissions(administrator=True)
+    )
+    casino_group = app_commands.Group(
+        name="casino",
+        description="Gambling and casino minigames"
+    )
+
     # ───────────────────── Core Member Commands ─────────────────────
 
     @app_commands.command(name="balance", description="Check your cash wallet, secure bank vault, rank, and active buffs.")
@@ -1751,8 +1762,8 @@ class Economy(commands.Cog):
         embed.set_footer(text="Purchase more items at /shop • Use items via /use <item>")
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="leaderboard_economy", description="View the server's wealthiest members by Net Worth.")
-    async def leaderboard_economy(self, interaction: discord.Interaction):
+    @app_commands.command(name="baltop", description="View the server's wealthiest members by Net Worth.")
+    async def baltop(self, interaction: discord.Interaction):
         if not await self._check_economy_active(interaction):
             return
         gid = str(interaction.guild.id)
@@ -1789,7 +1800,7 @@ class Economy(commands.Cog):
 
     # ───────────────────── Gambling & Mini-Games ─────────────────────
 
-    @app_commands.command(name="coinflip", description="Flip a coin: 48% Win Chance with 1.95x payout.")
+    @casino_group.command(name="coinflip", description="Flip a coin: 48% Win Chance with 1.95x payout.")
     @app_commands.describe(choice="Call heads or tails.", bet="Amount of coins to bet.")
     @app_commands.choices(choice=[
         app_commands.Choice(name="Heads", value="heads"),
@@ -1855,7 +1866,7 @@ class Economy(commands.Cog):
             embed.set_footer(text=f"Wallet: {new_w:,} coins • Odds: 48% with 1.95x payout")
             await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="blackjack", description="Interactive 21 card game with Hit, Stand, and Double Down.")
+    @casino_group.command(name="blackjack", description="Interactive 21 card game with Hit, Stand, and Double Down.")
     @app_commands.describe(bet="Amount of coins to bet.")
     async def blackjack(self, interaction: discord.Interaction, bet: int):
         if not await self._check_economy_active(interaction):
@@ -1944,7 +1955,7 @@ class Economy(commands.Cog):
 
     # ───────────────────── Admin Configuration Commands ─────────────────────
 
-    @app_commands.command(name="economy_setup", description="Configure or enable Friday's server economy system.")
+    @eco_admin.command(name="setup", description="Configure or enable Friday's server economy system.")
     @app_commands.describe(
         enabled="Enable or disable the entire economy.",
         drop_channel="Channel where surprise Coin Drops will spawn.",
@@ -1991,7 +2002,7 @@ class Economy(commands.Cog):
         embed.set_footer(text="All sliders and shop items can also be edited live via the Web Dashboard.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="economy_give", description="Grant or remove coins from a member's profile.")
+    @eco_admin.command(name="give", description="Grant or remove coins from a member's profile.")
     @app_commands.describe(user="Target member.", amount="Coins to give (negative number to deduct).", destination="Where to deposit.")
     @app_commands.choices(destination=[
         app_commands.Choice(name="Cash Wallet", value="wallet"),
@@ -2026,7 +2037,7 @@ class Economy(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="economy_reset", description="Wipe a user's economy balances, items, and stats.")
+    @eco_admin.command(name="reset", description="Wipe a user's economy balances, items, and stats.")
     @app_commands.describe(user="The member to reset.")
     @app_commands.default_permissions(administrator=True)
     async def economy_reset(self, interaction: discord.Interaction, user: discord.Member):
@@ -2045,7 +2056,7 @@ class Economy(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="economy_channels", description="Configure channels where passive chat drops are allowed.")
+    @eco_admin.command(name="channels", description="Configure channels where passive chat drops are allowed.")
     @app_commands.describe(action="Add, Remove, or List allowed channels.", channel="Target channel.")
     @app_commands.choices(action=[
         app_commands.Choice(name="Add Channel", value="add"),
@@ -2087,7 +2098,7 @@ class Economy(commands.Cog):
             else:
                 await interaction.response.send_message(f"⚠️ {channel.mention} was not in the allowed list.", ephemeral=True)
 
-    @app_commands.command(name="economy_pause", description="Emergency pause or resume all economy commands, chat drops, and voice rewards.")
+    @eco_admin.command(name="pause", description="Emergency pause or resume all economy commands, chat drops, and voice rewards.")
     @app_commands.describe(action="Choose whether to pause or resume the economy.")
     @app_commands.choices(action=[
         app_commands.Choice(name="Pause Economy (Emergency Hold)", value="pause"),

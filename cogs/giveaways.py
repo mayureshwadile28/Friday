@@ -1650,12 +1650,14 @@ class Giveaways(commands.Cog):
             print(f"[Giveaways] Failed to send conclusion log: {e}")
 
     # ─────────────────────────────────────────────────────────────
-    # Slash Commands
+    # Slash Commands Group (/giveaway ...)
     # ─────────────────────────────────────────────────────────────
 
-    @app_commands.command(name="gsetup", description="Configure Friday Giveaway channels (Broadcast, Approvals, Logs)")
+    giveaway_group = app_commands.Group(name="giveaway", description="Friday Giveaway system commands")
+
+    @giveaway_group.command(name="setup", description="Configure Friday Giveaway channels (Broadcast, Approvals, Logs)")
     @app_commands.default_permissions(manage_guild=True)
-    async def gsetup(self, interaction: discord.Interaction):
+    async def setup_cmd(self, interaction: discord.Interaction):
         """Interactive setup wizard for giveaway channels — slash command only, no prefix."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server administrators can configure the giveaway system.", ephemeral=True)
@@ -1675,14 +1677,14 @@ class Giveaways(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, view=SetupWizardView(), ephemeral=True)
 
-    @app_commands.command(name="gcreate", description="Create a new giveaway (Instant for Staff, Approval Queue for Members)")
+    @giveaway_group.command(name="create", description="Create a new giveaway (Instant for Staff, Approval Queue for Members)")
     @app_commands.describe(
         prize="The item, role, or gift to give away",
         duration="Duration of the giveaway (e.g. 10m, 1h, 2d, 1w)",
         winners="Number of winners to pick (default: 1)",
         description="Optional detailed description or rules"
     )
-    async def gcreate(
+    async def create(
         self,
         interaction: discord.Interaction,
         prize: str,
@@ -2045,28 +2047,10 @@ class Giveaways(commands.Cog):
             traceback.print_exc()
             await reply(content=f"❌ Failed to process giveaway: `{e}`")
 
-    @app_commands.command(name="gstart", description="Alias for /gcreate to quickly launch a giveaway")
-    @app_commands.describe(
-        prize="The item, role, or gift to give away",
-        duration="Duration of the giveaway (e.g. 10m, 1h, 2d, 1w)",
-        winners="Number of winners to pick (default: 1)",
-        description="Optional detailed description or rules"
-    )
-    async def gstart(
-        self,
-        interaction: discord.Interaction,
-        prize: str,
-        duration: str,
-        winners: Optional[int] = 1,
-        description: Optional[str] = None
-    ):
-        """Direct alias invoking /gcreate logic."""
-        await self.gcreate.callback(self, interaction, prize, duration, winners, description)
-
-    @app_commands.command(name="gend", description="End an active giveaway early and pick winners immediately")
+    @giveaway_group.command(name="end", description="End an active giveaway early and pick winners immediately")
     @app_commands.describe(giveaway="Select or enter the Giveaway ID, Message ID, or prize")
     @app_commands.default_permissions(manage_guild=True)
-    async def gend(self, interaction: discord.Interaction, giveaway: str):
+    async def end_giveaway(self, interaction: discord.Interaction, giveaway: str):
         """Immediately ends an active giveaway and draws winners."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server staff can end giveaways.", ephemeral=True)
@@ -2087,17 +2071,17 @@ class Giveaways(commands.Cog):
         gw_id = str(gw.get("giveaway_id") or gw.get("custom_id") or f"GW-{str(gw.get('message_id', ''))[-4:]}")
         await interaction.followup.send(f"✅ Successfully ended giveaway `[{gw_id}]` for **{gw.get('prize')}** early!", ephemeral=True)
 
-    @gend.autocomplete("giveaway")
-    async def gend_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    @end_giveaway.autocomplete("giveaway")
+    async def end_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         return await active_giveaway_autocomplete(interaction, current)
 
-    @app_commands.command(name="greroll", description="Reroll new winner(s) for an ended giveaway")
+    @giveaway_group.command(name="reroll", description="Reroll new winner(s) for an ended giveaway")
     @app_commands.describe(
         giveaway="Select or enter the Giveaway ID, Message ID, or prize",
         winners="Number of new winners to pick (default: 1)"
     )
     @app_commands.default_permissions(manage_guild=True)
-    async def greroll(self, interaction: discord.Interaction, giveaway: str, winners: Optional[int] = 1):
+    async def reroll_giveaway(self, interaction: discord.Interaction, giveaway: str, winners: Optional[int] = 1):
         """Rerolls winners from the entry pool of an ended giveaway."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server staff can reroll giveaways.", ephemeral=True)
@@ -2217,14 +2201,14 @@ class Giveaways(commands.Cog):
         else:
             await interaction.response.send_message(f"✅ Rerolled {count} new winner(s) for giveaway `[{gw_id}]` (**{prize}**)!", ephemeral=True)
 
-    @greroll.autocomplete("giveaway")
-    async def greroll_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    @reroll_giveaway.autocomplete("giveaway")
+    async def reroll_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         return await ended_giveaway_autocomplete(interaction, current)
 
-    @app_commands.command(name="gcancel", description="Cancel an active giveaway without picking winners")
+    @giveaway_group.command(name="cancel", description="Cancel an active giveaway without picking winners")
     @app_commands.describe(giveaway="Select or enter the Giveaway ID, Message ID, or prize")
     @app_commands.default_permissions(manage_guild=True)
-    async def gcancel(self, interaction: discord.Interaction, giveaway: str):
+    async def cancel_giveaway(self, interaction: discord.Interaction, giveaway: str):
         """Cancels an active giveaway without drawing any winners."""
         if not interaction.user.guild_permissions.manage_guild and not interaction.user.guild_permissions.administrator and interaction.user.id != interaction.guild.owner_id:
             await interaction.response.send_message("🛡️ Only server staff can cancel giveaways.", ephemeral=True)
@@ -2288,12 +2272,12 @@ class Giveaways(commands.Cog):
         else:
             await interaction.response.send_message(f"❌ Successfully cancelled giveaway `[{gw_id}]` for **{gw.get('prize')}**.", ephemeral=True)
 
-    @gcancel.autocomplete("giveaway")
-    async def gcancel_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    @cancel_giveaway.autocomplete("giveaway")
+    async def cancel_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         return await active_giveaway_autocomplete(interaction, current)
 
-    @app_commands.command(name="glist", description="List all active giveaways running in this server")
-    async def glist(self, interaction: discord.Interaction):
+    @giveaway_group.command(name="list", description="List all active giveaways running in this server")
+    async def list_giveaways(self, interaction: discord.Interaction):
         """Displays all running giveaways in the guild."""
         gid = interaction.guild_id
         active = []

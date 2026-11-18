@@ -48,7 +48,13 @@ class Privacy(commands.Cog):
                 if len(choices) >= 25: break
         return choices
 
-    @app_commands.command(name="private", description="Make a specific channel private.")
+    privacy_group = app_commands.Group(
+        name="privacy",
+        description="Channel and Category privacy control",
+        default_permissions=discord.Permissions(manage_channels=True)
+    )
+
+    @privacy_group.command(name="lock", description="Make a specific channel private.")
     @app_commands.describe(channel_id="Select a channel (only unprivated channels are shown)")
     @app_commands.autocomplete(channel_id=private_autocomplete)
     @app_commands.default_permissions(manage_channels=True)
@@ -65,7 +71,7 @@ class Privacy(commands.Cog):
         await target.set_permissions(interaction.guild.default_role, read_messages=False)
         await interaction.response.send_message(f"🔒 {target.mention} is now private.")
 
-    @app_commands.command(name="unprivate", description="Unprivate a specific channel or ALL channels.")
+    @privacy_group.command(name="unlock", description="Unprivate a specific channel or ALL channels.")
     @app_commands.describe(channel_id="Select a channel (only privated channels are shown)", all_channels="Set to True to unprivate ALL text channels")
     @app_commands.autocomplete(channel_id=unprivate_autocomplete)
     @app_commands.default_permissions(manage_channels=True)
@@ -130,7 +136,7 @@ class Privacy(commands.Cog):
                 await target.set_permissions(interaction.guild.default_role, read_messages=None, send_messages=None)
                 await interaction.followup.send(f"🔓 {target.mention} is no longer private (and unlocked if it was read-only).")
 
-    @app_commands.command(name="ignore_private_add", description="Add a channel to the ignore list (won't be affected by force private).")
+    @privacy_group.command(name="ignore_add", description="Add a channel to the ignore list (won't be affected by force private).")
     @app_commands.default_permissions(manage_channels=True)
     async def ignore_private_add(self, interaction: discord.Interaction, channel: discord.TextChannel):
         gid = str(interaction.guild.id)
@@ -153,7 +159,7 @@ class Privacy(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="ignore_private_remove", description="Remove a channel from the ignore list.")
+    @privacy_group.command(name="ignore_remove", description="Remove a channel from the ignore list.")
     @app_commands.default_permissions(manage_channels=True)
     async def ignore_private_remove(self, interaction: discord.Interaction, channel: discord.TextChannel):
         gid = str(interaction.guild.id)
@@ -174,7 +180,7 @@ class Privacy(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="force_private", description="Make ALL channels private EXCEPT those in the ignore list.")
+    @privacy_group.command(name="force", description="Make ALL channels private EXCEPT those in the ignore list.")
     @app_commands.default_permissions(manage_channels=True)
     async def force_private(self, interaction: discord.Interaction):
         gid = str(interaction.guild.id)
@@ -214,7 +220,7 @@ class Privacy(commands.Cog):
         resp_tpl = db.custom_responses.get(gid, {}).get("lockdown_initiated", "🔒 **LOCKDOWN INITIATED:** {privated} channels privated. {ignored} ignored channels are now Read-Only for members.")
         await interaction.followup.send(resp_tpl.replace("{privated}", str(privated_count)).replace("{ignored}", str(ignored_count)))
 
-    @app_commands.command(name="private_category", description="Make an entire category and its channels private.")
+    @privacy_group.command(name="category", description="Make an entire category and its channels private.")
     @app_commands.describe(category_id="Select a category (only unprivated categories are shown)")
     @app_commands.autocomplete(category_id=private_cat_autocomplete)
     @app_commands.default_permissions(manage_channels=True)
@@ -244,7 +250,7 @@ class Privacy(commands.Cog):
         db.save_data()
         await interaction.followup.send(f"🔒 **{category.name}** and its {count} public channels are now private.")
 
-    @app_commands.command(name="unprivate_category", description="Unprivate an entire category and its channels.")
+    @privacy_group.command(name="uncategory", description="Unprivate an entire category and its channels.")
     @app_commands.describe(category_id="Select a category (only privated categories are shown)")
     @app_commands.autocomplete(category_id=unprivate_cat_autocomplete)
     @app_commands.default_permissions(manage_channels=True)

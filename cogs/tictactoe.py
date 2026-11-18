@@ -774,10 +774,12 @@ class ChallengeInviteView(discord.ui.View):
 class TicTacToe(commands.Cog, name="Games"):
     """Sleek interactive Tic-Tac-Toe (X and O) game against members or Friday AI."""
 
+    ttt_group = app_commands.Group(name="tictactoe", description="Tic-Tac-Toe minigame and player statistics")
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="tictactoe", description="Play Tic-Tac-Toe (X and O) against a friend or Friday AI!")
+    @ttt_group.command(name="play", description="Play Tic-Tac-Toe (X and O) against a friend or Friday AI!")
     @app_commands.describe(
         opponent="Member to challenge (leave blank to play against Friday AI)",
         difficulty="Friday AI difficulty mode (Easy, Normal, Hard)",
@@ -918,7 +920,7 @@ class TicTacToe(commands.Cog, name="Games"):
         await interaction.response.send_message(content=f"{opponent.mention}", embed=embed, view=invite_view)
         invite_view.message = await interaction.original_response()
 
-    @app_commands.command(name="tictactoe_stats", description="View your or another member's Tic-Tac-Toe match record & stats.")
+    @ttt_group.command(name="stats", description="View your or another member's Tic-Tac-Toe match record & stats.")
     @app_commands.describe(member="Member whose stats to view (defaults to you)")
     async def stats_slash(self, interaction: discord.Interaction, member: Optional[discord.Member] = None):
         target = member or interaction.user

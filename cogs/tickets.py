@@ -485,7 +485,7 @@ class Tickets(commands.Cog):
 
     ticket_group = app_commands.Group(name="ticket", description="Ticket system commands", default_permissions=discord.Permissions(administrator=True))
 
-    @app_commands.command(name="create_ticket_panel", description="Create a ticket panel")
+    @ticket_group.command(name="panel", description="Create a ticket panel")
     @app_commands.default_permissions(administrator=True)
     async def create_ticket_panel(self, interaction: discord.Interaction, 
                            channel: discord.TextChannel,

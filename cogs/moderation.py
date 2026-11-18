@@ -547,7 +547,13 @@ class Moderation(commands.Cog):
         except discord.Forbidden:
             await reply_box(interaction, "Friday lacks permission to kick this member.", title="PERMISSION FAULT", status="error", ephemeral=True)
 
-    @app_commands.command(name="warn", description="Issue a formal warning to a server member (via DM, Chat, or Both).")
+    warn_group = app_commands.Group(
+        name="warn",
+        description="Member warning and infraction management",
+        default_permissions=discord.Permissions(moderate_members=True)
+    )
+
+    @warn_group.command(name="issue", description="Issue a formal warning to a server member (via DM, Chat, or Both).")
     @app_commands.describe(
         member="The server member to warn",
         reason="Reason for issuing the warning",
@@ -677,7 +683,7 @@ class Moderation(commands.Cog):
                 )
                 await log_channel.send(embed=audit_embed)
 
-    @app_commands.command(name="warnings", description="View all recorded warnings for a member.")
+    @warn_group.command(name="list", description="View all recorded warnings for a member.")
     @app_commands.describe(member="The member whose warnings you want to review")
     @app_commands.default_permissions(moderate_members=True)
     async def warnings(self, interaction: discord.Interaction, member: discord.Member):
@@ -701,7 +707,7 @@ class Moderation(commands.Cog):
 
         await reply_box(interaction, "\n".join(desc_lines), title="MEMBER WARNING HISTORY", status="warning", ephemeral=True)
 
-    @app_commands.command(name="clearwarns", description="Clear all warnings or a specific warning for a member.")
+    @warn_group.command(name="clear", description="Clear all warnings or a specific warning for a member.")
     @app_commands.describe(
         member="The member whose warnings should be cleared",
         warn_id="Optional: Specific Warning ID to remove (Leave empty to clear all)"

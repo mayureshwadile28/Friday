@@ -909,8 +909,8 @@ class InviteTracker(commands.Cog):
         file = await view.generate_card_file()
         return file, view, None
 
-    @app_commands.command(name="invite_leaderboard", description="View custom graphic leaderboard of top inviters in the server.")
     async def invite_leaderboard(self, interaction: discord.Interaction):
+        """Displays invite leaderboard (invoked via /leaderboard invites)."""
         await interaction.response.defer()
         file, view, err = await self.get_leaderboard_file_and_view(interaction.guild)
         if file:
