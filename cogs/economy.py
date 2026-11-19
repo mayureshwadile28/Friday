@@ -363,6 +363,16 @@ class EconomyDB:
             ).fetchone()
             return dict(row) if row else None
 
+    def has_item(self, gid: str, uid: str, item_id: str) -> bool:
+        """Returns True if user holds at least 1 of the item and it hasn't expired."""
+        it = self.get_item(gid, uid, item_id)
+        if not it or it.get("quantity", 0) <= 0:
+            return False
+        exp = it.get("expires_at", 0)
+        if exp and exp > 0 and time.time() > exp:
+            return False
+        return True
+
     def add_item(self, gid: str, uid: str, item_id: str, qty: int = 1, expires_at: float = 0):
         with self.get_conn() as conn:
             conn.execute("""
@@ -1493,145 +1503,182 @@ class Economy(commands.Cog):
                 
             await interaction.response.send_message(embed=embed)
 
+    async def _execute_rob(
+        self,
+        guild: discord.Guild,
+        robber_member: discord.Member,
+        target_member: discord.Member,
+        send_fn
+    ):
+        gid = str(guild.id)
+        uid = str(robber_member.id)
+        t_id = str(target_member.id)
+
+        if uid == t_id:
+            return await send_fn("❌ You cannot rob yourself.", ephemeral=True)
+        if target_member.bot:
+            return await send_fn("❌ Bots have military-grade encryption and cannot be robbed.", ephemeral=True)
+
+        cfg = self.get_config(gid)
+        if not cfg.get("rob_enabled", True):
+            return await send_fn("🛡️ Robbery is disabled in this server.", ephemeral=True)
+
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        cd_hours = float(cfg.get("rob_cooldown_hours", cfg.get("rob_cooldown_min", 120) / 60.0))
+        min_robber = int(cfg.get("rob_min_robber_wallet", 100))
+        min_target = int(cfg.get("rob_min_victim_wallet", 100))
+
+        # Safe lock acquisition in sorted order to prevent deadlocks
+        first_id, second_id = sorted([uid, t_id])
+        async with self._get_lock(gid, first_id):
+            async with self._get_lock(gid, second_id):
+                robber = self.db.get_or_init_user(gid, uid)
+                victim = self.db.get_or_init_user(gid, t_id)
+
+                if robber.get("passive_mode", 0) or robber.get("passive", False):
+                    return await send_fn("🛡️ You are in **Passive Mode**! Turn it off with `/passive` to rob others.", ephemeral=True)
+                if victim.get("passive_mode", 0) or victim.get("passive", False):
+                    return await send_fn(f"🛡️ **{clean_display_name(target_member.display_name)}** is in Passive Mode and cannot be robbed.", ephemeral=True)
+
+                now = time.time()
+                cooldown_sec = cd_hours * 3600
+                if now - robber["last_rob"] < cooldown_sec:
+                    rem_sec = cooldown_sec - (now - robber["last_rob"])
+                    rem_m = int(rem_sec / 60)
+                    rem_h = rem_sec / 3600.0
+                    time_str = f"{rem_h:.1f} hours" if rem_h >= 1.0 else f"{rem_m} minutes"
+                    return await send_fn(
+                        f"⏳ **Robbery Cooldown Active:** You can plan another heist in **{time_str}**.",
+                        ephemeral=True
+                    )
+
+                if robber["wallet"] < min_robber:
+                    return await send_fn(
+                        f"❌ **Robbery Aborted — Insufficient Bail:**\n"
+                        f"You need at least **{min_robber:,}** {cur_emoji} {cur_name} in your cash wallet to stage a heist, but you currently only have **{robber['wallet']:,}** {cur_emoji}!\n"
+                        f"*(Withdraw more cash into your wallet or lower 'Min Robber Wallet' in Dashboard -> Economy)*",
+                        ephemeral=True
+                    )
+
+                if victim["wallet"] < min_target:
+                    return await send_fn(
+                        f"❌ **Robbery Aborted — Target Is Too Broke:**\n"
+                        f"**{clean_display_name(target_member.display_name)}** only has **{victim['wallet']:,}** {cur_emoji} {cur_name} in their cash wallet.\n"
+                        f"Server rules require targets to have at least **{min_target:,}** {cur_emoji} {cur_name} to be eligible for robbery!\n"
+                        f"*(Your cash wallet has **{robber['wallet']:,}** {cur_emoji}. The target needs more cash or lower 'Min Target Wallet' in Dashboard)*",
+                        ephemeral=True
+                    )
+
+                self.db.update_field(gid, uid, "last_rob", now)
+
+                # 1. Padlock Defense Check
+                if self.db.consume_item(gid, t_id, "padlock", 1):
+                    fine = int(cfg.get("padlock_fine", 250))
+                    fine = min(fine, robber["wallet"])
+                    r_w = self.db.delta_wallet(gid, uid, -fine)
+                    v_w = self.db.delta_wallet(gid, t_id, fine)
+                    self.db.log_tx(gid, uid, "rob_padlock_fine", -fine, r_w, related_uid=t_id)
+                    self.db.log_tx(gid, t_id, "rob_padlock_received", fine, v_w, related_uid=uid)
+
+                    embed = discord.Embed(
+                        title="🔒 Robbery Failed — Padlock Shattered!",
+                        color=discord.Color.red(),
+                        description=(
+                            f"**{robber_member.mention}** tried to rob **{target_member.mention}**, but triggered their heavy **Padlock**!\n\n"
+                            f"💥 The padlock shattered upon impact.\n"
+                            f"💸 The robber was fined **{fine:,}** {cur_emoji} {cur_name} paid directly to the victim!"
+                        )
+                    )
+                    return await send_fn(embed=embed)
+
+                # 2. Landmine Defense Check (50% detonation chance)
+                landmine = self.db.get_item(gid, t_id, "landmine")
+                if landmine and landmine["quantity"] > 0 and random.random() < 0.50:
+                    self.db.consume_item(gid, t_id, "landmine", 1)
+                    mult = int(cfg.get("landmine_fine_multiplier", 2))
+                    fail_pct = float(cfg.get("rob_fail_fine_pct", 0.20))
+                    total_fine = max(100, int(robber["wallet"] * fail_pct * mult))
+                    total_fine = min(total_fine, robber["wallet"])
+
+                    r_w = self.db.delta_wallet(gid, uid, -total_fine)
+                    self.db.log_tx(gid, uid, "rob_landmine_fine", -total_fine, r_w, related_uid=t_id)
+                    embed = discord.Embed(
+                        title="💣 BOOM! Landmine Detonated!",
+                        color=discord.Color.dark_red(),
+                        description=(
+                            f"**{robber_member.mention}** stepped directly on **{target_member.mention}**'s hidden **Landmine**!\n\n"
+                            f"💥 The blast destroyed the heist gear!\n"
+                            f"💸 Medical & hazard fines cost the robber **{total_fine:,}** {cur_emoji} {cur_name}!"
+                        )
+                    )
+                    return await send_fn(embed=embed)
+
+                # 3. Roll Heist Success (Default 40%)
+                success_rate = float(cfg.get("rob_success_chance", cfg.get("rob_success_rate", 0.40)))
+                if random.random() < success_rate:
+                    min_pct = float(cfg.get("rob_steal_min_pct", 0.15))
+                    max_pct = float(cfg.get("rob_steal_max_pct", 0.35))
+                    steal_pct = random.uniform(min_pct, max_pct)
+
+                    v_curr = self.db.get_user(gid, t_id)["wallet"]
+                    stolen = max(1, int(v_curr * steal_pct))
+
+                    v_w = self.db.delta_wallet(gid, t_id, -stolen)
+                    r_w = self.db.delta_wallet(gid, uid, stolen)
+
+                    self.db.log_tx(gid, uid, "rob_success", stolen, r_w, related_uid=t_id)
+                    self.db.log_tx(gid, t_id, "robbed", -stolen, v_w, related_uid=uid)
+
+                    embed = discord.Embed(
+                        title="🥷 Clean Getaway! Heist Successful",
+                        color=discord.Color.green(),
+                        description=(
+                            f"**{robber_member.mention}** successfully pickpocketed **{target_member.mention}**!\n\n"
+                            f"💰 Loot Stolen: **{stolen:,}** {cur_emoji} {cur_name} ({int(steal_pct*100)}% of their wallet)!"
+                        )
+                    )
+                    embed.set_footer(text=f"Victim wallet: {v_w:,} • Robber wallet: {r_w:,}")
+                    await send_fn(embed=embed)
+                else:
+                    fail_pct = float(cfg.get("rob_fail_fine_pct", 0.20))
+                    r_curr = self.db.get_user(gid, uid)["wallet"]
+                    fine = max(50, int(r_curr * fail_pct))
+                    fine = min(fine, r_curr)
+                    to_victim = fine // 2
+                    burned = fine - to_victim
+
+                    r_w = self.db.delta_wallet(gid, uid, -fine)
+                    v_w = self.db.delta_wallet(gid, t_id, to_victim)
+
+                    self.db.log_tx(gid, uid, "rob_failed", -fine, r_w, related_uid=t_id, note=f"Burned: {burned}")
+                    self.db.log_tx(gid, t_id, "rob_compensation", to_victim, v_w, related_uid=uid)
+
+                    embed = discord.Embed(
+                        title="🚔 Heist Busted! Caught Red-Handed",
+                        color=discord.Color.red(),
+                        description=(
+                            f"**{robber_member.mention}** botched the robbery on **{target_member.mention}**!\n\n"
+                            f"💸 Fine Assessed: **{fine:,}** {cur_emoji} {cur_name}\n"
+                            f"• **{to_victim:,}** paid directly to victim as restitution.\n"
+                            f"• **{burned:,}** permanently burned by Friday as server fine."
+                        )
+                    )
+                    embed.set_footer(text="Crime doesn't pay without a plan.")
+                    await send_fn(embed=embed)
+
     @app_commands.command(name="rob", description="Attempt a PvP heist against another member's vulnerable cash wallet.")
     @app_commands.describe(target="The member you want to steal from.")
     async def rob(self, interaction: discord.Interaction, target: discord.Member):
         if not await self._check_economy_active(interaction):
             return
-        gid = str(interaction.guild.id)
-        uid = str(interaction.user.id)
-        t_id = str(target.id)
-        
-        if uid == t_id:
-            return await interaction.response.send_message("❌ You cannot rob yourself.", ephemeral=True)
-        if target.bot:
-            return await interaction.response.send_message("❌ Bots have military-grade encryption and cannot be robbed.", ephemeral=True)
-        
-        cfg = self.get_config(gid)
-        cur_name = cfg.get("currency_name", "Coins")
-        cur_emoji = cfg.get("currency_emoji", "🪙")
-        cd_hours = float(cfg.get("rob_cooldown_hours", 2))
-        min_robber = int(cfg.get("rob_min_robber_wallet", 500))
-        min_target = int(cfg.get("rob_min_victim_wallet", 500))
-        
-        async with self._get_lock(gid, uid):
-            robber = self.db.get_or_init_user(gid, uid)
-            victim = self.db.get_or_init_user(gid, t_id)
-            
-            # Cooldown check
-            now = time.time()
-            if now - robber["last_rob"] < cd_hours * 3600:
-                rem_h = (cd_hours * 3600 - (now - robber["last_rob"])) / 3600
-                return await interaction.response.send_message(
-                    f"⏳ Robbery cooldown active! You can plan another heist in **{rem_h:.1f} hours**.",
-                    ephemeral=True
-                )
-                
-            # Pre-flight checks
-            if robber["wallet"] < min_robber:
-                return await interaction.response.send_message(
-                    f"❌ You need at least **{min_robber:,} {cur_emoji} {cur_name}** in your cash wallet to stage a heist!",
-                    ephemeral=True
-                )
-            if victim["wallet"] < min_target:
-                return await interaction.response.send_message(
-                    f"❌ **{clean_display_name(target.display_name)}** only has **{victim['wallet']:,} {cur_name}** in their wallet. Not worth the risk!",
-                    ephemeral=True
-                )
-                
-            self.db.update_field(gid, uid, "last_rob", now)
-            
-            # 1. Padlock Defense Check
-            if self.db.consume_item(gid, t_id, "padlock", 1):
-                fine = int(cfg.get("padlock_fine", 250))
-                r_w = self.db.delta_wallet(gid, uid, -fine)
-                v_w = self.db.delta_wallet(gid, t_id, fine)
-                self.db.log_tx(gid, uid, "rob_padlock_fine", -fine, r_w, related_uid=t_id)
-                self.db.log_tx(gid, t_id, "rob_padlock_received", fine, v_w, related_uid=uid)
-                
-                embed = discord.Embed(
-                    title="🔒 Robbery Failed — Padlock Shattered!",
-                    color=discord.Color.red(),
-                    description=(
-                        f"**{interaction.user.mention}** tried to rob **{target.mention}**, but triggered their heavy **Padlock**!\n\n"
-                        f"💥 The padlock shattered upon impact.\n"
-                        f"💸 The robber was fined **{fine:,} {cur_emoji} {cur_name}** paid directly to the victim!"
-                    )
-                )
-                return await interaction.response.send_message(embed=embed)
-                
-            # 2. Landmine Defense Check (50% detonation chance)
-            landmine = self.db.get_item(gid, t_id, "landmine")
-            if landmine and landmine["quantity"] > 0 and random.random() < 0.50:
-                self.db.consume_item(gid, t_id, "landmine", 1)
-                mult = int(cfg.get("landmine_fine_multiplier", 2))
-                fail_pct = float(cfg.get("rob_fail_fine_pct", 0.20))
-                total_fine = max(100, int(robber["wallet"] * fail_pct * mult))
-                
-                r_w = self.db.delta_wallet(gid, uid, -total_fine)
-                embed = discord.Embed(
-                    title="💣 BOOM! Landmine Detonated!",
-                    color=discord.Color.dark_red(),
-                    description=(
-                        f"**{interaction.user.mention}** stepped directly on **{target.mention}**'s hidden **Landmine**!\n\n"
-                        f"💥 The blast destroyed the heist gear!\n"
-                        f"💸 Medical & hazard fines cost the robber **{total_fine:,} {cur_emoji} {cur_name}**!"
-                    )
-                )
-                return await interaction.response.send_message(embed=embed)
-                
-            # 3. Roll Heist Success (Default 40%)
-            success_rate = float(cfg.get("rob_success_chance", 0.40))
-            if random.random() < success_rate:
-                min_pct = float(cfg.get("rob_steal_min_pct", 0.15))
-                max_pct = float(cfg.get("rob_steal_max_pct", 0.35))
-                steal_pct = random.uniform(min_pct, max_pct)
-                
-                # Re-read victim's current wallet
-                v_curr = self.db.get_user(gid, t_id)["wallet"]
-                stolen = max(1, int(v_curr * steal_pct))
-                
-                v_w = self.db.delta_wallet(gid, t_id, -stolen)
-                r_w = self.db.delta_wallet(gid, uid, stolen)
-                
-                self.db.log_tx(gid, uid, "rob_success", stolen, r_w, related_uid=t_id)
-                self.db.log_tx(gid, t_id, "robbed", -stolen, v_w, related_uid=uid)
-                
-                embed = discord.Embed(
-                    title="🥷 Clean Getaway! Heist Successful",
-                    color=discord.Color.green(),
-                    description=(
-                        f"**{interaction.user.mention}** successfully pickpocketed **{target.mention}**!\n\n"
-                        f"💰 Loot Stolen: **{stolen:,} {cur_emoji} {cur_name}** ({int(steal_pct*100)}% of their wallet)!"
-                    )
-                )
-                embed.set_footer(text=f"Victim wallet: {v_w:,} • Robber wallet: {r_w:,}")
-                await interaction.response.send_message(embed=embed)
-            else:
-                fail_pct = float(cfg.get("rob_fail_fine_pct", 0.20))
-                r_curr = self.db.get_user(gid, uid)["wallet"]
-                fine = max(50, int(r_curr * fail_pct))
-                to_victim = fine // 2
-                burned = fine - to_victim
-                
-                r_w = self.db.delta_wallet(gid, uid, -fine)
-                v_w = self.db.delta_wallet(gid, t_id, to_victim)
-                
-                self.db.log_tx(gid, uid, "rob_failed", -fine, r_w, related_uid=t_id, note=f"Burned: {burned}")
-                self.db.log_tx(gid, t_id, "rob_compensation", to_victim, v_w, related_uid=uid)
-                
-                embed = discord.Embed(
-                    title="🚔 Heist Busted! Caught Red-Handed",
-                    color=discord.Color.red(),
-                    description=(
-                        f"**{interaction.user.mention}** botched the robbery on **{target.mention}**!\n\n"
-                        f"💸 Fine Assessed: **{fine:,} {cur_emoji} {cur_name}**\n"
-                        f"• **{to_victim:,}** paid directly to victim as restitution.\n"
-                        f"• **{burned:,}** permanently burned by Friday as server fine."
-                    )
-                )
-                embed.set_footer(text="Crime doesn't pay without a plan.")
-                await interaction.response.send_message(embed=embed)
+
+        async def send_response(content=None, embed=None, ephemeral=False):
+            if interaction.response.is_done():
+                return await interaction.followup.send(content=content, embed=embed, ephemeral=ephemeral)
+            return await interaction.response.send_message(content=content, embed=embed, ephemeral=ephemeral)
+
+        await self._execute_rob(interaction.guild, interaction.user, target, send_response)
 
     @app_commands.command(name="pay", description="Transfer wallet coins to another member with flat 8% server anti-inflation tax.")
     @app_commands.describe(target="Member receiving the coins.", amount="Number of coins to send.")
@@ -2560,60 +2607,11 @@ class Economy(commands.Cog):
         p = ctx.prefix or "!"
         if not target:
             return await ctx.send(f"🥷 **Usage:** `{p}rob @user`")
-        if target.id == ctx.author.id:
-            return await ctx.send("❌ You cannot rob yourself.")
-        if target.bot:
-            return await ctx.send("❌ You cannot rob bots.")
-            
-        gid = str(ctx.guild.id)
-        cfg = self.get_config(gid)
-        if not cfg.get("rob_enabled", True):
-            return await ctx.send("🛡️ Robbery is disabled in this server.")
-            
-        uid = str(ctx.author.id)
-        tid = str(target.id)
-        cur_name = cfg.get("currency_name", "Coins")
-        cur_emoji = cfg.get("currency_emoji", "🪙")
-        cooldown = int(cfg.get("rob_cooldown_min", 120)) * 60
-        
-        async with self._get_lock(gid, uid):
-            robber = self.db.get_or_init_user(gid, uid)
-            now = time.time()
-            if (now - robber["last_rob"]) < cooldown:
-                rem = int((cooldown - (now - robber["last_rob"])) / 60)
-                return await ctx.send(f"⏳ The cops are still watching you! Wait **{rem}m** before staging another robbery.")
-            if robber.get("passive", False):
-                return await ctx.send("🛡️ You are in **Passive Mode**! Turn it off with `/passive` to rob others.")
-            if robber["wallet"] < 100:
-                return await ctx.send(f"❌ You need at least **100 {cur_name}** in your wallet to cover bail if you get caught!")
-                
-        async with self._get_lock(gid, tid):
-            victim = self.db.get_or_init_user(gid, tid)
-            if victim.get("passive", False):
-                return await ctx.send(f"🛡️ **{target.display_name}** is in Passive Mode and cannot be robbed.")
-            if victim["wallet"] < 100:
-                return await ctx.send(f"❌ **{target.display_name}** has less than 100 {cur_name} in their wallet. Not worth the risk!")
-            has_padlock = self.db.has_item(gid, tid, "padlock")
-            
-        self.db.update_field(gid, uid, "last_rob", now)
-        if has_padlock:
-            self.db.consume_item(gid, tid, "padlock")
-            fine = min(robber["wallet"], 250)
-            self.db.delta_wallet(gid, uid, -fine)
-            return await ctx.send(f"🔒 **Robbery Blocked!** {target.display_name}'s padlock snapped shut! You were fined **{fine:,} {cur_name}** for trespassing.")
-            
-        chance = float(cfg.get("rob_success_rate", 0.45))
-        if random.random() < chance:
-            pct = random.uniform(0.15, 0.40)
-            stolen = max(1, int(victim["wallet"] * pct))
-            self.db.delta_wallet(gid, tid, -stolen)
-            new_w = self.db.delta_wallet(gid, uid, stolen)
-            await ctx.send(f"🥷 **Success!** You sneaked past {target.display_name} and stole **{stolen:,} {cur_name}** {cur_emoji}!")
-        else:
-            fine = min(robber["wallet"], int(victim["wallet"] * 0.20))
-            self.db.delta_wallet(gid, uid, -fine)
-            self.db.delta_wallet(gid, tid, fine)
-            await ctx.send(f"🚨 **Busted!** You were caught red-handed and had to pay **{fine:,} {cur_name}** in compensation to {target.mention}!")
+
+        async def send_response(content=None, embed=None, ephemeral=False):
+            return await ctx.send(content=content, embed=embed)
+
+        await self._execute_rob(ctx.guild, ctx.author, target, send_response)
 
     @commands.command(name="shop", aliases=["store"])
     async def prefix_shop(self, ctx: commands.Context):
