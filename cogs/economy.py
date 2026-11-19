@@ -575,13 +575,14 @@ class PayConfirmView(discord.ui.View):
         
         self.disable_all_items()
         
+        tax_rate_disp = f"{int((self.tax / self.gross) * 100)}%" if self.gross > 0 else "8%"
         embed = discord.Embed(
             title="💸 Payment Successful",
             color=discord.Color.green(),
             description=f"**{self.sender.mention}** transferred **{self.net:,} {self.currency_emoji} {self.currency_name}** to **{self.target.mention}**!"
         )
         embed.add_field(name="Gross Amount", value=f"`{self.gross:,}`", inline=True)
-        embed.add_field(name="Server Tax (8%)", value=f"`{self.tax:,}` 🔥 (Burned)", inline=True)
+        embed.add_field(name=f"Server Tax ({tax_rate_disp})", value=f"`{self.tax:,}` 🔥 (Burned)", inline=True)
         embed.add_field(name="Net Received", value=f"`{self.net:,}`", inline=True)
         embed.set_footer(text="Friday Anti-Inflation Economy • Funds delivered instantly")
         
@@ -603,7 +604,16 @@ class PayConfirmView(discord.ui.View):
         await interaction.response.defer()
         self.processed = True
         self.disable_all_items()
-        await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
+        try:
+            if interaction.message:
+                await interaction.message.edit(content="❌ Transfer cancelled.", embed=None, view=self)
+            else:
+                await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
+        except Exception:
+            try:
+                await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
+            except Exception:
+                pass
 
 
 class ShopSelect(discord.ui.Select):
@@ -847,6 +857,14 @@ class Economy(commands.Cog):
             drop_channel_id = getattr(db, "economy_log_channels", {}).get(gid) or cfg.get("drop_channel_id")
             if drop_channel_id:
                 target_ch = guild.get_channel(int(drop_channel_id))
+        if not target_ch:
+            cmd_chan = getattr(db, "bot_command_channels", {}).get(gid)
+            if cmd_chan:
+                target_ch = guild.get_channel(int(cmd_chan))
+        if not target_ch:
+            preferred = [c for c in guild.text_channels if any(kw in c.name.lower() for kw in ("bot", "command", "chat", "general", "lounge", "talk")) and c.permissions_for(guild.me).send_messages]
+            if preferred:
+                target_ch = preferred[0]
         if not target_ch:
             target_ch = guild.system_channel
         if not target_ch:
@@ -1991,32 +2009,33 @@ class Economy(commands.Cog):
             return await ctx.send(f"🪙 **Usage:** `{p}dep <amount|all>`")
             
         cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        
+        # Anti-dupe: block deposit mid-game
+        active_game = self.db.get_active_game(gid, uid)
+        if active_game:
+            return await ctx.send("🎰 You cannot deposit while an interactive casino game is active! Finish your hand first.")
+            
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
             wallet = profile["wallet"]
-            bank = profile["bank"]
-            cap = profile.get("bank_capacity", 2500)
-            avail_space = max(0, cap - bank)
             
             if amount.lower() in ("all", "max"):
-                to_dep = min(wallet, avail_space)
+                amt = wallet
             else:
                 try:
-                    to_dep = int(amount)
+                    amt = int(amount)
                 except ValueError:
-                    return await ctx.send("❌ Please provide a valid number or `all`.")
+                    return await ctx.send("❌ Please enter a valid number or `all`.")
                     
-            if to_dep <= 0:
-                return await ctx.send("❌ You don't have enough coins or your bank vault is completely full!")
-            if wallet < to_dep:
-                return await ctx.send(f"❌ You only have **{wallet:,} {cur_name}** in your cash wallet.")
-            if (bank + to_dep) > cap:
-                return await ctx.send(f"❌ Bank capacity limit reached! Vault capacity: **{cap:,}** (Space available: **{avail_space:,}**).")
+            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amt)
+            if not success:
+                return await ctx.send(f"❌ {msg}")
                 
-            new_w = self.db.delta_wallet(gid, uid, -to_dep)
-            new_b = self.db.delta_bank(gid, uid, to_dep)
-            self.db.log_tx(gid, uid, "deposit", to_dep, new_w, note=f"Bank: {new_b}")
-            await ctx.send(f"🏦 Deposited **{to_dep:,} {cur_name}** into your secure bank vault!\n💰 **Wallet:** `{new_w:,}` • 🏛️ **Bank:** `{new_b:,} / {cap:,}`")
+            embed = discord.Embed(title="🏦 Bank Deposit Successful", color=discord.Color.green(), description=msg)
+            embed.add_field(name="Wallet Cash", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,} {cur_emoji}`", inline=True)
+            await ctx.send(embed=embed)
 
     @commands.command(name="with", aliases=["withdraw"])
     async def prefix_withdraw(self, ctx: commands.Context, amount: str = ""):
@@ -2031,28 +2050,28 @@ class Economy(commands.Cog):
             return await ctx.send(f"🪙 **Usage:** `{p}with <amount|all>`")
             
         cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
-            wallet = profile["wallet"]
             bank = profile["bank"]
             
             if amount.lower() in ("all", "max"):
-                to_with = bank
+                amt = bank
             else:
                 try:
-                    to_with = int(amount)
+                    amt = int(amount)
                 except ValueError:
-                    return await ctx.send("❌ Please provide a valid number or `all`.")
+                    return await ctx.send("❌ Please enter a valid number or `all`.")
                     
-            if to_with <= 0:
-                return await ctx.send("❌ Withdrawal amount must be greater than zero.")
-            if bank < to_with:
-                return await ctx.send(f"❌ You only have **{bank:,} {cur_name}** stored in your bank vault.")
+            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amt)
+            if not success:
+                return await ctx.send(f"❌ {msg}")
                 
-            new_w = self.db.delta_wallet(gid, uid, to_with)
-            new_b = self.db.delta_bank(gid, uid, -to_with)
-            self.db.log_tx(gid, uid, "withdraw", to_with, new_w, note=f"Bank: {new_b}")
-            await ctx.send(f"💸 Withdrew **{to_with:,} {cur_name}** from vault to cash wallet!\n💰 **Wallet:** `{new_w:,}` • 🏛️ **Bank:** `{new_b:,}`")
+            embed = discord.Embed(title="💸 Bank Withdrawal Successful", color=discord.Color.green(), description=msg)
+            embed.add_field(name="Wallet Cash", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,} {cur_emoji}`", inline=True)
+            await ctx.send(embed=embed)
 
     @commands.command(name="pay", aliases=["give"])
     async def prefix_pay(self, ctx: commands.Context, member: Optional[discord.Member] = None, amount: Optional[int] = None):
@@ -2063,31 +2082,58 @@ class Economy(commands.Cog):
         if not member or amount is None:
             return await ctx.send(f"💸 **Usage:** `{p}pay @user <amount>`")
         if member.id == ctx.author.id:
-            return await ctx.send("❌ You cannot transfer money to yourself.")
+            return await ctx.send("❌ You cannot send coins to yourself.")
         if member.bot:
-            return await ctx.send("❌ Bots cannot hold currency accounts.")
+            return await ctx.send("❌ Bots cannot hold an economy profile.")
         if amount <= 0:
-            return await ctx.send("❌ Amount must be greater than zero.")
+            return await ctx.send("❌ Transfer amount must be greater than zero.")
             
         gid = str(ctx.guild.id)
         cfg = self.get_config(gid)
         cur_name = cfg.get("currency_name", "Coins")
         cur_emoji = cfg.get("currency_emoji", "🪙")
-        tax_rate = float(cfg.get("transaction_tax_percent", 0.0)) / 100.0
-        tax = int(amount * tax_rate)
-        received = amount - tax
+        tax_pct = float(cfg.get("pay_tax_pct", 0.08))
         
-        async with self._get_lock(gid, str(ctx.author.id)):
-            sender_p = self.db.get_or_init_user(gid, str(ctx.author.id))
-            if sender_p["wallet"] < amount:
-                return await ctx.send(f"❌ You only have **{sender_p['wallet']:,} {cur_name}** in your cash wallet.")
-            self.db.delta_wallet(gid, str(ctx.author.id), -amount)
+        user = self.db.get_or_init_user(gid, str(ctx.author.id))
+        if user["wallet"] < amount:
+            return await ctx.send(f"❌ Insufficient funds: You only have **{user['wallet']:,} {cur_name}** in your cash wallet.")
             
-        async with self._get_lock(gid, str(member.id)):
-            self.db.delta_wallet(gid, str(member.id), received)
+        tax = int(amount * tax_pct)
+        net = amount - tax
+        
+        view = PayConfirmView(self, gid, ctx.author, member, amount, net, tax, cur_name, cur_emoji)
+        tax_pct_display = int(tax_pct * 100)
+        embed = discord.Embed(
+            title="💸 Confirm Coin Transfer",
+            color=discord.Color.gold(),
+            description=(
+                f"You are about to transfer **{amount:,} {cur_emoji} {cur_name}** to **{member.mention}**.\n\n"
+                f"• **Server Anti-Inflation Tax ({tax_pct_display}%):** `-{tax:,} {cur_name}` 🔥 (Permanently Burned)\n"
+                f"• **Recipient Receives:** `+{net:,} {cur_name}`\n\n"
+                f"*Please confirm or cancel this transfer below:*"
+            )
+        )
+        embed.set_footer(text="Taxes protect the server economy against multi-account funnels.")
+        await ctx.send(embed=embed, view=view)
+
+    @commands.command(name="drop", aliases=["coindrop"])
+    async def prefix_drop(self, ctx: commands.Context, amount: Optional[int] = None):
+        """Admin prefix command to manually trigger a surprise clickable coin drop."""
+        if not ctx.guild:
+            return
+        perms = getattr(ctx.author, "guild_permissions", None)
+        is_owner = (ctx.author.id == ctx.guild.owner_id)
+        if not (is_owner or (perms and perms.administrator)):
+            return await ctx.send("❌ Only Administrators or Server Owner can trigger coin drops.")
             
-        tax_str = f" (Tax: {tax:,})" if tax > 0 else ""
-        await ctx.send(f"💸 **Payment Sent!** Transferred **{received:,} {cur_name}** {cur_emoji} to {member.mention}{tax_str}.")
+        msg = await self.spawn_coin_drop(ctx.guild, drop_amt=amount, channel=ctx.channel)
+        if msg:
+            try:
+                await ctx.message.delete()
+            except Exception:
+                pass
+        else:
+            await ctx.send("❌ Failed to spawn coin drop. Ensure economy is enabled and Friday has permission to send embeds here.")
 
     @commands.command(name="rob", aliases=["steal"])
     async def prefix_rob(self, ctx: commands.Context, target: Optional[discord.Member] = None):

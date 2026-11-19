@@ -1192,7 +1192,12 @@ class AIChat(commands.Cog):
         ]
 
         # Live Discord Server Environment & Statistics
+        p = getattr(db, "custom_prefixes", {}).get(str(guild.id), "!") if guild else "!"
+        if not p:
+            p = "!"
+
         if guild:
+            context_lines.append(f"- Active Server Command Prefix: '{p}' (Text commands use this prefix: '{p}wallet', '{p}cf', '{p}daily', etc.)")
             owner_display = guild.owner.display_name if guild.owner else "Server Owner"
             owner_handle = f"@{guild.owner.name}" if guild.owner else ""
             owner_text = f"{owner_display} ({owner_handle})" if owner_handle else owner_display
@@ -1452,32 +1457,35 @@ BOT COMMANDS & MEMBER GUIDANCE PROTOCOL (CRITICAL):
     - Guide members to use the ticket panel or run `/ticket create [reason]` to open a private support room with staff, or `/ticket close` / `/close` to close it.
   • Reminders:
     - Guide members to use `/remind set <when> <what>`, `/remind list`, or `/remind cancel`.
+  • Server Command Prefix & Syntax Rules (CRITICAL):
+    - The active prefix for this server is '{p}'.
+    - When guiding members about text commands, ALWAYS use '{p}' (e.g. '{p}wallet', '{p}cf', '{p}daily', '{p}work', '{p}dep', '{p}with', '{p}pay', '{p}rob', '{p}shop', '{p}inv', '{p}ecolb').
+    - NEVER assume '!' if the server prefix is '{p}'!
   • Server Economy & Currency:
-    - Currency & Balance: Members earn Coins 🪙. Guide them to use `/balance` or `/wallet` (or text `!wallet`, `!bal`, `!balance`) to check their Cash in Hand and safe Vault storage.
-    - Deposit & Protect: Cash in hand can be stolen by other members using `/rob`! To protect money, guide them to store it safely in their Vault using `/deposit <amount|all>` or text `!deposit`. Money in the Vault is 100% immune to robberies! Use `/withdraw <amount|all>` to take cash out.
+    - Currency & Balance: Members earn Coins 🪙. Guide them to use `/wallet` or `/balance` (or text `{p}wallet`, `{p}bal`, `{p}bank`) to check their Cash in Hand and safe Vault storage.
+    - Deposit & Protect: Cash in hand can be stolen by other members using `/rob`! To protect money, guide them to store it safely in their Vault using `/deposit <amount|all>` or text `{p}dep <amount|all>`. Money in the Vault is 100% immune to robberies! Use `/withdraw <amount|all>` or text `{p}with <amount|all>` to take cash out.
     - Bank Upgrade: Guide them to use `/bank_upgrade` to increase their maximum vault storage.
     - Earning Cash:
-      * Chat Drops: Chatting in allowed channels has a 40% chance of passive coin drops (5–15 coins) and a chance of surprise clickable loot crate drops in chat!
+      * Chat Drops: Chatting in allowed channels has a 40% chance of passive coin drops (5–15 coins) and a chance of surprise clickable loot crate drops in chat! Staff can also drop coins anytime with `{p}drop [amount]`.
       * Voice Activity: Hanging out in voice channels (at least 2 non-bot members) awards passive coins every 5 minutes.
-      * Daily Rewards: Run `/daily` once every 24 hours to earn daily coins + a daily streak bonus (up to a 7-day streak)!
-      * Working: Run `/work` every 1 hour to complete a fun job prompt for 80–200 coins.
-      * High-Risk Crime: Run `/crime` (3h cooldown) for high-risk high-reward cash (60% win, 40% jail fine).
+      * Daily Rewards: Run `/daily` or text `{p}daily` once every 24 hours to earn daily coins + a daily streak bonus (up to a 7-day streak)!
+      * Working: Run `/work` or text `{p}work` every 1 hour to complete a fun job prompt for coins.
       * Invites: Inviting genuine friends to the server earns coin bonuses per real invite!
     - Robbery & Protection:
-      * `/rob <user>` (4h cooldown): Attempt to steal cash from someone's hand (50% base chance).
+      * `/rob <user>` or `{p}rob @user` (2h cooldown): Attempt to steal cash from someone's hand (45% base chance).
       * If the victim has a Padlock, the robbery fails and the padlock breaks.
-      * If they have a Landmine, the robber gets blown up and pays double the fine!
+      * Passive Mode: Run `/passive` to toggle robbery immunity (cannot rob others and cannot be robbed).
     - Server Shop & Items:
-      * `/shop`: View the server catalog (Padlock, Landmine, 2x XP Booster, Bank Expansion, Custom Roles, VIP Badge).
+      * `/shop` or `{p}shop`: View the server catalog (Padlock, Bank Expansion, Custom Roles, VIP Badge).
       * `/buy <item>`: Buy an item or exclusive server role.
-      * `/inventory`: View owned items.
-      * `/use <item>`: Consume an item like the 2x XP booster.
+      * `/inventory` or `{p}inv`: View owned items.
     - Games & Coinflip:
-      * Coinflip: Run `/casino coinflip <heads|tails> <bet>` or quick text command `!cf <amount|all> <h|t>` (48% win chance with 1.95x payout).
+      * Coinflip: Run `/coinflip` or quick text command `{p}cf <amount|all> <h|t>` (48% win chance with 1.95x payout).
+      * Tic-Tac-Toe: Run `/tictactoe` with optional coin wagers against other players or earn 500 Coins for defeating Friday AI!
       * Ludo: Run `/ludo` for multiplayer board game matches with optional wagers and 500 Coins bounty for beating Friday AI!
     - Money Transfers & Leaderboards:
-      * `/pay <user> <amount>`: Transfer coins to a friend (server tax applies).
-      * `/baltop`: View the server wealth leaderboard.
+      * `/pay <user> <amount>` or `{p}pay @user <amount>`: Transfer coins to a friend (includes server anti-inflation tax with interactive confirmation).
+      * `/leaderboard` or `{p}ecolb`: View the top richest members.
 - Tone: Be encouraging, helpful, and sweet. If they speak in Hinglish or Hindi, guide them in respectful Hinglish with 'Aap'!
 
 STRICT ACTION REFUSAL & FEATURE CONTROL (CRITICAL):

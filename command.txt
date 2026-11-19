@@ -219,6 +219,55 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /backup delete <backup_id> - Delete a saved backup snapshot
 /backup update <backup_id> - Overwrite a backup snapshot with the server's current live state
 
+💰 Server Economy & Currency System
+• Prefix Support: All economy text commands dynamically respect your server's custom prefix (e.g. .wallet or !wallet, .cf or !cf, .daily or !daily).
+• Dedicated Channel: Staff can restrict member commands (.wallet, .cf, .daily, etc.) to run ONLY in a specific channel from the Dashboard!
+/wallet [@member] (or <prefix>wallet, <prefix>bal, <prefix>balance, <prefix>bank) - View cash in hand, safe bank vault storage, net worth, and active protection items
+/deposit <amount|all> (or <prefix>dep <amount|all>) - Move vulnerable cash from your wallet into your safe bank vault (100% robbery immune)
+/withdraw <amount|all> (or <prefix>with <amount|all>) - Withdraw stored coins from your bank vault into your wallet
+/bank_upgrade - Expand your maximum bank vault capacity by burning wallet cash
+/daily (or <prefix>daily) - Claim your daily coins login bonus and build an active 7-day streak
+/work (or <prefix>work) - Complete a random fun job prompt every 1 hour to earn salary coins
+/pay @member <amount> (or <prefix>pay @member <amount>) - Transfer coins with interactive [Confirm] / [Cancel] buttons and server anti-inflation tax
+/rob @member (or <prefix>rob @member) - Stage a risky heist to steal wallet cash from another player (blocked by Padlock, passive mode, or low cash)
+/passive - Toggle Passive Mode (immunity to being robbed; also disables your ability to rob others)
+/shop (or <prefix>shop) - Browse the server catalog of defense items (Padlock), bank vault expansions, and custom server roles
+/buy <item> [quantity] - Purchase items or exclusive roles from the server shop
+/inventory [@member] (or <prefix>inv [@member]) - Inspect backpack items and active defense shields
+/coinflip <heads|tails> <amount> (or <prefix>cf <amount|all> <h|t>) - Fast coinflip game (48% win chance with 1.95x payout)
+/leaderboard (or <prefix>ecolb) - View the top 10 richest players in the server
+/drop <amount> (or <prefix>drop <amount>) - [Admin Only] Instantly spawn a clickable loot crate for members to claim
+/economy setup - [Admin Only] Configure starting bonus, currency name, and drop channels
+/economy drop [amount] [channel] - [Admin Only] Trigger a surprise clickable loot crate in a channel
+/economy channels - [Admin Only] Restrict passive chat drop earnings to specific channels
+/economy pause - [Admin Only] Emergency hold: freeze or resume all transactions, faucets, and trading
+
+🎮 Multiplayer Mini-Games with Economy Wagers
+/tictactoe play @opponent [difficulty] [first_turn] [bet] - Challenge another player with optional coin wagers (winner takes the pot)
+/tictactoe ai [difficulty] [first_turn] - Play Tic-Tac-Toe against Friday AI (Defeat Hard AI to win 500 Coins bounty!)
+/ludo create [players] [bet] - Host a 4-token Ludo Royale board game with optional coin wagers and 15s AFK turn timers
+/ludo join - Join an open Ludo match lobby
+/ludo spectate - View live active Ludo match board
+
+🔊 Voice Channel Text-to-Speech (TTS) Engine
+• Features: High-quality AI speech synthesis via Microsoft Neural Voice Cloud with 0% CPU VM overhead.
+• Speech Format: Automatically announces who spoke ("Name says, ...") and auto-mutes when music starts playing!
+/tts enable [channel] [voice] (or <prefix>tts on) - Connect Friday to your active voice channel and read incoming chat messages aloud
+/tts disable (or <prefix>tts off) - Disable TTS voice reading
+/tts voice [preset] (or <prefix>tts voice [preset]) - Choose a cute voice persona:
+  - hinglish_swara: 🇮🇳 Swara (Hinglish Cute) — Sweet & cute Hindi/Hinglish anime companion voice
+  - hinglish_neerja: 🎀 Neerja (Desi Expressive) — Warm, lively Indian English & Hinglish companion voice
+  - marathi_aarohi: ✨ Aarohi (Marathi/Desi) — Sweet regional Marathi companion voice
+  - friday_cute: 🌸 Friday Cute (Default) — Sweet, lively anime companion voice
+  - sweet_assistant: 🎀 Sweet Assistant — Warm, polite AI companion
+  - playful_ava: 💫 Playful Ava — Energetic, spirited assistant
+  - japanese_nanami: 🍵 Japanese Nanami — Cute Japanese anime voice
+  - standard_natural: 🎙️ Standard Natural — Studio-neutral assistant
+/tts join (or <prefix>tts join) - Move Friday's voice reader to your current voice channel
+/tts leave (or <prefix>tts leave) - Disconnect Friday from voice
+/tts skip (or <prefix>tts skip) - Skip the currently speaking TTS message
+/tts status - View current voice persona, reading channel, character limit, and music auto-mute state
+
 📊 Diagnostic & General Utility
 /bot_status - Staff Dashboard: View Friday's current security, system metrics, and memory status
 /ping - Shows bot latency and gateway websocket heartbeat
@@ -248,3 +297,5 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 - Music Customizer: Full suite of customizable bot replies for VC events (join, leave, play, pause, queue, filter).
 - Live LLM Telemetry Monitor: Real-time dashboard monitor displaying active AI provider, remaining Groq free requests/tokens per minute, and session token usage.
 - VIP DM Guest Management: Exclusive bot-owner-only portal to invite VIP members for private 1-on-1 chats with Friday, initiate onboarding questionnaire, view active mood dynamics, and manage rate limits.
+- Economy Studio: Master economy toggle, starting bank balance, currency name & emoji editor, bank capacity upgrades, surprise loot drop channel selector, instant drop button, tax rate slider, and live audit transaction logs.
+- Voice TTS Studio: Real-time voice persona selector (including cute Hinglish/Hindi Swara & Neerja), reading channel selector, paragraph character limit slider, speaker announcement toggle, and auto-mute on music toggle.
