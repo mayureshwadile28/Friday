@@ -1780,6 +1780,7 @@ const tabTitles = {
 
 
     'tempVoiceSection': 'Temporary Voice Channels (Join-to-Create)',
+    'ttsSection': 'Voice Text-to-Speech (TTS)',
 
 
 
@@ -12022,6 +12023,7 @@ async function loadDataForActiveTab() {
     else if (activeTab === 'boosterSection') await loadBoosterSettings();
     else if (activeTab === 'announcementsSection') await loadScheduledAnnouncements();
     else if (activeTab === 'economySection') await loadEconomySettings();
+    else if (activeTab === 'ttsSection') await loadTtsSettings();
 
 
 
@@ -72462,4 +72464,119 @@ function initEconomyModule() {
         });
     }
 }
+
+// ───────────────────── Module: Voice Text-to-Speech (TTS) ─────────────────────
+
+async function loadTtsSettings() {
+    const gid = currentGuildId;
+    if (!gid) return;
+
+    try {
+        const chanSelect = document.getElementById('ttsChannelSelect');
+        if (chanSelect && typeof window.currentGuildChannels !== 'undefined') {
+            const currentVal = chanSelect.value;
+            let opts = '<option value="">🎙️ Active Voice Channel Text Chat (Default)</option>';
+            if (Array.isArray(window.currentGuildChannels)) {
+                window.currentGuildChannels.filter(c => c.type === 0 || c.type === 'text').forEach(c => {
+                    opts += `<option value="${c.id}">#${c.name}</option>`;
+                });
+            }
+            chanSelect.innerHTML = opts;
+            if (currentVal) chanSelect.value = currentVal;
+        }
+
+        const res = await fetch(`/api/guild/${gid}/tts?t=${Date.now()}`);
+        const data = await res.json();
+        if (!data.success) return;
+
+        const cfg = data.config || {};
+        const masterToggle = document.getElementById('ttsMasterToggle');
+        if (masterToggle) masterToggle.checked = Boolean(cfg.enabled);
+
+        const voiceSelect = document.getElementById('ttsVoiceSelect');
+        if (voiceSelect && cfg.voice_preset) voiceSelect.value = cfg.voice_preset;
+
+        if (chanSelect && cfg.channel_id) chanSelect.value = cfg.channel_id;
+
+        const maxLenInput = document.getElementById('ttsMaxLengthInput');
+        if (maxLenInput) maxLenInput.value = cfg.max_length || 150;
+
+        const announceToggle = document.getElementById('ttsAnnounceAuthorToggle');
+        if (announceToggle) announceToggle.checked = (cfg.announce_author !== false);
+
+        const musicMuteToggle = document.getElementById('ttsAutoMuteMusicToggle');
+        if (musicMuteToggle) musicMuteToggle.checked = (cfg.auto_mute_music !== false);
+
+        // Update live status card
+        const vcStatusText = document.getElementById('ttsVcStatusText');
+        const statusBadge = document.getElementById('ttsStatusBadge');
+        const vs = data.voice_state || {};
+
+        if (vs.connected) {
+            if (vcStatusText) vcStatusText.innerHTML = `Connected to voice channel: <strong style="color: #60a5fa;">${vs.channel_name}</strong>`;
+            if (statusBadge) {
+                if (cfg.enabled) {
+                    statusBadge.textContent = "🟢 Live & Speaking";
+                    statusBadge.style.background = "rgba(34, 197, 94, 0.15)";
+                    statusBadge.style.color = "#4ade80";
+                    statusBadge.style.borderColor = "rgba(34, 197, 94, 0.3)";
+                } else {
+                    statusBadge.textContent = "🟡 In VC (Disabled)";
+                    statusBadge.style.background = "rgba(234, 179, 8, 0.15)";
+                    statusBadge.style.color = "#facc15";
+                    statusBadge.style.borderColor = "rgba(234, 179, 8, 0.3)";
+                }
+            }
+        } else {
+            if (vcStatusText) vcStatusText.textContent = "Not connected to any voice channel. Use /tts join in Discord to summon Friday.";
+            if (statusBadge) {
+                statusBadge.textContent = cfg.enabled ? "🟡 Ready to Speak" : "🔴 TTS Inactive";
+                statusBadge.style.background = cfg.enabled ? "rgba(234, 179, 8, 0.15)" : "rgba(239, 68, 68, 0.15)";
+                statusBadge.style.color = cfg.enabled ? "#facc15" : "#f87171";
+                statusBadge.style.borderColor = cfg.enabled ? "rgba(234, 179, 8, 0.3)" : "rgba(239, 68, 68, 0.3)";
+            }
+        }
+    } catch (err) {
+        console.error("Error loading TTS settings:", err);
+    }
+}
+
+async function saveTtsSettings() {
+    const gid = currentGuildId;
+    if (!gid) return;
+
+    const saveBtn = document.getElementById('saveTtsBtn');
+    const oldText = saveBtn ? saveBtn.innerHTML : '';
+    if (saveBtn) saveBtn.innerHTML = '⏳ Saving...';
+
+    const payload = {
+        enabled: document.getElementById('ttsMasterToggle')?.checked || false,
+        voice_preset: document.getElementById('ttsVoiceSelect')?.value || 'friday_cute',
+        channel_id: document.getElementById('ttsChannelSelect')?.value || '',
+        max_length: parseInt(document.getElementById('ttsMaxLengthInput')?.value || 150, 10),
+        announce_author: document.getElementById('ttsAnnounceAuthorToggle')?.checked || false,
+        auto_mute_music: document.getElementById('ttsAutoMuteMusicToggle')?.checked || false
+    };
+
+    try {
+        const res = await fetch(`/api/guild/${gid}/tts/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (typeof showToast === 'function') showToast("Friday TTS configuration saved successfully! 🌸", "success");
+            await loadTtsSettings();
+        } else {
+            if (typeof showToast === 'function') showToast(data.error || "Failed to save TTS settings.", "error");
+        }
+    } catch (err) {
+        console.error("Save TTS error:", err);
+        if (typeof showToast === 'function') showToast("Network error saving TTS settings.", "error");
+    } finally {
+        if (saveBtn) saveBtn.innerHTML = oldText;
+    }
+}
+
 

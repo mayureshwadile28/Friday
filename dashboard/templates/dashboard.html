@@ -415,6 +415,24 @@
 
                 </a>
 
+<a class="nav-item" data-tab="ttsSection" href="#">
+
+<div class="nav-icon-wrap">
+
+<svg fill="none" height="16" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16">
+
+<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+
+<path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+
+</svg>
+
+</div>
+
+                    Voice Text-to-Speech (TTS)
+
+                </a>
+
 <a class="nav-item" data-tab="backupSection" href="#">
 
 <div class="nav-icon-wrap">
@@ -11256,6 +11274,133 @@ Click the button below to submit your confidential application.
     </div>
 
 </div> <!-- End #tempVoiceSection -->
+
+
+
+<!-- ──────────────── MODULE: VOICE TEXT-TO-SPEECH (TTS) ──────────────── -->
+<div class="section tab-content" id="ttsSection" style="display: none;">
+    <div class="section-header" style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <h2 style="font-size: 22px; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 10px;">
+                <span>🔊</span> Voice Text-to-Speech (TTS)
+            </h2>
+            <p style="font-size: 13.5px; color: var(--text-secondary); margin-top: 4px;">
+                Enable Friday to speak text messages in voice channels using an adorable AI companion voice. Features zero VM load and automatic music mutual exclusion.
+            </p>
+        </div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button class="btn btn-primary btn-action-primary" id="saveTtsBtn" type="button" onclick="saveTtsSettings()">
+                💾 Save TTS Settings
+            </button>
+        </div>
+    </div>
+
+    <!-- Active Status Card -->
+    <div class="card" style="margin-bottom: 20px; background: rgba(30, 41, 59, 0.4); border: 1px solid var(--border-card);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); display: flex; align-items: center; justify-content: center; font-size: 20px;">
+                    🎙️
+                </div>
+                <div>
+                    <div style="font-weight: 700; color: #ffffff; font-size: 15px;">Live Voice Channel Status</div>
+                    <div id="ttsVcStatusText" style="font-size: 13px; color: var(--text-secondary); margin-top: 2px;">
+                        Checking connection...
+                    </div>
+                </div>
+            </div>
+            <div id="ttsStatusBadge" style="padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 700; background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);">
+                TTS Inactive
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Configuration Card -->
+    <div class="card" style="margin-bottom: 20px;">
+        <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+            <span>⚙️</span> Engine Settings &amp; Voice Personality
+        </h3>
+        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 20px;">
+            Customize Friday's speech personality, reading triggers, and playback rules.
+        </p>
+
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <!-- Master Toggle -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card);">
+                <div>
+                    <div style="font-weight: 600; color: #ffffff; font-size: 14px;">Enable Text-to-Speech (TTS)</div>
+                    <div style="font-size: 12.5px; color: var(--text-secondary); margin-top: 2px;">When enabled, Friday reads incoming chat messages aloud into her current voice channel.</div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="ttsMasterToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <!-- Voice Preset -->
+            <div class="form-field-full">
+                <label class="form-sublabel" style="font-weight: 600; color: #ffffff; margin-bottom: 8px; display: block;">Voice Style &amp; Persona</label>
+                <select class="custom-select select-styled" id="ttsVoiceSelect" style="width: 100%;">
+                    <option value="friday_cute">🌸 Friday Cute (Default) — Sweet, lively anime companion voice</option>
+                    <option value="sweet_assistant">🎀 Sweet Assistant — Warm, polite, cheerful AI companion</option>
+                    <option value="playful_ava">💫 Playful Ava — Energetic, modern, spirited assistant</option>
+                    <option value="standard_natural">🎙️ Standard Natural — Clean, crisp studio-neutral assistant</option>
+                    <option value="japanese_nanami">🍵 Japanese Nanami — Cute Japanese anime voice</option>
+                </select>
+                <span class="field-hint-text" style="font-size: 12px; color: var(--text-secondary); margin-top: 6px; display: block;">
+                    All voices use Microsoft Edge Neural AI Cloud synthesis for realistic, natural speech with 0% CPU impact on your VM.
+                </span>
+            </div>
+
+            <!-- Reading Channel Whitelist -->
+            <div class="form-field-full">
+                <label class="form-sublabel" style="font-weight: 600; color: #ffffff; margin-bottom: 8px; display: block;">Listening Text Channel</label>
+                <select class="custom-select select-styled" id="ttsChannelSelect" style="width: 100%;">
+                    <option value="">🎙️ Active Voice Channel Text Chat (Default)</option>
+                </select>
+                <span class="field-hint-text" style="font-size: 12px; color: var(--text-secondary); margin-top: 6px; display: block;">
+                    Choose a dedicated text channel or leave as default so Friday reads directly from whichever VC text chat she is in.
+                </span>
+            </div>
+
+            <!-- Max Length & Options Grid -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+                <div style="padding: 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card);">
+                    <label style="font-weight: 600; color: #ffffff; font-size: 13.5px; display: block; margin-bottom: 6px;">Max Message Characters</label>
+                    <input type="number" class="text-input" id="ttsMaxLengthInput" min="30" max="400" value="150" style="width: 100%;">
+                    <span style="font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; display: block;">Messages longer than this limit will be trimmed with an ellipsis.</span>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card);">
+                    <div>
+                        <div style="font-weight: 600; color: #ffffff; font-size: 13.5px;">Announce Member Name</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); margin-top: 2px;">Reads "Member says: Message"</div>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="ttsAnnounceAuthorToggle" checked>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Auto-Mute on Music -->
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card);">
+                <div>
+                    <div style="font-weight: 600; color: #ffffff; font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                        <span>🎵</span> Music Mutual Exclusion (Auto-Mute on Music)
+                    </div>
+                    <div style="font-size: 12.5px; color: var(--text-secondary); margin-top: 2px;">
+                        Automatically shuts down and silences TTS whenever songs are playing via <code>/play</code>, keeping music crystal-clear.
+                    </div>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="ttsAutoMuteMusicToggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+</div> <!-- End #ttsSection -->
 
 
 

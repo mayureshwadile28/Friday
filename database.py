@@ -109,6 +109,8 @@ class Database:
         self.economy_channels = eco_ch if isinstance(eco_ch, dict) else {}
         eco_log = self.data.get("economy_log_channels")
         self.economy_log_channels = eco_log if isinstance(eco_log, dict) else {}
+        tts_cfg = self.data.get("tts_config")
+        self.tts_config = tts_cfg if isinstance(tts_cfg, dict) else {}
 
     def load_data(self):
         try:
@@ -182,7 +184,8 @@ class Database:
                 "court_records": {},
                 "economy_config": {},
                 "economy_channels": {},
-                "economy_log_channels": {}
+                "economy_log_channels": {},
+                "tts_config": {}
             }
 
     def reload(self):

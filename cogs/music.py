@@ -1218,6 +1218,12 @@ class Music(commands.Cog):
                 except Exception:
                     pass
 
+            if vc.is_playing():
+                try:
+                    vc.stop()
+                except Exception:
+                    pass
+
             state["start_time"] = time.time()
             vc.play(source, after=after_play)
 
@@ -1479,6 +1485,12 @@ class Music(commands.Cog):
                 if vc.ws:
                     try:
                         await vc.ws.speak(discord.SpeakingState.voice)
+                    except Exception:
+                        pass
+
+                if vc.is_playing():
+                    try:
+                        vc.stop()
                     except Exception:
                         pass
 

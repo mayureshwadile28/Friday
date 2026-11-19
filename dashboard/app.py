@@ -5812,6 +5812,67 @@ def sync_economy_commands_endpoint(gid):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ───────────────────── Voice & Text-to-Speech (TTS) ─────────────────────
+
+@app.route('/api/guild/<gid>/tts', methods=['GET'])
+def get_guild_tts(gid):
+    gid_str = str(gid)
+    try:
+        db.reload()
+    except Exception:
+        pass
+
+    cfg = db.tts_config.get(gid_str, {})
+    from cogs.tts import TTS_VOICE_PRESETS, DEFAULT_PRESET_KEY
+
+    vc_info = {"connected": False, "channel_name": None}
+    if bot_instance:
+        guild = bot_instance.get_guild(int(gid_str)) if gid_str.isdigit() else None
+        if guild and guild.voice_client and guild.voice_client.is_connected():
+            vc_info["connected"] = True
+            vc_info["channel_name"] = guild.voice_client.channel.name
+
+    return jsonify({
+        "success": True,
+        "config": {
+            "enabled": bool(cfg.get("enabled", False)),
+            "voice_preset": cfg.get("voice_preset", DEFAULT_PRESET_KEY),
+            "channel_id": cfg.get("channel_id") or "",
+            "max_length": int(cfg.get("max_length", 150)),
+            "announce_author": bool(cfg.get("announce_author", True)),
+            "auto_mute_music": bool(cfg.get("auto_mute_music", True))
+        },
+        "presets": TTS_VOICE_PRESETS,
+        "voice_state": vc_info
+    })
+
+@app.route('/api/guild/<gid>/tts/config', methods=['POST'])
+def save_guild_tts_config(gid):
+    gid_str = str(gid)
+    data = flask_request.json or {}
+
+    cfg = db.tts_config.setdefault(gid_str, {})
+    if "enabled" in data:
+        cfg["enabled"] = bool(data["enabled"])
+    if "voice_preset" in data:
+        cfg["voice_preset"] = str(data["voice_preset"]).strip()
+    if "channel_id" in data:
+        cid = str(data["channel_id"]).strip()
+        cfg["channel_id"] = cid if cid else None
+    if "max_length" in data:
+        try:
+            cfg["max_length"] = max(20, min(500, int(data["max_length"])))
+        except Exception:
+            cfg["max_length"] = 150
+    if "announce_author" in data:
+        cfg["announce_author"] = bool(data["announce_author"])
+    if "auto_mute_music" in data:
+        cfg["auto_mute_music"] = bool(data["auto_mute_music"])
+
+    db.save_data()
+    return jsonify({"success": True, "message": "Friday TTS configuration saved successfully!"})
+
+
 # ───────────────────── Bot Lifecycle ─────────────────────
 
 @app.route('/api/bot/stop', methods=['POST'])

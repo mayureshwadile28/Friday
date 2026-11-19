@@ -124,7 +124,8 @@ async def on_ready():
         "cogs.court",
         "cogs.tictactoe",
         "cogs.ludo",
-        "cogs.economy"
+        "cogs.economy",
+        "cogs.tts"
     ]
     for cog in cogs_list:
         try:
@@ -189,6 +190,13 @@ async def force_sync_commands(ctx: commands.Context):
             except Exception as ce:
                 print(f"⚠️ Error loading cogs.economy: {ce}")
                 await ctx.send(f"⚠️ Note on `cogs.economy`: `{ce}`")
+
+        if not bot.get_cog("TTS"):
+            try:
+                await bot.load_extension("cogs.tts")
+                print("⚡ Dynamically loaded cogs.tts during sync command.")
+            except Exception as te:
+                print(f"⚠️ Error loading cogs.tts: {te}")
 
         configure_command_dm_restrictions(bot.tree)
         # Clear legacy guild duplicates from this server
