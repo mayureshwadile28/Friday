@@ -1660,8 +1660,137 @@ class Economy(commands.Cog):
                     ephemeral=True
                 )
 
-            # 1. Special Case: Discord Role Purchase
-            if is_role:
+            def _safe_int(v):
+                try:
+                    return int(v) if v is not None and str(v).strip() != "" else None
+                except (ValueError, TypeError):
+                    return None
+
+            requires_ticket = bool(item_cfg.get("requires_ticket")) or str(item_cfg.get("requires_ticket", "")).lower() in ("true", "1")
+
+            # 1. Special Case: Requires Staff Delivery Ticket (Autoresponder setup, custom services, custom roles)
+            if requires_ticket:
+                # If this item also grants a Discord role, assign it directly
+                role_msg = ""
+                if is_role:
+                    role_id = _safe_int(item_cfg.get("role_id"))
+                    if role_id:
+                        role = interaction.guild.get_role(role_id)
+                        if role and interaction.guild.me.guild_permissions.manage_roles and interaction.guild.me.top_role > role:
+                            if role not in interaction.user.roles:
+                                try:
+                                    await interaction.user.add_roles(role, reason=f"Purchased in Shop ({item_cfg['name']})")
+                                    role_msg = f"\n🏷️ **Role Assigned:** `@{role.name}`"
+                                except Exception as r_err:
+                                    role_msg = f"\n🏷️ **Role Notice:** Could not auto-assign `@{role.name}` ({r_err}); staff will assist."
+                            else:
+                                role_msg = f"\n🏷️ **Role Note:** Member already holds `@{role.name}`."
+
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                self.db.add_item(gid, uid, item_id, quantity)
+                
+                # Increment order counter
+                order_num = int(cfg.get("order_counter", 0)) + 1
+                cfg["order_counter"] = order_num
+                db.save_data()
+                order_code = f"ORD-{order_num:04d}"
+                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
+                
+                # Find category and staff role safely
+                target_cat_id = _safe_int(item_cfg.get("ticket_category_id")) or _safe_int(getattr(db, "tickets", {}).get(gid, {}).get("category_id"))
+                category = interaction.guild.get_channel(target_cat_id) if target_cat_id else None
+                if category and not isinstance(category, discord.CategoryChannel):
+                    category = None
+                    
+                staff_role_id = _safe_int(item_cfg.get("ticket_role_id"))
+                staff_role = interaction.guild.get_role(staff_role_id) if staff_role_id else None
+                
+                # Overwrites
+                overwrites = {
+                    interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                    interaction.user: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        attach_files=True,
+                        embed_links=True
+                    ),
+                    interaction.guild.me: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        manage_channels=True,
+                        manage_messages=True,
+                        read_message_history=True,
+                        embed_links=True
+                    )
+                }
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        manage_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
+                    
+                channel_name = f"order-{item_id[:10]}-{order_num:03d}".lower().replace("_", "-")
+                try:
+                    ticket_channel = await interaction.guild.create_text_channel(
+                        name=channel_name,
+                        category=category,
+                        overwrites=overwrites,
+                        reason=f"Shop Order #{order_code} for {interaction.user}"
+                    )
+                except Exception as e:
+                    self.db.delta_wallet(gid, uid, total_cost)
+                    return await interaction.response.send_message(
+                        f"❌ Failed to create delivery ticket channel ({e}). Please ensure Friday has **Manage Channels** permission! Coins refunded.",
+                        ephemeral=True
+                    )
+                    
+                view = ShopDeliveryTicketView(
+                    self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
+                    total_cost, cur_name, cur_emoji, str(staff_role_id) if staff_role_id else None
+                )
+                
+                staff_ping = staff_role.mention if staff_role else "Staff Team"
+                receipt_embed = discord.Embed(
+                    title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
+                    color=discord.Color.gold(),
+                    description=(
+                        f"Hey {interaction.user.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
+                        f"{staff_ping} will assist you here to deliver and configure your order!{role_msg}\n\n"
+                        f"📋 **Order Reference:** `#{order_code}`\n"
+                        f"💰 **Total Paid:** `{total_cost:,} {cur_emoji} {cur_name}`\n"
+                        f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
+                        f"📌 **Status:** `⏳ Pending Delivery`"
+                    )
+                )
+                receipt_embed.add_field(
+                    name="🛠️ Staff Instructions",
+                    value="Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel.",
+                    inline=False
+                )
+                receipt_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
+                
+                await ticket_channel.send(content=f"{interaction.user.mention} {staff_ping}", embed=receipt_embed, view=view)
+                
+                user_embed = discord.Embed(
+                    title="🛍️ Purchase Complete & Delivery Ticket Created!",
+                    color=discord.Color.green(),
+                    description=(
+                        f"🎉 You successfully purchased **{quantity}x {item_cfg.get('name', item_id)}** for **{total_cost:,} {cur_emoji} {cur_name}**!{role_msg}\n\n"
+                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
+                        f"Head over there to receive and configure your order!"
+                    )
+                )
+                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
+                return await interaction.response.send_message(embed=user_embed)
+
+            # 2. Standard Instant Role Purchase (No delivery ticket required)
+            elif is_role:
                 role_id = item_cfg.get("role_id")
                 role = interaction.guild.get_role(int(role_id))
                 if not role:
@@ -1700,112 +1829,6 @@ class Economy(commands.Cog):
                 embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
                 embed.set_footer(text="Friday Economy Marketplace")
                 return await interaction.response.send_message(embed=embed)
-                
-            # 2. Special Case: Requires Staff Delivery Ticket (Autoresponder setup, custom perks)
-            elif item_cfg.get("requires_ticket"):
-                new_w = self.db.delta_wallet(gid, uid, -total_cost)
-                self.db.add_item(gid, uid, item_id, quantity)
-                
-                # Increment order counter
-                order_num = int(cfg.get("order_counter", 0)) + 1
-                cfg["order_counter"] = order_num
-                db.save_data()
-                order_code = f"ORD-{order_num:04d}"
-                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
-                
-                # Find category and staff role
-                target_cat_id = item_cfg.get("ticket_category_id") or getattr(db, "tickets", {}).get(gid, {}).get("category_id")
-                category = interaction.guild.get_channel(int(target_cat_id)) if target_cat_id else None
-                if category and not isinstance(category, discord.CategoryChannel):
-                    category = None
-                    
-                staff_role_id = item_cfg.get("ticket_role_id")
-                staff_role = interaction.guild.get_role(int(staff_role_id)) if staff_role_id else None
-                
-                # Overwrites
-                overwrites = {
-                    interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                    interaction.user: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        attach_files=True,
-                        embed_links=True
-                    ),
-                    interaction.guild.me: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        manage_channels=True,
-                        manage_messages=True,
-                        read_message_history=True,
-                        embed_links=True
-                    )
-                }
-                if staff_role:
-                    overwrites[staff_role] = discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        manage_messages=True,
-                        attach_files=True,
-                        embed_links=True
-                    )
-                    
-                channel_name = f"order-{item_id[:12]}-{order_num:03d}"
-                try:
-                    ticket_channel = await interaction.guild.create_text_channel(
-                        name=channel_name,
-                        category=category,
-                        overwrites=overwrites,
-                        reason=f"Shop Order #{order_code} for {interaction.user}"
-                    )
-                except Exception as e:
-                    # Rollback wallet deduction if channel creation failed
-                    self.db.delta_wallet(gid, uid, total_cost)
-                    return await interaction.response.send_message(
-                        f"❌ Failed to create delivery ticket channel ({e}). Please ensure Friday has **Manage Channels** permission! Coins refunded.",
-                        ephemeral=True
-                    )
-                    
-                view = ShopDeliveryTicketView(
-                    self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
-                    total_cost, cur_name, cur_emoji, staff_role_id
-                )
-                
-                staff_ping = staff_role.mention if staff_role else "Staff Team"
-                receipt_embed = discord.Embed(
-                    title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
-                    color=discord.Color.gold(),
-                    description=(
-                        f"Hey {interaction.user.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
-                        f"{staff_ping} will assist you here to deliver and configure your item!\n\n"
-                        f"📋 **Order Reference:** `#{order_code}`\n"
-                        f"💰 **Total Paid:** `{total_cost:,} {cur_emoji} {cur_name}`\n"
-                        f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
-                        f"📌 **Status:** `⏳ Pending Delivery`"
-                    )
-                )
-                receipt_embed.add_field(
-                    name="🛠️ Staff Instructions",
-                    value="Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel.",
-                    inline=False
-                )
-                receipt_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
-                
-                await ticket_channel.send(content=f"{interaction.user.mention} {staff_ping}", embed=receipt_embed, view=view)
-                
-                user_embed = discord.Embed(
-                    title="🛍️ Purchase Complete & Delivery Ticket Created!",
-                    color=discord.Color.green(),
-                    description=(
-                        f"🎉 You successfully purchased **{quantity}x {item_cfg.get('name', item_id)}** for **{total_cost:,} {cur_emoji} {cur_name}**!\n\n"
-                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
-                        f"Head over there to receive your item!"
-                    )
-                )
-                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
-                user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
-                return await interaction.response.send_message(embed=user_embed)
 
             # 3. Special Case: Bank Vault Expansion Pass
             elif item_id == "bank_expansion":
@@ -2492,8 +2515,126 @@ class Economy(commands.Cog):
                     f"❌ You can only hold a maximum of **{max_hold}** `{item_cfg['name']}` at a time (You currently hold {cur_qty})."
                 )
 
-            # 1. Discord Role
-            if is_role:
+            requires_ticket = bool(item_cfg.get("requires_ticket")) or str(item_cfg.get("requires_ticket", "")).lower() in ("true", "1")
+
+            # 1. Special Case: Requires Staff Delivery Ticket (Autoresponder setup, custom perks, custom roles)
+            if requires_ticket:
+                # If this item also grants a Discord role, assign it directly
+                role_msg = ""
+                if is_role:
+                    role_id = _safe_int(item_cfg.get("role_id"))
+                    if role_id:
+                        role = ctx.guild.get_role(role_id)
+                        if role and ctx.guild.me.guild_permissions.manage_roles and ctx.guild.me.top_role > role:
+                            if role not in ctx.author.roles:
+                                try:
+                                    await ctx.author.add_roles(role, reason=f"Purchased in Shop ({item_cfg['name']})")
+                                    role_msg = f"\n🏷️ **Role Assigned:** `@{role.name}`"
+                                except Exception as r_err:
+                                    role_msg = f"\n🏷️ **Role Notice:** Could not auto-assign `@{role.name}` ({r_err}); staff will assist."
+                            else:
+                                role_msg = f"\n🏷️ **Role Note:** Member already holds `@{role.name}`."
+
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                self.db.add_item(gid, uid, item_id, quantity)
+                
+                order_num = int(cfg.get("order_counter", 0)) + 1
+                cfg["order_counter"] = order_num
+                db.save_data()
+                order_code = f"ORD-{order_num:04d}"
+                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
+                
+                # Find category and staff role safely
+                target_cat_id = _safe_int(item_cfg.get("ticket_category_id")) or _safe_int(getattr(db, "tickets", {}).get(gid, {}).get("category_id"))
+                category = ctx.guild.get_channel(target_cat_id) if target_cat_id else None
+                if category and not isinstance(category, discord.CategoryChannel):
+                    category = None
+                    
+                staff_role_id = _safe_int(item_cfg.get("ticket_role_id"))
+                staff_role = ctx.guild.get_role(staff_role_id) if staff_role_id else None
+                
+                overwrites = {
+                    ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                    ctx.author: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        attach_files=True,
+                        embed_links=True
+                    ),
+                    ctx.guild.me: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        manage_channels=True,
+                        manage_messages=True,
+                        read_message_history=True,
+                        embed_links=True
+                    )
+                }
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        manage_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
+                    
+                channel_name = f"order-{item_id[:10]}-{order_num:03d}".lower().replace("_", "-")
+                try:
+                    ticket_channel = await ctx.guild.create_text_channel(
+                        name=channel_name,
+                        category=category,
+                        overwrites=overwrites,
+                        reason=f"Shop Order #{order_code} for {ctx.author}"
+                    )
+                except Exception as e:
+                    self.db.delta_wallet(gid, uid, total_cost)
+                    return await ctx.send(f"❌ Failed to create delivery ticket channel ({e}). Please ensure Friday has **Manage Channels** permission! Coins refunded.")
+                    
+                view = ShopDeliveryTicketView(
+                    self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
+                    total_cost, cur_name, cur_emoji, str(staff_role_id) if staff_role_id else None
+                )
+                
+                staff_ping = staff_role.mention if staff_role else "Staff Team"
+                receipt_embed = discord.Embed(
+                    title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
+                    color=discord.Color.gold(),
+                    description=(
+                        f"Hey {ctx.author.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
+                        f"{staff_ping} will assist you here to deliver and configure your order!{role_msg}\n\n"
+                        f"📋 **Order Reference:** `#{order_code}`\n"
+                        f"💰 **Total Paid:** `{total_cost:,} {cur_emoji} {cur_name}`\n"
+                        f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
+                        f"📌 **Status:** `⏳ Pending Delivery`"
+                    )
+                )
+                receipt_embed.add_field(
+                    name="🛠️ Staff Instructions",
+                    value="Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel.",
+                    inline=False
+                )
+                receipt_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
+                
+                await ticket_channel.send(content=f"{ctx.author.mention} {staff_ping}", embed=receipt_embed, view=view)
+                
+                user_embed = discord.Embed(
+                    title="🛍️ Purchase Complete & Delivery Ticket Created!",
+                    color=discord.Color.green(),
+                    description=(
+                        f"🎉 You successfully purchased **{quantity}x {item_cfg.get('name', item_id)}** for **{total_cost:,} {cur_emoji} {cur_name}**!{role_msg}\n\n"
+                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
+                        f"Head over there to receive and configure your order!"
+                    )
+                )
+                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
+                return await ctx.send(embed=user_embed)
+
+            # 2. Standard Instant Role Purchase (No delivery ticket required)
+            elif is_role:
                 role_id = item_cfg.get("role_id")
                 role = ctx.guild.get_role(int(role_id))
                 if not role:
@@ -2524,105 +2665,6 @@ class Economy(commands.Cog):
                 embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
                 embed.set_footer(text="Friday Economy Marketplace")
                 return await ctx.send(embed=embed)
-
-            # 2. Requires Staff Delivery Ticket
-            elif item_cfg.get("requires_ticket"):
-                new_w = self.db.delta_wallet(gid, uid, -total_cost)
-                self.db.add_item(gid, uid, item_id, quantity)
-                
-                order_num = int(cfg.get("order_counter", 0)) + 1
-                cfg["order_counter"] = order_num
-                db.save_data()
-                order_code = f"ORD-{order_num:04d}"
-                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
-                
-                target_cat_id = item_cfg.get("ticket_category_id") or getattr(db, "tickets", {}).get(gid, {}).get("category_id")
-                category = ctx.guild.get_channel(int(target_cat_id)) if target_cat_id else None
-                if category and not isinstance(category, discord.CategoryChannel):
-                    category = None
-                    
-                staff_role_id = item_cfg.get("ticket_role_id")
-                staff_role = ctx.guild.get_role(int(staff_role_id)) if staff_role_id else None
-                
-                overwrites = {
-                    ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                    ctx.author: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        attach_files=True,
-                        embed_links=True
-                    ),
-                    ctx.guild.me: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        manage_channels=True,
-                        manage_messages=True,
-                        read_message_history=True,
-                        embed_links=True
-                    )
-                }
-                if staff_role:
-                    overwrites[staff_role] = discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        manage_messages=True,
-                        attach_files=True,
-                        embed_links=True
-                    )
-                    
-                channel_name = f"order-{item_id[:12]}-{order_num:03d}"
-                try:
-                    ticket_channel = await ctx.guild.create_text_channel(
-                        name=channel_name,
-                        category=category,
-                        overwrites=overwrites,
-                        reason=f"Shop Order #{order_code} for {ctx.author}"
-                    )
-                except Exception as e:
-                    self.db.delta_wallet(gid, uid, total_cost)
-                    return await ctx.send(f"❌ Failed to create delivery ticket channel ({e}). Please ensure Friday has **Manage Channels** permission! Coins refunded.")
-                    
-                view = ShopDeliveryTicketView(
-                    self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
-                    total_cost, cur_name, cur_emoji, staff_role_id
-                )
-                
-                staff_ping = staff_role.mention if staff_role else "Staff Team"
-                receipt_embed = discord.Embed(
-                    title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
-                    color=discord.Color.gold(),
-                    description=(
-                        f"Hey {ctx.author.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
-                        f"{staff_ping} will assist you here to deliver and configure your item!\n\n"
-                        f"📋 **Order Reference:** `#{order_code}`\n"
-                        f"💰 **Total Paid:** `{total_cost:,} {cur_emoji} {cur_name}`\n"
-                        f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
-                        f"📌 **Status:** `⏳ Pending Delivery`"
-                    )
-                )
-                receipt_embed.add_field(
-                    name="🛠️ Staff Instructions",
-                    value="Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel.",
-                    inline=False
-                )
-                receipt_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
-                
-                await ticket_channel.send(content=f"{ctx.author.mention} {staff_ping}", embed=receipt_embed, view=view)
-                
-                user_embed = discord.Embed(
-                    title="🛍️ Purchase Complete & Delivery Ticket Created!",
-                    color=discord.Color.green(),
-                    description=(
-                        f"🎉 You successfully purchased **{quantity}x {item_cfg.get('name', item_id)}** for **{total_cost:,} {cur_emoji} {cur_name}**!\n\n"
-                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
-                        f"Head over there to receive your item!"
-                    )
-                )
-                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
-                user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
-                return await ctx.send(embed=user_embed)
 
             # 3. Bank Expansion
             elif item_id == "bank_expansion":
