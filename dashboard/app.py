@@ -5006,11 +5006,20 @@ def edit_birthday_member(gid):
         return jsonify({"success": False, "error": "Date values out of range."}), 400
 
     guild_bds = db.birthdays.setdefault(gid_str, {})
-    rec = guild_bds.setdefault(uid, {"user_id": uid, "registered_at": datetime.now(timezone.utc).isoformat()})
+    rec = guild_bds.setdefault(uid, {
+        "user_id": uid,
+        "registered_at": datetime.now(timezone.utc).isoformat(),
+        "last_wished_year": 0,
+        "last_wished_date": ""
+    })
     rec["month"] = month
     rec["day"] = day
     if "user_name" in data and data["user_name"]:
         rec["user_name"] = str(data["user_name"]).strip()
+    if "last_wished_year" not in rec:
+        rec["last_wished_year"] = 0
+    if "last_wished_date" not in rec:
+        rec["last_wished_date"] = ""
 
     db.save_data()
     return jsonify({"success": True, "message": "Member birthday updated."})

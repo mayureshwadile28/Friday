@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import datetime
+import asyncio
 import os
 from typing import Optional, List, Dict
 import pytz
@@ -165,7 +166,8 @@ class BirthdayModal(discord.ui.Modal, title="Register Your Birthday"):
             "month": month,
             "day": day,
             "registered_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "last_wished_year": 0
+            "last_wished_year": 0,
+            "last_wished_date": ""
         }
         db.save_data()
 
@@ -299,11 +301,16 @@ class BirthdayRegisterView(discord.ui.View):
 class BirthdaysCog(commands.Cog, name="Birthdays"):
     def __init__(self, bot):
         self.bot = bot
+        self._delivery_lock = asyncio.Lock()
+        self._delivered_today: set[str] = set()
+        self._last_delivery_date: str = ""
         self.bot.add_view(BirthdayRegisterView())
-        self.daily_birthday_task.start()
+        if not self.daily_birthday_task.is_running():
+            self.daily_birthday_task.start()
 
     def cog_unload(self):
-        self.daily_birthday_task.cancel()
+        if self.daily_birthday_task.is_running():
+            self.daily_birthday_task.cancel()
 
     # ─────────────────────────────────────────────────────────────
     # Automated Daily Scheduler Loop (Runs every 30 seconds to catch exact minute)
@@ -313,76 +320,96 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
         """Checks for member birthdays and delivers automated celebratory wishes & temporary roles at the exact configured time."""
         await self.bot.wait_until_ready()
 
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        async with self._delivery_lock:
+            now_utc = datetime.datetime.now(datetime.timezone.utc)
 
-        for guild in self.bot.guilds:
-            gid = str(guild.id)
-            cfg = db.birthdays_config.get(gid, {})
-            if not cfg.get("enabled", False):
-                continue
+            for guild in self.bot.guilds:
+                gid = str(guild.id)
+                cfg = db.birthdays_config.get(gid, {})
+                if not cfg.get("enabled", False):
+                    continue
 
-            wish_chan_id = cfg.get("wish_channel_id")
-            if not wish_chan_id:
-                continue
+                wish_chan_id = cfg.get("wish_channel_id")
+                if not wish_chan_id:
+                    continue
 
-            wish_channel = guild.get_channel(int(wish_chan_id))
-            if not wish_channel:
-                continue
+                wish_channel = guild.get_channel(int(wish_chan_id))
+                if not wish_channel:
+                    continue
 
-            # Determine local timezone date and time
-            tz_str = cfg.get("timezone", "Asia/Kolkata")
-            try:
-                local_tz = pytz.timezone(tz_str)
-            except Exception:
-                local_tz = pytz.timezone("Asia/Kolkata")
-
-            local_now = datetime.datetime.now(local_tz)
-            today_month = local_now.month
-            today_day = local_now.day
-            current_year = local_now.year
-
-            # Enforce wish_time (e.g. "10:50", "00:00", "22:50")
-            # Strictly do not deliver before the configured minute in the guild's local timezone
-            wish_time_str = cfg.get("wish_time", "00:00")
-            target_hour, target_minute = parse_wish_time_hour_min(wish_time_str)
-            if (local_now.hour < target_hour) or (local_now.hour == target_hour and local_now.minute < target_minute):
-                # Not yet time for daily wishes in this server's timezone today
-                continue
-
-            # Optional: Revoke expired temporary birthday roles (roles older than 24h)
-            active_roles = db.data.setdefault("birthday_active_roles", {}).setdefault(gid, {})
-            expired_uids = []
-            for uid, grant_time in list(active_roles.items()):
+                # Determine local timezone date and time
+                tz_str = cfg.get("timezone", "Asia/Kolkata")
                 try:
-                    grant_dt = datetime.datetime.fromisoformat(grant_time)
-                    if (now_utc - grant_dt).total_seconds() >= 86400:  # 24 hours
-                        mem = guild.get_member(int(uid))
-                        role_id = cfg.get("role_id")
-                        if mem and role_id:
-                            role = guild.get_role(int(role_id))
-                            if role and role in mem.roles:
-                                try:
-                                    await mem.remove_roles(role, reason="Birthday role expired after 24 hours.")
-                                except Exception:
-                                    pass
-                        expired_uids.append(uid)
+                    local_tz = pytz.timezone(tz_str)
                 except Exception:
-                    expired_uids.append(uid)
+                    local_tz = pytz.timezone("Asia/Kolkata")
 
-            for uid in expired_uids:
-                active_roles.pop(uid, None)
+                local_now = datetime.datetime.now(local_tz)
+                today_month = local_now.month
+                today_day = local_now.day
+                current_year = local_now.year
+                today_date_str = f"{current_year}-{today_month:02d}-{today_day:02d}"
 
-            # Check today's birthdays
-            guild_bds = db.birthdays.get(gid, {})
-            if not guild_bds:
-                continue
+                # Prune delivery cache if the date rolled over to a new calendar day
+                if self._last_delivery_date != today_date_str:
+                    self._delivered_today = {k for k in self._delivered_today if k.endswith(today_date_str)}
+                    self._last_delivery_date = today_date_str
 
-            departed_uids = []
+                # Enforce wish_time (e.g. "10:50", "00:00", "22:50")
+                # Strictly do not deliver before the configured minute in the guild's local timezone
+                wish_time_str = cfg.get("wish_time", "00:00")
+                target_hour, target_minute = parse_wish_time_hour_min(wish_time_str)
+                if (local_now.hour < target_hour) or (local_now.hour == target_hour and local_now.minute < target_minute):
+                    # Not yet time for daily wishes in this server's timezone today
+                    continue
 
-            for uid, record in list(guild_bds.items()):
-                if record.get("month") == today_month and record.get("day") == today_day:
-                    # Check if already wished this year
-                    if record.get("last_wished_year") == current_year:
+                # Optional: Revoke expired temporary birthday roles (roles older than 24h)
+                active_roles = db.data.setdefault("birthday_active_roles", {}).setdefault(gid, {})
+                expired_uids = []
+                for uid, grant_time in list(active_roles.items()):
+                    try:
+                        grant_dt = datetime.datetime.fromisoformat(grant_time)
+                        if (now_utc - grant_dt).total_seconds() >= 86400:  # 24 hours
+                            mem = guild.get_member(int(uid))
+                            role_id = cfg.get("role_id")
+                            if mem and role_id:
+                                role = guild.get_role(int(role_id))
+                                if role and role in mem.roles:
+                                    try:
+                                        await mem.remove_roles(role, reason="Birthday role expired after 24 hours.")
+                                    except Exception:
+                                        pass
+                            expired_uids.append(uid)
+                    except Exception:
+                        expired_uids.append(uid)
+
+                for uid in expired_uids:
+                    active_roles.pop(uid, None)
+
+                # Check today's birthdays
+                guild_bds = db.birthdays.get(gid, {})
+                if not guild_bds:
+                    continue
+
+                departed_uids = []
+
+                for uid, record in list(guild_bds.items()):
+                    rec_m = int(record.get("month", 0))
+                    rec_d = int(record.get("day", 0))
+                    if rec_m != today_month or rec_d != today_day:
+                        continue
+
+                    delivery_key = f"{gid}:{uid}:{today_date_str}"
+
+                    # 1. In-memory deduplication check (bulletproof across rapid loop ticks)
+                    if delivery_key in self._delivered_today:
+                        continue
+
+                    # 2. Database persistent check (immune to bot restarts)
+                    rec_year = str(record.get("last_wished_year", ""))
+                    rec_date = str(record.get("last_wished_date", ""))
+                    if rec_year == str(current_year) or rec_date == today_date_str:
+                        self._delivered_today.add(delivery_key)
                         continue
 
                     member = guild.get_member(int(uid))
@@ -391,10 +418,16 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
                         departed_uids.append(uid)
                         continue
 
+                    # CRITICAL FIX: Lock BOTH in memory and in database BEFORE dispatching async message!
+                    # This completely eliminates duplicate sends caused by async await delays or concurrent ticks.
+                    self._delivered_today.add(delivery_key)
+                    record["last_wished_year"] = current_year
+                    record["last_wished_date"] = today_date_str
+                    db.save_data()
+
                     # Deliver Celebration
                     try:
                         await self._send_birthday_wish(guild, wish_channel, member, cfg)
-                        record["last_wished_year"] = current_year
 
                         # Assign Birthday Role for 24 hours if configured
                         role_id = cfg.get("role_id")
@@ -404,20 +437,20 @@ class BirthdaysCog(commands.Cog, name="Birthdays"):
                                 try:
                                     await member.add_roles(role, reason="Happy Birthday! Temporary celebratory role.")
                                     active_roles[uid] = now_utc.isoformat()
+                                    db.save_data()
                                 except Exception as e:
                                     print(f"[Birthday Role Assign Error] {e}")
 
                     except Exception as e:
                         print(f"[Birthday Deliver Error in {guild.name}] {e}")
 
-            if departed_uids:
-                for uid in departed_uids:
-                    guild_bds.pop(uid, None)
-                    restricted = db.birthdays_restricted.get(gid, [])
-                    if uid in restricted:
-                        restricted.remove(uid)
-
-            db.save_data()
+                if departed_uids:
+                    for uid in departed_uids:
+                        guild_bds.pop(uid, None)
+                        restricted = db.birthdays_restricted.get(gid, [])
+                        if uid in restricted:
+                            restricted.remove(uid)
+                    db.save_data()
 
     async def _send_birthday_wish(self, guild: discord.Guild, channel: discord.TextChannel, member: discord.Member, cfg: dict):
         """Constructs and sends the customized birthday celebratory card."""

@@ -187,6 +187,14 @@ class Database:
 
     def reload(self):
         """Reload data from disk into memory."""
+        lock = getattr(self, "_lock", None)
+        if lock is not None:
+            with lock:
+                self._do_reload()
+        else:
+            self._do_reload()
+
+    def _do_reload(self):
         try:
             if os.path.exists(DATA_FILE):
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
