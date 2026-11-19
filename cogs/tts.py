@@ -252,21 +252,64 @@ class TTSCog(commands.Cog, name="TTS"):
         return cfg
 
     def is_music_playing(self, guild: discord.Guild) -> bool:
-        """Determines if the Music cog is currently playing a song on the guild's voice client."""
-        music_cog = self.bot.get_cog("Music")
-        if music_cog:
-            try:
-                state = music_cog.get_state(guild.id)
-                if state.get("current") is not None:
-                    return True
-            except Exception:
-                pass
-
+        """Determines if music is actively playing or paused on the guild's voice client."""
         vc = guild.voice_client
-        if vc and vc.is_playing() and not getattr(vc, "_is_tts_playing", False):
+        if not vc or not vc.is_connected():
+            return False
+
+        # If Friday TTS is currently speaking, it's not music
+        if getattr(vc, "_is_tts_playing", False):
+            return False
+
+        # Check if the voice client is actively playing audio or paused
+        if vc.is_playing() or vc.is_paused():
+            music_cog = self.bot.get_cog("Music")
+            if music_cog:
+                try:
+                    state = music_cog.get_state(guild.id)
+                    if state.get("current") is not None:
+                        return True
+                except Exception:
+                    pass
+            # If playing or paused and not TTS, consider music/audio active
             return True
 
         return False
+
+    async def _synthesize_tts_audio(self, text: str, preset_key: str) -> Optional[str]:
+        """Synthesizes text into a temporary MP3 file using Microsoft Edge TTS asynchronously."""
+        try:
+            preset = TTS_VOICE_PRESETS.get(preset_key, TTS_VOICE_PRESETS[DEFAULT_PRESET_KEY])
+            voice = preset["voice"]
+            pitch = preset["pitch"]
+            rate = preset["rate"]
+
+            et = get_edge_tts()
+            if not et:
+                return None
+
+            communicate = et.Communicate(
+                text=text,
+                voice=voice,
+                pitch=pitch,
+                rate=rate
+            )
+
+            fd, temp_path = tempfile.mkstemp(prefix="friday_tts_", suffix=".mp3")
+            os.close(fd)
+            await communicate.save(temp_path)
+
+            if os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
+                return temp_path
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+            return None
+        except Exception as e:
+            print(f"[TTS Synthesis Error] {e}")
+            return None
 
     async def _queue_worker(self, guild_id: int):
         """Worker task processing TTS speech items in sequential chronological order."""
@@ -304,29 +347,17 @@ class TTSCog(commands.Cog, name="TTS"):
 
             temp_path = None
             try:
-                preset = TTS_VOICE_PRESETS.get(item["preset_key"], TTS_VOICE_PRESETS[DEFAULT_PRESET_KEY])
-                voice = preset["voice"]
-                pitch = preset["pitch"]
-                rate = preset["rate"]
+                # Await pre-synthesized audio task or synthesize on demand
+                syn_task = item.get("task")
+                if syn_task:
+                    try:
+                        temp_path = await syn_task
+                    except Exception as te:
+                        print(f"[TTS Task Error] {te}")
+                if not temp_path:
+                    temp_path = await self._synthesize_tts_audio(item["text"], item["preset_key"])
 
-                # Synthesize via cloud Edge-TTS
-                et = get_edge_tts()
-                if not et:
-                    queue.task_done()
-                    continue
-
-                communicate = et.Communicate(
-                    text=item["text"],
-                    voice=voice,
-                    pitch=pitch,
-                    rate=rate
-                )
-
-                fd, temp_path = tempfile.mkstemp(prefix="friday_tts_", suffix=".mp3")
-                os.close(fd)
-                await communicate.save(temp_path)
-
-                if not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
+                if not temp_path or not os.path.exists(temp_path) or os.path.getsize(temp_path) == 0:
                     queue.task_done()
                     continue
 
@@ -338,6 +369,18 @@ class TTSCog(commands.Cog, name="TTS"):
                         print(f"[TTS Playback Notice] {err}")
                     setattr(vc, "_is_tts_playing", False)
                     self.bot.loop.call_soon_threadsafe(done_event.set)
+
+                # Ensure previous sound is stopped so ClientException is never raised
+                if vc.is_playing():
+                    vc.stop()
+                    await asyncio.sleep(0.04)
+
+                # Send speaking packet to Discord Voice Gateway so UDP audio stream is never ignored after silence
+                if getattr(vc, "ws", None):
+                    try:
+                        await vc.ws.speak(discord.SpeakingState.voice)
+                    except Exception:
+                        pass
 
                 # High-speed direct PCM streaming without probing delays
                 source = discord.FFmpegPCMAudio(
@@ -399,6 +442,11 @@ class TTSCog(commands.Cog, name="TTS"):
         if not vc or not vc.is_connected():
             return
 
+        # Fetch fresh member object from cache or guild to guarantee voice state is available
+        author_member = message.author if isinstance(message.author, discord.Member) else message.guild.get_member(message.author.id)
+        if not author_member:
+            return
+
         # Channel & Participant Check
         allowed_cid = cfg.get("channel_id")
         if allowed_cid:
@@ -407,7 +455,7 @@ class TTSCog(commands.Cog, name="TTS"):
         else:
             # By default: read from the active VC's own text chat OR messages from anyone in Friday's VC
             is_vc_chat = (message.channel.id == vc.channel.id)
-            author_in_vc = (getattr(getattr(message.author, "voice", None), "channel", None) == vc.channel)
+            author_in_vc = bool(getattr(getattr(author_member, "voice", None), "channel", None) == vc.channel)
             if not is_vc_chat and not author_in_vc:
                 return
 
@@ -422,7 +470,7 @@ class TTSCog(commands.Cog, name="TTS"):
 
         if cfg.get("announce_author", True):
             # Format: "Name says, Message" (comma provides natural speech cadence)
-            speech_text = f"{message.author.display_name} says, {cleaned}"
+            speech_text = f"{author_member.display_name} says, {cleaned}"
         else:
             speech_text = cleaned
 
@@ -431,9 +479,12 @@ class TTSCog(commands.Cog, name="TTS"):
 
         # Avoid overwhelming the queue (max 10 pending phrases)
         if queue.qsize() < 10:
+            # Pre-synthesize concurrently in background so MP3 is ready before playback starts!
+            syn_task = asyncio.create_task(self._synthesize_tts_audio(speech_text, preset_key))
             await queue.put({
                 "text": speech_text,
-                "preset_key": preset_key
+                "preset_key": preset_key,
+                "task": syn_task
             })
             self.ensure_worker(message.guild.id)
 

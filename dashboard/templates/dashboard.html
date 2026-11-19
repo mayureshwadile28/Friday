@@ -3273,6 +3273,35 @@
     </button>
 </div>
 
+<!-- Order Fulfillment & Delivery Ticket Routing -->
+<div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div>
+            <div style="font-size: 13px; font-weight: 700; color: #ffffff; display: flex; align-items: center; gap: 7px;">
+                <span>🎫</span> Order Fulfillment &amp; Delivery Ticket Routing
+            </div>
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Configure where purchase delivery tickets are created and where completed receipts are logged when staff marks orders sold.</div>
+        </div>
+        <button class="btn btn-secondary" id="saveEcoRoutingQuickBtn" type="button" style="padding: 6px 14px; font-size: 11.5px; font-weight: 600;">Save Routing</button>
+    </div>
+    <div class="grid-2" style="gap: 16px;">
+        <div class="form-group">
+            <label class="form-label" style="font-size: 11.5px;">Delivery Ticket Category</label>
+            <select class="sec-select" id="eco_ticket_category_id" style="width: 100%; font-size: 12px; padding: 7px 10px;">
+                <option value="">Default Server Category</option>
+            </select>
+            <small style="color: var(--text-muted); font-size: 10.5px;">Category where private order ticket channels (#order-xxx) are created.</small>
+        </div>
+        <div class="form-group">
+            <label class="form-label" style="font-size: 11.5px;">Delivery Tickets Log Channel (Receipts)</label>
+            <select class="sec-select" id="eco_ticket_log_channel_id" style="width: 100%; font-size: 12px; padding: 7px 10px;">
+                <option value="">No Receipt Logging (Channel Deletes Only)</option>
+            </select>
+            <small style="color: var(--text-muted); font-size: 10.5px;">Channel where completed purchase receipts are logged upon fulfillment.</small>
+        </div>
+    </div>
+</div>
+
 <!-- Inline Add Store Item / Role Drawer -->
 <div id="addShopItemDrawer" style="display: none; background: rgba(88, 101, 242, 0.05); border: 1px solid rgba(88, 101, 242, 0.25); border-radius: 8px; padding: 18px; margin-bottom: 20px;">
     <div style="font-size: 14px; font-weight: 700; color: #ffffff; margin-bottom: 14px; display: flex; align-items: center; gap: 8px;">

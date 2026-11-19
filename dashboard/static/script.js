@@ -71657,6 +71657,11 @@ async function loadEconomySettings() {
                 });
             }
 
+            const tCat = document.getElementById('eco_ticket_category_id');
+            if (tCat && cfg.delivery_ticket_category_id) tCat.value = cfg.delivery_ticket_category_id;
+            const tLog = document.getElementById('eco_ticket_log_channel_id');
+            if (tLog && cfg.delivery_ticket_log_channel_id) tLog.value = cfg.delivery_ticket_log_channel_id;
+
             // Faucets & Rewards
             setVal('eco_starter_bank', cfg.starter_bank ?? 100);
             setVal('eco_bank_max_initial', cfg.bank_max_initial ?? 2500);
@@ -71746,6 +71751,7 @@ async function populateEconomyChannels(gid) {
         const dropSelect = document.getElementById('eco_drop_channel');
         const multiSelect = document.getElementById('eco_channels_select');
         const coinflipSelect = document.getElementById('eco_coinflip_channels_select');
+        const ticketLogSelect = document.getElementById('eco_ticket_log_channel_id');
         
         if (dropSelect) {
             const curVal = dropSelect.value;
@@ -71769,6 +71775,31 @@ async function populateEconomyChannels(gid) {
                 coinflipSelect.innerHTML += `<option value="${ch.id}"># ${escapeHtml(ch.name)}</option>`;
             });
         }
+
+        if (ticketLogSelect) {
+            const curLog = ticketLogSelect.value;
+            ticketLogSelect.innerHTML = '<option value="">No Receipt Logging (Channel Deletes Only)</option>';
+            channels.forEach(ch => {
+                ticketLogSelect.innerHTML += `<option value="${ch.id}"># ${escapeHtml(ch.name)}</option>`;
+            });
+            if (curLog) ticketLogSelect.value = curLog;
+        }
+
+        try {
+            const catRes = await fetch(`/api/guild/${gid}/categories`);
+            const cats = await catRes.json();
+            const ticketCatSelect = document.getElementById('eco_ticket_category_id');
+            if (ticketCatSelect) {
+                const curCat = ticketCatSelect.value;
+                ticketCatSelect.innerHTML = '<option value="">Default Server Category</option>';
+                if (Array.isArray(cats)) {
+                    cats.forEach(c => {
+                        ticketCatSelect.innerHTML += `<option value="${c.id}">📁 ${escapeHtml(c.name)}</option>`;
+                    });
+                }
+                if (curCat) ticketCatSelect.value = curCat;
+            }
+        } catch (ce) {}
     } catch (e) {
         console.error("populateEconomyChannels error:", e);
     }
@@ -72455,6 +72486,8 @@ function initEconomyModule() {
                     ludo_friday_reward: getNum('eco_ludo_friday_reward', 500),
                     minigame_max_bet: getNum('eco_minigame_max_bet', 50000),
                     
+                    delivery_ticket_category_id: (document.getElementById('eco_ticket_category_id') || {}).value || '',
+                    delivery_ticket_log_channel_id: (document.getElementById('eco_ticket_log_channel_id') || {}).value || '',
                     shop_items: updatedShop
                 }
             };
@@ -72476,6 +72509,15 @@ function initEconomyModule() {
                 console.error("Save economy settings error:", err);
                 if (typeof showToast === 'function') showToast("Network error while saving economy settings.", "error");
             }
+        });
+    }
+
+    const saveRoutingBtn = document.getElementById('saveEcoRoutingQuickBtn');
+    if (saveRoutingBtn && !saveRoutingBtn.dataset.bound) {
+        saveRoutingBtn.dataset.bound = "true";
+        saveRoutingBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (saveBtn) saveBtn.click();
         });
     }
 
