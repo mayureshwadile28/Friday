@@ -197,6 +197,7 @@ async def force_sync_commands(ctx: commands.Context):
                 print("⚡ Dynamically loaded cogs.tts during sync command.")
             except Exception as te:
                 print(f"⚠️ Error loading cogs.tts: {te}")
+                await ctx.send(f"⚠️ Note on `cogs.tts`: `{te}`")
 
         configure_command_dm_restrictions(bot.tree)
         # Clear legacy guild duplicates from this server
@@ -206,9 +207,12 @@ async def force_sync_commands(ctx: commands.Context):
         synced = await bot.tree.sync()
         
         eco_cmds = [c.name for c in synced if c.name in ("balance", "wallet", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "coinflip")]
+        tts_synced = any(c.name == "tts" for c in synced)
+        tts_line = f"🔊 **TTS commands online:** `/tts` (enable, disable, join, leave, voice, skip, status)\n" if tts_synced else "⚠️ **TTS command not loaded** (check edge-tts dependency)\n"
         await msg.edit(content=(
             f"✅ **{len(synced)} slash commands** synced cleanly without duplicates!\n"
             f"🪙 **Economy commands online ({len(eco_cmds)}):** `/{'`, `/'.join(eco_cmds[:8])}`...\n"
+            f"{tts_line}"
             f"⚡ *All commands are live! If not visible in your slash menu, press `Ctrl + R` in Discord to refresh your client.*"
         ))
     except Exception as e:

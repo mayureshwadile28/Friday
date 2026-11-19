@@ -5789,6 +5789,12 @@ def sync_economy_commands_endpoint(gid):
                 await bot_instance.load_extension("cogs.economy")
             except Exception as ce:
                 print(f"Failed to load cogs.economy during dashboard sync: {ce}")
+
+        if not bot_instance.get_cog("TTS"):
+            try:
+                await bot_instance.load_extension("cogs.tts")
+            except Exception as te:
+                print(f"Failed to load cogs.tts during dashboard sync: {te}")
                 
         # Clear duplicate guild overrides and sync global clean list
         bot_instance.tree.clear_commands(guild=guild)

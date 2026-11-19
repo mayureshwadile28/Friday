@@ -6,7 +6,14 @@ import os
 import re
 import tempfile
 from typing import Optional, Dict
-import edge_tts
+
+try:
+    import edge_tts
+    HAS_EDGE_TTS = True
+except ImportError:
+    HAS_EDGE_TTS = False
+    edge_tts = None
+
 from database import db
 from response_utils import make_box_embed, reply_box
 
@@ -317,18 +324,16 @@ class TTSCog(commands.Cog, name="TTS"):
         if not vc or not vc.is_connected():
             return
 
-        # Check if author is in the same voice channel as Friday
-        author_vc = getattr(message.author.voice, "channel", None) if message.author.voice else None
-        if not author_vc or author_vc.id != vc.channel.id:
-            # If author is not in Friday's VC, ignore unless channel is explicitly whitelisted
-            allowed_cid = cfg.get("channel_id")
-            if not allowed_cid or str(message.channel.id) != str(allowed_cid):
-                return
-
-        # Whitelist channel check
+        # Channel & Participant Check
         allowed_cid = cfg.get("channel_id")
         if allowed_cid:
-            if str(message.channel.id) != str(allowed_cid) and message.channel != vc.channel:
+            if str(message.channel.id) != str(allowed_cid):
+                return
+        else:
+            # By default: read from the active VC's own text chat OR messages from anyone in Friday's VC
+            is_vc_chat = (message.channel.id == vc.channel.id)
+            author_in_vc = (getattr(getattr(message.author, "voice", None), "channel", None) == vc.channel)
+            if not is_vc_chat and not author_in_vc:
                 return
 
         # Check if Music is playing: completely shut down / suppress TTS
@@ -341,8 +346,8 @@ class TTSCog(commands.Cog, name="TTS"):
             return
 
         if cfg.get("announce_author", True):
-            # Form clean phrase: "Name says: Message"
-            speech_text = f"{message.author.display_name} says: {cleaned}"
+            # Format: "Name says, Message" (comma provides natural speech cadence)
+            speech_text = f"{message.author.display_name} says, {cleaned}"
         else:
             speech_text = cleaned
 
@@ -377,40 +382,54 @@ class TTSCog(commands.Cog, name="TTS"):
         if not interaction.guild:
             return
 
-        author_vc = getattr(interaction.user.voice, "channel", None) if interaction.user.voice else None
-        if not author_vc:
+        if not HAS_EDGE_TTS:
             return await reply_box(
                 interaction,
-                "You must be in a voice channel first to enable Friday TTS!",
-                title="JOIN VC FIRST",
+                "⚠️ **edge-tts** library is not installed on the bot VM host.\n\n"
+                "Please run on your server:\n"
+                "`pip install --upgrade edge-tts --break-system-packages`\n"
+                "and then restart Friday.",
+                title="EDGE-TTS MISSING",
+                status="warning",
+                ephemeral=True
+            )
+
+        vc = interaction.guild.voice_client
+        author_vc = getattr(interaction.user.voice, "channel", None) if interaction.user.voice else None
+
+        target_vc = None
+        if vc and vc.is_connected():
+            target_vc = vc.channel
+        elif author_vc:
+            target_vc = author_vc
+        else:
+            return await reply_box(
+                interaction,
+                "Either you must be in a voice channel, or Friday must already be in a voice channel to enable TTS!",
+                title="NO VOICE CHANNEL FOUND",
                 status="warning",
                 ephemeral=True
             )
 
         await interaction.response.defer()
 
-        # Connect Friday to user's VC if not already connected
-        vc = interaction.guild.voice_client
+        # Connect Friday if not already connected
         if not vc:
             try:
-                vc = await author_vc.connect()
+                vc = await target_vc.connect()
             except Exception as e:
                 return await reply_box(
                     interaction,
-                    f"Failed to join your voice channel: `{e}`",
+                    f"Failed to join voice channel: `{e}`",
                     title="CONNECTION ERROR",
                     status="danger"
                 )
-        elif vc.channel.id != author_vc.id:
+        elif author_vc and vc.channel.id != author_vc.id:
             try:
                 await vc.move_to(author_vc)
+                target_vc = author_vc
             except Exception as e:
-                return await reply_box(
-                    interaction,
-                    f"Failed to switch to your voice channel: `{e}`",
-                    title="CONNECTION ERROR",
-                    status="danger"
-                )
+                pass
 
         gid = str(interaction.guild_id)
         cfg = self.get_guild_cfg(gid)
@@ -427,7 +446,7 @@ class TTSCog(commands.Cog, name="TTS"):
         chan_text = f"<#{cfg['channel_id']}>" if cfg.get("channel_id") else "Voice Channel Text Chat"
 
         desc = (
-            f"Friday Voice Assistant is now active in **{author_vc.name}**!\n\n"
+            f"Friday Voice Assistant is now active in **{target_vc.name}**!\n\n"
             f"• **Voice Style:** {preset['name']} {preset['badge']}\n"
             f"• **Reading Channel:** {chan_text}\n"
             f"• **Music Auto-Mute:** Active (Silences automatically when songs play)\n\n"
@@ -595,17 +614,21 @@ class TTSCog(commands.Cog, name="TTS"):
 
     @tts_prefix.command(name="on")
     async def tts_prefix_on(self, ctx: commands.Context):
-        if not ctx.author.voice or not ctx.author.voice.channel:
-            return await ctx.send("❌ You must be in a voice channel first!")
+        if not HAS_EDGE_TTS:
+            return await ctx.send("⚠️ `edge-tts` is not installed on the VM host. Run `pip install --upgrade edge-tts --break-system-packages` and restart Friday.")
         vc = ctx.guild.voice_client
+        author_vc = getattr(ctx.author.voice, "channel", None) if ctx.author.voice else None
+        target_vc = vc.channel if (vc and vc.is_connected()) else author_vc
+        if not target_vc:
+            return await ctx.send("❌ Either you or Friday must be in a voice channel first!")
         if not vc:
-            await ctx.author.voice.channel.connect()
+            await target_vc.connect()
         gid = str(ctx.guild.id)
         cfg = self.get_guild_cfg(gid)
         cfg["enabled"] = True
         db.save_data()
         self.ensure_worker(ctx.guild.id)
-        await ctx.send("🌸 **Friday TTS is now ON!** Speak in chat and I'll read it aloud.")
+        await ctx.send(f"🌸 **Friday TTS is now ON in {target_vc.name}!** Speak in chat and I'll read it aloud.")
 
     @tts_prefix.command(name="off")
     async def tts_prefix_off(self, ctx: commands.Context):
@@ -656,3 +679,4 @@ class TTSCog(commands.Cog, name="TTS"):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(TTSCog(bot))
+
