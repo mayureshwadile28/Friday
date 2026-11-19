@@ -18,18 +18,36 @@ if sys.platform == "win32":
     except Exception:
         pass
 
+# Ensure user-installed site-packages and local environments are visible to systemd service environment
+import glob
+for site_candidate in [
+    os.path.expanduser("~/.local/lib/python3.12/site-packages"),
+    os.path.expanduser("~/.local/lib/python3/site-packages"),
+    "/home/maywa554785/.local/lib/python3.12/site-packages",
+    "/home/maywa554785/.local/lib/python3/dist-packages",
+    "/usr/local/lib/python3.12/dist-packages",
+    "/usr/local/lib/python3.12/site-packages",
+    *glob.glob("/home/*/.local/lib/python3*/site-packages")
+]:
+    if os.path.exists(site_candidate) and site_candidate not in sys.path:
+        sys.path.insert(0, site_candidate)
+
 # Auto-install missing packages on cloud container startup if needed
-for import_name, pkg_name in [("easy_pil", "easy-pil"), ("yt_dlp", "yt-dlp"), ("PIL", "Pillow"), ("pyjokes", "pyjokes"), ("chat_exporter", "chat-exporter")]:
+for import_name, pkg_name in [("easy_pil", "easy-pil"), ("yt_dlp", "yt-dlp"), ("PIL", "Pillow"), ("pyjokes", "pyjokes"), ("chat_exporter", "chat-exporter"), ("edge_tts", "edge-tts>=7.3.1")]:
     try:
         __import__(import_name)
     except ImportError:
         import subprocess
         print(f"📦 Auto-installing missing dependency '{pkg_name}'...")
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name])
+            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name, "--break-system-packages"])
             print(f"✅ Successfully installed '{pkg_name}'!")
-        except Exception as e:
-            print(f"⚠️ Failed to auto-install {pkg_name}: {e}")
+        except Exception:
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name])
+                print(f"✅ Successfully installed '{pkg_name}'!")
+            except Exception as e:
+                print(f"⚠️ Failed to auto-install {pkg_name}: {e}")
 
 # Always ensure yt-dlp is updated to latest release on startup (fixes YouTube signature & cipher rotations)
 try:

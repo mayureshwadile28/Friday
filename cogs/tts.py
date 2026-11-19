@@ -7,12 +7,50 @@ import re
 import tempfile
 from typing import Optional, Dict
 
+import sys
+import glob
+
+# Ensure user site-packages are accessible even under systemd service environments
+for site_candidate in [
+    os.path.expanduser("~/.local/lib/python3.12/site-packages"),
+    os.path.expanduser("~/.local/lib/python3/site-packages"),
+    "/home/maywa554785/.local/lib/python3.12/site-packages",
+    "/usr/local/lib/python3.12/dist-packages",
+    "/usr/local/lib/python3.12/site-packages",
+    *glob.glob("/home/*/.local/lib/python3*/site-packages")
+]:
+    if os.path.exists(site_candidate) and site_candidate not in sys.path:
+        sys.path.insert(0, site_candidate)
+
+def get_edge_tts():
+    """Lazily attempts to import edge_tts if it was missing or installed post-startup."""
+    global edge_tts, HAS_EDGE_TTS
+    if HAS_EDGE_TTS and edge_tts is not None:
+        return edge_tts
+    try:
+        import edge_tts as _et
+        edge_tts = _et
+        HAS_EDGE_TTS = True
+        return edge_tts
+    except ImportError:
+        for p in glob.glob("/home/*/.local/lib/python3*/site-packages"):
+            if os.path.exists(p) and p not in sys.path:
+                sys.path.insert(0, p)
+        try:
+            import edge_tts as _et
+            edge_tts = _et
+            HAS_EDGE_TTS = True
+            return edge_tts
+        except ImportError:
+            HAS_EDGE_TTS = False
+            return None
+
 try:
     import edge_tts
     HAS_EDGE_TTS = True
 except ImportError:
-    HAS_EDGE_TTS = False
-    edge_tts = None
+    edge_tts = get_edge_tts()
+    HAS_EDGE_TTS = (edge_tts is not None)
 
 from database import db
 from response_utils import make_box_embed, reply_box
@@ -245,7 +283,12 @@ class TTSCog(commands.Cog, name="TTS"):
                 rate = preset["rate"]
 
                 # Synthesize via cloud Edge-TTS
-                communicate = edge_tts.Communicate(
+                et = get_edge_tts()
+                if not et:
+                    queue.task_done()
+                    continue
+
+                communicate = et.Communicate(
                     text=item["text"],
                     voice=voice,
                     pitch=pitch,
@@ -382,13 +425,14 @@ class TTSCog(commands.Cog, name="TTS"):
         if not interaction.guild:
             return
 
-        if not HAS_EDGE_TTS:
+        if not (HAS_EDGE_TTS or get_edge_tts()):
             return await reply_box(
                 interaction,
                 "⚠️ **edge-tts** library is not installed on the bot VM host.\n\n"
                 "Please run on your server:\n"
-                "`pip install --upgrade edge-tts --break-system-packages`\n"
-                "and then restart Friday.",
+                "`sudo pip install --upgrade edge-tts --break-system-packages`\n"
+                "and then restart Friday:\n"
+                "`sudo systemctl restart friday`",
                 title="EDGE-TTS MISSING",
                 status="warning",
                 ephemeral=True
@@ -614,8 +658,8 @@ class TTSCog(commands.Cog, name="TTS"):
 
     @tts_prefix.command(name="on")
     async def tts_prefix_on(self, ctx: commands.Context):
-        if not HAS_EDGE_TTS:
-            return await ctx.send("⚠️ `edge-tts` is not installed on the VM host. Run `pip install --upgrade edge-tts --break-system-packages` and restart Friday.")
+        if not (HAS_EDGE_TTS or get_edge_tts()):
+            return await ctx.send("⚠️ `edge-tts` is not installed on the VM host. Run `sudo pip install --upgrade edge-tts --break-system-packages` and then `sudo systemctl restart friday`.")
         vc = ctx.guild.voice_client
         author_vc = getattr(ctx.author.voice, "channel", None) if ctx.author.voice else None
         target_vc = vc.channel if (vc and vc.is_connected()) else author_vc
