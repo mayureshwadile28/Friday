@@ -1032,6 +1032,21 @@ class Leveling(commands.Cog):
                 xp_after_levelup = db.xp_data[gid][uid]["xp"]  # XP carried over after level-up (usually ~0)
                 db.save_data()
 
+                # Economy Level-Up Bonus Reward hook
+                try:
+                    eco_cfg = getattr(db, "economy_config", {}).get(gid, {})
+                    if eco_cfg.get("enabled", True) and not eco_cfg.get("paused", False):
+                        level_reward = int(eco_cfg.get("level_up_reward_coins", 100))
+                        if level_reward > 0:
+                            from cogs.economy import get_economy_db
+                            eco_db = get_economy_db()
+                            eco_db.get_or_init_user(gid, uid)
+                            new_w = eco_db.delta_wallet(gid, uid, level_reward)
+                            cur_name = eco_cfg.get("currency_name", "Coins")
+                            eco_db.log_tx(gid, uid, "level_up_reward", level_reward, new_w, note=f"Advanced to Level {new_level}")
+                except Exception as ex:
+                    print(f"⚠️ [Leveling] Failed to award economy level up reward: {ex}")
+
                 channel_id = db.level_channels.get(gid)
                 if channel_id:
                     try:

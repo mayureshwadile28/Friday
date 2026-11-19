@@ -71692,6 +71692,7 @@ async function loadEconomySettings() {
             setVal('eco_crime_earn_max', cfg.crime_earn_max ?? 600);
             setVal('eco_crime_fail_fine', cfg.crime_fail_fine ?? 200);
             setVal('eco_invite_reward_coins', cfg.invite_reward_coins ?? 100);
+            setVal('eco_level_up_reward_coins', cfg.level_up_reward_coins ?? 100);
 
             // Robbery & Sinks
             setVal('eco_rob_cooldown', cfg.rob_cooldown_hours ?? 2);
@@ -72470,6 +72471,7 @@ function initEconomyModule() {
                     crime_earn_max: getNum('eco_crime_earn_max', 600),
                     crime_fail_fine: getNum('eco_crime_fail_fine', 200),
                     invite_reward_coins: getNum('eco_invite_reward_coins', 100),
+                    level_up_reward_coins: getNum('eco_level_up_reward_coins', 100),
                     
                     rob_cooldown_hours: getNum('eco_rob_cooldown', 2),
                     rob_min_robber_wallet: getNum('eco_rob_min_robber', 500),
