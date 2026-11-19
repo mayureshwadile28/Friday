@@ -4125,15 +4125,31 @@
 
     <div style="margin-bottom: 20px;">
         <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase; margin-bottom: 6px; display: block;">Dedicated Member Commands Channel</label>
-        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Restrict member commands (<code>!rank</code>, <code>!lb invite</code>, <code>!lb msg</code>, <code>!m</code>) to run ONLY in this specific channel. In all other channels, Friday will strictly ignore them.</p>
+        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">Restrict member &amp; economy commands (<code>.rank</code>, <code>.m</code>, <code>.wallet</code>, <code>.cf</code>, <code>.daily</code>, <code>.work</code>, <code>.shop</code>, <code>.inv</code>) to run ONLY in this specific channel. In all other channels, Friday will strictly ignore them.</p>
         <select class="text-input" id="memberCommandsChannelSelect" style="width: 100%;">
             <option value="">Allow in All Channels (No restriction)</option>
         </select>
     </div>
 
     <div style="margin-bottom: 14px;">
-        <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase; margin-bottom: 10px; display: block;">Permitted Staff Commands</label>
+        <label style="font-size: 12px; font-weight: 700; color: #ffffff; text-transform: uppercase; margin-bottom: 10px; display: block;">Permitted Commands</label>
         <div style="display: flex; flex-direction: column; gap: 10px;">
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Economy Prefix Commands (<code>wallet</code>, <code>cf</code>, <code>daily</code>, <code>work</code>, <code>pay</code>, <code>rob</code>, <code>dep</code>, <code>with</code>, <code>shop</code>)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Allow members to run economy commands with your custom prefix (e.g. <code>.cf 500 h</code>, <code>.wallet</code>, <code>.daily</code>)</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefixCmd_economy" checked/><span class="slider"></span></label>
+            </label>
+
+            <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
+                <div>
+                    <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Voice TTS Prefix Commands (<code>tts</code>)</div>
+                    <div style="font-size: 12px; color: var(--text-secondary);">Allow members to control voice TTS with prefix (e.g. <code>.tts on</code>, <code>.tts off</code>, <code>.tts voice</code>, <code>.tts skip</code>)</div>
+                </div>
+                <label class="switch"><input type="checkbox" id="prefixCmd_tts" checked/><span class="slider"></span></label>
+            </label>
+
             <label style="display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 8px; cursor: pointer;">
                 <div>
                     <div style="font-size: 14px; font-weight: 600; color: #ffffff;">Purge Messages (<code>purge</code>)</div>
@@ -11342,8 +11358,11 @@ Click the button below to submit your confidential application.
                 <label class="form-sublabel" style="font-weight: 600; color: #ffffff; margin-bottom: 8px; display: block;">Voice Style &amp; Persona</label>
                 <select class="custom-select select-styled" id="ttsVoiceSelect" style="width: 100%;">
                     <option value="friday_cute">🌸 Friday Cute (Default) — Sweet, lively anime companion voice</option>
+                    <option value="hinglish_swara">🇮🇳 Swara (Hinglish Cute) — Sweet &amp; cute Hindi/Hinglish anime companion voice</option>
+                    <option value="hinglish_neerja">🎀 Neerja (Desi Expressive) — Lively &amp; warm Indian English / Hinglish voice</option>
                     <option value="sweet_assistant">🎀 Sweet Assistant — Warm, polite, cheerful AI companion</option>
                     <option value="playful_ava">💫 Playful Ava — Energetic, modern, spirited assistant</option>
+                    <option value="marathi_aarohi">✨ Aarohi (Marathi/Desi) — Sweet regional Marathi/Indian accent voice</option>
                     <option value="standard_natural">🎙️ Standard Natural — Clean, crisp studio-neutral assistant</option>
                     <option value="japanese_nanami">🍵 Japanese Nanami — Cute Japanese anime voice</option>
                 </select>
@@ -11367,8 +11386,8 @@ Click the button below to submit your confidential application.
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
                 <div style="padding: 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card);">
                     <label style="font-weight: 600; color: #ffffff; font-size: 13.5px; display: block; margin-bottom: 6px;">Max Message Characters</label>
-                    <input type="number" class="text-input" id="ttsMaxLengthInput" min="30" max="400" value="150" style="width: 100%;">
-                    <span style="font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; display: block;">Messages longer than this limit will be trimmed with an ellipsis.</span>
+                    <input type="number" class="text-input" id="ttsMaxLengthInput" min="50" max="2000" value="1000" style="width: 100%;">
+                    <span style="font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; display: block;">Supports full Discord paragraphs (up to 2,000 characters).</span>
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 14px; border-radius: 10px; background: rgba(15, 23, 42, 0.5); border: 1px solid var(--border-card);">

@@ -59,6 +59,20 @@ except Exception:
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 
+from database import db
+
+def get_prefix(bot_instance, message: discord.Message):
+    """
+    Dynamically resolves the server's configured command prefix.
+    If a guild configured '.', Friday responds to '.', not hardcoded '!'.
+    Also allows bot mention as prefix.
+    """
+    if not message.guild:
+        return commands.when_mentioned_or("!")(bot_instance, message)
+    gid = str(message.guild.id)
+    custom_p = getattr(db, "custom_prefixes", {}).get(gid, "!") or "!"
+    return commands.when_mentioned_or(custom_p)(bot_instance, message)
+
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True 
@@ -66,7 +80,7 @@ intents.presences = True
 intents.moderation = True
 intents.voice_states = True
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix=get_prefix, intents=intents)
 bot.remove_command('help')
 
 def configure_command_dm_restrictions(tree):

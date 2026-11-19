@@ -779,6 +779,27 @@ class Economy(commands.Cog):
             return False
         return True
 
+    def check_prefix_channel(self, ctx: commands.Context) -> bool:
+        """
+        Enforces dedicated member command channel and staff whitelist toggles.
+        """
+        if not ctx.guild:
+            return True
+        gid = str(ctx.guild.id)
+        # Check if staff disabled economy prefix commands
+        wl = getattr(db, "prefix_whitelist", {}).get(gid, {})
+        if wl.get("commands", {}).get("economy", True) is False:
+            return False
+            
+        # Check dedicated member command channel
+        allowed_chan = getattr(db, "bot_command_channels", {}).get(gid)
+        if allowed_chan and str(ctx.channel.id) != str(allowed_chan):
+            perms = getattr(ctx.author, "guild_permissions", None)
+            if perms and perms.administrator:
+                return True
+            return False
+        return True
+
     # ───────────────────── Background Tasks & Event Listeners ─────────────────────
 
     @tasks.loop(minutes=5)
@@ -997,7 +1018,7 @@ class Economy(commands.Cog):
 
     @commands.command(name="wallet", aliases=["bal", "balance", "bank"])
     async def prefix_balance(self, ctx: commands.Context, user: Optional[discord.Member] = None):
-        if not ctx.guild:
+        if not ctx.guild or not self.check_prefix_channel(ctx):
             return
         gid = str(ctx.guild.id)
         cfg = self.get_config(gid)
@@ -1774,12 +1795,13 @@ class Economy(commands.Cog):
 
     @commands.command(name="cf", aliases=["coinflip"])
     async def cmd_coinflip(self, ctx: commands.Context, arg1: str = "", arg2: str = ""):
-        """Text command for quick coinflip: !cf <amount|all> <heads|tails|h|t>"""
-        if not ctx.guild:
+        """Text command for quick coinflip: .cf <amount|all> <heads|tails|h|t>"""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
             return
         gid = str(ctx.guild.id)
         uid = str(ctx.author.id)
         cfg = self.get_config(gid)
+        p = ctx.prefix or "!"
         
         if not cfg.get("enabled", True):
             return
@@ -1792,7 +1814,7 @@ class Economy(commands.Cog):
             return await ctx.reply(f"❌ Coinflip can only be played in: {ch_mentions}!")
             
         if not arg1 or not arg2:
-            return await ctx.reply("🪙 **Usage:** `!cf <amount|all> <h|t>` (Example: `!cf 100 h` or `!cf all tails`)")
+            return await ctx.reply(f"🪙 **Usage:** `{p}cf <amount|all> <h|t>` (Example: `{p}cf 100 h` or `{p}cf all tails`)")
             
         choice_val = None
         bet_raw = None
@@ -1805,7 +1827,7 @@ class Economy(commands.Cog):
                 bet_raw = a
                 
         if not choice_val or not bet_raw:
-            return await ctx.reply("❌ Invalid choice! Choose `heads` (`h`) or `tails` (`t`). **Usage:** `!cf <amount|all> <h|t>`")
+            return await ctx.reply(f"❌ Invalid choice! Choose `heads` (`h`) or `tails` (`t`). **Usage:** `{p}cf <amount|all> <h|t>`")
             
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
@@ -1863,6 +1885,343 @@ class Economy(commands.Cog):
                 )
             embed.set_footer(text=f"Wallet: {new_w:,} coins • Odds: 48% with 1.95x payout")
             await ctx.reply(embed=embed)
+
+    # ───────────────────── Member Economy Prefix Commands ─────────────────────
+
+    @commands.command(name="daily")
+    async def prefix_daily(self, ctx: commands.Context):
+        """Claim daily login bonus via prefix."""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        gid = str(ctx.guild.id)
+        uid = str(ctx.author.id)
+        cfg = self.get_config(gid)
+        if not cfg.get("enabled", True) or cfg.get("paused", False):
+            return await ctx.send("⏸️ The server economy is currently on hold.")
+            
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        base = int(cfg.get("daily_base", 250))
+        bonus = int(cfg.get("daily_streak_bonus", 50))
+        max_streak = int(cfg.get("daily_streak_max_days", 7))
+        
+        async with self._get_lock(gid, uid):
+            profile = self.db.get_or_init_user(gid, uid)
+            now = time.time()
+            last = profile["last_daily"]
+            hours_since = (now - last) / 3600
+            
+            if hours_since < 24:
+                rem_h = int(24 - hours_since)
+                rem_m = int(((24 - hours_since) % 1) * 60)
+                return await ctx.send(f"⏳ Daily reward on cooldown! Return in **{rem_h}h {rem_m}m**.")
+                
+            streak = profile["streak"]
+            if 24 <= hours_since <= 48:
+                streak = (streak % max_streak) + 1
+            else:
+                streak = 1
+                
+            reward = base + (bonus * (streak - 1))
+            new_w = self.db.delta_wallet(gid, uid, reward)
+            self.db.update_field(gid, uid, "last_daily", now)
+            self.db.update_field(gid, uid, "streak", streak)
+            self.db.log_tx(gid, uid, "daily", reward, new_w, note=f"Streak day {streak}")
+            
+            embed = discord.Embed(
+                title="🎁 Daily Login Bonus Claimed!",
+                color=discord.Color.gold(),
+                description=f"You collected **+{reward:,} {cur_name}** {cur_emoji}!\n🔥 **Daily Streak:** `{streak}/{max_streak} Days`\n💰 **Wallet:** `{new_w:,} {cur_name}`"
+            )
+            await ctx.send(embed=embed)
+
+    @commands.command(name="work")
+    async def prefix_work(self, ctx: commands.Context):
+        """Earn salary by completing hourly server jobs."""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        gid = str(ctx.guild.id)
+        uid = str(ctx.author.id)
+        cfg = self.get_config(gid)
+        if not cfg.get("enabled", True) or cfg.get("paused", False):
+            return await ctx.send("⏸️ The server economy is currently on hold.")
+            
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        min_p = int(cfg.get("work_min", 50))
+        max_p = int(cfg.get("work_max", 150))
+        cd = int(cfg.get("work_cooldown_min", 60)) * 60
+        
+        async with self._get_lock(gid, uid):
+            profile = self.db.get_or_init_user(gid, uid)
+            now = time.time()
+            elapsed = now - profile["last_work"]
+            if elapsed < cd:
+                rem = int((cd - elapsed) / 60)
+                return await ctx.send(f"⏳ You are exhausted! Rest for **{rem}m** before working again.")
+                
+            payout = random.randint(min_p, max_p)
+            new_w = self.db.delta_wallet(gid, uid, payout)
+            self.db.update_field(gid, uid, "last_work", now)
+            self.db.log_tx(gid, uid, "work", payout, new_w)
+            
+            scenarios = [
+                f"You worked as a Discord moderator and earned **+{payout:,} {cur_name}** {cur_emoji}!",
+                f"You fixed server bugs and were rewarded **+{payout:,} {cur_name}** {cur_emoji}!",
+                f"You hosted a server event and earned **+{payout:,} {cur_name}** {cur_emoji}!",
+                f"You designed custom server banners and received **+{payout:,} {cur_name}** {cur_emoji}!"
+            ]
+            embed = discord.Embed(
+                title="💼 Shift Completed!",
+                color=discord.Color.green(),
+                description=f"{random.choice(scenarios)}\n💰 **Wallet:** `{new_w:,} {cur_name}`"
+            )
+            await ctx.send(embed=embed)
+
+    @commands.command(name="dep", aliases=["deposit"])
+    async def prefix_deposit(self, ctx: commands.Context, amount: str = ""):
+        """Transfer cash to safe bank vault: .dep <amount|all>"""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        gid = str(ctx.guild.id)
+        uid = str(ctx.author.id)
+        cfg = self.get_config(gid)
+        p = ctx.prefix or "!"
+        if not amount:
+            return await ctx.send(f"🪙 **Usage:** `{p}dep <amount|all>`")
+            
+        cur_name = cfg.get("currency_name", "Coins")
+        async with self._get_lock(gid, uid):
+            profile = self.db.get_or_init_user(gid, uid)
+            wallet = profile["wallet"]
+            bank = profile["bank"]
+            cap = profile.get("bank_capacity", 2500)
+            avail_space = max(0, cap - bank)
+            
+            if amount.lower() in ("all", "max"):
+                to_dep = min(wallet, avail_space)
+            else:
+                try:
+                    to_dep = int(amount)
+                except ValueError:
+                    return await ctx.send("❌ Please provide a valid number or `all`.")
+                    
+            if to_dep <= 0:
+                return await ctx.send("❌ You don't have enough coins or your bank vault is completely full!")
+            if wallet < to_dep:
+                return await ctx.send(f"❌ You only have **{wallet:,} {cur_name}** in your cash wallet.")
+            if (bank + to_dep) > cap:
+                return await ctx.send(f"❌ Bank capacity limit reached! Vault capacity: **{cap:,}** (Space available: **{avail_space:,}**).")
+                
+            new_w = self.db.delta_wallet(gid, uid, -to_dep)
+            new_b = self.db.delta_bank(gid, uid, to_dep)
+            self.db.log_tx(gid, uid, "deposit", to_dep, new_w, note=f"Bank: {new_b}")
+            await ctx.send(f"🏦 Deposited **{to_dep:,} {cur_name}** into your secure bank vault!\n💰 **Wallet:** `{new_w:,}` • 🏛️ **Bank:** `{new_b:,} / {cap:,}`")
+
+    @commands.command(name="with", aliases=["withdraw"])
+    async def prefix_withdraw(self, ctx: commands.Context, amount: str = ""):
+        """Withdraw cash from bank vault: .with <amount|all>"""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        gid = str(ctx.guild.id)
+        uid = str(ctx.author.id)
+        cfg = self.get_config(gid)
+        p = ctx.prefix or "!"
+        if not amount:
+            return await ctx.send(f"🪙 **Usage:** `{p}with <amount|all>`")
+            
+        cur_name = cfg.get("currency_name", "Coins")
+        async with self._get_lock(gid, uid):
+            profile = self.db.get_or_init_user(gid, uid)
+            wallet = profile["wallet"]
+            bank = profile["bank"]
+            
+            if amount.lower() in ("all", "max"):
+                to_with = bank
+            else:
+                try:
+                    to_with = int(amount)
+                except ValueError:
+                    return await ctx.send("❌ Please provide a valid number or `all`.")
+                    
+            if to_with <= 0:
+                return await ctx.send("❌ Withdrawal amount must be greater than zero.")
+            if bank < to_with:
+                return await ctx.send(f"❌ You only have **{bank:,} {cur_name}** stored in your bank vault.")
+                
+            new_w = self.db.delta_wallet(gid, uid, to_with)
+            new_b = self.db.delta_bank(gid, uid, -to_with)
+            self.db.log_tx(gid, uid, "withdraw", to_with, new_w, note=f"Bank: {new_b}")
+            await ctx.send(f"💸 Withdrew **{to_with:,} {cur_name}** from vault to cash wallet!\n💰 **Wallet:** `{new_w:,}` • 🏛️ **Bank:** `{new_b:,}`")
+
+    @commands.command(name="pay", aliases=["give"])
+    async def prefix_pay(self, ctx: commands.Context, member: Optional[discord.Member] = None, amount: Optional[int] = None):
+        """Transfer cash to another player: .pay @user <amount>"""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        p = ctx.prefix or "!"
+        if not member or amount is None:
+            return await ctx.send(f"💸 **Usage:** `{p}pay @user <amount>`")
+        if member.id == ctx.author.id:
+            return await ctx.send("❌ You cannot transfer money to yourself.")
+        if member.bot:
+            return await ctx.send("❌ Bots cannot hold currency accounts.")
+        if amount <= 0:
+            return await ctx.send("❌ Amount must be greater than zero.")
+            
+        gid = str(ctx.guild.id)
+        cfg = self.get_config(gid)
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        tax_rate = float(cfg.get("transaction_tax_percent", 0.0)) / 100.0
+        tax = int(amount * tax_rate)
+        received = amount - tax
+        
+        async with self._get_lock(gid, str(ctx.author.id)):
+            sender_p = self.db.get_or_init_user(gid, str(ctx.author.id))
+            if sender_p["wallet"] < amount:
+                return await ctx.send(f"❌ You only have **{sender_p['wallet']:,} {cur_name}** in your cash wallet.")
+            self.db.delta_wallet(gid, str(ctx.author.id), -amount)
+            
+        async with self._get_lock(gid, str(member.id)):
+            self.db.delta_wallet(gid, str(member.id), received)
+            
+        tax_str = f" (Tax: {tax:,})" if tax > 0 else ""
+        await ctx.send(f"💸 **Payment Sent!** Transferred **{received:,} {cur_name}** {cur_emoji} to {member.mention}{tax_str}.")
+
+    @commands.command(name="rob", aliases=["steal"])
+    async def prefix_rob(self, ctx: commands.Context, target: Optional[discord.Member] = None):
+        """Stage a wallet heist against another player: .rob @user"""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        p = ctx.prefix or "!"
+        if not target:
+            return await ctx.send(f"🥷 **Usage:** `{p}rob @user`")
+        if target.id == ctx.author.id:
+            return await ctx.send("❌ You cannot rob yourself.")
+        if target.bot:
+            return await ctx.send("❌ You cannot rob bots.")
+            
+        gid = str(ctx.guild.id)
+        cfg = self.get_config(gid)
+        if not cfg.get("rob_enabled", True):
+            return await ctx.send("🛡️ Robbery is disabled in this server.")
+            
+        uid = str(ctx.author.id)
+        tid = str(target.id)
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        cooldown = int(cfg.get("rob_cooldown_min", 120)) * 60
+        
+        async with self._get_lock(gid, uid):
+            robber = self.db.get_or_init_user(gid, uid)
+            now = time.time()
+            if (now - robber["last_rob"]) < cooldown:
+                rem = int((cooldown - (now - robber["last_rob"])) / 60)
+                return await ctx.send(f"⏳ The cops are still watching you! Wait **{rem}m** before staging another robbery.")
+            if robber.get("passive", False):
+                return await ctx.send("🛡️ You are in **Passive Mode**! Turn it off with `/passive` to rob others.")
+            if robber["wallet"] < 100:
+                return await ctx.send(f"❌ You need at least **100 {cur_name}** in your wallet to cover bail if you get caught!")
+                
+        async with self._get_lock(gid, tid):
+            victim = self.db.get_or_init_user(gid, tid)
+            if victim.get("passive", False):
+                return await ctx.send(f"🛡️ **{target.display_name}** is in Passive Mode and cannot be robbed.")
+            if victim["wallet"] < 100:
+                return await ctx.send(f"❌ **{target.display_name}** has less than 100 {cur_name} in their wallet. Not worth the risk!")
+            has_padlock = self.db.has_item(gid, tid, "padlock")
+            
+        self.db.update_field(gid, uid, "last_rob", now)
+        if has_padlock:
+            self.db.consume_item(gid, tid, "padlock")
+            fine = min(robber["wallet"], 250)
+            self.db.delta_wallet(gid, uid, -fine)
+            return await ctx.send(f"🔒 **Robbery Blocked!** {target.display_name}'s padlock snapped shut! You were fined **{fine:,} {cur_name}** for trespassing.")
+            
+        chance = float(cfg.get("rob_success_rate", 0.45))
+        if random.random() < chance:
+            pct = random.uniform(0.15, 0.40)
+            stolen = max(1, int(victim["wallet"] * pct))
+            self.db.delta_wallet(gid, tid, -stolen)
+            new_w = self.db.delta_wallet(gid, uid, stolen)
+            await ctx.send(f"🥷 **Success!** You sneaked past {target.display_name} and stole **{stolen:,} {cur_name}** {cur_emoji}!")
+        else:
+            fine = min(robber["wallet"], int(victim["wallet"] * 0.20))
+            self.db.delta_wallet(gid, uid, -fine)
+            self.db.delta_wallet(gid, tid, fine)
+            await ctx.send(f"🚨 **Busted!** You were caught red-handed and had to pay **{fine:,} {cur_name}** in compensation to {target.mention}!")
+
+    @commands.command(name="shop", aliases=["store"])
+    async def prefix_shop(self, ctx: commands.Context):
+        """View active server shop catalog."""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        gid = str(ctx.guild.id)
+        cfg = self.get_config(gid)
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        catalog = self.db.get_shop_catalog(gid)
+        
+        if not catalog:
+            return await ctx.send("🏪 The server shop is currently empty.")
+            
+        lines = ["🏪 **Server Shop Catalog**\n"]
+        for item in catalog:
+            item_id = item.get("id", "")
+            name = item.get("name", "Item")
+            emoji = item.get("emoji", "📦")
+            price = item.get("price", 0)
+            desc = item.get("description", "")
+            lines.append(f"{emoji} **{name}** (`{item_id}`) — **{price:,} {cur_name}** {cur_emoji}\n*{desc}*\n")
+        lines.append(f"💡 *Purchase items with `/buy <item>`.*")
+        await ctx.send("\n".join(lines))
+
+    @commands.command(name="inv", aliases=["inventory"])
+    async def prefix_inventory(self, ctx: commands.Context, member: Optional[discord.Member] = None):
+        """View user inventory via prefix."""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        target = member or ctx.author
+        gid = str(ctx.guild.id)
+        uid = str(target.id)
+        items = self.db.get_user_inventory(gid, uid)
+        
+        if not items:
+            return await ctx.send(f"🎒 **{target.display_name}'s Backpack is empty.** Visit `/shop` to purchase items!")
+            
+        catalog = {i["id"]: i for i in self.db.get_shop_catalog(gid)}
+        lines = [f"🎒 **{target.display_name}'s Inventory:**\n"]
+        for it in items:
+            cat_item = catalog.get(it["item_id"], {})
+            name = cat_item.get("name", it["item_id"])
+            emoji = cat_item.get("emoji", "📦")
+            qty = it.get("quantity", 1)
+            lines.append(f"{emoji} **{name}** ×`{qty}`")
+        await ctx.send("\n".join(lines))
+
+    @commands.command(name="ecolb", aliases=["rich", "richest"])
+    async def prefix_ecolb(self, ctx: commands.Context):
+        """View top richest members leaderboard."""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        gid = str(ctx.guild.id)
+        cfg = self.get_config(gid)
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        users = self.db.get_guild_users(gid)
+        if not users:
+            return await ctx.send("📊 No player accounts found yet.")
+            
+        ranked = sorted(users.items(), key=lambda x: (x[1].get("wallet", 0) + x[1].get("bank", 0)), reverse=True)[:10]
+        lines = [f"🏆 **Top Richest Members in {ctx.guild.name}**\n"]
+        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        for idx, (uid, prof) in enumerate(ranked):
+            tot = prof.get("wallet", 0) + prof.get("bank", 0)
+            mem = ctx.guild.get_member(int(uid))
+            name = mem.display_name if mem else f"User {uid[:6]}"
+            lines.append(f"{medals[idx]} **{name}** — `{tot:,} {cur_name}` {cur_emoji} (Wallet: `{prof.get('wallet',0):,}` • Bank: `{prof.get('bank',0):,}`)")
+        await ctx.send("\n".join(lines))
 
     # ───────────────────── Admin Configuration Commands ─────────────────────
 

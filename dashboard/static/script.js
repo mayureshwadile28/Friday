@@ -25811,6 +25811,8 @@ window.loadPrefixSettings = async function() {
             prefixWhitelistedMembers = Array.isArray(wl.members) ? wl.members.map(String) : [];
 
             const cmds = wl.commands || {};
+            if (document.getElementById('prefixCmd_economy')) document.getElementById('prefixCmd_economy').checked = cmds.economy !== false;
+            if (document.getElementById('prefixCmd_tts')) document.getElementById('prefixCmd_tts').checked = cmds.tts !== false;
             if (document.getElementById('prefixCmd_purge')) document.getElementById('prefixCmd_purge').checked = cmds.purge !== false;
             if (document.getElementById('prefixCmd_lock')) document.getElementById('prefixCmd_lock').checked = cmds.lock !== false;
             if (document.getElementById('prefixCmd_unlock')) document.getElementById('prefixCmd_unlock').checked = cmds.unlock !== false;
@@ -25860,6 +25862,8 @@ window.savePrefixSettings = async function() {
     const command_channel = chanSelect ? chanSelect.value.trim() : '';
 
     const commands = {
+        economy: document.getElementById('prefixCmd_economy') ? document.getElementById('prefixCmd_economy').checked : true,
+        tts: document.getElementById('prefixCmd_tts') ? document.getElementById('prefixCmd_tts').checked : true,
         purge: document.getElementById('prefixCmd_purge') ? document.getElementById('prefixCmd_purge').checked : true,
         lock: document.getElementById('prefixCmd_lock') ? document.getElementById('prefixCmd_lock').checked : true,
         unlock: document.getElementById('prefixCmd_unlock') ? document.getElementById('prefixCmd_unlock').checked : true,

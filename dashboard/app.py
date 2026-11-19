@@ -1989,7 +1989,7 @@ def get_prefix_settings(gid):
     wl = getattr(db, "prefix_whitelist", {}).get(gid_str, {
         "roles": [],
         "members": [],
-        "commands": {"purge": True, "lock": True, "unlock": True, "ban": True, "tm": True}
+        "commands": {"purge": True, "lock": True, "unlock": True, "ban": True, "tm": True, "economy": True, "tts": True}
     })
     return jsonify({
         "success": True,
@@ -2035,7 +2035,9 @@ def save_prefix_settings(gid):
             "lock": bool(wl_data.get("commands", {}).get("lock", True)),
             "unlock": bool(wl_data.get("commands", {}).get("unlock", True)),
             "ban": bool(wl_data.get("commands", {}).get("ban", True)),
-            "tm": bool(wl_data.get("commands", {}).get("tm", True))
+            "tm": bool(wl_data.get("commands", {}).get("tm", True)),
+            "economy": bool(wl_data.get("commands", {}).get("economy", True)),
+            "tts": bool(wl_data.get("commands", {}).get("tts", True))
         }
     }
     db.save_data()

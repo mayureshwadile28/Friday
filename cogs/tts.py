@@ -67,6 +67,22 @@ TTS_VOICE_PRESETS = {
         "badge": "🌸 Cute Anime",
         "desc": "Sweet, adorable, and lively AI companion voice"
     },
+    "hinglish_swara": {
+        "name": "Swara (Hinglish Cute)",
+        "voice": "hi-IN-SwaraNeural",
+        "pitch": "+12Hz",
+        "rate": "+4%",
+        "badge": "🇮🇳 Hinglish Cute",
+        "desc": "Sweet & cute Hindi/Hinglish anime companion voice"
+    },
+    "hinglish_neerja": {
+        "name": "Neerja (Desi Expressive)",
+        "voice": "en-IN-NeerjaNeural",
+        "pitch": "+8Hz",
+        "rate": "+3%",
+        "badge": "🎀 Desi Expressive",
+        "desc": "Lively & warm Indian English / Hinglish companion voice"
+    },
     "sweet_assistant": {
         "name": "Sweet Assistant",
         "voice": "en-US-JennyNeural",
@@ -82,6 +98,14 @@ TTS_VOICE_PRESETS = {
         "rate": "+4%",
         "badge": "💫 Playful",
         "desc": "Energetic, modern, spirited assistant voice"
+    },
+    "marathi_aarohi": {
+        "name": "Aarohi (Marathi/Desi)",
+        "voice": "mr-IN-AarohiNeural",
+        "pitch": "+8Hz",
+        "rate": "+2%",
+        "badge": "✨ Marathi/Desi",
+        "desc": "Sweet regional Marathi/Indian accent voice"
     },
     "standard_natural": {
         "name": "Standard Natural",
@@ -104,7 +128,7 @@ TTS_VOICE_PRESETS = {
 DEFAULT_PRESET_KEY = "friday_cute"
 
 
-def sanitize_tts_text(text: str, guild: Optional[discord.Guild], max_length: int = 150) -> str:
+def sanitize_tts_text(text: str, guild: Optional[discord.Guild], max_length: int = 1000) -> str:
     """Cleans Discord message text for smooth, natural TTS speech."""
     if not text:
         return ""
@@ -215,14 +239,17 @@ class TTSCog(commands.Cog, name="TTS"):
                 task.cancel()
 
     def get_guild_cfg(self, gid: str) -> dict:
-        return db.tts_config.setdefault(gid, {
+        cfg = db.tts_config.setdefault(gid, {
             "enabled": False,
             "voice_preset": DEFAULT_PRESET_KEY,
             "channel_id": None,
-            "max_length": 150,
+            "max_length": 1000,
             "announce_author": True,
             "auto_mute_music": True
         })
+        if cfg.get("max_length", 150) <= 150:
+            cfg["max_length"] = 1000
+        return cfg
 
     def is_music_playing(self, guild: discord.Guild) -> bool:
         """Determines if the Music cog is currently playing a song on the guild's voice client."""
@@ -267,8 +294,8 @@ class TTSCog(commands.Cog, name="TTS"):
 
             # Wait if another non-music sound is playing
             wait_attempts = 0
-            while vc.is_playing() and getattr(vc, "_is_tts_playing", False) and wait_attempts < 20:
-                await asyncio.sleep(0.5)
+            while vc.is_playing() and getattr(vc, "_is_tts_playing", False) and wait_attempts < 40:
+                await asyncio.sleep(0.1)
                 wait_attempts += 1
 
             if cfg.get("auto_mute_music", True) and self.is_music_playing(guild):
@@ -312,7 +339,12 @@ class TTSCog(commands.Cog, name="TTS"):
                     setattr(vc, "_is_tts_playing", False)
                     self.bot.loop.call_soon_threadsafe(done_event.set)
 
-                source = discord.FFmpegPCMAudio(temp_path)
+                # High-speed direct PCM streaming without probing delays
+                source = discord.FFmpegPCMAudio(
+                    temp_path,
+                    before_options="-f mp3 -analyzeduration 0 -probesize 32",
+                    options="-vn -loglevel quiet -nostats"
+                )
                 setattr(vc, "_is_tts_playing", True)
                 vc.play(source, after=after_play)
 
@@ -383,7 +415,7 @@ class TTSCog(commands.Cog, name="TTS"):
         if cfg.get("auto_mute_music", True) and self.is_music_playing(message.guild):
             return
 
-        max_len = cfg.get("max_length", 150)
+        max_len = cfg.get("max_length", 1000)
         cleaned = sanitize_tts_text(message.content, message.guild, max_length=max_len)
         if not cleaned:
             return
@@ -649,15 +681,21 @@ class TTSCog(commands.Cog, name="TTS"):
         await reply_box(interaction, desc, title="TTS CONFIGURATION", status="info")
 
     # ─────────────────────────────────────────────────────────────
-    # Fast In-Chat Prefix Commands (!tts on, !tts off, !tts join, !tts leave, !tts skip)
+    # Fast In-Chat Prefix Commands (.tts on, .tts off, .tts voice, .tts join, .tts leave, .tts skip)
     # ─────────────────────────────────────────────────────────────
     @commands.group(name="tts", invoke_without_command=True)
     async def tts_prefix(self, ctx: commands.Context):
         """Prefix helper command."""
-        await ctx.send("🔊 Use `!tts on`, `!tts off`, `!tts join`, `!tts leave`, or `/tts enable`.")
+        p = ctx.prefix or "!"
+        await ctx.send(f"🔊 **Friday Voice TTS:** `{p}tts on`, `{p}tts off`, `{p}tts voice [name]`, `{p}tts join`, `{p}tts leave`, `{p}tts skip` (or `/tts enable`).")
 
     @tts_prefix.command(name="on")
     async def tts_prefix_on(self, ctx: commands.Context):
+        gid = str(ctx.guild.id)
+        wl = getattr(db, "prefix_whitelist", {}).get(gid, {})
+        if wl.get("commands", {}).get("tts", True) is False:
+            return await ctx.send("❌ Voice TTS prefix commands are currently disabled in this server by staff.")
+
         if not (HAS_EDGE_TTS or get_edge_tts()):
             return await ctx.send("⚠️ `edge-tts` is not installed on the VM host. Run `sudo pip install --upgrade edge-tts --break-system-packages` and then `sudo systemctl restart friday`.")
         vc = ctx.guild.voice_client
@@ -667,12 +705,12 @@ class TTSCog(commands.Cog, name="TTS"):
             return await ctx.send("❌ Either you or Friday must be in a voice channel first!")
         if not vc:
             await target_vc.connect()
-        gid = str(ctx.guild.id)
         cfg = self.get_guild_cfg(gid)
         cfg["enabled"] = True
         db.save_data()
         self.ensure_worker(ctx.guild.id)
-        await ctx.send(f"🌸 **Friday TTS is now ON in {target_vc.name}!** Speak in chat and I'll read it aloud.")
+        preset = TTS_VOICE_PRESETS.get(cfg.get("voice_preset", DEFAULT_PRESET_KEY), TTS_VOICE_PRESETS[DEFAULT_PRESET_KEY])
+        await ctx.send(f"🌸 **Friday TTS is now ON in {target_vc.name}!** Using voice: **{preset['name']}** {preset['badge']}. Speak in chat and I'll read it aloud.")
 
     @tts_prefix.command(name="off")
     async def tts_prefix_off(self, ctx: commands.Context):
@@ -684,6 +722,47 @@ class TTSCog(commands.Cog, name="TTS"):
         if skip_ev:
             skip_ev.set()
         await ctx.send("🔇 **Friday TTS is now OFF.**")
+
+    @tts_prefix.command(name="voice")
+    async def tts_prefix_voice(self, ctx: commands.Context, voice_name: Optional[str] = None):
+        """Change or view Friday TTS voice personality."""
+        gid = str(ctx.guild.id)
+        cfg = self.get_guild_cfg(gid)
+        p = ctx.prefix or "!"
+
+        if not voice_name:
+            cur = cfg.get("voice_preset", DEFAULT_PRESET_KEY)
+            lines = [f"🌸 **Friday TTS Voices Available** (Current: `{cur}`):"]
+            for k, v in TTS_VOICE_PRESETS.items():
+                mark = "👉 " if k == cur else "• "
+                lines.append(f"{mark}`{k}` — **{v['name']}** {v['badge']}: {v['desc']}")
+            lines.append(f"\n💡 *Change voice via:* `{p}tts voice <key>` (e.g. `{p}tts voice hinglish_swara`)")
+            return await ctx.send("\n".join(lines))
+
+        target_key = voice_name.lower().strip()
+        # Aliases
+        if target_key in ("swara", "hindi", "hinglish"):
+            target_key = "hinglish_swara"
+        elif target_key in ("neerja", "desi"):
+            target_key = "hinglish_neerja"
+        elif target_key in ("aarohi", "marathi"):
+            target_key = "marathi_aarohi"
+        elif target_key in ("cute", "ana"):
+            target_key = "friday_cute"
+        elif target_key in ("jenny", "sweet"):
+            target_key = "sweet_assistant"
+        elif target_key in ("ava", "playful"):
+            target_key = "playful_ava"
+        elif target_key in ("nanami", "japanese", "anime"):
+            target_key = "japanese_nanami"
+
+        if target_key not in TTS_VOICE_PRESETS:
+            return await ctx.send(f"❌ Unknown voice `{voice_name}`. Run `{p}tts voice` to see available voices.")
+
+        cfg["voice_preset"] = target_key
+        db.save_data()
+        preset = TTS_VOICE_PRESETS[target_key]
+        await ctx.send(f"✅ Friday's voice set to **{preset['name']}** {preset['badge']}!\n*{preset['desc']}*")
 
     @tts_prefix.command(name="join")
     async def tts_prefix_join(self, ctx: commands.Context):
