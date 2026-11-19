@@ -258,7 +258,7 @@ class EconomyDB:
             ).fetchone()
             return row["bank"] if row else 0
 
-    def transfer_wallet_to_bank(self, gid: str, uid: str, amount: int) -> Tuple[bool, int, int, str]:
+    def transfer_wallet_to_bank(self, gid: str, uid: str, amount: int, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
         """Atomically moves funds from wallet to bank up to bank_max."""
         with self.get_conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -273,11 +273,11 @@ class EconomyDB:
             if amount <= 0:
                 return False, wallet, bank, "Deposit amount must be greater than zero."
             if wallet < amount:
-                return False, wallet, bank, "You do not have enough coins in your wallet."
+                return False, wallet, bank, f"You do not have enough {cur_name} in your wallet."
             
             available_space = max(0, bank_max - bank)
             if available_space <= 0:
-                return False, wallet, bank, f"Your bank is completely full! Capacity: {bank_max:,} coins. Upgrade via `/bank_upgrade`."
+                return False, wallet, bank, f"Your bank is completely full! Capacity: {bank_max:,} {cur_name}. Upgrade via `/bank_upgrade`."
             
             deposit_amount = min(amount, available_space)
             new_wallet = wallet - deposit_amount
@@ -289,9 +289,9 @@ class EconomyDB:
                 WHERE guild_id=? AND user_id=?
             """, (new_wallet, new_bank, gid, uid))
             
-            return True, new_wallet, new_bank, f"Successfully deposited {deposit_amount:,} coins into your safe bank vault!"
+            return True, new_wallet, new_bank, f"Successfully deposited {deposit_amount:,} {cur_name} into your safe bank vault!"
 
-    def transfer_bank_to_wallet(self, gid: str, uid: str, amount: int) -> Tuple[bool, int, int, str]:
+    def transfer_bank_to_wallet(self, gid: str, uid: str, amount: int, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
         """Atomically moves funds from bank back to wallet."""
         with self.get_conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -305,7 +305,7 @@ class EconomyDB:
             if amount <= 0:
                 return False, wallet, bank, "Withdraw amount must be greater than zero."
             if bank < amount:
-                return False, wallet, bank, "You do not have that many coins in your bank vault."
+                return False, wallet, bank, f"You do not have that many {cur_name} in your bank vault."
             
             new_bank = bank - amount
             new_wallet = wallet + amount
@@ -316,9 +316,9 @@ class EconomyDB:
                 WHERE guild_id=? AND user_id=?
             """, (new_wallet, new_bank, gid, uid))
             
-            return True, new_wallet, new_bank, f"Successfully withdrew {amount:,} coins into your wallet!"
+            return True, new_wallet, new_bank, f"Successfully withdrew {amount:,} {cur_name} into your wallet!"
 
-    def upgrade_bank(self, gid: str, uid: str, cost: int, increase: int) -> Tuple[bool, int, int, str]:
+    def upgrade_bank(self, gid: str, uid: str, cost: int, increase: int, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
         """Burns coins from wallet to increase bank_max capacity."""
         with self.get_conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -330,7 +330,7 @@ class EconomyDB:
             
             wallet, bank_max = row["wallet"], row["bank_max"]
             if wallet < cost:
-                return False, wallet, bank_max, f"You need at least {cost:,} coins in your wallet to upgrade your bank."
+                return False, wallet, bank_max, f"You need at least {cost:,} {cur_name} in your wallet to upgrade your bank."
             
             new_wallet = wallet - cost
             new_max = bank_max + increase
@@ -341,7 +341,7 @@ class EconomyDB:
                 WHERE guild_id=? AND user_id=?
             """, (new_wallet, new_max, gid, uid))
             
-            return True, new_wallet, new_max, f"Bank Vault upgraded! Capacity increased by +{increase:,} to **{new_max:,} Coins**!"
+            return True, new_wallet, new_max, f"Bank Vault upgraded! Capacity increased by +{increase:,} to **{new_max:,} {cur_name}**!"
 
     def update_field(self, gid: str, uid: str, field: str, value: Any):
         with self.get_conn() as conn:
@@ -854,7 +854,7 @@ class ShopSelect(discord.ui.Select):
                 em = it.get("emoji", "📦")
                 embed.add_field(
                     name=f"{em} {it.get('name')} (`{k}`)",
-                    value=f"**Price:** `{p:,} {cur_e} {cur}`\n{it.get('desc', '')}",
+                    value=f"**Price:** `{p:,}` {cur_e} {cur}\n{it.get('desc', '')}",
                     inline=False
                 )
         elif cat == "cat_upgrades":
@@ -868,7 +868,7 @@ class ShopSelect(discord.ui.Select):
                 em = it.get("emoji", "⭐")
                 embed.add_field(
                     name=f"{em} {it.get('name')} (`{k}`)",
-                    value=f"**Price:** `{p:,} {cur_e} {cur}`\n{it.get('desc', '')}",
+                    value=f"**Price:** `{p:,}` {cur_e} {cur}\n{it.get('desc', '')}",
                     inline=False
                 )
         elif cat == "cat_custom":
@@ -887,7 +887,7 @@ class ShopSelect(discord.ui.Select):
                     role_desc = f"\n👑 **Grants Discord Role:** <@&{it['role_id']}>"
                 embed.add_field(
                     name=f"{em} {it.get('name')} (`{k}`)",
-                    value=f"**Price:** `{p:,} {cur_e} {cur}`{role_desc}\n{it.get('desc', 'Custom store item.')}",
+                    value=f"**Price:** `{p:,}` {cur_e} {cur}{role_desc}\n{it.get('desc', 'Custom store item.')}",
                     inline=False
                 )
                 custom_count += 1
@@ -1280,17 +1280,17 @@ class Economy(commands.Cog):
                 except ValueError:
                     return await interaction.response.send_message("❌ Please enter a valid number or 'all'.", ephemeral=True)
                 
-            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amt)
-            if not success:
-                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-            
             cfg = self.get_config(gid)
             cur_name = cfg.get("currency_name", "Coins")
             cur_emoji = cfg.get("currency_emoji", "🪙")
             
+            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amt, cur_name)
+            if not success:
+                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            
             embed = discord.Embed(title="🏦 Bank Deposit Successful", color=discord.Color.green(), description=msg)
-            embed.add_field(name="Wallet Cash", value=f"`{new_w:,} {cur_emoji}`", inline=True)
-            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Wallet Cash", value=f"`{new_w:,}` {cur_emoji}", inline=True)
+            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,}` {cur_emoji}", inline=True)
             await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="withdraw", description="Withdraw coins from your bank vault into your wallet.")
@@ -1313,17 +1313,17 @@ class Economy(commands.Cog):
                 except ValueError:
                     return await interaction.response.send_message("❌ Please enter a valid number or 'all'.", ephemeral=True)
                 
-            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amt)
-            if not success:
-                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
-            
             cfg = self.get_config(gid)
             cur_name = cfg.get("currency_name", "Coins")
             cur_emoji = cfg.get("currency_emoji", "🪙")
             
+            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amt, cur_name)
+            if not success:
+                return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
+            
             embed = discord.Embed(title="💵 Bank Withdrawal Complete", color=discord.Color.teal(), description=msg)
-            embed.add_field(name="Wallet Cash", value=f"`{new_w:,} {cur_emoji}`", inline=True)
-            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Wallet Cash", value=f"`{new_w:,}` {cur_emoji}", inline=True)
+            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,}` {cur_emoji}", inline=True)
             await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="bank_upgrade", description="Expand your bank vault capacity by burning wallet cash.")
@@ -1340,13 +1340,13 @@ class Economy(commands.Cog):
         cur_emoji = cfg.get("currency_emoji", "🪙")
         
         async with self._get_lock(gid, uid):
-            success, new_w, new_max, msg = self.db.upgrade_bank(gid, uid, cost, increase)
+            success, new_w, new_max, msg = self.db.upgrade_bank(gid, uid, cost, increase, cur_name)
             if not success:
                 return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
             
             embed = discord.Embed(title="🏦 Vault Upgrade Purchased!", color=discord.Color.gold(), description=msg)
-            embed.add_field(name="Cost Burned", value=f"`-{cost:,} {cur_emoji}`", inline=True)
-            embed.add_field(name="New Capacity", value=f"`{new_max:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Cost Burned", value=f"`-{cost:,}` {cur_emoji}", inline=True)
+            embed.add_field(name="New Capacity", value=f"`{new_max:,}` {cur_emoji}", inline=True)
             await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="daily", description="Claim your daily login reward and build a 7-day streak!")
@@ -1396,7 +1396,7 @@ class Economy(commands.Cog):
                 description=f"You pocketed **+{reward:,} {cur_emoji} {cur_name}** directly into your cash wallet!"
             )
             embed.add_field(name="🔥 Daily Streak", value=f"**Day {streak} / {max_streak}**", inline=True)
-            embed.add_field(name="Current Wallet", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Current Wallet", value=f"`{new_w:,}` {cur_emoji}", inline=True)
             embed.set_footer(text="Claim again in 24 to 48 hours to maintain your streak bonus!")
             await interaction.response.send_message(embed=embed)
 
@@ -1838,7 +1838,7 @@ class Economy(commands.Cog):
                         f"Hey {member.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
                         f"{staff_ping} will assist you here to deliver and configure your order!{role_msg}\n\n"
                         f"📋 **Order Reference:** `#{order_code}`\n"
-                        f"💰 **Total Paid:** `{total_cost:,} {cur_emoji} {cur_name}`\n"
+                        f"💰 **Total Paid:** `{total_cost:,}` {cur_emoji} {cur_name}\n"
                         f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
                         f"📌 **Status:** `⏳ Pending Delivery`"
                     )
@@ -1861,7 +1861,7 @@ class Economy(commands.Cog):
                         f"Head over there to receive and configure your order!"
                     )
                 )
-                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,}` {cur_emoji}", inline=True)
                 user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
                 return await send_response_fn(embed=user_embed)
 
@@ -1884,7 +1884,7 @@ class Economy(commands.Cog):
                     color=embed_color,
                     description=f"Congratulations {member.mention}!\nYou purchased the **@{role.name if role else item_id}** role for **{total_cost:,} {cur_emoji} {cur_name}**!\nThe role has been assigned to your profile."
                 )
-                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,}` {cur_emoji}", inline=True)
                 embed.set_footer(text="Friday Economy Marketplace")
                 return await send_response_fn(embed=embed)
 
@@ -1897,9 +1897,9 @@ class Economy(commands.Cog):
                 embed = discord.Embed(
                     title="🏦 Bank Expansion Activated!",
                     color=discord.Color.gold(),
-                    description=f"Purchased **{quantity}x {item_cfg['name']}**!\nYour bank vault capacity increased by **+{inc:,}** to **{profile['bank_max'] + inc:,} Coins**!"
+                    description=f"Purchased **{quantity}x {item_cfg['name']}**!\nYour bank vault capacity increased by **+{inc:,}** to **{profile['bank_max'] + inc:,} {cur_name}**!"
                 )
-                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,}` {cur_emoji}", inline=True)
                 return await send_response_fn(embed=embed)
 
             # 4. Standard Inventory Items & Consumables
@@ -1912,7 +1912,7 @@ class Economy(commands.Cog):
                     color=discord.Color.green(),
                     description=f"Purchased **{quantity}x {item_cfg.get('emoji', '📦')} {item_cfg['name']}** for **{total_cost:,} {cur_emoji} {cur_name}**!"
                 )
-                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,}` {cur_emoji}", inline=True)
                 embed.set_footer(text=f"View owned items via /inventory • Use consumable items via /use <item>")
                 return await send_response_fn(embed=embed)
 
@@ -2445,13 +2445,13 @@ class Economy(commands.Cog):
                 except ValueError:
                     return await ctx.send("❌ Please enter a valid number or `all`.")
                     
-            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amt)
+            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amt, cur_name)
             if not success:
                 return await ctx.send(f"❌ {msg}")
                 
             embed = discord.Embed(title="🏦 Bank Deposit Successful", color=discord.Color.green(), description=msg)
-            embed.add_field(name="Wallet Cash", value=f"`{new_w:,} {cur_emoji}`", inline=True)
-            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Wallet Cash", value=f"`{new_w:,}` {cur_emoji}", inline=True)
+            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,}` {cur_emoji}", inline=True)
             await ctx.send(embed=embed)
 
     @commands.command(name="with", aliases=["withdraw"])
@@ -2481,13 +2481,13 @@ class Economy(commands.Cog):
                 except ValueError:
                     return await ctx.send("❌ Please enter a valid number or `all`.")
                     
-            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amt)
+            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amt, cur_name)
             if not success:
                 return await ctx.send(f"❌ {msg}")
                 
             embed = discord.Embed(title="💸 Bank Withdrawal Successful", color=discord.Color.green(), description=msg)
-            embed.add_field(name="Wallet Cash", value=f"`{new_w:,} {cur_emoji}`", inline=True)
-            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,} {cur_emoji}`", inline=True)
+            embed.add_field(name="Wallet Cash", value=f"`{new_w:,}` {cur_emoji}", inline=True)
+            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,}` {cur_emoji}", inline=True)
             await ctx.send(embed=embed)
 
     @commands.command(name="pay", aliases=["give"])
