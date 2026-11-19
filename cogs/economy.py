@@ -186,6 +186,11 @@ class EconomyDB:
                     PRIMARY KEY (guild_id, user_id)
                 )
             """)
+            # Auto-prune stale abandoned games older than 120 seconds on startup
+            try:
+                conn.execute("DELETE FROM economy_active_games WHERE (? - started_at) > 120", (time.time(),))
+            except Exception:
+                pass
 
     def get_user(self, gid: str, uid: str) -> Optional[dict]:
         with self.get_conn() as conn:
@@ -424,6 +429,8 @@ class EconomyDB:
     def start_game(self, gid: str, uid: str, game_type: str, bet: int, state: dict) -> bool:
         with self.get_conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
+            # Auto-prune stale abandoned games older than 120 seconds
+            conn.execute("DELETE FROM economy_active_games WHERE (? - started_at) > 120", (time.time(),))
             existing = conn.execute(
                 "SELECT * FROM economy_active_games WHERE guild_id=? AND user_id=?", (gid, uid)
             ).fetchone()
@@ -437,14 +444,50 @@ class EconomyDB:
 
     def get_active_game(self, gid: str, uid: str) -> Optional[dict]:
         with self.get_conn() as conn:
+            # Auto-prune stale abandoned games older than 120 seconds
+            conn.execute("DELETE FROM economy_active_games WHERE (? - started_at) > 120", (time.time(),))
             row = conn.execute(
                 "SELECT * FROM economy_active_games WHERE guild_id=? AND user_id=?", (gid, uid)
             ).fetchone()
             if row:
                 res = dict(row)
+                # Double-check timeout (120s / 2 mins)
+                if (time.time() - res.get("started_at", 0)) > 120:
+                    conn.execute("DELETE FROM economy_active_games WHERE guild_id=? AND user_id=?", (gid, uid))
+                    return None
                 res["game_state"] = json.loads(res["game_state"])
                 return res
             return None
+
+    def cancel_active_game(self, gid: str, uid: str) -> bool:
+        """Forcefully cancels any active casino lock for a user."""
+        with self.get_conn() as conn:
+            cur = conn.execute("DELETE FROM economy_active_games WHERE guild_id=? AND user_id=?", (gid, uid))
+            return cur.rowcount > 0
+
+    def get_guild_users(self, gid: str) -> List[dict]:
+        """Returns all recorded user economy profiles for a guild."""
+        with self.get_conn() as conn:
+            rows = conn.execute("""
+                SELECT user_id, wallet, bank, bank_max, (wallet + bank) AS net_worth
+                FROM economy_users
+                WHERE guild_id=?
+                ORDER BY net_worth DESC
+            """, (gid,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_shop_catalog(self, gid: str) -> List[dict]:
+        """Returns list of active shop item dictionaries for a guild."""
+        eco_cfg = getattr(db, "economy_config", {})
+        cfg = eco_cfg.get(str(gid), {})
+        items = cfg.get("shop_items", DEFAULT_SHOP_ITEMS)
+        catalog = []
+        for item_id, it in items.items():
+            if it.get("enabled", True):
+                entry = dict(it)
+                entry["id"] = item_id
+                catalog.append(entry)
+        return catalog
 
     def update_game(self, gid: str, uid: str, state: dict, bet_locked: Optional[int] = None):
         with self.get_conn() as conn:
@@ -614,6 +657,81 @@ class PayConfirmView(discord.ui.View):
                 await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
             except Exception:
                 pass
+
+
+class ShopDeliveryTicketView(discord.ui.View):
+    """Interactive view inside a shop delivery ticket channel allowing staff to complete the order."""
+    def __init__(self, cog, gid: str, order_code: str, purchaser_id: str, item_id: str, item_name: str, price: int, currency_name: str, currency_emoji: str, staff_role_id: Optional[str] = None):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.gid = str(gid)
+        self.order_code = order_code
+        self.purchaser_id = str(purchaser_id)
+        self.item_id = item_id
+        self.item_name = item_name
+        self.price = price
+        self.currency_name = currency_name
+        self.currency_emoji = currency_emoji
+        self.staff_role_id = str(staff_role_id) if staff_role_id else None
+
+    @discord.ui.button(label="Item Delivered / Sold", style=discord.ButtonStyle.success, emoji="✅", custom_id="shop_order_delivered_btn")
+    async def complete_order(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Staff check
+        is_admin = interaction.user.guild_permissions.administrator
+        is_staff = False
+        if self.staff_role_id:
+            is_staff = any(str(r.id) == self.staff_role_id for r in getattr(interaction.user, "roles", []))
+            
+        if not (is_admin or is_staff):
+            return await interaction.response.send_message(
+                "❌ **Access Denied:** Only authorized staff members or server administrators can mark this item as delivered!",
+                ephemeral=True
+            )
+            
+        button.disabled = True
+        button.label = "Order Completed"
+        button.style = discord.ButtonStyle.secondary
+        await interaction.response.edit_message(view=self)
+        
+        await interaction.followup.send(
+            f"✅ **Order `#{self.order_code}` marked as DELIVERED by {interaction.user.mention}!**\n"
+            f"📁 Logging receipt to ticket transcripts and closing channel in **5 seconds**..."
+        )
+        
+        # Log to ticket logs / audit log
+        try:
+            guild = interaction.guild
+            if guild:
+                gid = str(guild.id)
+                log_ch_id = (
+                    getattr(db, "tickets", {}).get(gid, {}).get("log_channel") or
+                    getattr(db, "tickets", {}).get(gid, {}).get("transcript_channel_id") or
+                    getattr(db, "server_logs", {}).get(gid, {}).get("audit-antinuke") or
+                    getattr(db, "server_logs", {}).get(gid, {}).get("audit-abuse")
+                )
+                if log_ch_id:
+                    log_ch = guild.get_channel(int(log_ch_id))
+                    if log_ch:
+                        embed = discord.Embed(
+                            title=f"📦 Shop Order Fulfilled: #{self.order_code}",
+                            color=discord.Color.green()
+                        )
+                        embed.add_field(name="Item Delivered", value=f"**{self.item_name}** (`{self.item_id}`)", inline=True)
+                        embed.add_field(name="Customer", value=f"<@{self.purchaser_id}> (`{self.purchaser_id}`)", inline=True)
+                        embed.add_field(name="Processed By", value=f"{interaction.user.mention} (`{interaction.user.id}`)", inline=True)
+                        embed.add_field(name="Amount Paid", value=f"**{self.price:,} {self.currency_emoji} {self.currency_name}**", inline=True)
+                        embed.set_footer(text=f"Friday Order Delivery • #{self.order_code}")
+                        await log_ch.send(embed=embed)
+        except Exception as e:
+            print(f"[Shop Ticket Log Error] {e}")
+            
+        # Delete channel after 5 seconds
+        await asyncio.sleep(5)
+        try:
+            if isinstance(interaction.channel, discord.TextChannel):
+                await interaction.channel.delete(reason=f"Shop Order #{self.order_code} fulfilled by {interaction.user}")
+        except Exception as e:
+            print(f"[Shop Ticket Delete Error] {e}")
 
 
 class ShopSelect(discord.ui.Select):
@@ -1582,11 +1700,114 @@ class Economy(commands.Cog):
                 embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
                 embed.set_footer(text="Friday Economy Marketplace")
                 return await interaction.response.send_message(embed=embed)
-                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
-                embed.set_footer(text="Friday Economy Marketplace")
-                return await interaction.response.send_message(embed=embed)
                 
-            # 2. Special Case: Bank Vault Expansion Pass
+            # 2. Special Case: Requires Staff Delivery Ticket (Autoresponder setup, custom perks)
+            elif item_cfg.get("requires_ticket"):
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                self.db.add_item(gid, uid, item_id, quantity)
+                
+                # Increment order counter
+                order_num = int(cfg.get("order_counter", 0)) + 1
+                cfg["order_counter"] = order_num
+                db.save_data()
+                order_code = f"ORD-{order_num:04d}"
+                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
+                
+                # Find category and staff role
+                target_cat_id = item_cfg.get("ticket_category_id") or getattr(db, "tickets", {}).get(gid, {}).get("category_id")
+                category = interaction.guild.get_channel(int(target_cat_id)) if target_cat_id else None
+                if category and not isinstance(category, discord.CategoryChannel):
+                    category = None
+                    
+                staff_role_id = item_cfg.get("ticket_role_id")
+                staff_role = interaction.guild.get_role(int(staff_role_id)) if staff_role_id else None
+                
+                # Overwrites
+                overwrites = {
+                    interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                    interaction.user: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        attach_files=True,
+                        embed_links=True
+                    ),
+                    interaction.guild.me: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        manage_channels=True,
+                        manage_messages=True,
+                        read_message_history=True,
+                        embed_links=True
+                    )
+                }
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        manage_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
+                    
+                channel_name = f"order-{item_id[:12]}-{order_num:03d}"
+                try:
+                    ticket_channel = await interaction.guild.create_text_channel(
+                        name=channel_name,
+                        category=category,
+                        overwrites=overwrites,
+                        reason=f"Shop Order #{order_code} for {interaction.user}"
+                    )
+                except Exception as e:
+                    # Rollback wallet deduction if channel creation failed
+                    self.db.delta_wallet(gid, uid, total_cost)
+                    return await interaction.response.send_message(
+                        f"❌ Failed to create delivery ticket channel ({e}). Please ensure Friday has **Manage Channels** permission! Coins refunded.",
+                        ephemeral=True
+                    )
+                    
+                view = ShopDeliveryTicketView(
+                    self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
+                    total_cost, cur_name, cur_emoji, staff_role_id
+                )
+                
+                staff_ping = staff_role.mention if staff_role else "Staff Team"
+                receipt_embed = discord.Embed(
+                    title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
+                    color=discord.Color.gold(),
+                    description=(
+                        f"Hey {interaction.user.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
+                        f"{staff_ping} will assist you here to deliver and configure your item!\n\n"
+                        f"📋 **Order Reference:** `#{order_code}`\n"
+                        f"💰 **Total Paid:** `{total_cost:,} {cur_emoji} {cur_name}`\n"
+                        f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
+                        f"📌 **Status:** `⏳ Pending Delivery`"
+                    )
+                )
+                receipt_embed.add_field(
+                    name="🛠️ Staff Instructions",
+                    value="Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel.",
+                    inline=False
+                )
+                receipt_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
+                
+                await ticket_channel.send(content=f"{interaction.user.mention} {staff_ping}", embed=receipt_embed, view=view)
+                
+                user_embed = discord.Embed(
+                    title="🛍️ Purchase Complete & Delivery Ticket Created!",
+                    color=discord.Color.green(),
+                    description=(
+                        f"🎉 You successfully purchased **{quantity}x {item_cfg.get('name', item_id)}** for **{total_cost:,} {cur_emoji} {cur_name}**!\n\n"
+                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
+                        f"Head over there to receive your item!"
+                    )
+                )
+                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
+                return await interaction.response.send_message(embed=user_embed)
+
+            # 3. Special Case: Bank Vault Expansion Pass
             elif item_id == "bank_expansion":
                 new_w = self.db.delta_wallet(gid, uid, -total_cost)
                 inc = int(item_cfg.get("bank_increase", 5000)) * quantity
@@ -2212,16 +2433,224 @@ class Economy(commands.Cog):
         if not catalog:
             return await ctx.send("🏪 The server shop is currently empty.")
             
-        lines = ["🏪 **Server Shop Catalog**\n"]
+        p = ctx.prefix or "!"
+        lines = [f"🏪 **Server Shop Catalog • {ctx.guild.name}**\n"]
         for item in catalog:
             item_id = item.get("id", "")
             name = item.get("name", "Item")
             emoji = item.get("emoji", "📦")
             price = item.get("price", 0)
-            desc = item.get("description", "")
-            lines.append(f"{emoji} **{name}** (`{item_id}`) — **{price:,} {cur_name}** {cur_emoji}\n*{desc}*\n")
-        lines.append(f"💡 *Purchase items with `/buy <item>`.*")
+            desc = item.get("desc") or item.get("description", "")
+            ticket_badge = " [🎫 Delivery Ticket]" if item.get("requires_ticket") else ""
+            lines.append(f"{emoji} **{name}** (`{item_id}`){ticket_badge} — **{price:,} {cur_name}** {cur_emoji}\n*{desc}*\n")
+        lines.append(f"💡 *Purchase items with `{p}buy <item_id>` or `/buy`.*")
         await ctx.send("\n".join(lines))
+
+    @commands.command(name="buy", aliases=["purchase"])
+    async def prefix_buy(self, ctx: commands.Context, item: str = "", quantity: Optional[int] = 1):
+        """Purchase an item or role from the server shop: !buy <item_id> [quantity]"""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        p = ctx.prefix or "!"
+        if not item:
+            return await ctx.send(f"🛒 **Usage:** `{p}buy <item_id> [quantity]` (View items with `{p}shop`)")
+            
+        gid = str(ctx.guild.id)
+        uid = str(ctx.author.id)
+        item_id = item.lower().strip()
+        
+        cfg = self.get_config(gid)
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+        shop_items = cfg.get("shop_items", DEFAULT_SHOP_ITEMS)
+        
+        item_cfg = shop_items.get(item_id, DEFAULT_SHOP_ITEMS.get(item_id))
+        if not item_cfg or not item_cfg.get("enabled", True):
+            return await ctx.send(f"❌ Item `{item_id}` is not available in the shop. Check `{p}shop`!")
+
+        is_role = (item_cfg.get("type") == "role" or "role_id" in item_cfg) and item_cfg.get("role_id")
+        if is_role:
+            quantity = 1
+        elif not quantity or quantity <= 0:
+            quantity = 1
+            
+        price = int(item_cfg.get("price", 0))
+        total_cost = price * quantity
+        max_hold = item_cfg.get("max_hold")
+        
+        async with self._get_lock(gid, uid):
+            profile = self.db.get_or_init_user(gid, uid)
+            if profile["wallet"] < total_cost:
+                return await ctx.send(
+                    f"❌ Insufficient wallet funds: You need **{total_cost:,} {cur_name}** but only have **{profile['wallet']:,}** in your cash wallet."
+                )
+                
+            cur_item = self.db.get_item(gid, uid, item_id)
+            cur_qty = cur_item["quantity"] if cur_item else 0
+            if max_hold and (cur_qty + quantity) > max_hold:
+                return await ctx.send(
+                    f"❌ You can only hold a maximum of **{max_hold}** `{item_cfg['name']}` at a time (You currently hold {cur_qty})."
+                )
+
+            # 1. Discord Role
+            if is_role:
+                role_id = item_cfg.get("role_id")
+                role = ctx.guild.get_role(int(role_id))
+                if not role:
+                    return await ctx.send("❌ The assigned Discord role was deleted or no longer exists on this server.")
+                if not ctx.guild.me.guild_permissions.manage_roles:
+                    return await ctx.send("❌ Friday is missing the **Manage Roles** permission to assign roles.")
+                if ctx.guild.me.top_role <= role:
+                    return await ctx.send(f"❌ Friday's highest role is lower than or equal to **@{role.name}**.")
+                if role in ctx.author.roles:
+                    return await ctx.send(f"❌ You already hold the **@{role.name}** role!")
+                    
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                try:
+                    await ctx.author.add_roles(role, reason=f"Purchased in Friday Economy Shop ({total_cost} {cur_name})")
+                except Exception as e:
+                    self.db.delta_wallet(gid, uid, total_cost)
+                    return await ctx.send(f"❌ Failed to assign role: {e}. Coins have been refunded.")
+                    
+                self.db.add_item(gid, uid, item_id, 1)
+                self.db.log_tx(gid, uid, "shop_buy_role", -total_cost, new_w, note=f"Role: @{role.name}")
+                
+                embed_color = role.color if role.color and role.color.value != 0 else discord.Color.purple()
+                embed = discord.Embed(
+                    title="🎉 Role Purchase Successful!",
+                    color=embed_color,
+                    description=f"Congratulations {ctx.author.mention}!\nYou purchased the **@{role.name}** role for **{total_cost:,} {cur_emoji} {cur_name}**!\nThe role has been assigned to your profile."
+                )
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                embed.set_footer(text="Friday Economy Marketplace")
+                return await ctx.send(embed=embed)
+
+            # 2. Requires Staff Delivery Ticket
+            elif item_cfg.get("requires_ticket"):
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                self.db.add_item(gid, uid, item_id, quantity)
+                
+                order_num = int(cfg.get("order_counter", 0)) + 1
+                cfg["order_counter"] = order_num
+                db.save_data()
+                order_code = f"ORD-{order_num:04d}"
+                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
+                
+                target_cat_id = item_cfg.get("ticket_category_id") or getattr(db, "tickets", {}).get(gid, {}).get("category_id")
+                category = ctx.guild.get_channel(int(target_cat_id)) if target_cat_id else None
+                if category and not isinstance(category, discord.CategoryChannel):
+                    category = None
+                    
+                staff_role_id = item_cfg.get("ticket_role_id")
+                staff_role = ctx.guild.get_role(int(staff_role_id)) if staff_role_id else None
+                
+                overwrites = {
+                    ctx.guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                    ctx.author: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        attach_files=True,
+                        embed_links=True
+                    ),
+                    ctx.guild.me: discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        manage_channels=True,
+                        manage_messages=True,
+                        read_message_history=True,
+                        embed_links=True
+                    )
+                }
+                if staff_role:
+                    overwrites[staff_role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        manage_messages=True,
+                        attach_files=True,
+                        embed_links=True
+                    )
+                    
+                channel_name = f"order-{item_id[:12]}-{order_num:03d}"
+                try:
+                    ticket_channel = await ctx.guild.create_text_channel(
+                        name=channel_name,
+                        category=category,
+                        overwrites=overwrites,
+                        reason=f"Shop Order #{order_code} for {ctx.author}"
+                    )
+                except Exception as e:
+                    self.db.delta_wallet(gid, uid, total_cost)
+                    return await ctx.send(f"❌ Failed to create delivery ticket channel ({e}). Please ensure Friday has **Manage Channels** permission! Coins refunded.")
+                    
+                view = ShopDeliveryTicketView(
+                    self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
+                    total_cost, cur_name, cur_emoji, staff_role_id
+                )
+                
+                staff_ping = staff_role.mention if staff_role else "Staff Team"
+                receipt_embed = discord.Embed(
+                    title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
+                    color=discord.Color.gold(),
+                    description=(
+                        f"Hey {ctx.author.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
+                        f"{staff_ping} will assist you here to deliver and configure your item!\n\n"
+                        f"📋 **Order Reference:** `#{order_code}`\n"
+                        f"💰 **Total Paid:** `{total_cost:,} {cur_emoji} {cur_name}`\n"
+                        f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
+                        f"📌 **Status:** `⏳ Pending Delivery`"
+                    )
+                )
+                receipt_embed.add_field(
+                    name="🛠️ Staff Instructions",
+                    value="Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel.",
+                    inline=False
+                )
+                receipt_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
+                
+                await ticket_channel.send(content=f"{ctx.author.mention} {staff_ping}", embed=receipt_embed, view=view)
+                
+                user_embed = discord.Embed(
+                    title="🛍️ Purchase Complete & Delivery Ticket Created!",
+                    color=discord.Color.green(),
+                    description=(
+                        f"🎉 You successfully purchased **{quantity}x {item_cfg.get('name', item_id)}** for **{total_cost:,} {cur_emoji} {cur_name}**!\n\n"
+                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
+                        f"Head over there to receive your item!"
+                    )
+                )
+                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
+                return await ctx.send(embed=user_embed)
+
+            # 3. Bank Expansion
+            elif item_id == "bank_expansion":
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                inc = int(item_cfg.get("bank_increase", 5000)) * quantity
+                self.db.update_field(gid, uid, "bank_max", profile["bank_max"] + inc)
+                self.db.log_tx(gid, uid, "shop_buy_expansion", -total_cost, new_w, note=f"+{inc} cap")
+                embed = discord.Embed(
+                    title="🏦 Bank Expansion Activated!",
+                    color=discord.Color.gold(),
+                    description=f"Purchased **{quantity}x {item_cfg['name']}**!\nYour bank vault capacity increased by **+{inc:,}** to **{profile['bank_max'] + inc:,} Coins**!"
+                )
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                return await ctx.send(embed=embed)
+
+            # 4. Standard
+            else:
+                new_w = self.db.delta_wallet(gid, uid, -total_cost)
+                self.db.add_item(gid, uid, item_id, quantity)
+                self.db.log_tx(gid, uid, "shop_buy", -total_cost, new_w, note=f"Bought {quantity}x {item_id}")
+                embed = discord.Embed(
+                    title="🛍️ Purchase Complete",
+                    color=discord.Color.green(),
+                    description=f"Purchased **{quantity}x {item_cfg.get('emoji', '📦')} {item_cfg['name']}** for **{total_cost:,} {cur_emoji} {cur_name}**!"
+                )
+                embed.add_field(name="Wallet Remaining", value=f"`{new_w:,} {cur_emoji}`", inline=True)
+                embed.set_footer(text=f"View owned items via {p}inventory • Use items via /use <item>")
+                await ctx.send(embed=embed)
 
     @commands.command(name="inv", aliases=["inventory"])
     async def prefix_inventory(self, ctx: commands.Context, member: Optional[discord.Member] = None):
@@ -2234,7 +2663,8 @@ class Economy(commands.Cog):
         items = self.db.get_user_inventory(gid, uid)
         
         if not items:
-            return await ctx.send(f"🎒 **{target.display_name}'s Backpack is empty.** Visit `/shop` to purchase items!")
+            p = ctx.prefix or "!"
+            return await ctx.send(f"🎒 **{target.display_name}'s Backpack is empty.** Visit `{p}shop` to purchase items!")
             
         catalog = {i["id"]: i for i in self.db.get_shop_catalog(gid)}
         lines = [f"🎒 **{target.display_name}'s Inventory:**\n"]
@@ -2246,28 +2676,89 @@ class Economy(commands.Cog):
             lines.append(f"{emoji} **{name}** ×`{qty}`")
         await ctx.send("\n".join(lines))
 
-    @commands.command(name="ecolb", aliases=["rich", "richest"])
+    @commands.command(name="ecolb", aliases=["rich", "richest", "baltop"])
     async def prefix_ecolb(self, ctx: commands.Context):
-        """View top richest members leaderboard."""
+        """View top richest members leaderboard: !lb rich or !ecolb"""
         if not ctx.guild or not self.check_prefix_channel(ctx):
             return
         gid = str(ctx.guild.id)
         cfg = self.get_config(gid)
         cur_name = cfg.get("currency_name", "Coins")
         cur_emoji = cfg.get("currency_emoji", "🪙")
-        users = self.db.get_guild_users(gid)
-        if not users:
+        top = self.db.get_top_users(gid, limit=10)
+        if not top:
             return await ctx.send("📊 No player accounts found yet.")
             
-        ranked = sorted(users.items(), key=lambda x: (x[1].get("wallet", 0) + x[1].get("bank", 0)), reverse=True)[:10]
-        lines = [f"🏆 **Top Richest Members in {ctx.guild.name}**\n"]
         medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        for idx, (uid, prof) in enumerate(ranked):
-            tot = prof.get("wallet", 0) + prof.get("bank", 0)
-            mem = ctx.guild.get_member(int(uid))
-            name = mem.display_name if mem else f"User {uid[:6]}"
-            lines.append(f"{medals[idx]} **{name}** — `{tot:,} {cur_name}` {cur_emoji} (Wallet: `{prof.get('wallet',0):,}` • Bank: `{prof.get('bank',0):,}`)")
-        await ctx.send("\n".join(lines))
+        embed = discord.Embed(
+            title=f"🏆 Top Richest Members • {ctx.guild.name}",
+            color=discord.Color.gold()
+        )
+        for idx, row in enumerate(top):
+            m_id = int(row["user_id"])
+            mem = ctx.guild.get_member(m_id)
+            name = clean_display_name(mem.display_name) if mem else f"User {str(m_id)[:6]}"
+            icon = medals[idx] if idx < len(medals) else f"**#{idx+1}**"
+            wallet = row.get("wallet", 0)
+            bank = row.get("bank", 0)
+            net = row.get("net_worth", wallet + bank)
+            embed.add_field(
+                name=f"{icon} {name}",
+                value=f"💎 **{net:,} {cur_emoji} {cur_name}** (Wallet: `{wallet:,}` | Vault: `{bank:,}`)",
+                inline=False
+            )
+        embed.set_footer(text=f"Server Economy Leaderboard • Dynamic Prefix: {ctx.prefix or '!'}")
+        await ctx.send(embed=embed)
+
+    @commands.command(name="setcurrency", aliases=["currency", "setcoin"])
+    async def prefix_setcurrency(self, ctx: commands.Context, emoji: str = "", *, name: str = ""):
+        """Set server currency icon and display name: !setcurrency <emoji> <name>"""
+        if not ctx.guild:
+            return
+        perms = getattr(ctx.author, "guild_permissions", None)
+        is_owner = (ctx.author.id == ctx.guild.owner_id)
+        if not (is_owner or (perms and perms.administrator)):
+            return await ctx.send("❌ Only Administrators or Server Owner can update currency settings.")
+            
+        p = ctx.prefix or "!"
+        if not emoji or not name:
+            return await ctx.send(
+                f"🪙 **Usage:** `{p}setcurrency <emoji> <name>`\n"
+                f"**Example:** `{p}setcurrency 💎 Gems` or `{p}setcurrency <:gold:12345> Gold`"
+            )
+            
+        gid = str(ctx.guild.id)
+        if gid not in db.economy_config:
+            db.economy_config[gid] = {}
+            
+        db.economy_config[gid]["currency_emoji"] = emoji.strip()
+        db.economy_config[gid]["currency_name"] = name.strip()
+        db.save_data()
+        
+        embed = discord.Embed(
+            title="⚙️ Currency Identity Updated!",
+            color=discord.Color.green(),
+            description=f"Server economy currency updated to: **{emoji.strip()} {name.strip()}**!"
+        )
+        embed.set_footer(text="Applied live to all economy commands, payouts, and dashboard.")
+        await ctx.send(embed=embed)
+
+    @commands.command(name="cancelgame", aliases=["unlockgame", "cleargame"])
+    async def prefix_cancelgame(self, ctx: commands.Context, member: Optional[discord.Member] = None):
+        """Force cancel any active or stuck casino game lock."""
+        if not ctx.guild:
+            return
+        gid = str(ctx.guild.id)
+        if member and ctx.author.guild_permissions.administrator:
+            target = member
+        else:
+            target = ctx.author
+            
+        unlocked = self.db.cancel_active_game(gid, str(target.id))
+        if unlocked:
+            await ctx.send(f"🎰 Active casino lock for {target.mention} was forcefully cleared! You can now deposit/withdraw.")
+        else:
+            await ctx.send(f"ℹ️ {target.mention} does not have any active game locks.")
 
     # ───────────────────── Admin Configuration Commands ─────────────────────
 
@@ -2276,7 +2767,8 @@ class Economy(commands.Cog):
         enabled="Enable or disable the entire economy.",
         drop_channel="Channel where surprise Coin Drops will spawn.",
         starter_bank="Starting bank bonus for new members (default: 100).",
-        currency_name="Name of currency (default: Coins)."
+        currency_name="Name of currency (default: Coins).",
+        currency_emoji="Emoji or symbol for currency (e.g. 🪙 or custom server emoji)."
     )
     @app_commands.default_permissions(administrator=True)
     async def economy_setup(
@@ -2285,7 +2777,8 @@ class Economy(commands.Cog):
         enabled: Optional[bool] = None,
         drop_channel: Optional[discord.TextChannel] = None,
         starter_bank: Optional[int] = None,
-        currency_name: Optional[str] = None
+        currency_name: Optional[str] = None,
+        currency_emoji: Optional[str] = None
     ):
         if not await ensure_admin_or_owner(interaction):
             return
@@ -2301,6 +2794,8 @@ class Economy(commands.Cog):
             cfg["starter_bank"] = starter_bank
         if currency_name:
             cfg["currency_name"] = currency_name.strip()
+        if currency_emoji:
+            cfg["currency_emoji"] = currency_emoji.strip()
         if drop_channel:
             db.economy_log_channels[gid] = drop_channel.id
             cfg["drop_channel_id"] = drop_channel.id
@@ -2310,10 +2805,11 @@ class Economy(commands.Cog):
         status_str = "ENABLED ✅" if cfg.get("enabled", True) else "DISABLED ❌"
         ch_str = drop_channel.mention if drop_channel else (f"<#{cfg.get('drop_channel_id')}>" if cfg.get("drop_channel_id") else "*Current channel*")
         cur_str = cfg.get("currency_name", "Coins")
+        cur_em = cfg.get("currency_emoji", "🪙")
         
         embed = discord.Embed(title="⚙️ Friday Economy Configuration Updated", color=discord.Color.green())
         embed.add_field(name="Status", value=status_str, inline=True)
-        embed.add_field(name="Currency Name", value=cur_str, inline=True)
+        embed.add_field(name="Currency Identity", value=f"{cur_em} **{cur_str}**", inline=True)
         embed.add_field(name="Coin Drop Channel", value=ch_str, inline=True)
         embed.set_footer(text="All sliders and shop items can also be edited live via the Web Dashboard.")
         await interaction.response.send_message(embed=embed, ephemeral=True)

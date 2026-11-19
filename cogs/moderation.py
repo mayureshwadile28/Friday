@@ -1789,6 +1789,15 @@ class Moderation(commands.Cog):
                         except Exception as e:
                             print(f"Error rendering vc lb prefix card: {e}")
                     return
+                elif sub in ("rich", "eco", "economy", "money", "coins", "bal", "bank", "wealth"):
+                    eco_cog = self.bot.get_cog("Economy")
+                    if eco_cog:
+                        try:
+                            ctx = await self.bot.get_context(message)
+                            await eco_cog.prefix_ecolb(ctx)
+                        except Exception as e:
+                            print(f"Error rendering economy lb: {e}")
+                    return
                 else:
                     # Message / Chat Leaderboard (!lb msg or !lb)
                     act_cog = self.bot.get_cog("Activity")

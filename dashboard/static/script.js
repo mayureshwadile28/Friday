@@ -71821,16 +71821,37 @@ async function toggleEconomyPause() {
 
 async function populateStoreRoles(gid) {
     const roleSelect = document.getElementById('new_item_role_id');
-    if (!roleSelect || !gid) return;
+    const ticketRoleSelect = document.getElementById('new_item_ticket_role_id');
+    const ticketCatSelect = document.getElementById('new_item_ticket_category_id');
+    if (!gid) return;
     try {
         const res = await fetch(`/api/guild/${gid}/roles`);
         const roles = await res.json();
-        roleSelect.innerHTML = '<option value="">Select a Discord role...</option>';
+        const roleOpts = ['<option value="">Select a Discord role...</option>'];
+        const ticketRoleOpts = ['<option value="">Select Staff Role (Ping & Access)...</option>'];
         if (Array.isArray(roles)) {
             roles.forEach(r => {
                 const assignNote = r.assignable ? '' : ' ⚠️ (Bot hierarchy lower)';
-                roleSelect.innerHTML += `<option value="${r.id}" style="color: ${r.color || '#fff'}">@${escapeHtml(r.name)}${assignNote}</option>`;
+                roleOpts.push(`<option value="${r.id}" style="color: ${r.color || '#fff'}">@${escapeHtml(r.name)}${assignNote}</option>`);
+                ticketRoleOpts.push(`<option value="${r.id}" style="color: ${r.color || '#fff'}">@${escapeHtml(r.name)}</option>`);
             });
+        }
+        if (roleSelect) roleSelect.innerHTML = roleOpts.join('');
+        if (ticketRoleSelect) ticketRoleSelect.innerHTML = ticketRoleOpts.join('');
+
+        // Populate Categories for Delivery Tickets
+        if (ticketCatSelect) {
+            try {
+                const catRes = await fetch(`/api/guild/${gid}/categories`);
+                const cats = await catRes.json();
+                const catOpts = ['<option value="">Default Server Ticket Category</option>'];
+                if (Array.isArray(cats)) {
+                    cats.forEach(c => {
+                        catOpts.push(`<option value="${c.id}">📁 ${escapeHtml(c.name)}</option>`);
+                    });
+                }
+                ticketCatSelect.innerHTML = catOpts.join('');
+            } catch (ce) {}
         }
     } catch (e) {
         console.error("populateStoreRoles error:", e);
@@ -71872,6 +71893,10 @@ function renderShopItemsTable(items) {
         const roleBadge = isRole 
             ? `<span style="background: rgba(168, 85, 247, 0.15); color: #c084fc; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;">ROLE</span>`
             : '';
+        const isTicket = it.requires_ticket === true;
+        const ticketBadge = isTicket 
+            ? `<span style="background: rgba(234, 179, 8, 0.15); color: #facc15; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;" title="Generates Private Delivery Ticket">🎫 TICKET</span>`
+            : '';
 
         const actionCell = isBuiltIn
             ? `<span style="color: var(--text-muted); font-size: 11px;">Default</span>`
@@ -71881,6 +71906,7 @@ function renderShopItemsTable(items) {
             <td style="padding: 12px 10px;">
                 <code style="background: rgba(255, 255, 255, 0.06); padding: 3px 6px; border-radius: 4px; font-size: 11.5px; color: #60a5fa;">${escapeHtml(itemId)}</code>
                 ${roleBadge}
+                ${ticketBadge}
             </td>
             <td style="padding: 12px 10px;">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -72034,20 +72060,67 @@ function initEconomyModule() {
     const curEmojiBtn = document.getElementById('ecoCurrencyEmojiBtn');
     const curEmojiVisual = document.getElementById('ecoCurrencyEmojiVisual');
     const curEmojiInput = document.getElementById('eco_currency_emoji');
+    const quickSaveCurrencyBtn = document.getElementById('saveEcoCurrencyQuickBtn');
     
     if (curEmojiBtn && !curEmojiBtn.dataset.bound) {
         curEmojiBtn.dataset.bound = "true";
         curEmojiBtn.addEventListener('click', (e) => {
             e.preventDefault();
             if (typeof openEmojiPicker === 'function') {
-                openEmojiPicker(curEmojiBtn, (emojiVal) => {
+                openEmojiPicker(curEmojiBtn, async (emojiVal) => {
                     if (curEmojiInput) curEmojiInput.value = emojiVal;
                     if (curEmojiVisual) {
                         curEmojiVisual.innerHTML = (typeof renderEmojiHtmlOrChar === 'function') 
                             ? renderEmojiHtmlOrChar(emojiVal, 24) 
                             : emojiVal;
                     }
+                    // Auto-save currency change immediately
+                    const gid = currentGuildId;
+                    if (gid) {
+                        const name = (document.getElementById('eco_currency_name') || {}).value || 'Coins';
+                        try {
+                            const res = await fetch(`/api/guild/${gid}/economy/currency`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ currency_name: name, currency_emoji: emojiVal })
+                            });
+                            const data = await res.json();
+                            if (data.success && typeof showToast === 'function') {
+                                showToast(`Currency symbol updated to ${emojiVal}! ✨`, "success");
+                            }
+                        } catch (err) {}
+                    }
                 });
+            }
+        });
+    }
+
+    if (quickSaveCurrencyBtn && !quickSaveCurrencyBtn.dataset.bound) {
+        quickSaveCurrencyBtn.dataset.bound = "true";
+        quickSaveCurrencyBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const gid = currentGuildId;
+            if (!gid) {
+                if (typeof showToast === 'function') showToast("Please select a server first!", "error");
+                return;
+            }
+            const name = (document.getElementById('eco_currency_name') || {}).value || 'Coins';
+            const emoji = (document.getElementById('eco_currency_emoji') || {}).value || '🪙';
+            try {
+                const res = await fetch(`/api/guild/${gid}/economy/currency`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ currency_name: name, currency_emoji: emoji })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (typeof showToast === 'function') showToast(`Currency updated to ${emoji} ${name}! 🪙`, "success");
+                } else {
+                    if (typeof showToast === 'function') showToast(data.error || "Failed to update currency.", "error");
+                }
+            } catch (err) {
+                console.error("Save currency error:", err);
+                if (typeof showToast === 'function') showToast("Network error saving currency.", "error");
             }
         });
     }
@@ -72189,6 +72262,17 @@ function initEconomyModule() {
         });
     }
 
+    const ticketToggle = document.getElementById('new_item_requires_ticket');
+    const ticketOpts = document.getElementById('newItemTicketOptions');
+    if (ticketToggle && !ticketToggle.dataset.bound) {
+        ticketToggle.dataset.bound = "true";
+        ticketToggle.addEventListener('change', () => {
+            if (ticketOpts) {
+                ticketOpts.style.display = ticketToggle.checked ? 'grid' : 'none';
+            }
+        });
+    }
+
     if (itemEmojiBtn && !itemEmojiBtn.dataset.bound) {
         itemEmojiBtn.dataset.bound = "true";
         itemEmojiBtn.addEventListener('click', (e) => {
@@ -72215,6 +72299,8 @@ function initEconomyModule() {
             const priceInput = document.getElementById('new_item_price');
             const descInput = document.getElementById('new_item_desc');
             const roleSelect = document.getElementById('new_item_role_id');
+            const ticketRoleSelect = document.getElementById('new_item_ticket_role_id');
+            const ticketCatSelect = document.getElementById('new_item_ticket_category_id');
 
             const id = idInput ? idInput.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') : '';
             const name = nameInput ? nameInput.value.trim() : '';
@@ -72223,6 +72309,9 @@ function initEconomyModule() {
             const roleId = roleSelect ? roleSelect.value : null;
             const emoji = itemEmojiInput ? itemEmojiInput.value : '🎁';
             const desc = descInput ? descInput.value.trim() : '';
+            const requiresTicket = ticketToggle ? ticketToggle.checked : false;
+            const ticketRoleId = ticketRoleSelect ? ticketRoleSelect.value : null;
+            const ticketCatId = ticketCatSelect ? ticketCatSelect.value : null;
 
             if (!id) {
                 if (typeof showToast === 'function') showToast("Please enter an Item ID / Slug (lowercase letters & numbers).", "error");
@@ -72252,7 +72341,10 @@ function initEconomyModule() {
                 type: type,
                 role_id: type === 'role' ? roleId : null,
                 desc: desc || (type === 'role' ? 'Grants Discord role upon purchase.' : 'Specialty server store item.'),
-                enabled: true
+                enabled: true,
+                requires_ticket: requiresTicket,
+                ticket_role_id: ticketRoleId || null,
+                ticket_category_id: ticketCatId || null
             };
 
             renderShopItemsTable(currentShopItems);
@@ -72265,6 +72357,8 @@ function initEconomyModule() {
             if (priceInput) priceInput.value = '1000';
             if (itemEmojiInput) itemEmojiInput.value = '🎁';
             if (itemEmojiVisual) itemEmojiVisual.innerHTML = '🎁';
+            if (ticketToggle) ticketToggle.checked = false;
+            if (ticketOpts) ticketOpts.style.display = 'none';
 
             if (typeof showToast === 'function') showToast(`Added "${name}" to shop! Click "Save Economy Settings" to save changes. 🪙`, "success");
         });

@@ -5532,6 +5532,27 @@ def save_economy_config(gid):
     db.save_data()
     return jsonify({"success": True, "message": "Economy settings saved successfully."})
 
+@app.route('/api/guild/<gid>/economy/currency', methods=['POST'])
+@app.route('/api/economy/currency/<gid>', methods=['POST'])
+def save_economy_currency(gid):
+    gid_str = str(gid)
+    payload = flask_request.get_json(silent=True) or {}
+    cur_name = payload.get("currency_name", "").strip() or "Coins"
+    cur_emoji = payload.get("currency_emoji", "").strip() or "🪙"
+    
+    if gid_str not in db.economy_config:
+        db.economy_config[gid_str] = {}
+        
+    db.economy_config[gid_str]["currency_name"] = cur_name
+    db.economy_config[gid_str]["currency_emoji"] = cur_emoji
+    db.save_data()
+    return jsonify({
+        "success": True,
+        "currency_name": cur_name,
+        "currency_emoji": cur_emoji,
+        "message": f"Currency successfully updated to {cur_emoji} {cur_name}."
+    })
+
 @app.route('/api/economy/guild-emojis/<gid>', methods=['GET'])
 def get_economy_guild_emojis(gid):
     return get_guild_emojis(gid)

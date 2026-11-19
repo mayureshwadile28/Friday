@@ -3032,6 +3032,9 @@
         <button class="btn btn-secondary emoji-picker-btn" id="ecoCurrencyEmojiBtn" style="padding: 8px 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;" type="button">
             <span>Pick Emoji</span>
         </button>
+        <button class="btn btn-action-primary" id="saveEcoCurrencyQuickBtn" type="button" style="padding: 8px 14px; font-size: 12px; font-weight: 600; margin-left: 4px;" title="Save currency name and emoji immediately">
+            Save Currency
+        </button>
     </div>
     <small style="color: var(--text-muted); font-size: 11px;">Select any custom server emoji or standard symbol.</small>
 </div>
@@ -3319,9 +3322,37 @@
             </div>
         </div>
     </div>
-    <div class="form-group" style="margin-bottom: 16px;">
+    <div class="form-group" style="margin-bottom: 14px;">
         <label class="form-label" style="font-size: 11.5px;">Description / Effect</label>
         <input class="text-input" id="new_item_desc" placeholder="e.g. Grants the official VIP role and special chat privileges." type="text" style="font-size: 12px;"/>
+    </div>
+    <div style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <div style="font-size: 12.5px; font-weight: 700; color: #ffffff;">🎫 Automatic Staff Delivery Ticket</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">When a member buys this item (e.g. autoresponder setup, custom role/service), automatically open a private delivery ticket channel and ping staff.</div>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="new_item_requires_ticket"/>
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div id="newItemTicketOptions" style="display: none; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(255,255,255,0.08);">
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11.5px;">Staff Assistance Role</label>
+                <select class="sec-select" id="new_item_ticket_role_id" style="width: 100%; font-size: 12px; padding: 7px 10px;">
+                    <option value="">Select Staff Role (Ping & Access)...</option>
+                </select>
+                <span style="font-size: 10.5px; color: var(--text-muted);">Staff role pinged to configure and deliver the service.</span>
+            </div>
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11.5px;">Ticket Category (Optional)</label>
+                <select class="sec-select" id="new_item_ticket_category_id" style="width: 100%; font-size: 12px; padding: 7px 10px;">
+                    <option value="">Default Server Ticket Category</option>
+                </select>
+                <span style="font-size: 10.5px; color: var(--text-muted);">Category where delivery channels will be placed.</span>
+            </div>
+        </div>
     </div>
     <div style="display: flex; justify-content: flex-end; gap: 10px;">
         <button class="btn btn-secondary" id="cancelAddShopItemBtn" type="button" style="padding: 6px 14px; font-size: 12px;">Cancel</button>

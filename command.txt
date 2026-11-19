@@ -231,13 +231,15 @@ Reply shortcut: In any staff/chat channel, reply to your draft announcement and 
 /pay @member <amount> (or <prefix>pay @member <amount>) - Transfer coins with interactive [Confirm] / [Cancel] buttons and server anti-inflation tax
 /rob @member (or <prefix>rob @member) - Stage a risky heist to steal wallet cash from another player (blocked by Padlock, passive mode, or low cash)
 /passive - Toggle Passive Mode (immunity to being robbed; also disables your ability to rob others)
-/shop (or <prefix>shop) - Browse the server catalog of defense items (Padlock), bank vault expansions, and custom server roles
-/buy <item> [quantity] - Purchase items or exclusive roles from the server shop
+/shop (or <prefix>shop) - Browse the server store catalog of defense items (Padlock), bank vault expansions, custom roles, and order perks
+/buy <item> [quantity] (or <prefix>buy <item> [quantity]) - Purchase items or exclusive roles from the shop (Automatically creates private delivery tickets for service items!)
 /inventory [@member] (or <prefix>inv [@member]) - Inspect backpack items and active defense shields
 /coinflip <heads|tails> <amount> (or <prefix>cf <amount|all> <h|t>) - Fast coinflip game (48% win chance with 1.95x payout)
-/leaderboard (or <prefix>ecolb) - View the top 10 richest players in the server
+/baltop (or <prefix>lb rich, <prefix>lb eco, <prefix>ecolb, <prefix>rich) - View the top 10 richest players in the server
 /drop <amount> (or <prefix>drop <amount>) - [Admin Only] Instantly spawn a clickable loot crate for members to claim
-/economy setup - [Admin Only] Configure starting bonus, currency name, and drop channels
+/economy setup - [Admin Only] Configure starting bonus, currency name, emoji, and drop channels
+<prefix>setcurrency <emoji> <name> - [Admin Only] Quick command to change server currency symbol and display name live (e.g. !setcurrency 💎 Gems)
+<prefix>cancelgame [@member] - Clear any stuck/stale casino game lock (e.g. from timed out or abandoned games)
 /economy drop [amount] [channel] - [Admin Only] Trigger a surprise clickable loot crate in a channel
 /economy channels - [Admin Only] Restrict passive chat drop earnings to specific channels
 /economy pause - [Admin Only] Emergency hold: freeze or resume all transactions, faucets, and trading
