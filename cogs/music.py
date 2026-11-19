@@ -334,74 +334,55 @@ class MusicControlView(discord.ui.View):
     @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏯️", custom_id="music_pause_resume", row=0)
     async def pause_resume_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer()
-            except Exception:
-                pass
-
             gid, cog = self._get_context(interaction)
             vc = interaction.guild.voice_client if interaction.guild else None
             if not vc or not (vc.is_playing() or vc.is_paused()):
-                msg = cog.get_resp(gid, "music_nothing_playing", "Nothing is currently playing.") if cog else "Nothing is currently playing."
-                try:
-                    await interaction.followup.send(embed=make_box_embed(title="Playback Inactive", description=msg, status="error"), ephemeral=True)
-                except Exception:
-                    pass
-                return
+                return await interaction.response.send_message(
+                    embed=make_box_embed(title="Playback Inactive", description="Nothing is currently playing.", status="error"),
+                    ephemeral=True
+                )
 
             if vc.is_paused():
                 vc.resume()
                 button.label = "Pause"
                 button.style = discord.ButtonStyle.secondary
-                msg = cog.get_resp(gid, "music_resumed", "Music resumed.") if cog else "Music resumed."
             else:
                 vc.pause()
                 button.label = "Resume"
                 button.style = discord.ButtonStyle.success
-                msg = cog.get_resp(gid, "music_paused", "Music paused.") if cog else "Music paused."
 
-            try:
-                if interaction.message:
-                    await interaction.message.edit(view=self)
-            except Exception:
-                pass
-
-            try:
-                await interaction.followup.send(embed=make_box_embed(title="Playback Status", description=msg, status="info"), ephemeral=True)
-            except Exception:
-                pass
+            await interaction.response.edit_message(view=self)
         except Exception as e:
             print(f"[Music Button Error: pause] {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭️", custom_id="music_skip", row=0)
     async def skip_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer()
-            except Exception:
-                pass
-
             gid, cog = self._get_context(interaction)
             vc = interaction.guild.voice_client if interaction.guild else None
             if not vc or not (vc.is_playing() or vc.is_paused()):
-                msg = cog.get_resp(gid, "music_nothing_playing", "Nothing is currently playing.") if cog else "Nothing is currently playing."
-                try:
-                    await interaction.followup.send(embed=make_box_embed(title="Playback Inactive", description=msg, status="error"), ephemeral=True)
-                except Exception:
-                    pass
-                return
+                return await interaction.response.send_message(
+                    embed=make_box_embed(title="Playback Inactive", description="Nothing is currently playing.", status="error"),
+                    ephemeral=True
+                )
 
             if cog:
                 state = cog.get_state(gid)
                 state["loop"] = False
+
+            await interaction.response.defer(ephemeral=True)
 
             if vc and (vc.is_playing() or vc.is_paused()):
                 try:
                     vc.stop()
                 except Exception:
                     pass
+
             msg = cog.get_resp(gid, "music_skipped", "Skipped current track to next in queue!") if cog else "Skipped current track!"
             try:
                 await interaction.followup.send(embed=make_box_embed(title="Track Skipped", description=msg, status="success"), ephemeral=True)
@@ -409,51 +390,39 @@ class MusicControlView(discord.ui.View):
                 pass
         except Exception as e:
             print(f"[Music Button Error: skip] {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
 
     @discord.ui.button(label="Loop", style=discord.ButtonStyle.secondary, emoji="🔁", custom_id="music_loop", row=0)
     async def loop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer()
-            except Exception:
-                pass
-
             gid, cog = self._get_context(interaction)
             if not cog:
-                return
+                return await interaction.response.defer(ephemeral=True)
             state = cog.get_state(gid)
             is_loop = not state.get("loop", False)
             state["loop"] = is_loop
             button.label = "Looping" if is_loop else "Loop"
             button.style = discord.ButtonStyle.primary if is_loop else discord.ButtonStyle.secondary
-            try:
-                if interaction.message:
-                    await interaction.message.edit(view=self)
-            except Exception:
-                pass
-            status_txt = "Track looping is now **Enabled**." if is_loop else "Track looping is now **Disabled**."
-            try:
-                await interaction.followup.send(embed=make_box_embed(title="Loop Mode", description=status_txt, status="info"), ephemeral=True)
-            except Exception:
-                pass
+            await interaction.response.edit_message(view=self)
         except Exception as e:
             print(f"[Music Button Error: loop] {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
 
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="music_stop", row=0)
     async def stop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            # 1. Immediately acknowledge interaction to eliminate Discord 3s timeout
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer()
-            except Exception:
-                pass
-
             gid, cog = self._get_context(interaction)
             vc = interaction.guild.voice_client if interaction.guild else None
 
-            # 2. Flag stopping state so after_play never triggers ghost play_next executions
+            # 1. Flag stopping state so after_play never triggers ghost play_next executions
             if cog:
                 state = cog.get_state(gid)
                 state["_stopping"] = True
@@ -462,32 +431,26 @@ class MusicControlView(discord.ui.View):
                 state["current"] = None
                 state["transformer"] = None
 
-            # 3. Disable all view controls
+            # 2. Disable all view controls
             for child in self.children:
                 child.disabled = True
 
-            # 4. Safely stop the voice client
+            # 3. Safely stop the voice client
             if vc and (vc.is_playing() or vc.is_paused()):
                 try:
                     vc.stop()
                 except Exception:
                     pass
 
-            # 5. Safely update original message to show disabled buttons
-            try:
-                if interaction.message:
-                    await interaction.message.edit(view=self)
-            except Exception:
-                pass
-
-            # 6. Ephemeral status reply
-            msg = cog.get_resp(gid, "music_stopped", "Playback stopped and queue cleared.") if cog else "Playback stopped and queue cleared."
-            try:
-                await interaction.followup.send(embed=make_box_embed(title="Playback Stopped", description=msg, status="warning"), ephemeral=True)
-            except Exception:
-                pass
+            # 4. Immediate edit_message to acknowledge button and show disabled buttons
+            await interaction.response.edit_message(view=self)
         except Exception as e:
             print(f"[Music Button Error: stop] {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
 
     @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.secondary, emoji="🔀", custom_id="music_shuffle", row=1)
     async def shuffle_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1368,6 +1331,14 @@ class Music(commands.Cog):
                 async def _send_and_track():
                     try:
                         old_msg = state.get("np_message")
+                        # When looping the same track, update the existing controller message smoothly
+                        if state.get("loop") and old_msg:
+                            try:
+                                await old_msg.edit(embed=embed, view=view)
+                                return
+                            except Exception:
+                                pass
+
                         if old_msg:
                             try:
                                 await old_msg.delete()
