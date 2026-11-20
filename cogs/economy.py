@@ -539,7 +539,7 @@ def get_economy_db() -> EconomyDB:
 
 class CoinDropView(discord.ui.View):
     def __init__(self, cog, gid: str, amount: int, currency_name: str, currency_emoji: str):
-        super().__init__(timeout=45)
+        super().__init__(timeout=60)
         self.cog = cog
         self.gid = gid
         self.amount = amount
@@ -547,43 +547,65 @@ class CoinDropView(discord.ui.View):
         self.currency_emoji = currency_emoji
         self.claimed = False
         self._lock = asyncio.Lock()
+        self.message: Optional[discord.Message] = None
+
+    async def on_timeout(self):
+        if not self.claimed:
+            self.claimed = True
+            for child in self.children:
+                child.disabled = True
+                if isinstance(child, discord.ui.Button):
+                    child.label = "⌛ Drop Expired"
+                    child.style = discord.ButtonStyle.secondary
+            if self.message:
+                try:
+                    embed = self.message.embeds[0] if self.message.embeds else discord.Embed(title="💰 Surprise Coin Drop Event!")
+                    embed.color = discord.Color.dark_gray()
+                    embed.description = f"⌛ **This supply crate expired!** Nobody claimed the **{self.amount:,}** {self.currency_emoji} {self.currency_name} in time."
+                    embed.set_footer(text="Expired • Be quicker on the next drop!")
+                    await self.message.edit(embed=embed, view=self)
+                except Exception:
+                    pass
 
     @discord.ui.button(label="🪙 Grab Coin Drop!", style=discord.ButtonStyle.success)
     async def claim_drop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
+        if self.claimed:
+            return await interaction.response.send_message("❌ Someone already claimed this drop or it expired!", ephemeral=True)
+
         async with self._lock:
             if self.claimed:
-                return await interaction.followup.send("❌ Someone already claimed this drop!", ephemeral=True)
+                return await interaction.response.send_message("❌ Someone already claimed this drop or it expired!", ephemeral=True)
             self.claimed = True
-            
+
         uid = str(interaction.user.id)
         user = self.cog.db.get_or_init_user(self.gid, uid)
         new_wallet = self.cog.db.delta_wallet(self.gid, uid, self.amount)
         self.cog.db.log_tx(self.gid, uid, "coin_drop", self.amount, new_wallet, note="Chat coin drop claim")
-        
+
         button.disabled = True
         button.label = f"Claimed by {clean_display_name(interaction.user.display_name)}!"
         button.style = discord.ButtonStyle.secondary
-        
-        embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed(title="🪙 Coin Drop!")
+
+        embed = interaction.message.embeds[0] if (interaction.message and interaction.message.embeds) else discord.Embed(title="🪙 Coin Drop!")
         embed.color = discord.Color.green()
-        embed.description = f"🎉 **{interaction.user.mention}** grabbed the drop and pocketed **+{self.amount:,} {self.currency_emoji} {self.currency_name}**!"
-        
+        embed.description = f"🎉 **{interaction.user.mention}** grabbed the drop and pocketed **+{self.amount:,}** {self.currency_emoji} {self.currency_name}!"
+        embed.set_footer(text=f"Claimed by {clean_display_name(interaction.user.display_name)}")
+
         try:
-            if interaction.message:
-                await interaction.message.edit(embed=embed, view=self)
-            else:
-                await interaction.edit_original_response(embed=embed, view=self)
+            await interaction.response.edit_message(embed=embed, view=self)
         except Exception:
             try:
-                await interaction.edit_original_response(embed=embed, view=self)
+                if interaction.message:
+                    await interaction.message.edit(embed=embed, view=self)
+                else:
+                    await interaction.edit_original_response(embed=embed, view=self)
             except Exception:
                 pass
 
 
 class PayConfirmView(discord.ui.View):
     def __init__(self, cog, gid: str, sender: discord.Member, target: discord.Member, gross: int, net: int, tax: int, currency_name: str, currency_emoji: str):
-        super().__init__(timeout=45)
+        super().__init__(timeout=60)
         self.cog = cog
         self.gid = gid
         self.sender = sender
@@ -595,58 +617,82 @@ class PayConfirmView(discord.ui.View):
         self.currency_emoji = currency_emoji
         self.processed = False
         self._lock = asyncio.Lock()
+        self.message: Optional[discord.Message] = None
+
+    async def on_timeout(self):
+        if not self.processed:
+            self.processed = True
+            self.disable_all_items()
+            if self.message:
+                try:
+                    embed = self.message.embeds[0] if self.message.embeds else discord.Embed(title="💸 Transfer Cancelled")
+                    embed.color = discord.Color.dark_gray()
+                    embed.description = "⌛ **Transfer prompt timed out.** No funds were deducted from your wallet."
+                    embed.set_footer(text="Expired • Run /pay or .pay again to transfer.")
+                    await self.message.edit(embed=embed, view=self)
+                except Exception:
+                    pass
 
     @discord.ui.button(label="Confirm Transfer", style=discord.ButtonStyle.success, emoji="✅")
     async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.sender.id:
             return await interaction.response.send_message("❌ This confirmation prompt is not for you.", ephemeral=True)
-        
-        # Defer immediately so Discord's 3-second interaction window never times out!
-        await interaction.response.defer()
-        
+
         async with self._lock:
             if self.processed:
-                return await interaction.followup.send("⚠️ This transfer has already been processed.", ephemeral=True)
+                self.disable_all_items()
+                try:
+                    await interaction.response.edit_message(view=self)
+                except Exception:
+                    if not interaction.response.is_done():
+                        await interaction.response.send_message("⚠️ This transfer has already been processed.", ephemeral=True)
+                    else:
+                        await interaction.followup.send("⚠️ This transfer has already been processed.", ephemeral=True)
+                return
             self.processed = True
-            
+
         # Re-check sender balance
         sender_profile = self.cog.db.get_or_init_user(self.gid, str(self.sender.id))
         if sender_profile["wallet"] < self.gross:
             self.disable_all_items()
-            await interaction.edit_original_response(view=self)
-            return await interaction.followup.send(
-                f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet.",
-                ephemeral=True
-            )
-            
+            msg = f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet."
+            try:
+                await interaction.response.edit_message(content=msg, embed=None, view=self)
+            except Exception:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(msg, ephemeral=True)
+                else:
+                    await interaction.followup.send(msg, ephemeral=True)
+            return
+
         # Atomic deduction and credit
         s_wallet = self.cog.db.delta_wallet(self.gid, str(self.sender.id), -self.gross)
         t_wallet = self.cog.db.delta_wallet(self.gid, str(self.target.id), self.net)
-        
+
         self.cog.db.log_tx(self.gid, str(self.sender.id), "pay_send", -self.gross, s_wallet, related_uid=str(self.target.id), note=f"Tax: {self.tax}")
         self.cog.db.log_tx(self.gid, str(self.target.id), "pay_receive", self.net, t_wallet, related_uid=str(self.sender.id), note=f"Gross: {self.gross}")
-        
+
         self.disable_all_items()
-        
+
         tax_rate_disp = f"{int((self.tax / self.gross) * 100)}%" if self.gross > 0 else "8%"
         embed = discord.Embed(
             title="💸 Payment Successful",
             color=discord.Color.green(),
-            description=f"**{self.sender.mention}** transferred **{self.net:,} {self.currency_emoji} {self.currency_name}** to **{self.target.mention}**!"
+            description=f"**{self.sender.mention}** transferred **{self.net:,}** {self.currency_emoji} {self.currency_name} to **{self.target.mention}**!"
         )
-        embed.add_field(name="Gross Amount", value=f"`{self.gross:,}`", inline=True)
+        embed.add_field(name="Gross Sent", value=f"`{self.gross:,}`", inline=True)
         embed.add_field(name=f"Server Tax ({tax_rate_disp})", value=f"`{self.tax:,}` 🔥 (Burned)", inline=True)
         embed.add_field(name="Net Received", value=f"`{self.net:,}`", inline=True)
         embed.set_footer(text="Friday Anti-Inflation Economy • Funds delivered instantly")
-        
+
         try:
-            if interaction.message:
-                await interaction.message.edit(embed=embed, view=self)
-            else:
-                await interaction.edit_original_response(embed=embed, view=self)
+            await interaction.response.edit_message(content=None, embed=embed, view=self)
         except Exception:
             try:
-                await interaction.edit_original_response(embed=embed, view=self)
+                if interaction.message:
+                    await interaction.message.edit(content=None, embed=embed, view=self)
+                else:
+                    await interaction.edit_original_response(content=None, embed=embed, view=self)
             except Exception:
                 pass
 
@@ -654,17 +700,16 @@ class PayConfirmView(discord.ui.View):
     async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.sender.id:
             return await interaction.response.send_message("❌ This confirmation prompt is not for you.", ephemeral=True)
-        await interaction.response.defer()
         self.processed = True
         self.disable_all_items()
         try:
-            if interaction.message:
-                await interaction.message.edit(content="❌ Transfer cancelled.", embed=None, view=self)
-            else:
-                await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
+            await interaction.response.edit_message(content="❌ Transfer cancelled.", embed=None, view=self)
         except Exception:
             try:
-                await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
+                if interaction.message:
+                    await interaction.message.edit(content="❌ Transfer cancelled.", embed=None, view=self)
+                else:
+                    await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
             except Exception:
                 pass
 
@@ -1102,7 +1147,9 @@ class Economy(commands.Cog):
         )
         embed.set_footer(text="Click fast before someone else claims it!")
         try:
-            return await target_ch.send(embed=embed, view=view)
+            msg = await target_ch.send(embed=embed, view=view)
+            view.message = msg
+            return msg
         except Exception:
             return None
 
@@ -1724,6 +1771,10 @@ class Economy(commands.Cog):
         )
         embed.set_footer(text="Taxes protect the server economy against multi-account funnels.")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+        try:
+            view.message = await interaction.original_response()
+        except Exception:
+            pass
 
     @app_commands.command(name="shop", description="Open the Friday Server Shop to browse and buy items.")
     async def shop(self, interaction: discord.Interaction):
@@ -2578,7 +2629,8 @@ class Economy(commands.Cog):
             )
         )
         embed.set_footer(text="Taxes protect the server economy against multi-account funnels.")
-        await ctx.send(embed=embed, view=view)
+        msg = await ctx.send(embed=embed, view=view)
+        view.message = msg
 
     @commands.command(name="drop", aliases=["coindrop"])
     async def prefix_drop(self, ctx: commands.Context, amount: Optional[int] = None):

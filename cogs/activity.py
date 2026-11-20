@@ -148,6 +148,26 @@ class Activity(commands.Cog):
     async def cog_load(self):
         if not self.flush_voice_loop.is_running():
             self.flush_voice_loop.start()
+        self.bot.loop.create_task(self.sync_all_active_voice_sessions())
+
+    async def sync_all_active_voice_sessions(self):
+        """Scans all voice channels and initializes tracking for members already in VC when bot starts/reloads."""
+        try:
+            await self.bot.wait_until_ready()
+            now = time.time()
+            count = 0
+            for guild in self.bot.guilds:
+                for vc in guild.voice_channels:
+                    for member in vc.members:
+                        if not member.bot:
+                            key = (guild.id, member.id)
+                            if key not in self.voice_sessions:
+                                self.voice_sessions[key] = (now, vc.id)
+                                count += 1
+            if count > 0:
+                print(f"🎙️ [VoiceTracker] Synchronized {count} active voice members across all channels.")
+        except Exception as e:
+            print(f"⚠️ [VoiceTracker] Error during startup voice sync: {e}")
 
     async def cog_unload(self):
         if self.flush_voice_loop.is_running():
@@ -400,6 +420,18 @@ class Activity(commands.Cog):
             if elapsed > 0:
                 self.add_voice_seconds(gid, uid, elapsed, channel_id=ch_id)
                 self.voice_sessions[(gid, uid)] = (now, ch_id) if ch_id else now
+
+        # Self-healing: if any human member is currently in a voice channel but missing from self.voice_sessions, register them!
+        try:
+            for guild in self.bot.guilds:
+                for vc in guild.voice_channels:
+                    for member in vc.members:
+                        if not member.bot:
+                            k = (guild.id, member.id)
+                            if k not in self.voice_sessions:
+                                self.voice_sessions[k] = (now, vc.id)
+        except Exception:
+            pass
 
     @tasks.loop(minutes=5)
     async def flush_voice_loop(self):
@@ -2428,6 +2460,7 @@ class Activity(commands.Cog):
         return buf
 
     async def generate_vc_card_file(self, guild: discord.Guild, target_channel: Optional[discord.VoiceChannel] = None) -> discord.File:
+        self.flush_active_voice_sessions()
         gid = guild.id
         cid = target_channel.id if target_channel else None
         labels, values, unit = self.get_voice_trend(gid, channel_id=cid, days=7)
