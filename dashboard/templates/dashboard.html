@@ -2900,6 +2900,27 @@
     </div>
 </div>
 
+<!-- Invite Card Wallpaper Customization in Leveling Module -->
+<div class="card" style="margin-top: 20px;">
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Invite Card Wallpaper (/invites, /invite, .inv)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+        Customize the personal 840×270 image card dispatched when members run <code>/invites [@member]</code> or <code>.inv</code> with frosted dark glass and adaptive accents.
+    </p>
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <input type="file" id="inviteLvlBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'invite')">
+        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('inviteLvlBgFileInput').click()">
+            📁 Choose Invite Card Wallpaper
+        </button>
+        <button class="btn btn-secondary btn-action-secondary" type="button" id="inviteLvlBgResetBtn" onclick="resetCardBackground('invite')">
+            ↺ Restore Default Theme
+        </button>
+        <span id="inviteLvlBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
+    </div>
+    <div id="inviteLvlBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+        <img id="inviteLvlBgPreviewImg" src="" style="width: 100%; height: 140px; object-fit: cover; display: block;" alt="Invite Card Wallpaper Preview">
+    </div>
+</div>
+
 <div style="text-align: right; margin-top: 20px;">
 
 <button class="btn btn-primary" id="saveLevelingBtn">
@@ -3061,6 +3082,19 @@
     <select class="sec-select" id="eco_coinflip_channels_select" multiple style="height: 80px;">
     </select>
     <small style="color: var(--text-muted); font-size: 11px;">Hold Ctrl / Cmd to select channels where !cf and /casino coinflip can be played. Leave blank to allow in all channels.</small>
+</div>
+
+<div class="grid-2" style="gap: 16px; margin-top: 16px;">
+    <div class="form-group">
+        <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Coinflip Winning Probability (%)</label>
+        <input class="text-input" id="eco_coinflip_win_chance" min="1" max="100" step="1" type="number" value="48"/>
+        <small style="color: var(--text-muted); font-size: 11px;">Default is 48% (slight house edge). Set to 50% for 50/50 fair coin, or higher/lower.</small>
+    </div>
+    <div class="form-group">
+        <label class="form-label" style="font-size: 12px; font-weight: 600; color: var(--text-secondary);">Coinflip Payout Multiplier</label>
+        <input class="text-input" id="eco_coinflip_win_multiplier" min="1.0" max="10.0" step="0.05" type="number" value="1.95"/>
+        <small style="color: var(--text-muted); font-size: 11px;">Default is 1.95x (e.g. 100 bet returns 195). Set to 2.0x for double money.</small>
+    </div>
 </div>
 
 </div>

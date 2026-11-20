@@ -7,11 +7,39 @@ import time
 import random
 import json
 import asyncio
+import io
+import math
 from typing import Optional, Dict, Any, List, Tuple
 from contextlib import contextmanager
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageStat
 from database import db
-from font_utils import clean_display_name
+from font_utils import get_unicode_font, clean_display_name
 from response_utils import ensure_admin_or_owner
+
+def draw_rounded_rect(draw, bbox, radius, fill, outline=None, width=1):
+    draw.rounded_rectangle(bbox, radius=radius, fill=fill, outline=outline, width=width)
+
+def draw_luminous_text(draw, pos, text, font, fill, shadow_fill=(0, 0, 0, 180), offset=(1, 1)):
+    """Draw luminous text with a soft shadow offset rather than jagged PIL stroke."""
+    x, y = pos
+    if shadow_fill:
+        draw.text((x + offset[0], y + offset[1]), text, font=font, fill=shadow_fill)
+    draw.text((x, y), text, font=font, fill=fill)
+
+def resolve_card_background(bg_path: str) -> Optional[str]:
+    """Robustly resolve card background on local machine and Linux VM."""
+    if not bg_path or not isinstance(bg_path, str):
+        return None
+    if os.path.exists(bg_path):
+        return bg_path
+    base = os.path.basename(bg_path)
+    cand1 = os.path.join(os.getcwd(), "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand1):
+        return cand1
+    cand2 = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand2):
+        return os.path.abspath(cand2)
+    return None
 
 # Safe initialization of database attributes if not present on older database.py instances
 for attr in ("economy_config", "economy_channels", "economy_log_channels", "economy_paused"):
@@ -413,16 +441,26 @@ class EconomyDB:
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (gid, uid, tx_type, amount, balance_after, related_uid, note, time.time()))
 
-    def get_top_users(self, gid: str, limit: int = 10) -> List[dict]:
+    def get_top_users(self, gid: str, limit: int = 10, offset: int = 0) -> List[dict]:
         with self.get_conn() as conn:
             rows = conn.execute("""
                 SELECT user_id, wallet, bank, bank_max, (wallet + bank) AS net_worth
                 FROM economy_users
                 WHERE guild_id=?
                 ORDER BY net_worth DESC
-                LIMIT ?
-            """, (gid, limit)).fetchall()
+                LIMIT ? OFFSET ?
+            """, (gid, limit, offset)).fetchall()
             return [dict(r) for r in rows]
+
+    def get_total_users_count(self, gid: str) -> int:
+        with self.get_conn() as conn:
+            row = conn.execute("SELECT COUNT(*) AS total FROM economy_users WHERE guild_id=?", (gid,)).fetchone()
+            return int(row["total"]) if (row and row["total"] is not None) else 0
+
+    def get_total_wealth(self, gid: str) -> int:
+        with self.get_conn() as conn:
+            row = conn.execute("SELECT SUM(wallet + bank) AS total FROM economy_users WHERE guild_id=?", (gid,)).fetchone()
+            return int(row["total"]) if (row and row["total"] is not None) else 0
 
     def get_user_rank(self, gid: str, uid: str) -> int:
         with self.get_conn() as conn:
@@ -2147,7 +2185,24 @@ class Economy(commands.Cog):
                 duration_hrs = 2
                 now = time.time()
                 cur_exp = owned.get("expires_at", 0)
-                new_exp = (cur_exp if cur_exp > now else now) + (duration_hrs * 3600)
+                if cur_exp > now:
+                    rem_secs = int(cur_exp - now)
+                    rem_hrs = rem_secs // 3600
+                    rem_mins = (rem_secs % 3600) // 60
+                    rem_str = f"{rem_hrs}h {rem_mins}m" if rem_hrs > 0 else f"{rem_mins}m"
+                    embed = discord.Embed(
+                        title="⚡ 2x XP Booster Already Active!",
+                        color=discord.Color.gold(),
+                        description=(
+                            f"You already have an active **2x XP Booster** running with **{rem_str} remaining**!\n\n"
+                            f"• **Status:** 2x Chat Leveling XP\n"
+                            f"• **Expires:** <t:{int(cur_exp)}:R> (<t:{int(cur_exp)}:t>)\n\n"
+                            "You don't need to use another booster right now. Your remaining booster is saved safely in your inventory!"
+                        )
+                    )
+                    return await interaction.response.send_message(embed=embed, ephemeral=True)
+                
+                new_exp = now + (duration_hrs * 3600)
                 
                 # Consume 1 booster and update expiry
                 self.db.consume_item(gid, uid, "xp_booster", 1)
@@ -2214,40 +2269,328 @@ class Economy(commands.Cog):
         embed.set_footer(text="Purchase more items at /shop • Use items via /use <item>")
         await interaction.response.send_message(embed=embed)
 
+    async def fetch_avatar(self, target, size: int = 110) -> Optional[Image.Image]:
+        """Helper to fetch and circle-mask an avatar or server icon."""
+        icon_url = None
+        if hasattr(target, "display_avatar") and target.display_avatar:
+            try:
+                icon_url = str(target.display_avatar.with_format("png").with_size(128).url)
+            except Exception:
+                icon_url = str(target.display_avatar.url)
+        elif hasattr(target, "icon") and target.icon:
+            try:
+                icon_url = str(target.icon.with_format("png").with_size(128).url)
+            except Exception:
+                icon_url = str(target.icon.url)
+
+        if icon_url:
+            try:
+                import aiohttp
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(icon_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            av_raw = Image.open(io.BytesIO(data)).convert("RGBA").resize((size, size), Image.Resampling.LANCZOS)
+                            mask = Image.new("L", (size, size), 0)
+                            mask_draw = ImageDraw.Draw(mask)
+                            mask_draw.ellipse((0, 0, size, size), fill=255)
+                            output = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+                            output.paste(av_raw, (0, 0), mask)
+                            return output
+            except Exception:
+                pass
+
+        # Fallback colored circle with initial letter
+        fallback = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        d = ImageDraw.Draw(fallback)
+        d.ellipse((0, 0, size, size), fill=(99, 102, 241, 255))
+        letter = (target.name[0].upper() if hasattr(target, "name") and target.name else "U")
+        try:
+            f = get_unicode_font(int(size * 0.5), bold=True)
+            bb = f.getbbox(letter)
+            lw, lh = (bb[2] - bb[0]), (bb[3] - bb[1])
+            d.text(((size - lw) // 2, (size - lh) // 2), letter, fill=(255, 255, 255, 255), font=f)
+        except Exception:
+            pass
+        return fallback
+
+    def render_economy_leaderboard_card(
+        self,
+        guild_name: str,
+        guild_icon: Optional[Image.Image],
+        page: int,
+        total_pages: int,
+        total_members: int,
+        members_data: list,
+        max_net: int = 1,
+        cur_name: str = "Coins",
+        guild_id: int = None
+    ) -> io.BytesIO:
+        """Renders high-resolution 1020x640 graphic Economy & Wealth leaderboard card with 10 members in a 2-column layout."""
+        W, H = 1020, 640
+
+        # Check custom wallpaper for leaderboard (shared with server leaderboards)
+        raw_bg = None
+        bg_img = None
+        container_alpha = 150
+        panel_alpha = 110
+        custom_bg = resolve_card_background(db.leaderboard_card_backgrounds.get(str(guild_id))) if guild_id else None
+        if custom_bg:
+            try:
+                loaded = Image.open(custom_bg).convert("RGBA")
+                w_r = W / loaded.width
+                h_r = H / loaded.height
+                ratio = max(w_r, h_r)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx = (nw - W) // 2
+                cy = (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                _blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=3))
+                
+                # Dynamic luminance adaptation: dims bright backdrops to keep text 100% readable
+                mean_lum = ImageStat.Stat(raw_bg.convert('L')).mean[0]
+                dim_factor = max(0.65, 0.90 - ((mean_lum - 120) / 200.0)) if mean_lum > 120 else 0.85
+                bg_img = ImageEnhance.Brightness(_blurred).enhance(dim_factor)
+                container_alpha = 25
+                panel_alpha = 48
+            except Exception:
+                raw_bg = bg_img = None
+
+        if not bg_img:
+            # Solid base canvas with gentle ambient glow
+            base_bg = Image.new("RGBA", (W, H), (19, 20, 23, 255))
+            glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            gd = ImageDraw.Draw(glow_layer)
+            gd.ellipse((-100, -100, 320, 320), fill=(245, 158, 11, 28))
+            gd.ellipse((W - 250, H - 250, W + 100, H + 100), fill=(99, 102, 241, 22))
+            img = Image.alpha_composite(base_bg, glow_layer)
+        else:
+            img = bg_img.copy()
+
+        # Outer Container with Frosted Glass when wallpaper is active
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        container_fill = (10, 12, 18, 25) if raw_bg else (28, 30, 36, 255)
+        draw_rounded_rect(od, (12, 12, W - 12, H - 12), radius=26, fill=container_fill, outline=(255, 255, 255, 75) if raw_bg else (42, 45, 54, 255), width=2)
+        img = Image.alpha_composite(img, overlay)
+
+        # Pre-composite glassmorphic member rows layer so wallpaper shines through!
+        col_w = 460
+        col1_x = 38
+        col2_x = 522
+        start_y = 114
+        row_h = 80
+        spacing = 14
+
+        panel_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel_layer)
+        p_row_fill = (12, 15, 24, 48) if raw_bg else (35, 38, 46, 255)
+        p_row_outline = (255, 255, 255, 60) if raw_bg else (48, 52, 63, 255)
+
+        for slot_idx in range(10):
+            col = 0 if slot_idx < 5 else 1
+            row = slot_idx % 5
+            cx = col1_x if col == 0 else col2_x
+            cy = start_y + row * (row_h + spacing)
+            draw_rounded_rect(pd, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=p_row_fill, outline=p_row_outline, width=1)
+
+        img = Image.alpha_composite(img, panel_layer)
+        draw = ImageDraw.Draw(img)
+
+        # Typography
+        font_title = get_unicode_font(28, bold=True)
+        font_sub = get_unicode_font(14)
+        font_pill = get_unicode_font(13, bold=True)
+        font_name = get_unicode_font(16, bold=True)
+        font_user = get_unicode_font(13)
+        font_rank = get_unicode_font(15, bold=True)
+        font_net = get_unicode_font(15, bold=True)
+        font_breakdown = get_unicode_font(12, bold=False)
+        font_footer = get_unicode_font(12)
+        font_footer_bold = get_unicode_font(12, bold=True)
+
+        # Header
+        header_x, header_y = 38, 30
+        if guild_icon:
+            try:
+                icon_resized = guild_icon.convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
+                mask = Image.new("L", (64, 64), 0)
+                mask_draw = ImageDraw.Draw(mask)
+                mask_draw.ellipse((0, 0, 64, 64), fill=255)
+                img.paste(icon_resized, (header_x, header_y), mask)
+                draw.ellipse((header_x, header_y, header_x + 64, header_y + 64), outline=(245, 158, 11, 200), width=2)
+            except Exception:
+                pass
+
+        text_x = header_x + 78
+        draw_luminous_text(draw, (text_x, header_y + 4), clean_display_name(guild_name, max_len=26), font=font_title, fill=(251, 191, 36, 255))
+        draw_luminous_text(draw, (text_x, header_y + 36), "Server Wealth & Economy Leaderboard", font=font_sub, fill=(186, 230, 253, 255))
+
+        # Status pills (Frosted glass badges)
+        pills = [
+            (f"PAGE {page} OF {total_pages}", (56, 189, 248)),
+            (f"{total_members:,} Accounts", (245, 158, 11)),
+            ("RICHEST MEMBERS", (168, 85, 247))
+        ]
+        pill_right = W - 38
+        for p_label, (cr, cg, cb) in reversed(pills):
+            bbox = font_pill.getbbox(p_label)
+            pw = (bbox[2] - bbox[0]) + 24
+            px = pill_right - pw
+            py = header_y + 14
+            draw_rounded_rect(draw, (px, py, px + pw, py + 34), radius=17, fill=(cr, cg, cb, 50) if raw_bg else (cr, cg, cb, 45), outline=(cr, cg, cb, 210) if raw_bg else (cr, cg, cb, 160), width=1)
+            draw_luminous_text(draw, (px + 12, py + 8), p_label, font=font_pill, fill=(cr, cg, cb, 255))
+            pill_right = px - 10
+
+        m_dict = {m[0]: m for m in members_data}
+        start_rank = (page - 1) * 10 + 1
+
+        for slot_idx in range(10):
+            current_rank = start_rank + slot_idx
+            col = 0 if slot_idx < 5 else 1
+            row = slot_idx % 5
+            cx = col1_x if col == 0 else col2_x
+            cy = start_y + row * (row_h + spacing)
+
+            if not raw_bg:
+                draw_rounded_rect(draw, (cx, cy, cx + col_w, cy + row_h), radius=14, fill=(35, 38, 46, 255), outline=(48, 52, 63, 255), width=1)
+
+            if current_rank in m_dict:
+                _, name_str, user_str, av_img, wallet_val, bank_val, net_val = m_dict[current_rank]
+
+                # Proportional wealth glow fill
+                ratio = net_val / max(1, max_net)
+                fill_w = int(col_w * min(1.0, max(0.02, ratio)))
+                if fill_w > 0:
+                    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+                    od = ImageDraw.Draw(overlay)
+                    draw_rounded_rect(od, (cx, cy, cx + fill_w, cy + row_h), radius=14, fill=(245, 158, 11, 28))
+                    img = Image.alpha_composite(img, overlay)
+                    draw = ImageDraw.Draw(img)
+
+                # Rank badge
+                if current_rank == 1:
+                    r_fill, r_out, r_txt = (60, 45, 15, 255), (217, 119, 6, 255), (245, 158, 11, 255)
+                elif current_rank == 2:
+                    r_fill, r_out, r_txt = (40, 45, 55, 255), (148, 163, 184, 255), (203, 213, 225, 255)
+                elif current_rank == 3:
+                    r_fill, r_out, r_txt = (55, 30, 15, 255), (234, 88, 12, 255), (249, 115, 22, 255)
+                else:
+                    r_fill, r_out, r_txt = (14, 16, 22, 80) if raw_bg else (28, 30, 36, 255), (255, 255, 255, 60) if raw_bg else (46, 50, 60, 255), (200, 205, 215, 255)
+
+                rx, ry, rw, rh = cx + 12, cy + 18, 38, 44
+                draw_rounded_rect(draw, (rx, ry, rx + rw, ry + rh), radius=10, fill=r_fill, outline=r_out, width=1)
+                r_str = f"#{current_rank}"
+                rb = font_rank.getbbox(r_str)
+                draw_luminous_text(draw, (rx + (rw - (rb[2] - rb[0])) // 2, ry + (rh - (rb[3] - rb[1])) // 2), r_str, font=font_rank, fill=r_txt)
+
+                # Avatar
+                av_x = rx + rw + 12
+                av_y = cy + 15
+                asz = 50
+                if av_img:
+                    try:
+                        av_thumb = av_img.convert("RGBA").resize((asz, asz), Image.Resampling.LANCZOS)
+                        img.paste(av_thumb, (av_x, av_y), av_thumb)
+                        draw.ellipse((av_x, av_y, av_x + asz, av_y + asz), outline=(52, 56, 68, 255), width=2)
+                    except Exception:
+                        pass
+
+                # Name & Wealth Breakdown
+                nx = av_x + asz + 12
+                clean_name = clean_display_name(name_str, max_len=14)
+                draw_luminous_text(draw, (nx, cy + 16), clean_name, font=font_name, fill=(186, 230, 253, 255))
+                breakdown_text = f"💵 {wallet_val:,}  •  🏦 {bank_val:,}"
+                draw_luminous_text(draw, (nx, cy + 44), breakdown_text, font=font_breakdown, fill=(148, 163, 184, 255) if not raw_bg else (203, 213, 225, 255))
+
+                # Net Worth pill on right
+                c_str = f"💎 {net_val:,}"
+                cb = font_net.getbbox(c_str)
+                tw = (cb[2] - cb[0]) + 20
+                tx = cx + col_w - tw - 12
+                ty = cy + 22
+                draw_rounded_rect(draw, (tx, ty, tx + tw, ty + 36), radius=10, fill=(245, 158, 11, 45) if raw_bg else (45, 48, 58, 255), outline=(245, 158, 11, 180) if raw_bg else (62, 68, 82, 255), width=1)
+                draw_luminous_text(draw, (tx + 10, ty + 9), c_str, font=font_net, fill=(253, 224, 71, 255))
+            else:
+                draw_luminous_text(draw, (cx + 20, cy + (row_h // 2) - 8), f"#{current_rank}  —  Unclaimed", font=font_user, fill=(130, 135, 148, 255))
+
+        # Footer
+        footer_y = H - 34
+        draw_luminous_text(draw, (38, footer_y), f"Server Wealth Leaderboard • Page {page} of {total_pages} • Timezone: IST", font=font_footer, fill=(186, 230, 253, 255))
+        fb = font_footer_bold.getbbox("Powered by Friday")
+        draw_luminous_text(draw, (W - 38 - (fb[2] - fb[0]), footer_y), "Powered by Friday", font=font_footer_bold, fill=(200, 205, 215, 255) if raw_bg else (150, 155, 166, 255))
+
+        # Solid canvas to ensure 100% opacity against any Discord background
+        final_canvas = Image.new("RGB", (W, H), (19, 20, 23))
+        final_canvas.paste(img, (0, 0), img)
+        buf = io.BytesIO()
+        final_canvas.save(buf, format="PNG", optimize=True)
+        buf.seek(0)
+        return buf
+
+    async def generate_economy_leaderboard_file(self, guild: discord.Guild, page: int = 1, per_page: int = 10) -> discord.File:
+        gid = str(guild.id)
+        total_count = self.db.get_total_users_count(gid)
+        total_pages = max(1, math.ceil(total_count / per_page))
+        current_page = max(1, min(page, total_pages))
+        offset = (current_page - 1) * per_page
+        
+        page_users = self.db.get_top_users(gid, limit=per_page, offset=offset)
+        
+        cfg = self.get_config(gid)
+        cur_name = cfg.get("currency_name", "Coins")
+        
+        async def fetch_item(rank_num, row):
+            uid_int = int(row["user_id"])
+            mem = guild.get_member(uid_int)
+            if not mem:
+                try:
+                    mem = await guild.fetch_member(uid_int)
+                except Exception:
+                    mem = None
+            name = mem.display_name if mem else f"User {str(uid_int)[:6]}"
+            username = mem.name if mem else str(uid_int)
+            av = await self.fetch_avatar(mem, size=52) if mem else None
+            wallet = row.get("wallet", 0)
+            bank = row.get("bank", 0)
+            net = row.get("net_worth", wallet + bank)
+            return (rank_num, name, username, av, wallet, bank, net)
+            
+        tasks = [fetch_item(offset + i, row) for i, row in enumerate(page_users, start=1)]
+        members_data = await asyncio.gather(*tasks) if tasks else []
+        
+        # Max net worth on first page for proportional progress bar
+        top1 = self.db.get_top_users(gid, limit=1)
+        max_net = top1[0]["net_worth"] if top1 else 1
+        
+        guild_icon = await self.fetch_avatar(guild, size=64)
+        buf = self.render_economy_leaderboard_card(
+            guild_name=guild.name,
+            guild_icon=guild_icon,
+            page=current_page,
+            total_pages=total_pages,
+            total_members=total_count,
+            members_data=members_data,
+            max_net=max_net,
+            cur_name=cur_name,
+            guild_id=guild.id
+        )
+        return discord.File(fp=buf, filename=f"economy_leaderboard_{guild.id}_p{current_page}.png")
+
     @app_commands.command(name="baltop", description="View the server's wealthiest members by Net Worth.")
     async def baltop(self, interaction: discord.Interaction):
         if not await self._check_economy_active(interaction):
             return
         gid = str(interaction.guild.id)
-        top = self.db.get_top_users(gid, limit=10)
-        
-        cfg = self.get_config(gid)
-        cur_name = cfg.get("currency_name", "Coins")
-        cur_emoji = cfg.get("currency_emoji", "🪙")
-        
-        if not top:
+        total_count = self.db.get_total_users_count(gid)
+        if total_count <= 0:
             return await interaction.response.send_message("No members have recorded any economy balance yet!", ephemeral=True)
             
-        embed = discord.Embed(title="🏆 Server Wealth Leaderboard", color=discord.Color.gold())
-        medals = ["🥇", "🥈", "🥉"]
-        
-        for idx, row in enumerate(top, start=1):
-            m_id = int(row["user_id"])
-            member = interaction.guild.get_member(m_id)
-            name = clean_display_name(member.display_name) if member else f"User {m_id}"
-            
-            icon = medals[idx - 1] if idx <= 3 else f"**#{idx}**"
-            wallet = row["wallet"]
-            bank = row["bank"]
-            net = row["net_worth"]
-            
-            embed.add_field(
-                name=f"{icon} {name}",
-                value=f"💎 **{net:,} {cur_emoji}** (Cash: `{wallet:,}` | Vault: `{bank:,}`)",
-                inline=False
-            )
-            
-        embed.set_footer(text="Leaderboard updates in real-time • Earn coins via /work, /daily, and chat drops")
+        await interaction.response.defer()
+        file = await self.generate_economy_leaderboard_file(interaction.guild, page=1)
+        view = EconomyLeaderboardView(self, interaction.guild, current_page=1)
+        await interaction.followup.send(file=file, view=view)
         await interaction.response.send_message(embed=embed)
 
     # ───────────────────── Gambling & Mini-Games ─────────────────────
@@ -2821,39 +3164,73 @@ class Economy(commands.Cog):
             lines.append(f"{emoji} **{name}** ×`{qty}`")
         await ctx.send("\n".join(lines))
 
+    @commands.command(name="use")
+    async def prefix_use(self, ctx: commands.Context, *, item: str = ""):
+        """Activate or consume an item from your inventory: !use <item>"""
+        if not ctx.guild or not self.check_prefix_channel(ctx):
+            return
+        if not item:
+            return await ctx.reply("❌ Please specify the item to use, e.g. `!use xp_booster`.")
+        gid = str(ctx.guild.id)
+        uid = str(ctx.author.id)
+        item_id = item.lower().strip()
+        
+        async with self._get_lock(gid, uid):
+            owned = self.db.get_item(gid, uid, item_id)
+            if not owned or owned["quantity"] <= 0:
+                return await ctx.reply(f"❌ You do not have any `{item_id}` in your inventory.")
+                
+            if item_id == "xp_booster":
+                duration_hrs = 2
+                now = time.time()
+                cur_exp = owned.get("expires_at", 0)
+                if cur_exp > now:
+                    rem_secs = int(cur_exp - now)
+                    rem_hrs = rem_secs // 3600
+                    rem_mins = (rem_secs % 3600) // 60
+                    rem_str = f"{rem_hrs}h {rem_mins}m" if rem_hrs > 0 else f"{rem_mins}m"
+                    embed = discord.Embed(
+                        title="⚡ 2x XP Booster Already Active!",
+                        color=discord.Color.gold(),
+                        description=(
+                            f"You already have an active **2x XP Booster** running with **{rem_str} remaining**!\n\n"
+                            f"• **Status:** 2x Chat Leveling XP\n"
+                            f"• **Expires:** <t:{int(cur_exp)}:R> (<t:{int(cur_exp)}:t>)\n\n"
+                            "You don't need to use another booster right now. Your remaining booster is saved safely in your inventory!"
+                        )
+                    )
+                    return await ctx.reply(embed=embed)
+                    
+                new_exp = now + (duration_hrs * 3600)
+                self.db.consume_item(gid, uid, "xp_booster", 1)
+                self.db.add_item(gid, uid, "xp_booster", 1, expires_at=new_exp)
+                embed = discord.Embed(
+                    title="⚡ 2x XP Booster Activated!",
+                    color=discord.Color.gold(),
+                    description=f"Double Chat XP is now active for **{duration_hrs} hours**!\nEvery text message you send will grant 2x leveling progression!"
+                )
+                return await ctx.reply(embed=embed)
+            elif item_id in ("padlock", "landmine"):
+                return await ctx.reply(f"🛡️ `{item_id}` is automatically equipped as passive protection! No need to use it manually.")
+            elif item_id == "vip_badge":
+                return await ctx.reply("👑 VIP Badge is a permanent status symbol displayed on your `!balance` card!")
+            else:
+                return await ctx.reply(f"ℹ️ Item `{item_id}` is stored in your personal inventory.")
+
     @commands.command(name="ecolb", aliases=["rich", "richest", "baltop"])
     async def prefix_ecolb(self, ctx: commands.Context):
         """View top richest members leaderboard: !lb rich or !ecolb"""
         if not ctx.guild or not self.check_prefix_channel(ctx):
             return
         gid = str(ctx.guild.id)
-        cfg = self.get_config(gid)
-        cur_name = cfg.get("currency_name", "Coins")
-        cur_emoji = cfg.get("currency_emoji", "🪙")
-        top = self.db.get_top_users(gid, limit=10)
-        if not top:
-            return await ctx.send("📊 No player accounts found yet.")
+        total_count = self.db.get_total_users_count(gid)
+        if total_count <= 0:
+            return await ctx.reply("📊 No player accounts found yet.")
             
-        medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        embed = discord.Embed(
-            title=f"🏆 Top Richest Members • {ctx.guild.name}",
-            color=discord.Color.gold()
-        )
-        for idx, row in enumerate(top):
-            m_id = int(row["user_id"])
-            mem = ctx.guild.get_member(m_id)
-            name = clean_display_name(mem.display_name) if mem else f"User {str(m_id)[:6]}"
-            icon = medals[idx] if idx < len(medals) else f"**#{idx+1}**"
-            wallet = row.get("wallet", 0)
-            bank = row.get("bank", 0)
-            net = row.get("net_worth", wallet + bank)
-            embed.add_field(
-                name=f"{icon} {name}",
-                value=f"💎 **{net:,} {cur_emoji} {cur_name}** (Wallet: `{wallet:,}` | Vault: `{bank:,}`)",
-                inline=False
-            )
-        embed.set_footer(text=f"Server Economy Leaderboard • Dynamic Prefix: {ctx.prefix or '!'}")
-        await ctx.send(embed=embed)
+        async with ctx.typing():
+            file = await self.generate_economy_leaderboard_file(ctx.guild, page=1)
+            view = EconomyLeaderboardView(self, ctx.guild, current_page=1)
+            await ctx.reply(file=file, view=view, mention_author=False)
 
     @commands.command(name="setcurrency", aliases=["currency", "setcoin"])
     async def prefix_setcurrency(self, ctx: commands.Context, emoji: str = "", *, name: str = ""):
@@ -3107,6 +3484,50 @@ class Economy(commands.Cog):
         )
         embed.set_footer(text="Manage anytime from Discord or the Friday Web Dashboard")
         await interaction.response.send_message(embed=embed)
+
+
+class EconomyLeaderboardView(discord.ui.View):
+    """Interactive pagination view for the Economy Leaderboard Graphic Card."""
+    def __init__(self, cog: "Economy", guild: discord.Guild, current_page: int = 1):
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.guild = guild
+        self.current_page = current_page
+        self.update_buttons()
+
+    def get_total_pages(self) -> int:
+        gid = str(self.guild.id)
+        total = self.cog.db.get_total_users_count(gid)
+        return max(1, math.ceil(total / 10))
+
+    def update_buttons(self):
+        total_pages = self.get_total_pages()
+        self.prev_btn.disabled = (self.current_page <= 1)
+        self.next_btn.disabled = (self.current_page >= total_pages)
+        self.page_indicator.label = f"Page {self.current_page} / {total_pages}"
+
+    @discord.ui.button(label="◀ Previous", style=discord.ButtonStyle.secondary, custom_id="eco_lb_prev")
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        if self.current_page > 1:
+            self.current_page -= 1
+        self.update_buttons()
+        file = await self.cog.generate_economy_leaderboard_file(self.guild, page=self.current_page)
+        await interaction.edit_original_response(attachments=[file], view=self)
+
+    @discord.ui.button(label="Page 1 / 1", style=discord.ButtonStyle.secondary, disabled=True, custom_id="eco_lb_page")
+    async def page_indicator(self, interaction: discord.Interaction, button: discord.ui.Button):
+        pass
+
+    @discord.ui.button(label="Next ▶", style=discord.ButtonStyle.secondary, custom_id="eco_lb_next")
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        total_pages = self.get_total_pages()
+        if self.current_page < total_pages:
+            self.current_page += 1
+        self.update_buttons()
+        file = await self.cog.generate_economy_leaderboard_file(self.guild, page=self.current_page)
+        await interaction.edit_original_response(attachments=[file], view=self)
 
 
 async def setup(bot):

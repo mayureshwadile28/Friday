@@ -763,11 +763,13 @@ class InviteTracker(commands.Cog):
         tar, tag, tab = int(text_r * 255), int(text_g * 255), int(text_b * 255)
 
         if not bg_img:
-            # Default premium dark canvas
-            bg_img = Image.new("RGBA", (W, H), (18, 20, 24, 255))
-            d_bg = ImageDraw.Draw(bg_img)
-            d_bg.ellipse((-80, -80, 260, 260), fill=(ar, ag, ab, 35))
-            d_bg.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(ar // 2, ag // 2, ab, 25))
+            # Default premium dark canvas with solid alpha to prevent Discord background bleed
+            base_bg = Image.new("RGBA", (W, H), (18, 20, 24, 255))
+            glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+            d_glow = ImageDraw.Draw(glow_layer)
+            d_glow.ellipse((-80, -80, 260, 260), fill=(ar, ag, ab, 35))
+            d_glow.ellipse((W - 180, H - 180, W + 100, H + 100), fill=(ar // 2, ag // 2, ab, 25))
+            bg_img = Image.alpha_composite(base_bg, glow_layer)
 
         # 3. Frosted Glass Container (Wallpaper clearly visible through glass!)
         overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -881,13 +883,16 @@ class InviteTracker(commands.Cog):
         else:
             inv_by_str = "Joined directly / Unknown inviter"
 
-        draw_luminous_text(draw, (34, 102), f"🔗 {inv_by_str}", font=font_footer, fill=(200, 225, 255, 255) if raw_bg else (203, 213, 225, 220))
+        draw_luminous_text(draw, (text_x, 92), f"🔗 {inv_by_str}", font=font_footer, fill=(200, 225, 255, 255) if raw_bg else (203, 213, 225, 220))
         req_by_str = f"Requested by @{clean_display_name(requester.name, max_len=16)}"
         bb_req = font_footer.getbbox(req_by_str)
-        draw_luminous_text(draw, (W - 32 - (bb_req[2] - bb_req[0]), 102), req_by_str, font=font_footer, fill=(186, 230, 253, 255) if raw_bg else (148, 163, 184, 200))
+        draw_luminous_text(draw, (W - 32 - (bb_req[2] - bb_req[0]), 92), req_by_str, font=font_footer, fill=(186, 230, 253, 255) if raw_bg else (148, 163, 184, 200))
 
+        # Composite onto solid canvas to guarantee 100% opacity against any Discord background
+        final_canvas = Image.new("RGB", (W, H), (18, 20, 24))
+        final_canvas.paste(img, (0, 0), img)
         buf = io.BytesIO()
-        img.save(buf, format="PNG", optimize=True)
+        final_canvas.save(buf, format="PNG", optimize=True)
         buf.seek(0)
         return discord.File(fp=buf, filename=f"invites_{target.id}.png")
 

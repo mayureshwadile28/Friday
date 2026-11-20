@@ -1690,6 +1690,16 @@ class Moderation(commands.Cog):
 
             # 2. Rank & Level: !rank, !rank @user, !level, !lvl
             if cmd_name in ("rank", "level", "lvl"):
+                if len(parts) > 1 and parts[1].lower() in ("rich", "richest", "baltop", "eco", "economy", "money", "coins", "wealth"):
+                    eco_cog = self.bot.get_cog("Economy")
+                    if eco_cog:
+                        try:
+                            ctx = await self.bot.get_context(message)
+                            await eco_cog.prefix_ecolb(ctx)
+                        except Exception as e:
+                            print(f"Error rendering economy lb from lvl rich: {e}")
+                    return
+
                 target_user = None
                 if message.mentions:
                     for m in message.mentions:

@@ -19220,6 +19220,22 @@ async function loadLevelingSettings() {
                     if (vcStatus) vcStatus.textContent = "Default Theme Active";
                     if (vcWrap) vcWrap.style.display = 'none';
                 }
+
+                // Invite Card Wallpaper in Leveling Module
+                const invLvlStatus = document.getElementById('inviteLvlBgStatus');
+                const invLvlWrap = document.getElementById('inviteLvlBgPreviewWrap');
+                const invLvlImg = document.getElementById('inviteLvlBgPreviewImg');
+                const invBg = actData.invite_card_background || "";
+                if (invBg) {
+                    if (invLvlStatus) invLvlStatus.textContent = "Custom Wallpaper Active";
+                    if (invLvlWrap && invLvlImg) {
+                        invLvlWrap.style.display = 'block';
+                        invLvlImg.src = invBg;
+                    }
+                } else {
+                    if (invLvlStatus) invLvlStatus.textContent = "Default Theme Active";
+                    if (invLvlWrap) invLvlWrap.style.display = 'none';
+                }
             }
         } catch (ae) {
             console.warn("Could not load activity card wallpapers:", ae);
@@ -70117,6 +70133,14 @@ async function uploadCardBackground(input, cardType = 'rank') {
                 statusId = 'inviteCardBgStatus';
                 wrapId = 'inviteCardBgPreviewWrap';
                 imgId = 'inviteCardBgPreviewImg';
+                const status2 = document.getElementById('inviteLvlBgStatus');
+                const wrap2 = document.getElementById('inviteLvlBgPreviewWrap');
+                const img2 = document.getElementById('inviteLvlBgPreviewImg');
+                if (status2) status2.textContent = "Custom Wallpaper Active";
+                if (wrap2 && img2) {
+                    wrap2.style.display = 'block';
+                    img2.src = res.url;
+                }
             }
             const bgStatus = document.getElementById(statusId);
             const bgPreviewWrap = document.getElementById(wrapId);
@@ -70163,6 +70187,12 @@ async function resetCardBackground(cardType = 'rank') {
                 statusId = 'inviteCardBgStatus';
                 wrapId = 'inviteCardBgPreviewWrap';
                 imgId = 'inviteCardBgPreviewImg';
+                const status2 = document.getElementById('inviteLvlBgStatus');
+                const wrap2 = document.getElementById('inviteLvlBgPreviewWrap');
+                const img2 = document.getElementById('inviteLvlBgPreviewImg');
+                if (status2) status2.textContent = "Default Theme Active";
+                if (wrap2) wrap2.style.display = 'none';
+                if (img2) img2.src = "";
             }
             const bgStatus = document.getElementById(statusId);
             const bgPreviewWrap = document.getElementById(wrapId);
@@ -71657,6 +71687,10 @@ async function loadEconomySettings() {
                 });
             }
 
+            // Coinflip Win Chance & Multiplier
+            setVal('eco_coinflip_win_chance', Math.round((cfg.coinflip_win_chance ?? 0.48) * 100));
+            setVal('eco_coinflip_win_multiplier', cfg.coinflip_win_multiplier ?? 1.95);
+
             const tCat = document.getElementById('eco_ticket_category_id');
             if (tCat && cfg.delivery_ticket_category_id) tCat.value = cfg.delivery_ticket_category_id;
             const tLog = document.getElementById('eco_ticket_log_channel_id');
@@ -72472,6 +72506,9 @@ function initEconomyModule() {
                     crime_fail_fine: getNum('eco_crime_fail_fine', 200),
                     invite_reward_coins: getNum('eco_invite_reward_coins', 100),
                     level_up_reward_coins: getNum('eco_level_up_reward_coins', 100),
+
+                    coinflip_win_chance: getNum('eco_coinflip_win_chance', 48) / 100,
+                    coinflip_win_multiplier: getNum('eco_coinflip_win_multiplier', 1.95),
                     
                     rob_cooldown_hours: getNum('eco_rob_cooldown', 2),
                     rob_min_robber_wallet: getNum('eco_rob_min_robber', 500),

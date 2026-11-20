@@ -1059,11 +1059,13 @@ def get_activity_cards(gid):
     act_bg = db.activity_card_backgrounds.get(gid_str)
     lb_bg = db.leaderboard_card_backgrounds.get(gid_str)
     vc_bg = db.vc_card_backgrounds.get(gid_str)
+    inv_bg = db.invite_card_backgrounds.get(gid_str)
     return jsonify({
         "success": True,
         "activity_card_background": resolve_card_bg_url(act_bg),
         "leaderboard_card_background": resolve_card_bg_url(lb_bg),
-        "vc_card_background": resolve_card_bg_url(vc_bg)
+        "vc_card_background": resolve_card_bg_url(vc_bg),
+        "invite_card_background": resolve_card_bg_url(inv_bg)
     })
 
 @app.route('/api/guild/<gid>/invite-tracker/save', methods=['POST'])
