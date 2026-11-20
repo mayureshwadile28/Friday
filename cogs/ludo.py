@@ -704,13 +704,24 @@ class LudoRematchButton(discord.ui.Button):
 
 class LudoView(discord.ui.View):
     def __init__(self, game: LudoGame):
-        super().__init__(timeout=180)
+        super().__init__(timeout=None)
         self.game = game
         self.message: Optional[discord.Message] = None
         self.movable_tokens: List[int] = []
         self.turn_timer_task: Optional[asyncio.Task] = None
         self.turn_deadline: float = 0
+        self.consecutive_afk: int = 0
         self.setup_buttons_for_roll()
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[Ludo] View interaction error on {item}: {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An unexpected error occurred while processing your move.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An unexpected error occurred while processing your move.", ephemeral=True)
+        except Exception:
+            pass
 
     def _cancel_turn_timer(self):
         if self.turn_timer_task and not self.turn_timer_task.done():
@@ -737,6 +748,31 @@ class LudoView(discord.ui.View):
             cur_p = self.game.players.get(color)
             if not cur_p:
                 return
+
+            self.consecutive_afk += 1
+            self.game.last_updated = time.time()
+
+            # If all players have been AFK for 8 consecutive turns (2 minutes of complete inactivity), abandon match
+            if self.consecutive_afk >= 8:
+                self.game.game_over = True
+                self.clear_items()
+                self.game.log_history.append("⏰ **Match Abandoned:** All players were AFK for 8 consecutive turns.")
+                if self.game.bet_pot > 0 and not self.game.pot_awarded and self.game.guild_id:
+                    try:
+                        from cogs.economy import get_economy_db
+                        eco_db = get_economy_db()
+                        gid = str(self.game.guild_id)
+                        for uid in self.game.bet_participants:
+                            eco_db.delta_wallet(gid, str(uid), self.game.bet_per_player)
+                            eco_db.log_tx(gid, str(uid), "ludo_refund", self.game.bet_per_player, 0, note="Ludo Inactivity Timeout Refund")
+                        self.game.log_history.append(f"💰 **Wagers Refunded:** **{self.game.bet_per_player:,} Coins** returned to all participants.")
+                        self.game.bet_pot = 0
+                    except Exception as ex:
+                        print(f"[Ludo] Timeout refund error: {ex}")
+                host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                if host_id:
+                    ACTIVE_LUDO_GAMES.pop(host_id, None)
+                return await self.update_view()
 
             if stage == "roll":
                 theme = COLOR_THEMES[color]
@@ -771,8 +807,9 @@ class LudoView(discord.ui.View):
                 if self.game.game_over:
                     await self.settle_economy()
                     self.setup_buttons_game_over()
-                    host_id = list(self.game.players.values())[0]["member"].id
-                    ACTIVE_LUDO_GAMES.pop(host_id, None)
+                    host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                    if host_id:
+                        ACTIVE_LUDO_GAMES.pop(host_id, None)
                     return await self.update_view()
 
                 if (roll == 6) or ev["captured"]:
@@ -1004,18 +1041,20 @@ class LudoView(discord.ui.View):
             cur_col = self.game.current_turn
             cur_p = self.game.players[cur_col]
 
-            if cur_p["is_ai"]:
+            if cur_p.get("is_ai"):
                 return await interaction.response.send_message("🤖 It is Friday AI's turn!", ephemeral=True)
 
-            if interaction.user.id != cur_p["member"].id:
+            if not cur_p.get("member") or interaction.user.id != cur_p["member"].id:
                 return await interaction.response.send_message(f"❌ It is currently {cur_p['name']}'s turn!", ephemeral=True)
 
             if self.game.game_over:
-                return await interaction.response.defer()
+                return await interaction.response.send_message("🏁 This match has already ended!", ephemeral=True)
 
             # Always defer immediately so Discord interaction never expires and view doesn't get stuck!
             await interaction.response.defer()
             self._cancel_turn_timer()
+            self.consecutive_afk = 0
+            self.game.last_updated = time.time()
             if interaction.message:
                 self.message = interaction.message
 
@@ -1066,11 +1105,22 @@ class LudoView(discord.ui.View):
             cur_col = self.game.current_turn
             cur_p = self.game.players[cur_col]
 
-            if interaction.user.id != cur_p["member"].id:
-                return await interaction.response.send_message("❌ This is not your turn!", ephemeral=True)
+            if cur_p.get("is_ai"):
+                return await interaction.response.send_message("🤖 It is Friday AI's turn!", ephemeral=True)
+
+            if not cur_p.get("member") or interaction.user.id != cur_p["member"].id:
+                return await interaction.response.send_message(f"❌ It is currently {cur_p['name']}'s turn!", ephemeral=True)
+
+            if self.game.game_over:
+                return await interaction.response.send_message("🏁 This match has already ended!", ephemeral=True)
 
             await interaction.response.defer()
             self._cancel_turn_timer()
+            self.consecutive_afk = 0
+            self.game.last_updated = time.time()
+            if interaction.message:
+                self.message = interaction.message
+
             roll = self.game.last_rolls.get(cur_col) or 6
             theme = COLOR_THEMES[cur_col]
 
@@ -1085,8 +1135,9 @@ class LudoView(discord.ui.View):
             if self.game.game_over:
                 await self.settle_economy()
                 self.setup_buttons_game_over()
-                host_id = list(self.game.players.values())[0]["member"].id
-                ACTIVE_LUDO_GAMES.pop(host_id, None)
+                host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                if host_id:
+                    ACTIVE_LUDO_GAMES.pop(host_id, None)
                 return await self.update_view(interaction)
 
             if roll == 6 or ev["captured"]:
@@ -1099,6 +1150,8 @@ class LudoView(discord.ui.View):
                 await self.check_and_run_ai_turn()
         except Exception as e:
             print(f"[Ludo] Error in handle_human_token_pick: {e}")
+            self.setup_buttons_for_roll()
+            await self.update_view(interaction)
 
     async def check_and_run_ai_turn(self):
         """If current turn belongs to Friday AI, triggers automated turn execution."""
@@ -1150,8 +1203,9 @@ class LudoView(discord.ui.View):
             if self.game.game_over:
                 await self.settle_economy()
                 self.setup_buttons_game_over()
-                host_id = list(self.game.players.values())[0]["member"].id
-                ACTIVE_LUDO_GAMES.pop(host_id, None)
+                host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                if host_id:
+                    ACTIVE_LUDO_GAMES.pop(host_id, None)
                 return await self.update_view()
 
             if roll == 6 or ev["captured"]:
@@ -1205,8 +1259,9 @@ class LudoView(discord.ui.View):
             # Winner is next active player
             idx = self.game.turn_order.index(user_color)
             self.game.winner = self.game.turn_order[(idx + 1) % len(self.game.turn_order)]
-            host_id = list(self.game.players.values())[0]["member"].id
-            ACTIVE_LUDO_GAMES.pop(host_id, None)
+            host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+            if host_id:
+                ACTIVE_LUDO_GAMES.pop(host_id, None)
 
             await self.settle_economy()
             self.setup_buttons_game_over()
@@ -1234,11 +1289,12 @@ class LudoView(discord.ui.View):
 
             new_game = LudoGame(new_configs, tokens_per_player=self.game.tokens_per_player)
             new_game.guild_id = self.game.guild_id
+            host_id = getattr(self.game, "host_id", None) or author.id
+            new_game.host_id = host_id
             new_game.bet_pot = 0
             new_game.bet_per_player = 0
             new_game.bet_participants = []
             new_game.log_history = ["🎲 **Rematch started!** (Friendly mode — start a new game to wager)"]
-            host_id = list(self.game.players.values())[0]["member"].id
             ACTIVE_LUDO_GAMES[host_id] = new_game
 
             new_view = LudoView(new_game)
@@ -1248,8 +1304,9 @@ class LudoView(discord.ui.View):
             print(f"[Ludo] Error in handle_rematch: {e}")
 
     async def on_timeout(self):
-        host_id = list(self.game.players.values())[0]["member"].id
-        ACTIVE_LUDO_GAMES.pop(host_id, None)
+        host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+        if host_id:
+            ACTIVE_LUDO_GAMES.pop(host_id, None)
         if not self.game.game_over:
             self.game.game_over = True
             self.clear_items()
@@ -1568,6 +1625,7 @@ class LudoLobbyView(discord.ui.View):
 
         game = LudoGame(active_configs, tokens_per_player=self.tokens_per_player)
         game.guild_id = self.guild_id
+        game.host_id = self.host.id
         game.bet_pot = bet_pot
         game.bet_per_player = self.bet
         game.bet_participants = bet_participants
