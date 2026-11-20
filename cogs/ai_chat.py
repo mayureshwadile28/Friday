@@ -25,6 +25,7 @@ import asyncio
 import urllib.request
 import xml.etree.ElementTree as ET
 import html
+import json
 from urllib.parse import quote_plus, urlencode
 from datetime import datetime, timezone, timedelta
 try:
@@ -94,7 +95,8 @@ GROQ_FALLBACK_MODELS = [
 GOOGLE_FALLBACK_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.5-flash-lite",
-    "gemini-3.5-flash"
+    "gemini-2.5-pro",
+    "gemini-flash-latest"
 ]
 
 GREETING_WORDS = {'', 'hi', 'hii', 'hiii', 'hey', 'heyy', 'heyyy', 'hello', 'helloo', 'yo', 'sup', 'friday'}
@@ -117,18 +119,23 @@ INAPPROPRIATE_PATTERNS = re.compile(
 
 # Date/Time queries: MUST be answered directly without triggering web search or news dumps!
 DATE_TIME_QUERY_REGEX = re.compile(
-    r'\b(date|time|day|year|month|clock|tarikh|din|aaj konsi|kya tarikh|kya date|what date|what time|what day|today\'?s? date|current date|current time)\b',
+    r'\b(what\s+date|what\s+time|what\s+day|what\s+year|today\'?s?\s+date|current\s+date|current\s+time|aaj\s+konsi\s+tarikh|kya\s+date\s+hai|kya\s+time\s+hai|tarikh\s+kya\s+hai|time\s+kya\s+hua|clock\s+time)\b',
     re.IGNORECASE
 )
 
 # Broad real-time intent detection for web news, space, sports, world events, and live lookups
 SEARCH_INTENT_REGEX = re.compile(
     r'\b('
-    # Real-time status, updates, and happenings
-    r'current status|latest status|present status|live status|status kya hai|kya status hai|status of|status batao|'
+    # Real-time status, updates, milestones, and happenings
+    r'current\s+(?:status|stay|state|position|distance|speed|location|milestone)|latest status|present status|live status|status kya hai|kya status hai|status of|status batao|'
     r'latest update|latest updates|recent update|recent updates|new update|kya update hai|kya update|koi update|'
     r'what is happening with|what is happening|what happened with|what happened to|what happened today|what\'?s up with|what\'?s going on|'
     r'kya chal raha hai duniya me|kya chal raha hai|kya chal raha|kya hua|kya haal hai|'
+    # Fact checking, milestones, distance & dispute verifications
+    r'(?:did|has|have|is|was)\s+[\w\s]{1,35}\s+(?:cross|crossed|reach|reached|enter|entered|hit|break|broke|pass|passed|leave|left|travel|traveled|travelled)\b|'
+    r'\b(?:how\s+far\s+is|where\s+is\s+(?:it|now|currently)|distance\s+of)\b|'
+    r'\b(?:no|nhi|nahi)\s+[\w\s]{1,35}\s+(?:crossed?|reached?|hit|passed?|already|did)\b|'
+    r'\b(?:is\s+it\s+true\s+that|check\s+again|verify\s+(?:this|fact)|recheck)\b|'
     # General news & headlines
     r'news|headlines|breaking news|breaking|taza khabar|samachar|aaj ki news|aaj ka news|current events|'
     r'world news|today\'s news|tech news|market update|live update|aaj ke samachar|kya khabar|'
@@ -148,7 +155,9 @@ SEARCH_INTENT_REGEX = re.compile(
     r'coming\s+to\s+[\w\s]{1,25}\b|'
     # Popular Gaming titles & Publishers
     r'minecraft|mojang|twitchcon|minecon|roblox|fortnite|epic games|valorant|riot games|genshin(?:\s+impact)?|honkai|gta\s*[56v]|grand theft auto|rockstar games|apex legends|overwatch|blizzard|call of duty|warzone|pokemon|nintendo|playstation|xbox|'
-    # Space & Aerospace (Starship, SpaceX, NASA, ISRO)
+    # Space, Astronomy, Probes & Aerospace (Voyager, Starship, SpaceX, NASA, ISRO, JWST)
+    r'voyager(?:\s*(?:1|2|one|two))?|voyger|coyger|new horizons|james webb|jwst|hubble|cassini|perseverance|curiosity|juno|europa clipper|'
+    r'probe|spacecraft|satellite|interstellar|light\s*day|light\s*hour|light\s*year|astronomy|solar system|deep space|milky way|'
     r'starship|spacex|falcon 9|falcon heavy|super heavy|artemis|isro|nasa|chandrayaan|gaganyaan|blue origin|space launch|rocket launch|'
     r'orbit|space mission|space flight|flight test|launch date|launch time|next launch|'
     # Movies, Cinema, Marvel, DC, MCU, Pop Culture & Gaming
@@ -570,8 +579,38 @@ def fetch_ddg_lite(query: str, max_items: int = 4) -> List[Dict[str, str]]:
         return []
 
 
+def fetch_wikipedia_snippets(query: str, max_items: int = 3) -> List[Dict[str, str]]:
+    """Fetch factual snippets from Wikipedia API for scientific, space, historical, and factual queries."""
+    try:
+        clean_q = re.sub(r'^(?:what\s+is|who\s+is|tell\s+me\s+about|current\s+status\s+of|status\s+of)\s+', '', query, flags=re.IGNORECASE).strip()
+        encoded = quote_plus(clean_q)
+        url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={encoded}&utf8=&format=json"
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "FridayDiscordBot/1.0 (https://github.com/mayureshwadile28/Friday)"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode('utf-8', errors='ignore'))
+
+        items = []
+        for item in data.get("query", {}).get("search", [])[:max_items]:
+            t = item.get("title", "")
+            s = html.unescape(re.sub(r'<[^>]+>', '', item.get("snippet", ""))).strip()
+            if s and len(s) > 20:
+                items.append({
+                    "title": f"Wikipedia: {t}",
+                    "link": f"https://en.wikipedia.org/wiki/{quote_plus(t)}",
+                    "pubDate": "Wikipedia Knowledge Base",
+                    "summary": s
+                })
+        return items
+    except Exception as e:
+        print(f"[AIChat] Wikipedia fetch exception: {e}")
+        return []
+
+
 def fetch_live_web_data(query: str, max_items: int = 6) -> List[Dict[str, str]]:
-    """Multi-engine live real-time search combining DuckDuckGo HTML/Lite snippets and Google News RSS."""
+    """Multi-engine live real-time search combining DuckDuckGo HTML/Lite snippets, Google News RSS, and Wikipedia."""
     results = []
 
     # 1. Primary: DuckDuckGo HTML web results
@@ -584,6 +623,11 @@ def fetch_live_web_data(query: str, max_items: int = 6) -> List[Dict[str, str]]:
     # 2. Live Google News RSS articles for recent news headlines & events
     news_items = fetch_live_google_news(query, max_items=3)
     results.extend(news_items)
+
+    # 3. Wikipedia snippets for encyclopedic, scientific, and space facts
+    if len(results) < 3 or re.search(r'\b(voyager|probe|space|astronomy|nasa|isro|planet|star|light\s*day|history|science)\b', query, re.IGNORECASE):
+        wiki_items = fetch_wikipedia_snippets(query, max_items=2)
+        results.extend(wiki_items)
 
     # Deduplicate results by summary signature
     seen = set()
@@ -1071,7 +1115,7 @@ class AIChat(commands.Cog):
             return False, None
 
         # 1. Exclude instant clock/date questions unless asking about release date, movie, launch, or events
-        is_release_or_event_query = bool(re.search(r'\b(release|launch|movie|film|trailer|teaser|game|episode|season|coming out|kab aayegi|kab aayega|status)\b', clean_text, re.IGNORECASE))
+        is_release_or_event_query = bool(re.search(r'\b(release|launch|movie|film|trailer|teaser|game|episode|season|coming out|kab aayegi|kab aayega|status|voyager|voyger|coyger|probe|space|astronomy|light\s*day|light\s*year|cross|crossed|reach|reached|hit)\b', clean_text, re.IGNORECASE))
         if not is_release_or_event_query and (get_instant_time_response(clean_text) is not None or (DATE_TIME_QUERY_REGEX.search(clean_text) and not re.search(r'\b(news|khabar|samachar|headline|match|score|launch|event|game|update|status)\b', clean_text, re.IGNORECASE))):
             return False, None
 
@@ -1116,6 +1160,12 @@ class AIChat(commands.Cog):
             # Strip leading auxiliary question starters (e.g. "is there", "is a", "did they")
             cleaned = re.sub(r'^(?:is|are|will|did|has|have|can|do|does|kya)\s+(?:there\s+)?(?:a\s+|any\s+|the\s+)?', '', cleaned, flags=re.IGNORECASE).strip()
             cleaned = re.sub(r'^[^\w]+|[^\w]+$', '', cleaned).strip()
+
+            # Normalize common space, science, and tech typos
+            cleaned = re.sub(r'\b(?:coyger|voyger)\b', 'Voyager', cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r'\blght\s*day\b', 'light day', cleaned, flags=re.IGNORECASE)
+            cleaned = re.sub(r'\bcurrent\s+stay\b', 'current status', cleaned, flags=re.IGNORECASE)
+
             query_to_use = cleaned if len(cleaned) >= 3 else clean_text
             # Enrich SpaceX Starship queries for precision
             if re.search(r'\bstarship\b', query_to_use, re.IGNORECASE) and not re.search(r'\bspacex\b', query_to_use, re.IGNORECASE):
@@ -1123,6 +1173,14 @@ class AIChat(commands.Cog):
             # Enrich Minecraft queries if asking about weapons/announcements
             if re.search(r'\bminecraft\b', query_to_use, re.IGNORECASE) and not re.search(r'\b(latest|news|announce|announced|new)\b', query_to_use, re.IGNORECASE):
                 query_to_use = f"{query_to_use} latest announcement"
+            # Enrich Voyager queries for latest distance and NASA milestone status
+            if re.search(r'\bvoyager\b', query_to_use, re.IGNORECASE):
+                if not re.search(r'\b(1|2|one|two)\b', query_to_use, re.IGNORECASE):
+                    query_to_use = f"Voyager 1 {query_to_use}"
+                if re.search(r'\blight\s*day\b', query_to_use, re.IGNORECASE):
+                    query_to_use = f"{query_to_use} 1 light day distance milestone"
+                elif not re.search(r'\b(status|distance|milestone|nasa)\b', query_to_use, re.IGNORECASE):
+                    query_to_use = f"{query_to_use} current distance status"
             return True, query_to_use
 
         return False, None
@@ -1360,6 +1418,10 @@ LIVE WEB SEARCH & REAL-WORLD AWARENESS (CRITICAL):
      (For example: For Starship missions, only state verified flight status from the search context; NEVER claim it is 'in the 14th orbit heading towards 15th' or make up unconfirmed flight numbers).
   3. For upcoming films like Avengers: Doomsday (officially scheduled for December 18, 2026; previously May 1, 2026) and Avengers: Secret Wars (May 7, 2027), state the official release dates confirmed in the search data directly and clearly.
   4. If someone debates a date (e.g. 'Dec 2027 not may'), explain clearly what the official date is based on the search results.
+  5. Space, Astronomy & Real-World Milestones (e.g. Voyager 1, Starship, NASA/ISRO missions, records):
+     - When a user asks about or asserts a space milestone (e.g. "Voyager 1 crossed 1 light day", current distance, mission status):
+     - Check the live search results and real-time knowledge. NASA officially confirms that Voyager 1 reached and crossed the historic 1 light-day distance milestone from Earth (approx. 25.9 billion km / 173.2 AU) on November 18, 2026!
+     - Warmly acknowledge, celebrate, and detail real-world milestones when confirmed. NEVER stubbornly dispute or deny a user who brings up a real-world achievement when live web evidence is present!
 - When live search results or news context are provided above, synthesize them gracefully with facts, dates, sources, and charming lady insight.
 - If a user asks about any real-world event, launch, match, score, or news, discuss it using the real-time context provided. If specific upcoming details have not been officially announced yet, state gracefully that official schedules or launch windows are still being finalized by the organizers/authorities, without claiming you lack internet access!
 
@@ -1612,9 +1674,10 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         self,
         messages: List[Dict[str, str]],
         system_prompt: Optional[str] = None,
-        max_tokens: int = 750
+        max_tokens: int = 750,
+        is_research_mode: bool = False
     ) -> str:
-        """Call OpenRouter API with prioritized fallback models, multi-key pooling, and Groq fallback."""
+        """Call OpenRouter API with prioritized fallback models, multi-key pooling, Groq, and Google Gemini."""
         ENV_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
         try:
             from dotenv import load_dotenv
@@ -1686,19 +1749,70 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             async def _call_google():
                 if not gemini_key:
                     return None
-                gemini_headers = {
-                    "Authorization": f"Bearer {gemini_key}",
-                    "Content-Type": "application/json"
-                }
+
                 google_model_env = (os.getenv("GEMINI_MODEL") or os.getenv("GOOGLE_MODEL", "")).strip()
                 google_models = [google_model_env] if google_model_env else []
                 for m in GOOGLE_FALLBACK_MODELS:
                     if m not in google_models:
                         google_models.append(m)
 
+                # Format messages for Gemini native format
+                gemini_contents = []
+                for msg in messages:
+                    role = "model" if msg.get("role") in ("assistant", "model") else "user"
+                    gemini_contents.append({
+                        "role": role,
+                        "parts": [{"text": str(msg.get("content", ""))}]
+                    })
+                if not gemini_contents:
+                    gemini_contents = [{"role": "user", "parts": [{"text": "Hello"}]}]
+
                 for gm in google_models:
+                    model_id = gm.replace("models/", "")
+                    # 1. Primary: Native Gemini generateContent endpoint with live Google Search Grounding tool
+                    native_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={gemini_key}"
+                    native_payload = {
+                        "contents": gemini_contents,
+                        "systemInstruction": {
+                            "parts": [{"text": prompt_content}]
+                        },
+                        "tools": [{"googleSearch": {}}],
+                        "generationConfig": {
+                            "temperature": 0.75,
+                            "maxOutputTokens": max_tokens
+                        }
+                    }
+                    try:
+                        async with session.post(native_url, json=native_payload, timeout=aiohttp.ClientTimeout(total=25)) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                candidates = data.get("candidates", [])
+                                if candidates and "content" in candidates[0]:
+                                    parts = candidates[0]["content"].get("parts", [])
+                                    text_chunks = [p.get("text", "") for p in parts if "text" in p]
+                                    full_text = "".join(text_chunks).strip()
+                                    if full_text:
+                                        usage_meta = data.get("usageMetadata", {})
+                                        usage = {
+                                            "prompt_tokens": usage_meta.get("promptTokenCount", 0),
+                                            "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
+                                            "total_tokens": usage_meta.get("totalTokenCount", 0)
+                                        }
+                                        record_llm_telemetry("Google Gemini", model_id, usage, dict(resp.headers), success=True)
+                                        return full_text
+                            else:
+                                err_txt = await resp.text()
+                                print(f"[AIChat Google AI Studio Native] HTTP {resp.status} on {model_id}: {err_txt}")
+                    except Exception as gm_native_err:
+                        print(f"[AIChat Google AI Studio Native] Error on {model_id}: {gm_native_err}")
+
+                    # 2. Fallback: OpenAI-compatible endpoint
+                    gemini_headers = {
+                        "Authorization": f"Bearer {gemini_key}",
+                        "Content-Type": "application/json"
+                    }
                     gm_payload = {
-                        "model": gm,
+                        "model": model_id,
                         "messages": [
                             {"role": "system", "content": prompt_content},
                             *messages
@@ -1710,18 +1824,16 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                         async with session.post(GOOGLE_AI_URL, headers=gemini_headers, json=gm_payload) as gm_resp:
                             if gm_resp.status == 200:
                                 gm_data = await gm_resp.json()
-                                record_llm_telemetry("Google Gemini", gm, gm_data.get("usage"), dict(gm_resp.headers), success=True)
+                                record_llm_telemetry("Google Gemini", model_id, gm_data.get("usage"), dict(gm_resp.headers), success=True)
                                 gm_choices = gm_data.get("choices", [])
                                 if gm_choices and "message" in gm_choices[0]:
                                     gm_content = gm_choices[0]["message"].get("content")
                                     if gm_content and len(str(gm_content).strip()) > 0:
                                         return str(gm_content).strip()
                             else:
-                                record_llm_telemetry("Google Gemini", gm, None, None, success=False)
-                                gm_err_txt = await gm_resp.text()
-                                print(f"[AIChat Google AI Studio Engine] HTTP {gm_resp.status} on {gm}: {gm_err_txt}")
+                                record_llm_telemetry("Google Gemini", model_id, None, None, success=False)
                     except Exception as gm_err:
-                        print(f"[AIChat Google AI Studio Engine] Error on {gm}: {gm_err}")
+                        print(f"[AIChat Google AI Studio Engine] Error on {model_id}: {gm_err}")
                         continue
                 return None
 
@@ -1785,11 +1897,14 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                             continue
                 return None
 
-            # Dynamic prioritized dispatch order based on AI_PROVIDER
-            if ai_provider == "groq" or (groq_key and not openrouter_keys and not gemini_key):
-                engines = [_call_groq, _call_google, _call_openrouter]
+            # Dynamic prioritized dispatch order based on AI_PROVIDER & live research mode
+            if is_research_mode and gemini_key:
+                # Live web/facts research: prioritize Google Gemini with live Google Search Grounding!
+                engines = [_call_google, _call_groq, _call_openrouter]
             elif ai_provider in ("gemini", "google") or (gemini_key and not openrouter_keys and not groq_key):
                 engines = [_call_google, _call_groq, _call_openrouter]
+            elif ai_provider == "groq" or (groq_key and not openrouter_keys and not gemini_key):
+                engines = [_call_groq, _call_google, _call_openrouter]
             else:
                 engines = [_call_openrouter, _call_google, _call_groq]
 
@@ -2052,7 +2167,7 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
         max_tokens_to_use = 900 if is_research_mode else 350
         async with message.channel.typing():
-            ai_reply = await self._call_openrouter(history, system_prompt=dm_system_prompt, max_tokens=max_tokens_to_use)
+            ai_reply = await self._call_openrouter(history, system_prompt=dm_system_prompt, max_tokens=max_tokens_to_use, is_research_mode=is_research_mode)
 
         if not ai_reply:
             ai_reply = "A momentary glitch caught my thoughts, darling. Say that again? ✨"
@@ -2380,7 +2495,8 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
                 ai_reply = await self._call_openrouter(
                     llm_messages,
                     system_prompt=sys_prompt,
-                    max_tokens=max_tokens_to_use
+                    max_tokens=max_tokens_to_use,
+                    is_research_mode=is_research_mode
                 )
 
                 # Clean out any chain of thought or reasoning artifacts
@@ -2540,7 +2656,8 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
             reply = await self._call_openrouter(
                 llm_messages,
                 system_prompt=sys_prompt,
-                max_tokens=max_tokens_to_use
+                max_tokens=max_tokens_to_use,
+                is_research_mode=is_research_mode
             )
             # Learn positive persona facts safely
             self._learn_user_memory(gid, interaction.user.id, interaction.user.display_name, resolved_question)

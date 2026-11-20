@@ -144,10 +144,15 @@ def _minimax(board: List[Optional[str]], depth: int, is_max: bool, alpha: float,
         return int(min_eval)
 
 def ai_hard_move(board: List[Optional[str]], ai_sym: str = "O", human_sym: str = "X") -> Optional[int]:
-    """Hard AI: Mathematically unbeatable Minimax algorithm with alpha-beta pruning."""
+    """Hard AI: Formidable & competitive AI playing optimal Minimax ~72% of the time,
+    with a ~28% chance to play tactical smart heuristics so attentive human players can outplay and win."""
     avail = get_available_spots(board)
     if not avail:
         return None
+
+    # Give skilled human players a fair 28% window to outsmart Friday and claim the Hard Mode bounty
+    if random.random() < 0.28:
+        return ai_normal_move(board, ai_sym=ai_sym, human_sym=human_sym)
 
     # Early-game heuristic shortcut (saves computation and guarantees <1ms execution)
     if len(avail) >= 9:
@@ -936,7 +941,7 @@ class TicTacToe(commands.Cog, name="Games"):
     @app_commands.choices(difficulty=[
         app_commands.Choice(name="Easy (Casual & Fun)", value="Easy"),
         app_commands.Choice(name="Normal (Balanced & Smart)", value="Normal"),
-        app_commands.Choice(name="Hard (Unbeatable Minimax AI)", value="Hard")
+        app_commands.Choice(name="Hard (Challenging & Rewarding)", value="Hard")
     ])
     @app_commands.choices(first_turn=[
         app_commands.Choice(name="You (Challenger goes first)", value="challenger"),
