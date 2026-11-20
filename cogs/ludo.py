@@ -10,6 +10,7 @@ import pytz
 from typing import Optional, List, Tuple, Dict, Any
 from PIL import Image, ImageDraw, ImageFont
 import os
+from database import db
 
 def get_bold_font(size: int):
     """Loads clean bold system font across Windows & Linux platforms with fallback."""
@@ -854,7 +855,6 @@ class LudoView(discord.ui.View):
 
         notes = []
         try:
-            from core.database import db
             cfg = getattr(db, "economy_config", {}).get(gid, {})
             eco_enabled = cfg.get("enabled", True) and not cfg.get("paused", False)
             cur_name = cfg.get("currency_name", "Coins")
@@ -978,9 +978,22 @@ class LudoView(discord.ui.View):
         file = discord.File(buf, filename="ludo_board.png")
         embed = self.build_embed()
 
-        if interaction and not interaction.response.is_done():
-            await interaction.response.edit_message(embed=embed, view=self, attachments=[file])
-        elif self.message:
+        if interaction:
+            if not interaction.response.is_done():
+                try:
+                    await interaction.response.edit_message(embed=embed, view=self, attachments=[file])
+                    return
+                except Exception as ex:
+                    print(f"[Ludo] Failed direct edit_message: {ex}")
+            else:
+                try:
+                    msg = await interaction.edit_original_response(embed=embed, view=self, attachments=[file])
+                    if msg:
+                        self.message = msg
+                    return
+                except Exception as ex:
+                    print(f"[Ludo] Failed edit_original_response: {ex}")
+        if self.message:
             try:
                 await self.message.edit(embed=embed, view=self, attachments=[file])
             except Exception as e:
@@ -1023,30 +1036,30 @@ class LudoView(discord.ui.View):
                 self.game.log_history.append(f"⚠️ {theme['emoji']} **{cur_p['name']}** rolled three 6s in a row! Turn forfeited.")
                 self.game.advance_turn()
                 self.setup_buttons_for_roll()
-                await self.update_view()
+                await self.update_view(interaction)
                 return await self.check_and_run_ai_turn()
 
             if not legal:
                 if roll == 6:
                     self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves, roll again!).")
                     self.setup_buttons_for_roll()
-                    await self.update_view()
+                    await self.update_view(interaction)
                 else:
                     self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves). Passing turn...")
                     self.game.advance_turn()
                     self.setup_buttons_for_roll()
-                    await self.update_view()
+                    await self.update_view(interaction)
                     return await self.check_and_run_ai_turn()
                 return
 
             action_text = "Choose which token to release from base or move:" if roll == 6 else "Choose which token to move:"
             self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]**! {action_text}")
             self.setup_buttons_for_token_pick(legal, roll)
-            await self.update_view()
+            await self.update_view(interaction)
         except Exception as e:
             print(f"[Ludo] Error in handle_human_roll: {e}")
             self.setup_buttons_for_roll()
-            await self.update_view()
+            await self.update_view(interaction)
 
     async def handle_human_token_pick(self, interaction: discord.Interaction, token_idx: int):
         try:
@@ -1074,15 +1087,15 @@ class LudoView(discord.ui.View):
                 self.setup_buttons_game_over()
                 host_id = list(self.game.players.values())[0]["member"].id
                 ACTIVE_LUDO_GAMES.pop(host_id, None)
-                return await self.update_view()
+                return await self.update_view(interaction)
 
             if roll == 6 or ev["captured"]:
                 self.setup_buttons_for_roll()
-                await self.update_view()
+                await self.update_view(interaction)
             else:
                 self.game.advance_turn()
                 self.setup_buttons_for_roll()
-                await self.update_view()
+                await self.update_view(interaction)
                 await self.check_and_run_ai_turn()
         except Exception as e:
             print(f"[Ludo] Error in handle_human_token_pick: {e}")
@@ -1356,7 +1369,6 @@ class LudoLobbyView(discord.ui.View):
 
         wager_str = ""
         if self.bet > 0 and self.guild_id:
-            from core.database import db
             cfg = getattr(db, "economy_config", {}).get(str(self.guild_id), {})
             cur_name = cfg.get("currency_name", "Coins")
             cur_emoji = cfg.get("currency_emoji", "🪙")
@@ -1396,7 +1408,6 @@ class LudoLobbyView(discord.ui.View):
                 prof = eco_db.get_or_init_user(gid, str(user.id))
                 wallet_bal = prof.get("wallet", 0)
                 if wallet_bal < self.bet:
-                    from core.database import db
                     cfg = getattr(db, "economy_config", {}).get(gid, {})
                     cur_name = cfg.get("currency_name", "Coins")
                     return await interaction.response.send_message(
@@ -1415,9 +1426,11 @@ class LudoLobbyView(discord.ui.View):
                     # User accepted invite
                     slot["ready"] = True
                     self.setup_lobby_buttons()
-                    await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
                     if self.get_active_count() == 4:
-                        await self.launch_game()
+                        await interaction.response.defer()
+                        await self.launch_game(interaction)
+                    else:
+                        await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
                     return
 
         # Find first open slot
@@ -1437,10 +1450,11 @@ class LudoLobbyView(discord.ui.View):
             "ready": True
         }
         self.setup_lobby_buttons()
-        await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
-
         if self.get_active_count() == 4:
-            await self.launch_game()
+            await interaction.response.defer()
+            await self.launch_game(interaction)
+        else:
+            await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
 
     async def handle_add_ai(self, interaction: discord.Interaction):
         # Find first open slot
@@ -1460,10 +1474,11 @@ class LudoLobbyView(discord.ui.View):
             "ready": True
         }
         self.setup_lobby_buttons()
-        await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
-
         if self.get_active_count() == 4:
-            await self.launch_game()
+            await interaction.response.defer()
+            await self.launch_game(interaction)
+        else:
+            await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
 
     async def handle_start_now(self, interaction: discord.Interaction):
         if interaction.user.id != self.host.id:
@@ -1473,7 +1488,7 @@ class LudoLobbyView(discord.ui.View):
             return await interaction.response.send_message("⚠️ You need at least 2 players to start! Click 'Add Friday AI' to fill a slot.", ephemeral=True)
 
         await interaction.response.defer()
-        await self.launch_game()
+        await self.launch_game(interaction)
 
     async def handle_cancel(self, interaction: discord.Interaction):
         if interaction.user.id != self.host.id:
@@ -1487,7 +1502,7 @@ class LudoLobbyView(discord.ui.View):
             view=None
         )
 
-    async def launch_game(self):
+    async def launch_game(self, interaction: Optional[discord.Interaction] = None):
         """Builds game configurations from active ready slots, escrows wagers, and launches match."""
         ACTIVE_LUDO_LOBBIES.pop(self.host.id, None)
         self.stop()
@@ -1520,7 +1535,6 @@ class LudoLobbyView(discord.ui.View):
                 from cogs.economy import get_economy_db
                 eco_db = get_economy_db()
                 gid = str(self.guild_id)
-                from core.database import db
                 cfg = getattr(db, "economy_config", {}).get(gid, {})
                 cur_name = cfg.get("currency_name", "Coins")
 
@@ -1532,12 +1546,14 @@ class LudoLobbyView(discord.ui.View):
                             failed_players.append(p["member"].display_name)
 
                 if failed_players:
-                    if self.message:
-                        await self.message.edit(
-                            content=f"❌ **Match Cancelled:** The following players do not have enough wallet coins for the **{self.bet:,} {cur_name}** wager: {', '.join(failed_players)}",
-                            embed=None,
-                            view=None
-                        )
+                    cancel_msg = f"❌ **Match Cancelled:** The following players do not have enough wallet coins for the **{self.bet:,} {cur_name}** wager: {', '.join(failed_players)}"
+                    if interaction:
+                        if not interaction.response.is_done():
+                            await interaction.response.edit_message(content=cancel_msg, embed=None, view=None)
+                        else:
+                            await interaction.edit_original_response(content=cancel_msg, embed=None, view=None)
+                    elif self.message:
+                        await self.message.edit(content=cancel_msg, embed=None, view=None)
                     return
 
                 for p in active_configs:
@@ -1571,7 +1587,20 @@ class LudoLobbyView(discord.ui.View):
         file = discord.File(buf, filename="ludo_board.png")
         embed = game_view.build_embed(status_text="🎉 **Match Started!** May the best tactician reach Center Home!")
 
-        if self.message:
+        if interaction:
+            if not interaction.response.is_done():
+                try:
+                    await interaction.response.edit_message(content=None, embed=embed, view=game_view, attachments=[file])
+                except Exception as ex:
+                    print(f"[Ludo] Failed direct edit_message in launch_game: {ex}")
+            else:
+                try:
+                    msg = await interaction.edit_original_response(content=None, embed=embed, view=game_view, attachments=[file])
+                    if msg:
+                        game_view.message = msg
+                except Exception as ex:
+                    print(f"[Ludo] Failed edit_original_response in launch_game: {ex}")
+        elif self.message:
             try:
                 await self.message.edit(content=None, embed=embed, view=game_view, attachments=[file])
             except Exception as e:
@@ -1622,7 +1651,6 @@ class Ludo(commands.Cog, name="Ludo"):
                 if bet <= 0:
                     return await interaction.response.send_message("❌ Wager amount must be greater than 0!", ephemeral=True)
                 if gid:
-                    from core.database import db
                     cfg = getattr(db, "economy_config", {}).get(gid, {})
                     if cfg.get("paused", False):
                         return await interaction.response.send_message("⏸️ The server economy is currently paused. Please wait until staff resumes it!", ephemeral=True)
