@@ -447,17 +447,21 @@ class TTSCog(commands.Cog, name="TTS"):
         if not author_member:
             return
 
-        # Channel & Participant Check
+        # Channel & Participant Check:
+        # Strictly ONLY read from the active VC's built-in text chat (or the explicitly configured channel).
         allowed_cid = cfg.get("channel_id")
         if allowed_cid:
             if str(message.channel.id) != str(allowed_cid):
                 return
         else:
-            # By default: read from the active VC's own text chat OR messages from anyone in Friday's VC
-            is_vc_chat = (message.channel.id == vc.channel.id)
-            author_in_vc = bool(getattr(getattr(author_member, "voice", None), "channel", None) == vc.channel)
-            if not is_vc_chat and not author_in_vc:
+            # Strictly ONLY read messages sent directly in Friday's active Voice Channel text chat
+            if message.channel.id != vc.channel.id:
                 return
+
+        # Ensure the author is currently connected to Friday's active Voice Channel
+        author_vc = getattr(getattr(author_member, "voice", None), "channel", None)
+        if not author_vc or author_vc.id != vc.channel.id:
+            return
 
         # Check if Music is playing: completely shut down / suppress TTS
         if cfg.get("auto_mute_music", True) and self.is_music_playing(message.guild):
@@ -563,6 +567,8 @@ class TTSCog(commands.Cog, name="TTS"):
         cfg["enabled"] = True
         if channel:
             cfg["channel_id"] = str(channel.id)
+        else:
+            cfg["channel_id"] = None
         if voice and voice in TTS_VOICE_PRESETS:
             cfg["voice_preset"] = voice
 
@@ -717,7 +723,7 @@ class TTSCog(commands.Cog, name="TTS"):
         preset = TTS_VOICE_PRESETS.get(cfg.get("voice_preset", DEFAULT_PRESET_KEY), TTS_VOICE_PRESETS[DEFAULT_PRESET_KEY])
         vc_name = vc.channel.name if vc and vc.is_connected() else "Not connected"
         status_badge = "🟢 Enabled" if cfg.get("enabled", False) else "🔴 Disabled"
-        chan_text = f"<#{cfg['channel_id']}>" if cfg.get("channel_id") else "Any Voice Text Chat"
+        chan_text = f"<#{cfg['channel_id']}>" if cfg.get("channel_id") else "Active Voice Channel Text Chat Only"
 
         desc = (
             f"### Friday Text-to-Speech Engine\n\n"
@@ -758,6 +764,7 @@ class TTSCog(commands.Cog, name="TTS"):
             await target_vc.connect()
         cfg = self.get_guild_cfg(gid)
         cfg["enabled"] = True
+        cfg["channel_id"] = None
         db.save_data()
         self.ensure_worker(ctx.guild.id)
         preset = TTS_VOICE_PRESETS.get(cfg.get("voice_preset", DEFAULT_PRESET_KEY), TTS_VOICE_PRESETS[DEFAULT_PRESET_KEY])
