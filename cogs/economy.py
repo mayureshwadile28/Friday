@@ -263,6 +263,43 @@ class EconomyDB:
             ).fetchone()
             return row["wallet"] if row else 0
 
+    def deduct_total(self, gid: str, uid: str, amount: int) -> tuple:
+        """
+        Deduct `amount` from wallet first, then bank as fallback.
+        Returns (actual_deducted, new_wallet, new_bank).
+        Guarantees the deduction is as large as possible (up to total net worth).
+        Never silently loses a fine — always drains wallet then bank.
+        """
+        with self.get_conn() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT wallet, bank FROM economy_users WHERE guild_id=? AND user_id=?",
+                (gid, uid)
+            ).fetchone()
+            if not row:
+                return (0, 0, 0)
+            wallet = row["wallet"]
+            bank   = row["bank"]
+
+            from_wallet = min(amount, wallet)
+            remaining   = amount - from_wallet
+            from_bank   = min(remaining, bank)
+            actual      = from_wallet + from_bank
+
+            new_wallet = wallet - from_wallet
+            new_bank   = bank   - from_bank
+
+            conn.execute(
+                "UPDATE economy_users SET wallet=?, bank=? WHERE guild_id=? AND user_id=?",
+                (new_wallet, new_bank, gid, uid)
+            )
+            if actual > 0:
+                conn.execute(
+                    "UPDATE economy_users SET net_spent=net_spent+? WHERE guild_id=? AND user_id=?",
+                    (actual, gid, uid)
+                )
+            return (actual, new_wallet, new_bank)
+
     def delta_bank(self, gid: str, uid: str, delta: int, max_cap: Optional[int] = None) -> int:
         """Atomically modifies bank balance, auto-expanding bank_max if needed so vault capacity never displays over-capacity."""
         with self.get_conn() as conn:
@@ -1384,8 +1421,8 @@ class Economy(commands.Cog):
                 return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
             
             embed = discord.Embed(title="🏦 Bank Deposit Successful", color=discord.Color.green(), description=msg)
-            embed.add_field(name="Wallet Cash", value=f"`{new_w:,}` {cur_emoji}", inline=True)
-            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,}` {cur_emoji}", inline=True)
+            embed.add_field(name="Wallet Cash", value=f"{new_w:,} {cur_emoji}", inline=True)
+            embed.add_field(name="Vault Bank", value=f"{new_b:,} / {profile['bank_max']:,} {cur_emoji}", inline=True)
             await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="withdraw", description="Withdraw coins from your bank vault into your wallet.")
@@ -1417,8 +1454,8 @@ class Economy(commands.Cog):
                 return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
             
             embed = discord.Embed(title="💵 Bank Withdrawal Complete", color=discord.Color.teal(), description=msg)
-            embed.add_field(name="Wallet Cash", value=f"`{new_w:,}` {cur_emoji}", inline=True)
-            embed.add_field(name="Vault Bank", value=f"`{new_b:,} / {profile['bank_max']:,}` {cur_emoji}", inline=True)
+            embed.add_field(name="Wallet Cash", value=f"{new_w:,} {cur_emoji}", inline=True)
+            embed.add_field(name="Vault Bank", value=f"{new_b:,} / {profile['bank_max']:,} {cur_emoji}", inline=True)
             await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="bank_upgrade", description="Expand your bank vault capacity by burning wallet cash.")
@@ -1576,15 +1613,16 @@ class Economy(commands.Cog):
                 embed.set_footer(text=f"Wallet: {new_w:,} coins • Hide it in the bank before someone robs you!")
             else:
                 fine = int(cfg.get("crime_fail_fine", 200))
-                new_w = self.db.delta_wallet(gid, uid, -fine)
-                self.db.log_tx(gid, uid, "crime_fail", -fine, new_w)
-                
+                actual_fine, new_w, new_b = self.db.deduct_total(gid, uid, fine)
+                self.db.log_tx(gid, uid, "crime_fail", -actual_fine, new_w)
+
+                bank_note = "\n🏦 *(Fine pulled from your bank vault since wallet was insufficient!)*" if new_w == 0 and actual_fine > 0 else ""
                 embed = discord.Embed(
                     title="🚔 Busted by Police!",
                     color=discord.Color.red(),
-                    description=f"{random.choice(CRIME_FAIL_PROMPTS)}\n\nYou paid a police fine of **-{fine:,} {cur_emoji} {cur_name}**!"
+                    description=f"{random.choice(CRIME_FAIL_PROMPTS)}\n\nYou paid a police fine of **-{actual_fine:,} {cur_emoji} {cur_name}**!{bank_note}"
                 )
-                embed.set_footer(text=f"Wallet: {new_w:,} coins • Practice your skills next time.")
+                embed.set_footer(text=f"Wallet: {new_w:,} • Vault: {new_b:,} • Practice your skills next time.")
                 
             await interaction.response.send_message(embed=embed)
 
@@ -1660,11 +1698,10 @@ class Economy(commands.Cog):
                 # 1. Padlock Defense Check
                 if self.db.consume_item(gid, t_id, "padlock", 1):
                     fine = int(cfg.get("padlock_fine", 250))
-                    fine = min(fine, robber["wallet"])
-                    r_w = self.db.delta_wallet(gid, uid, -fine)
-                    v_w = self.db.delta_wallet(gid, t_id, fine)
-                    self.db.log_tx(gid, uid, "rob_padlock_fine", -fine, r_w, related_uid=t_id)
-                    self.db.log_tx(gid, t_id, "rob_padlock_received", fine, v_w, related_uid=uid)
+                    actual_fine, r_w, r_new_b = self.db.deduct_total(gid, uid, fine)
+                    v_w = self.db.delta_wallet(gid, t_id, actual_fine)
+                    self.db.log_tx(gid, uid, "rob_padlock_fine", -actual_fine, r_w, related_uid=t_id)
+                    self.db.log_tx(gid, t_id, "rob_padlock_received", actual_fine, v_w, related_uid=uid)
 
                     embed = discord.Embed(
                         title="🔒 Robbery Failed — Padlock Shattered!",
@@ -1672,7 +1709,7 @@ class Economy(commands.Cog):
                         description=(
                             f"**{robber_member.mention}** tried to rob **{target_member.mention}**, but triggered their heavy **Padlock**!\n\n"
                             f"💥 The padlock shattered upon impact.\n"
-                            f"💸 The robber was fined **{fine:,}** {cur_emoji} {cur_name} paid directly to the victim!"
+                            f"💸 The robber was fined **{actual_fine:,}** {cur_emoji} {cur_name} paid directly to the victim!"
                         )
                     )
                     return await send_fn(embed=embed)
@@ -1683,18 +1720,19 @@ class Economy(commands.Cog):
                     self.db.consume_item(gid, t_id, "landmine", 1)
                     mult = int(cfg.get("landmine_fine_multiplier", 2))
                     fail_pct = float(cfg.get("rob_fail_fine_pct", 0.20))
-                    total_fine = max(100, int(robber["wallet"] * fail_pct * mult))
-                    total_fine = min(total_fine, robber["wallet"])
+                    r_total = robber["wallet"] + robber["bank"]
+                    total_fine = max(100, int(r_total * fail_pct * mult))
+                    total_fine = min(total_fine, r_total)
 
-                    r_w = self.db.delta_wallet(gid, uid, -total_fine)
-                    self.db.log_tx(gid, uid, "rob_landmine_fine", -total_fine, r_w, related_uid=t_id)
+                    actual_fine, r_w, r_new_b = self.db.deduct_total(gid, uid, total_fine)
+                    self.db.log_tx(gid, uid, "rob_landmine_fine", -actual_fine, r_w, related_uid=t_id)
                     embed = discord.Embed(
                         title="💣 BOOM! Landmine Detonated!",
                         color=discord.Color.dark_red(),
                         description=(
                             f"**{robber_member.mention}** stepped directly on **{target_member.mention}**'s hidden **Landmine**!\n\n"
                             f"💥 The blast destroyed the heist gear!\n"
-                            f"💸 Medical & hazard fines cost the robber **{total_fine:,}** {cur_emoji} {cur_name}!"
+                            f"💸 Medical & hazard fines cost the robber **{actual_fine:,}** {cur_emoji} {cur_name}!"
                         )
                     )
                     return await send_fn(embed=embed)
@@ -1727,24 +1765,27 @@ class Economy(commands.Cog):
                     await send_fn(embed=embed)
                 else:
                     fail_pct = float(cfg.get("rob_fail_fine_pct", 0.20))
-                    r_curr = self.db.get_user(gid, uid)["wallet"]
-                    fine = max(50, int(r_curr * fail_pct))
-                    fine = min(fine, r_curr)
-                    to_victim = fine // 2
-                    burned = fine - to_victim
+                    r_profile = self.db.get_user(gid, uid)
+                    r_total_wealth = r_profile["wallet"] + r_profile["bank"]
+                    # Base fine on total wealth (wallet+bank) so zero-wallet players can't escape
+                    fine = max(50, int(r_total_wealth * fail_pct))
+                    fine = min(fine, r_total_wealth)
 
-                    r_w = self.db.delta_wallet(gid, uid, -fine)
+                    actual_fine, r_w, r_new_b = self.db.deduct_total(gid, uid, fine)
+                    to_victim = actual_fine // 2
+                    burned = actual_fine - to_victim
                     v_w = self.db.delta_wallet(gid, t_id, to_victim)
 
-                    self.db.log_tx(gid, uid, "rob_failed", -fine, r_w, related_uid=t_id, note=f"Burned: {burned}")
+                    self.db.log_tx(gid, uid, "rob_failed", -actual_fine, r_w, related_uid=t_id, note=f"Burned: {burned}, BankTapped: {r_new_b}")
                     self.db.log_tx(gid, t_id, "rob_compensation", to_victim, v_w, related_uid=uid)
 
+                    bank_note = "\n🏦 *(Fine pulled from bank vault since wallet was empty!)*" if r_w == 0 and actual_fine > 0 else ""
                     embed = discord.Embed(
                         title="🚔 Heist Busted! Caught Red-Handed",
                         color=discord.Color.red(),
                         description=(
                             f"**{robber_member.mention}** botched the robbery on **{target_member.mention}**!\n\n"
-                            f"💸 Fine Assessed: **{fine:,}** {cur_emoji} {cur_name}\n"
+                            f"💸 Fine Assessed: **{actual_fine:,}** {cur_emoji} {cur_name}{bank_note}\n"
                             f"• **{to_victim:,}** paid directly to victim as restitution.\n"
                             f"• **{burned:,}** permanently burned by Friday as server fine."
                         )
