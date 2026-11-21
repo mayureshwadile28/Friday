@@ -71746,14 +71746,25 @@ async function loadEconomySettings() {
             setVal('eco_minigame_max_bet', cfg.minigame_max_bet ?? 50000);
 
             // Shop items
-            currentShopItems = cfg.shop_items || {
+            const defaultShop = {
                 padlock: { name: "Padlock", emoji: "🔒", price: 750, enabled: true, desc: "Blocks next /rob attempt, then shatters." },
                 landmine: { name: "Landmine", emoji: "💣", price: 1200, enabled: true, desc: "50% chance to detonate, doubling robber fine." },
-                xp_booster: { name: "2x XP Booster", emoji: "⚡", price: 3000, enabled: true, desc: "Grants 2x leveling XP for 2 hours." },
+                xp_booster: { name: "2x XP Booster", emoji: "⚡", price: 3000, duration_hours: 2, enabled: true, desc: "Grants 2x leveling XP for 2 hours." },
+                coin_booster: { name: "2x Coin Booster", emoji: "🪙", price: 5000, duration_hours: 2, enabled: true, desc: "Grants 2x coin earnings in chat and active voice channels for 2 hours." },
                 bank_expansion: { name: "Bank Expansion", emoji: "🏦", price: 2500, enabled: true, desc: "Permanently adds +5,000 vault capacity." },
-                custom_role_color: { name: "Custom Role Color", emoji: "🎨", price: 15000, enabled: true, desc: "Unlocks cosmetic role color." },
+                custom_role_color: { name: "Custom Role Color", emoji: "🎨", price: 15000, enabled: true, requires_ticket: true, desc: "Opens staff delivery ticket to grant cosmetic color role." },
                 vip_badge: { name: "VIP Badge", emoji: "👑", price: 50000, enabled: true, desc: "Displays VIP crown on balance." }
             };
+            currentShopItems = Object.assign({}, defaultShop, cfg.shop_items || {});
+            if (currentShopItems.custom_role_color && currentShopItems.custom_role_color.requires_ticket === undefined) {
+                currentShopItems.custom_role_color.requires_ticket = true;
+            }
+            if (!currentShopItems.coin_booster) {
+                currentShopItems.coin_booster = defaultShop.coin_booster;
+            }
+            if (currentShopItems.xp_booster && !currentShopItems.xp_booster.duration_hours) {
+                currentShopItems.xp_booster.duration_hours = 2;
+            }
             renderShopItemsTable(currentShopItems);
         }
 
@@ -71943,7 +71954,7 @@ function renderShopItemsTable(items) {
         return;
     }
 
-    const builtInKeys = ['padlock', 'landmine', 'xp_booster', 'bank_expansion', 'custom_role_color', 'vip_badge'];
+    const builtInKeys = ['padlock', 'landmine', 'xp_booster', 'coin_booster', 'bank_expansion', 'custom_role_color', 'vip_badge'];
 
     itemEntries.forEach(([itemId, it]) => {
         const tr = document.createElement('tr');
@@ -71959,7 +71970,7 @@ function renderShopItemsTable(items) {
         const roleBadge = isRole 
             ? `<span style="background: rgba(168, 85, 247, 0.15); color: #c084fc; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;">ROLE</span>`
             : '';
-        const isTicket = it.requires_ticket === true;
+        const isTicket = (it.requires_ticket === true || itemId === 'custom_role_color');
         const ticketBadge = isTicket 
             ? `<span style="background: rgba(234, 179, 8, 0.15); color: #facc15; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-left: 6px;" title="Generates Private Delivery Ticket">🎫 TICKET</span>`
             : '';
@@ -71967,6 +71978,38 @@ function renderShopItemsTable(items) {
         const actionCell = isBuiltIn
             ? `<span style="color: var(--text-muted); font-size: 11px;">Default</span>`
             : `<button type="button" class="btn btn-secondary" onclick="deleteShopItem('${escapeHtml(itemId)}')" style="padding: 3px 8px; font-size: 11px; color: #f87171; border-color: rgba(239, 68, 68, 0.3); border-radius: 4px;" title="Delete this custom item">🗑️ Delete</button>`;
+
+        const hasDuration = (itemId === 'xp_booster' || itemId === 'coin_booster' || it.duration_hours !== undefined);
+        const durHours = (it.duration_hours !== undefined && it.duration_hours !== null) ? it.duration_hours : 2;
+        const durationCell = hasDuration 
+            ? `<div style="display: flex; align-items: center; gap: 4px;">
+                <input class="text-input" id="ecoItemDuration_${itemId}" type="number" min="0.5" step="0.5" value="${durHours}" style="width: 65px; padding: 6px 8px; font-size: 12px;"/>
+                <span style="font-size: 11px; color: var(--text-muted);">hrs</span>
+               </div>`
+            : `<span style="color: var(--text-muted); font-size: 11px;">Permanent</span>`;
+
+        let defaultDesc = it.desc;
+        if (!defaultDesc) {
+            if (itemId === 'xp_booster') defaultDesc = `Grants 2x leveling XP for ${durHours} hours.`;
+            else if (itemId === 'coin_booster') defaultDesc = `Grants 2x coin earnings in chat and active voice channels for ${durHours} hours.`;
+            else if (itemId === 'custom_role_color') defaultDesc = `Opens staff delivery ticket to grant cosmetic color role.`;
+            else if (isRole) defaultDesc = 'Grants Discord role upon purchase.';
+            else defaultDesc = 'Store item.';
+        }
+
+        let effectContent = `
+            <div id="ecoItemDesc_${itemId}" style="font-size: 12px; color: var(--text-muted); margin-bottom: 4px;">
+                ${escapeHtml(defaultDesc)}
+            </div>
+        `;
+        if (itemId === 'custom_role_color' || !isBuiltIn || it.requires_ticket !== undefined) {
+            effectContent += `
+                <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-size: 11px; color: #facc15;">
+                    <input type="checkbox" id="ecoItemTicket_${itemId}" ${(it.requires_ticket !== false || itemId === 'custom_role_color') ? 'checked' : ''}/>
+                    <span>🎫 Requires Delivery Ticket</span>
+                </label>
+            `;
+        }
 
         tr.innerHTML = `
             <td style="padding: 12px 10px;">
@@ -71992,19 +72035,36 @@ function renderShopItemsTable(items) {
                 <input class="text-input" id="ecoItemPrice_${itemId}" type="number" value="${it.price ?? 0}" style="width: 120px; padding: 6px 10px; font-size: 12.5px;"/>
             </td>
             <td style="padding: 12px 10px;">
+                ${durationCell}
+            </td>
+            <td style="padding: 12px 10px;">
                 <label class="switch">
                     <input id="ecoItemEnabled_${itemId}" type="checkbox" ${it.enabled !== false ? 'checked' : ''}/>
                     <span class="slider"></span>
                 </label>
             </td>
-            <td style="padding: 12px 10px; font-size: 12px; color: var(--text-muted); max-width: 260px;">
-                ${escapeHtml(it.desc || (isRole ? 'Grants Discord role upon purchase.' : ''))}
+            <td style="padding: 12px 10px; max-width: 280px;">
+                ${effectContent}
             </td>
             <td style="padding: 12px 10px; text-align: center;">
                 ${actionCell}
             </td>
         `;
         tbody.appendChild(tr);
+
+        // Bind duration input live description sync
+        const durInput = tr.querySelector(`#ecoItemDuration_${itemId}`);
+        const descDiv = tr.querySelector(`#ecoItemDesc_${itemId}`);
+        if (durInput && descDiv) {
+            durInput.addEventListener('input', () => {
+                const h = durInput.value || '2';
+                if (itemId === 'xp_booster') {
+                    descDiv.textContent = `Grants 2x leveling XP for ${h} hours.`;
+                } else if (itemId === 'coin_booster') {
+                    descDiv.textContent = `Grants 2x coin earnings in chat and active voice channels for ${h} hours.`;
+                }
+            });
+        }
 
         // Bind emoji picker button for this shop item
         const itemBtn = tr.querySelector(`#ecoItemEmojiBtn_${itemId}`);
@@ -72446,13 +72506,33 @@ function initEconomyModule() {
                 const priceEl = document.getElementById(`ecoItemPrice_${iid}`);
                 const enEl = document.getElementById(`ecoItemEnabled_${iid}`);
                 const emInput = document.getElementById(`ecoItemEmojiInput_${iid}`);
-                
+                const durEl = document.getElementById(`ecoItemDuration_${iid}`);
+                const ticketEl = document.getElementById(`ecoItemTicket_${iid}`);
+
+                const durVal = durEl ? (parseFloat(durEl.value) || 2) : currentShopItems[iid].duration_hours;
+                let reqTicket = ticketEl ? ticketEl.checked : currentShopItems[iid].requires_ticket;
+                if (iid === 'custom_role_color' && (reqTicket === undefined || reqTicket === null)) {
+                    reqTicket = true;
+                }
+
+                let descVal = currentShopItems[iid].desc;
+                if (iid === 'xp_booster') {
+                    descVal = `Grants 2x leveling XP for ${durVal} hours.`;
+                } else if (iid === 'coin_booster') {
+                    descVal = `Grants 2x coin earnings in chat and active voice channels for ${durVal} hours.`;
+                } else if (iid === 'custom_role_color') {
+                    descVal = `Opens staff delivery ticket to grant cosmetic color role.`;
+                }
+
                 updatedShop[iid] = {
                     ...currentShopItems[iid],
                     name: nameEl ? nameEl.value : currentShopItems[iid].name,
                     price: priceEl ? parseInt(priceEl.value) || 0 : currentShopItems[iid].price,
                     enabled: enEl ? enEl.checked : true,
-                    emoji: emInput ? emInput.value : (currentShopItems[iid].emoji || '📦')
+                    emoji: emInput ? emInput.value : (currentShopItems[iid].emoji || '📦'),
+                    duration_hours: durVal,
+                    requires_ticket: reqTicket,
+                    desc: descVal
                 };
             });
 

@@ -75,7 +75,15 @@ DEFAULT_SHOP_ITEMS = {
         "price": 3000,
         "type": "consumable",
         "duration_hours": 2,
-        "desc": "Hooks into Friday's leveling system to grant 2x Chat XP for 2 hours."
+        "desc": "Hooks into Friday's leveling system to grant 2x Chat XP."
+    },
+    "coin_booster": {
+        "name": "2x Coin Booster",
+        "emoji": "🪙",
+        "price": 5000,
+        "type": "consumable",
+        "duration_hours": 2,
+        "desc": "Grants 2x Coin earnings from Chat messages and Voice Channels."
     },
     "bank_expansion": {
         "name": "Bank Expansion Pass",
@@ -90,7 +98,8 @@ DEFAULT_SHOP_ITEMS = {
         "emoji": "🎨",
         "price": 15000,
         "type": "cosmetic",
-        "desc": "Grants access to a custom cosmetic color role on the server."
+        "requires_ticket": True,
+        "desc": "Opens a private delivery ticket with staff to claim your custom color role."
     },
     "vip_badge": {
         "name": "VIP Badge",
@@ -565,7 +574,16 @@ class EconomyDB:
         """Returns list of active shop item dictionaries for a guild."""
         eco_cfg = getattr(db, "economy_config", {})
         cfg = eco_cfg.get(str(gid), {})
-        items = cfg.get("shop_items", DEFAULT_SHOP_ITEMS)
+        saved = cfg.get("shop_items", {})
+        items = dict(DEFAULT_SHOP_ITEMS)
+        if isinstance(saved, dict):
+            for k, v in saved.items():
+                if k in items and isinstance(v, dict):
+                    merged = dict(items[k])
+                    merged.update(v)
+                    items[k] = merged
+                else:
+                    items[k] = v
         catalog = []
         for item_id, it in items.items():
             if it.get("enabled", True):
@@ -969,22 +987,39 @@ class ShopSelect(discord.ui.Select):
         cfg = self.cog.get_config(self.gid)
         cur = cfg.get("currency_name", "Coins")
         cur_e = cfg.get("currency_emoji", "🪙")
-        items = cfg.get("shop_items", DEFAULT_SHOP_ITEMS)
+        saved = cfg.get("shop_items", {})
+        items = dict(DEFAULT_SHOP_ITEMS)
+        if isinstance(saved, dict):
+            for k, v in saved.items():
+                if k in items and isinstance(v, dict):
+                    merged = dict(items[k])
+                    merged.update(v)
+                    items[k] = merged
+                else:
+                    items[k] = v
         
         embed = discord.Embed(color=discord.Color.teal())
         
         if cat == "cat_defense":
             embed.title = "🛡️ Shop — Defense & Utility Consumables"
-            embed.description = f"Protect your hard-earned wallet coins from thieves and rivals.\nBuy with `/buy <item_id>`\n"
-            for k in ["padlock", "landmine", "xp_booster"]:
+            embed.description = f"Protect your hard-earned wallet coins from thieves and rivals, or boost your earnings.\nBuy with `/buy <item_id>`\n"
+            for k in ["padlock", "landmine", "xp_booster", "coin_booster"]:
                 it = items.get(k, DEFAULT_SHOP_ITEMS.get(k))
                 if not it or not it.get("enabled", True):
                     continue
                 p = it.get("price", 0)
                 em = it.get("emoji", "📦")
+                desc = it.get("desc", "")
+                dur = it.get("duration_hours")
+                if dur:
+                    dur_str = f"{int(dur)} hours" if float(dur).is_integer() else f"{dur} hours"
+                    if k == "xp_booster":
+                        desc = f"Hooks into Friday's leveling system to grant 2x Chat XP for **{dur_str}**."
+                    elif k == "coin_booster":
+                        desc = f"Grants 2x Coin earnings from Chat and Voice Channels for **{dur_str}**."
                 embed.add_field(
                     name=f"{em} {it.get('name')} (`{k}`)",
-                    value=f"**Price:** `{p:,}` {cur_e} {cur}\n{it.get('desc', '')}",
+                    value=f"**Price:** `{p:,}` {cur_e} {cur}\n{desc}",
                     inline=False
                 )
         elif cat == "cat_upgrades":
@@ -996,9 +1031,12 @@ class ShopSelect(discord.ui.Select):
                     continue
                 p = it.get("price", 0)
                 em = it.get("emoji", "⭐")
+                desc = it.get("desc", "")
+                if k == "custom_role_color":
+                    desc += "\n🎫 *(Generates a private staff delivery ticket on purchase)*"
                 embed.add_field(
                     name=f"{em} {it.get('name')} (`{k}`)",
-                    value=f"**Price:** `{p:,}` {cur_e} {cur}\n{it.get('desc', '')}",
+                    value=f"**Price:** `{p:,}` {cur_e} {cur}\n{desc}",
                     inline=False
                 )
         elif cat == "cat_custom":
@@ -1006,7 +1044,7 @@ class ShopSelect(discord.ui.Select):
             embed.description = f"Exclusive custom roles and specialty server items.\nBuy with `/buy <item_id>`\n\n"
             custom_count = 0
             for k, it in items.items():
-                if k in ("padlock", "landmine", "xp_booster", "bank_expansion", "custom_role_color", "vip_badge"):
+                if k in ("padlock", "landmine", "xp_booster", "coin_booster", "bank_expansion", "custom_role_color", "vip_badge"):
                     continue
                 if not it.get("enabled", True):
                     continue
@@ -1066,6 +1104,33 @@ async def shop_item_autocomplete(interaction: discord.Interaction, current: str)
             label = f"{icon} {name} ({price:,} coins)"
             if current.lower() in item_id.lower() or current.lower() in name.lower():
                 choices.append(app_commands.Choice(name=label[:100], value=item_id))
+    return choices[:25]
+
+
+async def use_item_autocomplete(interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+    """Autocomplete for /use command showing consumable/usable items owned by the member."""
+    gid = str(interaction.guild_id) if interaction.guild_id else ""
+    uid = str(interaction.user.id) if interaction.user else ""
+    cog = interaction.client.get_cog("Economy")
+    if not cog:
+        return []
+    items = cog.db.get_inventory(gid, uid)
+    cfg = cog.get_config(gid)
+    shop_items = cfg.get("shop_items", DEFAULT_SHOP_ITEMS)
+    choices = []
+    for it in items:
+        iid = it["item_id"]
+        qty = it["quantity"]
+        if qty <= 0:
+            continue
+        meta = shop_items.get(iid, DEFAULT_SHOP_ITEMS.get(iid, {}))
+        name = meta.get("name", iid.title())
+        em = meta.get("emoji", "📦")
+        if not em or "<:" in em or "<a:" in em:
+            em = "📦"
+        label = f"{em} {name} (x{qty})"
+        if current.lower() in iid.lower() or current.lower() in name.lower():
+            choices.append(app_commands.Choice(name=label[:100], value=iid))
     return choices[:25]
 
 
@@ -1172,8 +1237,22 @@ class Economy(commands.Cog):
                 for m in eligible:
                     uid = str(m.id)
                     self.db.get_or_init_user(gid, uid)
-                    new_w = self.db.delta_wallet(gid, uid, reward)
-                    self.db.log_tx(gid, uid, "vc_reward", reward, new_w, note=f"VC: {vc.name}")
+                    user_reward = reward
+                    is_boosted = False
+                    try:
+                        c_booster = self.db.get_item(gid, uid, "coin_booster")
+                        if c_booster and c_booster["quantity"] > 0:
+                            b_exp = c_booster.get("expires_at", 0)
+                            if b_exp > time.time():
+                                user_reward *= 2
+                                is_boosted = True
+                            elif b_exp != 0 and b_exp <= time.time():
+                                self.db.consume_item(gid, uid, "coin_booster", 1)
+                    except Exception:
+                        pass
+                    new_w = self.db.delta_wallet(gid, uid, user_reward)
+                    note = f"VC: {vc.name} (2x Booster Active)" if is_boosted else f"VC: {vc.name}"
+                    self.db.log_tx(gid, uid, "vc_reward", user_reward, new_w, note=note)
 
     async def spawn_coin_drop(self, guild: discord.Guild, drop_amt: Optional[int] = None, channel: Optional[discord.TextChannel] = None) -> Optional[discord.Message]:
         gid = str(guild.id)
@@ -1264,9 +1343,22 @@ class Economy(commands.Cog):
             min_c = int(cfg.get("passive_min", 5))
             max_c = int(cfg.get("passive_max", 15))
             earned = random.randint(min_c, max_c)
+            is_boosted = False
+            try:
+                c_booster = self.db.get_item(gid, uid, "coin_booster")
+                if c_booster and c_booster["quantity"] > 0:
+                    b_exp = c_booster.get("expires_at", 0)
+                    if b_exp > time.time():
+                        earned *= 2
+                        is_boosted = True
+                    elif b_exp != 0 and b_exp <= time.time():
+                        self.db.consume_item(gid, uid, "coin_booster", 1)
+            except Exception:
+                pass
             self.db.get_or_init_user(gid, uid)
             new_w = self.db.delta_wallet(gid, uid, earned)
-            self.db.log_tx(gid, uid, "chat_drop", earned, new_w, note="Passive text drop")
+            note = "Passive text drop (2x Booster Active)" if is_boosted else "Passive text drop"
+            self.db.log_tx(gid, uid, "chat_drop", earned, new_w, note=note)
         
         # 1% chance of global Coin Drop button in configured drop channel
         drop_chance = float(cfg.get("coin_drop_chance", 0.01))
@@ -1323,6 +1415,12 @@ class Economy(commands.Cog):
                     buffs.append(f"⚡ **2x XP Booster:** Active ({mins}m remaining)")
                 elif exp == 0:
                     buffs.append(f"⚡ **2x XP Booster:** In Inventory (Use via `/use`)")
+            elif iid == "coin_booster":
+                if exp > time.time():
+                    mins = max(1, int((exp - time.time()) / 60))
+                    buffs.append(f"🪙 **2x Coin Booster:** Active ({mins}m remaining)")
+                elif exp == 0:
+                    buffs.append(f"🪙 **2x Coin Booster:** In Inventory (Use via `/use`)")
             elif iid == "vip_badge":
                 has_vip = True
                 
@@ -1880,6 +1978,118 @@ class Economy(commands.Cog):
         embed.set_footer(text=f"Server Currency: {cur_name}")
         await interaction.response.send_message(embed=embed, view=view)
 
+    async def _create_delivery_ticket(
+        self,
+        guild: discord.Guild,
+        member: discord.Member,
+        item_id: str,
+        item_cfg: dict,
+        total_cost: int,
+        role: Optional[discord.Role] = None,
+        role_msg: str = "",
+        custom_instructions: Optional[str] = None
+    ) -> Tuple[Optional[discord.TextChannel], str, Optional[str]]:
+        """Helper to create private order delivery channel and embed for staff fulfillment."""
+        gid = str(guild.id)
+        uid = str(member.id)
+        cfg = self.get_config(gid)
+        cur_name = cfg.get("currency_name", "Coins")
+        cur_emoji = cfg.get("currency_emoji", "🪙")
+
+        def _safe_int(v):
+            try:
+                return int(v) if v is not None and str(v).strip() != "" else None
+            except (ValueError, TypeError):
+                return None
+
+        order_num = int(cfg.get("order_counter", 0)) + 1
+        cfg["order_counter"] = order_num
+        db.save_data()
+        order_code = f"ORD-{order_num:04d}"
+
+        target_cat_id = (
+            _safe_int(item_cfg.get("ticket_category_id")) or
+            _safe_int(cfg.get("delivery_ticket_category_id")) or
+            _safe_int(getattr(db, "tickets", {}).get(gid, {}).get("category_id"))
+        )
+        category = guild.get_channel(target_cat_id) if target_cat_id else None
+        if category and not isinstance(category, discord.CategoryChannel):
+            category = None
+
+        staff_role_id = _safe_int(item_cfg.get("ticket_role_id"))
+        staff_role = guild.get_role(staff_role_id) if staff_role_id else None
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            member: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+                embed_links=True
+            ),
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                manage_channels=True,
+                manage_messages=True,
+                read_message_history=True,
+                embed_links=True
+            )
+        }
+        if staff_role:
+            overwrites[staff_role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_messages=True,
+                attach_files=True,
+                embed_links=True
+            )
+
+        channel_name = f"order-{item_id[:10]}-{order_num:03d}".lower().replace("_", "-")
+        try:
+            ticket_channel = await guild.create_text_channel(
+                name=channel_name,
+                category=category,
+                overwrites=overwrites,
+                reason=f"Shop Order #{order_code} for {member}"
+            )
+        except Exception as e:
+            return None, order_code, str(e)
+
+        view = ShopDeliveryTicketView(
+            self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
+            total_cost, cur_name, cur_emoji, str(staff_role_id) if staff_role_id else None
+        )
+
+        staff_ping = staff_role.mention if staff_role else "Staff Team"
+        instructions = custom_instructions or "Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel."
+        if item_id == "custom_role_color":
+            instructions = "Ask the member for their preferred hex color and role name, create or assign their custom color role, and ensure proper hierarchy. Once configured, click **Item Delivered / Sold** below to log receipt and close this channel."
+
+        ticket_embed = discord.Embed(
+            title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
+            color=discord.Color.gold(),
+            description=(
+                f"Hey {member.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
+                f"{staff_ping} will assist you here to deliver and configure your order!{role_msg}\n\n"
+                f"📋 **Order Reference:** `#{order_code}`\n"
+                f"💰 **Total Paid:** `{total_cost:,}` {cur_emoji} {cur_name}\n"
+                f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
+                f"📌 **Status:** `⏳ Pending Delivery`"
+            )
+        )
+        ticket_embed.add_field(
+            name="🛠️ Staff Instructions",
+            value=instructions,
+            inline=False
+        )
+        ticket_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
+
+        await ticket_channel.send(content=f"{member.mention} {staff_ping}", embed=ticket_embed, view=view)
+        return ticket_channel, order_code, None
+
     async def _execute_shop_purchase(
         self,
         send_response_fn,
@@ -1900,12 +2110,6 @@ class Economy(commands.Cog):
         cur_name = cfg.get("currency_name", "Coins")
         cur_emoji = cfg.get("currency_emoji", "🪙")
 
-        def _safe_int(v):
-            try:
-                return int(v) if v is not None and str(v).strip() != "" else None
-            except (ValueError, TypeError):
-                return None
-
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
             if profile["wallet"] < total_cost:
@@ -1922,6 +2126,13 @@ class Economy(commands.Cog):
                     content=f"❌ You can only hold a maximum of **{max_hold}** `{item_cfg.get('name', item_id)}` at a time (You currently hold {cur_qty}).",
                     ephemeral=True
                 )
+
+            requires_ticket = (
+                requires_ticket
+                or bool(item_cfg.get("requires_ticket"))
+                or str(item_cfg.get("requires_ticket", "")).lower() in ("true", "1")
+                or item_id == "custom_role_color"
+            )
 
             # 1. Delivery Ticket Required (Services, custom requests, or roles with custom onboarding)
             if requires_ticket:
@@ -1940,94 +2151,24 @@ class Economy(commands.Cog):
                 new_w = self.db.delta_wallet(gid, uid, -total_cost)
                 self.db.add_item(gid, uid, item_id, quantity)
 
-                order_num = int(cfg.get("order_counter", 0)) + 1
-                cfg["order_counter"] = order_num
-                db.save_data()
-                order_code = f"ORD-{order_num:04d}"
-                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
-
-                # Find ticket category: Item Override -> Dashboard Setting -> Server Tickets Default
-                target_cat_id = (
-                    _safe_int(item_cfg.get("ticket_category_id")) or
-                    _safe_int(cfg.get("delivery_ticket_category_id")) or
-                    _safe_int(getattr(db, "tickets", {}).get(gid, {}).get("category_id"))
+                ticket_channel, order_code, err = await self._create_delivery_ticket(
+                    guild=guild,
+                    member=member,
+                    item_id=item_id,
+                    item_cfg=item_cfg,
+                    total_cost=total_cost,
+                    role=role,
+                    role_msg=role_msg
                 )
-                category = guild.get_channel(target_cat_id) if target_cat_id else None
-                if category and not isinstance(category, discord.CategoryChannel):
-                    category = None
-
-                staff_role_id = _safe_int(item_cfg.get("ticket_role_id"))
-                staff_role = guild.get_role(staff_role_id) if staff_role_id else None
-
-                overwrites = {
-                    guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                    member: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        attach_files=True,
-                        embed_links=True
-                    ),
-                    guild.me: discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        manage_channels=True,
-                        manage_messages=True,
-                        read_message_history=True,
-                        embed_links=True
-                    )
-                }
-                if staff_role:
-                    overwrites[staff_role] = discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        manage_messages=True,
-                        attach_files=True,
-                        embed_links=True
-                    )
-
-                channel_name = f"order-{item_id[:10]}-{order_num:03d}".lower().replace("_", "-")
-                try:
-                    ticket_channel = await guild.create_text_channel(
-                        name=channel_name,
-                        category=category,
-                        overwrites=overwrites,
-                        reason=f"Shop Order #{order_code} for {member}"
-                    )
-                except Exception as e:
+                if not ticket_channel:
                     self.db.delta_wallet(gid, uid, total_cost)
+                    self.db.consume_item(gid, uid, item_id, quantity)
                     return await send_response_fn(
-                        content=f"❌ Failed to create delivery ticket channel ({e}). Please ensure Friday has **Manage Channels** permission! Coins refunded.",
+                        content=f"❌ Failed to create delivery ticket channel ({err}). Please ensure Friday has **Manage Channels** permission! Coins refunded.",
                         ephemeral=True
                     )
 
-                view = ShopDeliveryTicketView(
-                    self, gid, order_code, uid, item_id, item_cfg.get("name", item_id),
-                    total_cost, cur_name, cur_emoji, str(staff_role_id) if staff_role_id else None
-                )
-
-                staff_ping = staff_role.mention if staff_role else "Staff Team"
-                ticket_embed = discord.Embed(
-                    title=f"📦 Order Receipt & Delivery Ticket: {item_cfg.get('name', item_id)}",
-                    color=discord.Color.gold(),
-                    description=(
-                        f"Hey {member.mention}! Your order for **{item_cfg.get('name', item_id)}** has been received.\n"
-                        f"{staff_ping} will assist you here to deliver and configure your order!{role_msg}\n\n"
-                        f"📋 **Order Reference:** `#{order_code}`\n"
-                        f"💰 **Total Paid:** `{total_cost:,}` {cur_emoji} {cur_name}\n"
-                        f"🕒 **Order Placed:** <t:{int(time.time())}:R>\n"
-                        f"📌 **Status:** `⏳ Pending Delivery`"
-                    )
-                )
-                ticket_embed.add_field(
-                    name="🛠️ Staff Instructions",
-                    value="Provide or configure the purchased item/perk. Once finished, click **Item Delivered / Sold** below to log receipt and close this channel.",
-                    inline=False
-                )
-                ticket_embed.set_footer(text=f"Friday Order Delivery System • #{order_code}")
-
-                await ticket_channel.send(content=f"{member.mention} {staff_ping}", embed=ticket_embed, view=view)
+                self.db.log_tx(gid, uid, "shop_buy_ticket", -total_cost, new_w, note=f"Ordered {item_cfg['name']} (#{order_code})")
 
                 user_embed = discord.Embed(
                     title="🛍️ Purchase Complete & Delivery Ticket Created!",
@@ -2038,7 +2179,7 @@ class Economy(commands.Cog):
                         f"Head over there to receive and configure your order!"
                     )
                 )
-                user_embed.add_field(name="Wallet Remaining", value=f"`{new_w:,}` {cur_emoji}", inline=True)
+                user_embed.add_field(name="Wallet Remaining", value=f"{new_w:,} {cur_emoji}", inline=True)
                 user_embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
                 return await send_response_fn(embed=user_embed)
 
@@ -2120,7 +2261,7 @@ class Economy(commands.Cog):
             
         price = int(item_cfg.get("price", 0))
         total_cost = price * quantity
-        requires_ticket = bool(item_cfg.get("requires_ticket")) or str(item_cfg.get("requires_ticket", "")).lower() in ("true", "1")
+        requires_ticket = bool(item_cfg.get("requires_ticket")) or str(item_cfg.get("requires_ticket", "")).lower() in ("true", "1") or item_id == "custom_role_color"
 
         def _safe_int(v):
             try:
@@ -2209,7 +2350,8 @@ class Economy(commands.Cog):
         )
 
     @app_commands.command(name="use", description="Activate or consume an item from your inventory.")
-    @app_commands.describe(item="The ID of the item to use (e.g. xp_booster).")
+    @app_commands.describe(item="The item to use (e.g. xp_booster, coin_booster).")
+    @app_commands.autocomplete(item=use_item_autocomplete)
     async def use(self, interaction: discord.Interaction, item: str):
         if not await self._check_economy_active(interaction):
             return
@@ -2222,8 +2364,17 @@ class Economy(commands.Cog):
             if not owned or owned["quantity"] <= 0:
                 return await interaction.response.send_message(f"❌ You do not have any `{item_id}` in your inventory.", ephemeral=True)
                 
-            if item_id == "xp_booster":
-                duration_hrs = 2
+            if item_id in ("xp_booster", "coin_booster"):
+                cfg = self.get_config(gid)
+                saved_items = cfg.get("shop_items", {})
+                item_cfg = saved_items.get(item_id, DEFAULT_SHOP_ITEMS.get(item_id, {}))
+                try:
+                    duration_hrs = float(item_cfg.get("duration_hours", 2))
+                except (ValueError, TypeError):
+                    duration_hrs = 2.0
+                if duration_hrs.is_integer():
+                    duration_hrs = int(duration_hrs)
+
                 now = time.time()
                 cur_exp = owned.get("expires_at", 0)
                 if cur_exp > now:
@@ -2231,12 +2382,13 @@ class Economy(commands.Cog):
                     rem_hrs = rem_secs // 3600
                     rem_mins = (rem_secs % 3600) // 60
                     rem_str = f"{rem_hrs}h {rem_mins}m" if rem_hrs > 0 else f"{rem_mins}m"
+                    is_xp = (item_id == "xp_booster")
                     embed = discord.Embed(
-                        title="⚡ 2x XP Booster Already Active!",
+                        title=f"{'⚡ 2x XP Booster' if is_xp else '🪙 2x Coin Booster'} Already Active!",
                         color=discord.Color.gold(),
                         description=(
-                            f"You already have an active **2x XP Booster** running with **{rem_str} remaining**!\n\n"
-                            f"• **Status:** 2x Chat Leveling XP\n"
+                            f"You already have an active **{'2x XP Booster' if is_xp else '2x Coin Booster'}** running with **{rem_str} remaining**!\n\n"
+                            f"• **Status:** {'2x Chat Leveling XP' if is_xp else '2x Coin Earnings (Chat & Voice Channels)'}\n"
                             f"• **Expires:** <t:{int(cur_exp)}:R> (<t:{int(cur_exp)}:t>)\n\n"
                             "You don't need to use another booster right now. Your remaining booster is saved safely in your inventory!"
                         )
@@ -2246,14 +2398,52 @@ class Economy(commands.Cog):
                 new_exp = now + (duration_hrs * 3600)
                 
                 # Consume 1 booster and update expiry
-                self.db.consume_item(gid, uid, "xp_booster", 1)
-                self.db.add_item(gid, uid, "xp_booster", 1, expires_at=new_exp)
+                self.db.consume_item(gid, uid, item_id, 1)
+                self.db.add_item(gid, uid, item_id, 1, expires_at=new_exp)
                 
-                embed = discord.Embed(
-                    title="⚡ 2x XP Booster Activated!",
-                    color=discord.Color.gold(),
-                    description=f"Double Chat XP is now active for **{duration_hrs} hours**!\nEvery text message you send will grant 2x leveling progression!"
+                dur_str = f"{duration_hrs} hours" if duration_hrs != 1 else "1 hour"
+                if item_id == "xp_booster":
+                    embed = discord.Embed(
+                        title="⚡ 2x XP Booster Activated!",
+                        color=discord.Color.gold(),
+                        description=f"Double Chat XP is now active for **{dur_str}**!\nEvery text message you send will grant 2x leveling progression!"
+                    )
+                else:
+                    embed = discord.Embed(
+                        title="🪙 2x Coin Booster Activated!",
+                        color=discord.Color.gold(),
+                        description=f"Double Coin Earning is now active for **{dur_str}**!\nYou will now earn **2x coins** from active Voice Channels and text chat!"
+                    )
+                return await interaction.response.send_message(embed=embed)
+            elif item_id == "custom_role_color":
+                cfg = self.get_config(gid)
+                saved_items = cfg.get("shop_items", {})
+                item_cfg = saved_items.get(item_id, DEFAULT_SHOP_ITEMS.get(item_id, {}))
+
+                ticket_channel, order_code, err = await self._create_delivery_ticket(
+                    guild=interaction.guild,
+                    member=interaction.user,
+                    item_id=item_id,
+                    item_cfg=item_cfg,
+                    total_cost=0
                 )
+                if not ticket_channel:
+                    return await interaction.response.send_message(
+                        f"❌ Failed to create delivery ticket channel ({err}). Please ensure Friday has **Manage Channels** permission!",
+                        ephemeral=True
+                    )
+
+                self.db.consume_item(gid, uid, "custom_role_color", 1)
+                embed = discord.Embed(
+                    title="🎨 Custom Role Color Delivery Ticket Created!",
+                    color=discord.Color.purple(),
+                    description=(
+                        f"Your **Custom Role Color** has been activated from inventory!\n\n"
+                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
+                        f"Head over there to specify your desired color and have staff assign your custom role!"
+                    )
+                )
+                embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
                 return await interaction.response.send_message(embed=embed)
             elif item_id in ("padlock", "landmine"):
                 return await interaction.response.send_message(
@@ -3106,7 +3296,7 @@ class Economy(commands.Cog):
             
         price = int(item_cfg.get("price", 0))
         total_cost = price * quantity
-        requires_ticket = bool(item_cfg.get("requires_ticket")) or str(item_cfg.get("requires_ticket", "")).lower() in ("true", "1")
+        requires_ticket = bool(item_cfg.get("requires_ticket")) or str(item_cfg.get("requires_ticket", "")).lower() in ("true", "1") or item_id == "custom_role_color"
 
         def _safe_int(v):
             try:
@@ -3221,8 +3411,17 @@ class Economy(commands.Cog):
             if not owned or owned["quantity"] <= 0:
                 return await ctx.reply(f"❌ You do not have any `{item_id}` in your inventory.")
                 
-            if item_id == "xp_booster":
-                duration_hrs = 2
+            if item_id in ("xp_booster", "coin_booster"):
+                cfg = self.get_config(gid)
+                saved_items = cfg.get("shop_items", {})
+                item_cfg = saved_items.get(item_id, DEFAULT_SHOP_ITEMS.get(item_id, {}))
+                try:
+                    duration_hrs = float(item_cfg.get("duration_hours", 2))
+                except (ValueError, TypeError):
+                    duration_hrs = 2.0
+                if duration_hrs.is_integer():
+                    duration_hrs = int(duration_hrs)
+
                 now = time.time()
                 cur_exp = owned.get("expires_at", 0)
                 if cur_exp > now:
@@ -3230,12 +3429,13 @@ class Economy(commands.Cog):
                     rem_hrs = rem_secs // 3600
                     rem_mins = (rem_secs % 3600) // 60
                     rem_str = f"{rem_hrs}h {rem_mins}m" if rem_hrs > 0 else f"{rem_mins}m"
+                    is_xp = (item_id == "xp_booster")
                     embed = discord.Embed(
-                        title="⚡ 2x XP Booster Already Active!",
+                        title=f"{'⚡ 2x XP Booster' if is_xp else '🪙 2x Coin Booster'} Already Active!",
                         color=discord.Color.gold(),
                         description=(
-                            f"You already have an active **2x XP Booster** running with **{rem_str} remaining**!\n\n"
-                            f"• **Status:** 2x Chat Leveling XP\n"
+                            f"You already have an active **{'2x XP Booster' if is_xp else '2x Coin Booster'}** running with **{rem_str} remaining**!\n\n"
+                            f"• **Status:** {'2x Chat Leveling XP' if is_xp else '2x Coin Earnings (Chat & Voice Channels)'}\n"
                             f"• **Expires:** <t:{int(cur_exp)}:R> (<t:{int(cur_exp)}:t>)\n\n"
                             "You don't need to use another booster right now. Your remaining booster is saved safely in your inventory!"
                         )
@@ -3243,13 +3443,49 @@ class Economy(commands.Cog):
                     return await ctx.reply(embed=embed)
                     
                 new_exp = now + (duration_hrs * 3600)
-                self.db.consume_item(gid, uid, "xp_booster", 1)
-                self.db.add_item(gid, uid, "xp_booster", 1, expires_at=new_exp)
-                embed = discord.Embed(
-                    title="⚡ 2x XP Booster Activated!",
-                    color=discord.Color.gold(),
-                    description=f"Double Chat XP is now active for **{duration_hrs} hours**!\nEvery text message you send will grant 2x leveling progression!"
+                self.db.consume_item(gid, uid, item_id, 1)
+                self.db.add_item(gid, uid, item_id, 1, expires_at=new_exp)
+                
+                dur_str = f"{duration_hrs} hours" if duration_hrs != 1 else "1 hour"
+                if item_id == "xp_booster":
+                    embed = discord.Embed(
+                        title="⚡ 2x XP Booster Activated!",
+                        color=discord.Color.gold(),
+                        description=f"Double Chat XP is now active for **{dur_str}**!\nEvery text message you send will grant 2x leveling progression!"
+                    )
+                else:
+                    embed = discord.Embed(
+                        title="🪙 2x Coin Booster Activated!",
+                        color=discord.Color.gold(),
+                        description=f"Double Coin Earning is now active for **{dur_str}**!\nYou will now earn **2x coins** from active Voice Channels and text chat!"
+                    )
+                return await ctx.reply(embed=embed)
+            elif item_id == "custom_role_color":
+                cfg = self.get_config(gid)
+                saved_items = cfg.get("shop_items", {})
+                item_cfg = saved_items.get(item_id, DEFAULT_SHOP_ITEMS.get(item_id, {}))
+
+                ticket_channel, order_code, err = await self._create_delivery_ticket(
+                    guild=ctx.guild,
+                    member=ctx.author,
+                    item_id=item_id,
+                    item_cfg=item_cfg,
+                    total_cost=0
                 )
+                if not ticket_channel:
+                    return await ctx.reply(f"❌ Failed to create delivery ticket channel ({err}). Please ensure Friday has **Manage Channels** permission!")
+
+                self.db.consume_item(gid, uid, "custom_role_color", 1)
+                embed = discord.Embed(
+                    title="🎨 Custom Role Color Delivery Ticket Created!",
+                    color=discord.Color.purple(),
+                    description=(
+                        f"Your **Custom Role Color** has been activated from inventory!\n\n"
+                        f"👉 **Your private delivery channel is ready:** {ticket_channel.mention}\n"
+                        f"Head over there to specify your desired color and have staff assign your custom role!"
+                    )
+                )
+                embed.add_field(name="Order ID", value=f"`#{order_code}`", inline=True)
                 return await ctx.reply(embed=embed)
             elif item_id in ("padlock", "landmine"):
                 return await ctx.reply(f"🛡️ `{item_id}` is automatically equipped as passive protection! No need to use it manually.")
