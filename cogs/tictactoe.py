@@ -144,14 +144,14 @@ def _minimax(board: List[Optional[str]], depth: int, is_max: bool, alpha: float,
         return int(min_eval)
 
 def ai_hard_move(board: List[Optional[str]], ai_sym: str = "O", human_sym: str = "X") -> Optional[int]:
-    """Hard AI: Formidable & competitive AI playing optimal Minimax ~72% of the time,
-    with a ~28% chance to play tactical smart heuristics so attentive human players can outplay and win."""
+    """Hard AI: Formidable & competitive AI playing optimal Minimax ~52% of the time,
+    with a ~48% chance to play tactical smart heuristics so attentive human players can outplay and win."""
     avail = get_available_spots(board)
     if not avail:
         return None
 
-    # Give skilled human players a fair 28% window to outsmart Friday and claim the Hard Mode bounty
-    if random.random() < 0.28:
+    # Give skilled human players a fair 48% window to outsmart Friday and claim the Hard Mode bounty
+    if random.random() < 0.48:
         return ai_normal_move(board, ai_sym=ai_sym, human_sym=human_sym)
 
     # Early-game heuristic shortcut (saves computation and guarantees <1ms execution)
@@ -333,6 +333,16 @@ class TicTacToeGameView(discord.ui.View):
         clear_player_active(self.player_x.id)
         if hasattr(self.player_o, "id"):
             clear_player_active(self.player_o.id)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[TicTacToe] View interaction error on {item}: {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An unexpected error occurred while processing your move.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An unexpected error occurred while processing your move.", ephemeral=True)
+        except Exception:
+            pass
 
     def build_status_embed(self, status: str = "info", notice: str = None) -> discord.Embed:
         colors = {
@@ -783,6 +793,16 @@ class ChallengeInviteView(discord.ui.View):
     def cleanup(self):
         clear_player_active(self.challenger.id)
         clear_player_active(self.target.id)
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[TicTacToeInvite] Interaction error on {item}: {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An unexpected error occurred with the challenge invite.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An unexpected error occurred with the challenge invite.", ephemeral=True)
+        except Exception:
+            pass
 
     @discord.ui.button(label="Accept Challenge", style=discord.ButtonStyle.success, emoji="⚔️")
     async def accept_button(self, interaction: discord.Interaction, button: discord.ui.Button):

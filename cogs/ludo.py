@@ -736,12 +736,12 @@ class LudoView(discord.ui.View):
         cur_p = self.game.players.get(cur_col)
         if not cur_p or cur_p.get("is_ai"):
             return
-        self.turn_deadline = time.time() + 15
+        self.turn_deadline = time.time() + 45
         self.turn_timer_task = asyncio.create_task(self._turn_timeout_worker(cur_col, stage, legal_moves, roll))
 
     async def _turn_timeout_worker(self, color: str, stage: str, legal_moves: Optional[List[int]], roll: Optional[int]):
         try:
-            await asyncio.sleep(15)
+            await asyncio.sleep(45)
             if self.game.game_over or self.game.current_turn != color:
                 return
 
@@ -752,11 +752,11 @@ class LudoView(discord.ui.View):
             self.consecutive_afk += 1
             self.game.last_updated = time.time()
 
-            # If all players have been AFK for 8 consecutive turns (2 minutes of complete inactivity), abandon match
-            if self.consecutive_afk >= 8:
+            # If all players have been AFK for 16 consecutive turns, abandon match
+            if self.consecutive_afk >= 16:
                 self.game.game_over = True
                 self.clear_items()
-                self.game.log_history.append("⏰ **Match Abandoned:** All players were AFK for 8 consecutive turns.")
+                self.game.log_history.append("⏰ **Match Abandoned:** All players were AFK for multiple rounds.")
                 if self.game.bet_pot > 0 and not self.game.pot_awarded and self.game.guild_id:
                     try:
                         from cogs.economy import get_economy_db
@@ -776,7 +776,7 @@ class LudoView(discord.ui.View):
 
             if stage == "roll":
                 theme = COLOR_THEMES[color]
-                self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** went AFK (15s elapsed)! Turn passed.")
+                self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out (45s elapsed)! Turn passed.")
                 self.game.advance_turn()
                 self.setup_buttons_for_roll()
                 await self.update_view()
@@ -800,7 +800,7 @@ class LudoView(discord.ui.View):
                 elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
 
                 self.game.log_history.append(
-                    f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out choosing token (15s)! "
+                    f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out choosing token (45s)! "
                     f"Auto-moved **Token {chosen_t+1}** by **[ {roll or 6} ]**{extra_str}"
                 )
 
@@ -976,9 +976,9 @@ class LudoView(discord.ui.View):
         elif cur_p["is_ai"]:
             turn_box = f"🤖 **CURRENT CHANCE:** {theme['emoji']} **Friday (AI)** is calculating move..."
         elif self.movable_tokens:
-            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Pick a {theme['name']} token button below to move! (⏰ 15s Timer)*"
+            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Pick a {theme['name']} token button below to move! (⏰ 45s Timer)*"
         else:
-            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Click your {theme['name']} 'Roll Dice' button below! (⏰ 15s Timer)*"
+            turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Click your {theme['name']} 'Roll Dice' button below! (⏰ 45s Timer)*"
 
         # Recent actions
         log_str = "\n".join(g.log_history[-3:])
@@ -996,45 +996,59 @@ class LudoView(discord.ui.View):
             timestamp=datetime.now(pytz.utc)
         )
         embed.set_image(url="attachment://ludo_board.png")
-        footer_text = "Friday Ludo Royale • ⏰ 15s AFK Turn Timer"
+        footer_text = "Friday Ludo Royale • ⏰ 45s AFK Turn Timer"
         if g.bet_pot > 0:
-            footer_text = f"Friday Ludo Royale • 🏆 Prize Pot: {g.bet_pot:,} Coins • ⏰ 15s AFK Turn Timer"
+            footer_text = f"Friday Ludo Royale • 🏆 Prize Pot: {g.bet_pot:,} Coins • ⏰ 45s AFK Turn Timer"
         embed.set_footer(text=footer_text)
         return embed
 
     async def update_view(self, interaction: Optional[discord.Interaction] = None):
-        """Renders board in background thread and updates message."""
-        buf = await asyncio.to_thread(
-            render_board_image,
-            self.game.players,
-            self.game.current_turn,
-            self.game.last_rolls,
-            self.game.tokens_per_player,
-            self.movable_tokens
-        )
-        file = discord.File(buf, filename="ludo_board.png")
-        embed = self.build_embed()
+        """Renders board in background thread and updates message with resilient fallback."""
+        try:
+            buf = await asyncio.to_thread(
+                render_board_image,
+                self.game.players,
+                self.game.current_turn,
+                self.game.last_rolls,
+                self.game.tokens_per_player,
+                self.movable_tokens
+            )
+            file = discord.File(buf, filename="ludo_board.png")
+            embed = self.build_embed()
 
-        if interaction:
-            if not interaction.response.is_done():
+            updated = False
+            if interaction:
+                if not interaction.response.is_done():
+                    try:
+                        await interaction.response.edit_message(embed=embed, view=self, attachments=[file])
+                        updated = True
+                    except Exception as ex:
+                        print(f"[Ludo] Direct edit_message error in update_view: {ex}")
+                else:
+                    try:
+                        msg = await interaction.edit_original_response(embed=embed, view=self, attachments=[file])
+                        if msg:
+                            self.message = msg
+                        updated = True
+                    except Exception as ex:
+                        print(f"[Ludo] edit_original_response error in update_view: {ex}")
+
+            if not updated and self.message:
                 try:
-                    await interaction.response.edit_message(embed=embed, view=self, attachments=[file])
-                    return
-                except Exception as ex:
-                    print(f"[Ludo] Failed direct edit_message: {ex}")
-            else:
-                try:
-                    msg = await interaction.edit_original_response(embed=embed, view=self, attachments=[file])
-                    if msg:
-                        self.message = msg
-                    return
-                except Exception as ex:
-                    print(f"[Ludo] Failed edit_original_response: {ex}")
-        if self.message:
-            try:
-                await self.message.edit(embed=embed, view=self, attachments=[file])
-            except Exception as e:
-                print(f"[Ludo] Failed to edit message in update_view: {e}")
+                    await self.message.edit(embed=embed, view=self, attachments=[file])
+                    updated = True
+                except Exception as e:
+                    print(f"[Ludo] message.edit error in update_view: {e}")
+
+            if not updated:
+                channel = (interaction.channel if interaction else None) or (self.message.channel if self.message else None)
+                if channel:
+                    try:
+                        self.message = await channel.send(embed=embed, view=self, file=file)
+                    except Exception as e:
+                        print(f"[Ludo] Fallback channel send error in update_view: {e}")
+        except Exception as e:
+            print(f"[Ludo] Critical update_view failure: {e}")
 
     async def handle_human_roll(self, interaction: discord.Interaction):
         try:
@@ -1163,7 +1177,7 @@ class LudoView(discord.ui.View):
     async def run_ai_turn(self):
         """Asynchronously executes Friday AI's turn with human-like realistic pacing (Strictly NO LLM)."""
         try:
-            await asyncio.sleep(1.2)
+            await asyncio.sleep(1.6)
             if self.game.game_over:
                 return
 
@@ -1182,7 +1196,7 @@ class LudoView(discord.ui.View):
                 self.game.log_history.append(f"🤖 **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves).")
                 if roll == 6:
                     await self.update_view()
-                    await asyncio.sleep(1.0)
+                    await asyncio.sleep(1.6)
                     return asyncio.create_task(self.run_ai_turn())
                 else:
                     self.game.advance_turn()
@@ -1210,7 +1224,7 @@ class LudoView(discord.ui.View):
 
             if roll == 6 or ev["captured"]:
                 await self.update_view()
-                await asyncio.sleep(1.2)
+                await asyncio.sleep(1.6)
                 return asyncio.create_task(self.run_ai_turn())
             else:
                 self.game.advance_turn()
@@ -1349,6 +1363,17 @@ class LudoLobbyView(discord.ui.View):
         self.guild_id = guild_id
         self.message: Optional[discord.Message] = None
         self.start_timestamp = int(time.time()) + 100
+        self.launching: bool = False
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[LudoLobby] Interaction error on {item}: {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An unexpected error occurred in the lobby.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An unexpected error occurred in the lobby.", ephemeral=True)
+        except Exception:
+            pass
 
         # Assign initial slots: Slot 0 = Red (Host)
         self.slots: Dict[str, Dict[str, Any]] = {
@@ -1544,6 +1569,12 @@ class LudoLobbyView(discord.ui.View):
         if self.get_active_count() < 2:
             return await interaction.response.send_message("⚠️ You need at least 2 players to start! Click 'Add Friday AI' to fill a slot.", ephemeral=True)
 
+        if interaction.message:
+            self.message = interaction.message
+
+        if getattr(self, "launching", False):
+            return await interaction.response.send_message("⏳ Match is already launching, please wait...", ephemeral=True)
+
         await interaction.response.defer()
         await self.launch_game(interaction)
 
@@ -1561,8 +1592,13 @@ class LudoLobbyView(discord.ui.View):
 
     async def launch_game(self, interaction: Optional[discord.Interaction] = None):
         """Builds game configurations from active ready slots, escrows wagers, and launches match."""
+        if getattr(self, "launching", False):
+            return
+        self.launching = True
         ACTIVE_LUDO_LOBBIES.pop(self.host.id, None)
-        self.stop()
+
+        if interaction and interaction.message:
+            self.message = interaction.message
 
         active_configs = []
         for col in COLOR_CLOCKWISE:
@@ -1604,6 +1640,8 @@ class LudoLobbyView(discord.ui.View):
 
                 if failed_players:
                     cancel_msg = f"❌ **Match Cancelled:** The following players do not have enough wallet coins for the **{self.bet:,} {cur_name}** wager: {', '.join(failed_players)}"
+                    self.launching = False
+                    self.stop()
                     if interaction:
                         if not interaction.response.is_done():
                             await interaction.response.edit_message(content=cancel_msg, embed=None, view=None)
@@ -1634,35 +1672,61 @@ class LudoLobbyView(discord.ui.View):
         game_view = LudoView(game)
         game_view.message = self.message
 
-        buf = await asyncio.to_thread(
-            render_board_image,
-            game.players,
-            game.current_turn,
-            game.last_rolls,
-            game.tokens_per_player,
-            []
-        )
-        file = discord.File(buf, filename="ludo_board.png")
-        embed = game_view.build_embed(status_text="🎉 **Match Started!** May the best tactician reach Center Home!")
+        try:
+            buf = await asyncio.to_thread(
+                render_board_image,
+                game.players,
+                game.current_turn,
+                game.last_rolls,
+                game.tokens_per_player,
+                []
+            )
+            file = discord.File(buf, filename="ludo_board.png")
+            embed = game_view.build_embed(status_text="🎉 **Match Started!** May the best tactician reach Center Home!")
 
-        if interaction:
-            if not interaction.response.is_done():
+            updated = False
+            if interaction:
+                if not interaction.response.is_done():
+                    try:
+                        await interaction.response.edit_message(content=None, embed=embed, view=game_view, attachments=[file])
+                        updated = True
+                    except Exception as ex:
+                        print(f"[Ludo] Failed direct edit_message in launch_game: {ex}")
+                else:
+                    try:
+                        msg = await interaction.edit_original_response(content=None, embed=embed, view=game_view, attachments=[file])
+                        if msg:
+                            game_view.message = msg
+                        updated = True
+                    except Exception as ex:
+                        print(f"[Ludo] Failed edit_original_response in launch_game: {ex}")
+
+            if not updated and self.message:
                 try:
-                    await interaction.response.edit_message(content=None, embed=embed, view=game_view, attachments=[file])
-                except Exception as ex:
-                    print(f"[Ludo] Failed direct edit_message in launch_game: {ex}")
-            else:
-                try:
-                    msg = await interaction.edit_original_response(content=None, embed=embed, view=game_view, attachments=[file])
-                    if msg:
-                        game_view.message = msg
-                except Exception as ex:
-                    print(f"[Ludo] Failed edit_original_response in launch_game: {ex}")
-        elif self.message:
-            try:
-                await self.message.edit(content=None, embed=embed, view=game_view, attachments=[file])
-            except Exception as e:
-                print(f"[Ludo] Failed to edit lobby into game: {e}")
+                    await self.message.edit(content=None, embed=embed, view=game_view, attachments=[file])
+                    updated = True
+                except Exception as e:
+                    print(f"[Ludo] Failed to edit lobby message into game: {e}")
+
+            if not updated:
+                channel = (interaction.channel if interaction else None) or (self.message.channel if self.message else None)
+                if channel:
+                    try:
+                        game_view.message = await channel.send(
+                            content="🎲 **Ludo Match Started!**",
+                            embed=embed,
+                            view=game_view,
+                            file=file
+                        )
+                    except Exception as ex:
+                        print(f"[Ludo] Channel send fallback error in launch_game: {ex}")
+        except Exception as ex:
+            print(f"[Ludo] Critical launch_game error: {ex}")
+        finally:
+            self.stop()
+
+        # If starting player is AI (unlikely since host is Red, but safe guard)
+        await game_view.check_and_run_ai_turn()
 
         # If starting player is AI (unlikely since host is Red, but safe guard)
         await game_view.check_and_run_ai_turn()
