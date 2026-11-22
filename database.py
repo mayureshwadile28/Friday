@@ -38,6 +38,7 @@ class Database:
         self.media_whitelist = self.data.get("media_whitelist", {})
         self.media_announcements = self.data.get("media_announcements", {})
         self.liked_songs = self.data.get("liked_songs", {})
+        self.playlists = self.data.get("playlists", {})
         self.warnings = self.data.get("warnings", {})
         self.first_welcome = self.data.get("first_welcome", {})
         self.first_chat_welcomes = self.data.get("first_chat_welcomes", {})

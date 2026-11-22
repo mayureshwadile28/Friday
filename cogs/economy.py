@@ -332,7 +332,7 @@ class EconomyDB:
             ).fetchone()
             return row["bank"] if row else 0
 
-    def transfer_wallet_to_bank(self, gid: str, uid: str, amount: int, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
+    def transfer_wallet_to_bank(self, gid: str, uid: str, amount: Any, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
         """Atomically moves funds from wallet to bank up to bank_max."""
         with self.get_conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -344,16 +344,26 @@ class EconomyDB:
                 return False, 0, 0, "Profile not found."
             
             wallet, bank, bank_max = row["wallet"], row["bank"], row["bank_max"]
-            if amount <= 0:
-                return False, wallet, bank, "Deposit amount must be greater than zero."
-            if wallet < amount:
-                return False, wallet, bank, f"You do not have enough {cur_name} in your wallet."
+            is_all = isinstance(amount, str) and str(amount).strip().lower() in ("all", "max")
+            if is_all:
+                if wallet <= 0:
+                    return False, wallet, bank, f"Your cash wallet is currently empty! You have 0 {cur_name} to deposit."
+                actual_amount = wallet
+            else:
+                try:
+                    actual_amount = int(amount)
+                except (ValueError, TypeError):
+                    return False, wallet, bank, "Please enter a valid number or 'all'."
+                if actual_amount <= 0:
+                    return False, wallet, bank, "Deposit amount must be greater than zero."
+                if wallet < actual_amount:
+                    return False, wallet, bank, f"You do not have enough {cur_name} in your wallet."
             
             available_space = max(0, bank_max - bank)
             if available_space <= 0:
                 return False, wallet, bank, f"Your bank is completely full! Capacity: {bank_max:,} {cur_name}. Upgrade via `/bank_upgrade`."
             
-            deposit_amount = min(amount, available_space)
+            deposit_amount = min(actual_amount, available_space)
             new_wallet = wallet - deposit_amount
             new_bank = bank + deposit_amount
             
@@ -365,7 +375,7 @@ class EconomyDB:
             
             return True, new_wallet, new_bank, f"Successfully deposited {deposit_amount:,} {cur_name} into your safe bank vault!"
 
-    def transfer_bank_to_wallet(self, gid: str, uid: str, amount: int, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
+    def transfer_bank_to_wallet(self, gid: str, uid: str, amount: Any, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
         """Atomically moves funds from bank back to wallet."""
         with self.get_conn() as conn:
             conn.execute("BEGIN IMMEDIATE")
@@ -376,13 +386,23 @@ class EconomyDB:
                 return False, 0, 0, "Profile not found."
             
             wallet, bank = row["wallet"], row["bank"]
-            if amount <= 0:
-                return False, wallet, bank, "Withdraw amount must be greater than zero."
-            if bank < amount:
-                return False, wallet, bank, f"You do not have that many {cur_name} in your bank vault."
+            is_all = isinstance(amount, str) and str(amount).strip().lower() in ("all", "max")
+            if is_all:
+                if bank <= 0:
+                    return False, wallet, bank, f"Your bank vault is currently empty! You have 0 {cur_name} to withdraw."
+                actual_amount = bank
+            else:
+                try:
+                    actual_amount = int(amount)
+                except (ValueError, TypeError):
+                    return False, wallet, bank, "Please enter a valid number or 'all'."
+                if actual_amount <= 0:
+                    return False, wallet, bank, "Withdraw amount must be greater than zero."
+                if bank < actual_amount:
+                    return False, wallet, bank, f"You do not have that many {cur_name} in your bank vault."
             
-            new_bank = bank - amount
-            new_wallet = wallet + amount
+            new_bank = bank - actual_amount
+            new_wallet = wallet + actual_amount
             
             conn.execute("""
                 UPDATE economy_users
@@ -390,7 +410,7 @@ class EconomyDB:
                 WHERE guild_id=? AND user_id=?
             """, (new_wallet, new_bank, gid, uid))
             
-            return True, new_wallet, new_bank, f"Successfully withdrew {amount:,} {cur_name} into your wallet!"
+            return True, new_wallet, new_bank, f"Successfully withdrew {actual_amount:,} {cur_name} into your wallet!"
 
     def upgrade_bank(self, gid: str, uid: str, cost: int, increase: int, cur_name: str = "Coins") -> Tuple[bool, int, int, str]:
         """Burns coins from wallet to increase bank_max capacity."""
@@ -1500,21 +1520,11 @@ class Economy(commands.Cog):
             
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
-            wallet = profile["wallet"]
-            
-            if amount.lower() in ("all", "max"):
-                amt = wallet
-            else:
-                try:
-                    amt = int(amount)
-                except ValueError:
-                    return await interaction.response.send_message("❌ Please enter a valid number or 'all'.", ephemeral=True)
-                
             cfg = self.get_config(gid)
             cur_name = cfg.get("currency_name", "Coins")
             cur_emoji = cfg.get("currency_emoji", "🪙")
             
-            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amt, cur_name)
+            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amount, cur_name)
             if not success:
                 return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
             
@@ -1533,21 +1543,11 @@ class Economy(commands.Cog):
         
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
-            bank = profile["bank"]
-            
-            if amount.lower() in ("all", "max"):
-                amt = bank
-            else:
-                try:
-                    amt = int(amount)
-                except ValueError:
-                    return await interaction.response.send_message("❌ Please enter a valid number or 'all'.", ephemeral=True)
-                
             cfg = self.get_config(gid)
             cur_name = cfg.get("currency_name", "Coins")
             cur_emoji = cfg.get("currency_emoji", "🪙")
             
-            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amt, cur_name)
+            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amount, cur_name)
             if not success:
                 return await interaction.response.send_message(f"❌ {msg}", ephemeral=True)
             
@@ -3107,17 +3107,7 @@ class Economy(commands.Cog):
             
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
-            wallet = profile["wallet"]
-            
-            if amount.lower() in ("all", "max"):
-                amt = wallet
-            else:
-                try:
-                    amt = int(amount)
-                except ValueError:
-                    return await ctx.send("❌ Please enter a valid number or `all`.")
-                    
-            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amt, cur_name)
+            success, new_w, new_b, msg = self.db.transfer_wallet_to_bank(gid, uid, amount, cur_name)
             if not success:
                 return await ctx.send(f"❌ {msg}")
                 
@@ -3143,17 +3133,7 @@ class Economy(commands.Cog):
         
         async with self._get_lock(gid, uid):
             profile = self.db.get_or_init_user(gid, uid)
-            bank = profile["bank"]
-            
-            if amount.lower() in ("all", "max"):
-                amt = bank
-            else:
-                try:
-                    amt = int(amount)
-                except ValueError:
-                    return await ctx.send("❌ Please enter a valid number or `all`.")
-                    
-            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amt, cur_name)
+            success, new_w, new_b, msg = self.db.transfer_bank_to_wallet(gid, uid, amount, cur_name)
             if not success:
                 return await ctx.send(f"❌ {msg}")
                 

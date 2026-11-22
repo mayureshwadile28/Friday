@@ -13,8 +13,30 @@ import re
 import html
 import base64
 import warnings
+from typing import Optional, Tuple, List, Dict, Any
 from database import db
 from response_utils import make_box_embed, reply_box
+
+# ─────────────────────────────────────────────────────────────
+# Intelligent Autoplay Feature & Mood Classifiers
+# ─────────────────────────────────────────────────────────────
+AUTOPLAY_MOOD_PATTERNS = {
+    "sad": re.compile(r'\b(sad|dard|judai|heartbreak|broken|crying|pain|alone|lonely|emotional|tears|channa mereya|agar tum|adhuri|bekhayali|tum hi ho|let her go|someone like you|all too well|traitor|arcade|drivers license|melancholy|acoustic|duriya|khairiyat)\b', re.IGNORECASE),
+    "lofi": re.compile(r'\b(lofi|lo-fi|chill|relax|ambient|sleep|study|aesthetic|slowed|reverb|synthwave|cozy|peaceful|midnight)\b', re.IGNORECASE),
+    "romantic": re.compile(r'\b(love|romantic|pyaar|ishq|mohabbat|sanware|humsafar|perfect|golden hour|lover|dandelions|until i found you|pehle bhi main|tum mile|kasam|raataan lambiyan|kesariya)\b', re.IGNORECASE),
+    "party": re.compile(r'\b(party|dance|nacho|bhangra|remix|club|club mix|beats|drop|celebration|disco|edm|bass boosted|shaky|tauba tauba)\b', re.IGNORECASE),
+    "phonk": re.compile(r'\b(phonk|drift|brazilian phonk|gigachad|workout|gym|rage|montage|speed up|kordhell|dvrst|smoke)\b', re.IGNORECASE),
+    "rap": re.compile(r'\b(rap|hip hop|drill|diss|cypher|freestyle|trap|boombap|raftaar|emiway|krishna|mc stan|seedhe maut|krsna)\b', re.IGNORECASE),
+    "devotional": re.compile(r'\b(bhajan|aarti|mantra|shree ram|krishna|shiva|hanuman|devotional|chalisa|ram siye ram)\b', re.IGNORECASE)
+}
+
+AUTOPLAY_LANG_PATTERNS = {
+    "hindi": re.compile(r'\b(arijit|atif|shreya|jubin|neha kakkar|sonu nigam|kk|mohit chauhan|armaan malik|darshan raval|alka yagnik|kumar sanu|udit narayan|kishore|lata|pritam|anuv jain|vishal mishra|bollywood|hindi|t-series|zeemusic|mithoon|sachet|parampara|jasleen)\b', re.IGNORECASE),
+    "punjabi": re.compile(r'\b(sidhu|moosewala|karan aujla|shubh|diljit|dosanjh|ap dhillon|gurinder gill|amrit maan|b praak|jaani|harrdy sandhu|jassi|punjabi|chani nattan|arjan dhillon)\b', re.IGNORECASE),
+    "english": re.compile(r'\b(taylor swift|ed sheeran|weeknd|drake|eminem|billie eilish|ariana grande|bruno mars|post malone|dua lipa|coldplay|imagine dragons|maroon 5|charlie puth|travis scott|pop|rock|justin bieber|adele|conan gray|olivia rodrigo)\b', re.IGNORECASE),
+    "kpop": re.compile(r'\b(bts|blackpink|twice|stray kids|newjeans|txt|kpop|k-pop|seventeen|aespa|le sserafim)\b', re.IGNORECASE),
+    "japanese": re.compile(r'\b(yoasobi|lisa|ado|kenshi yonezu|anime|jpop|j-pop|vocaloid|radwimps|aimer|milet)\b', re.IGNORECASE)
+}
 
 
 # Pure-Python zero-dependency DES tables for JioSaavn CDN URL decryption
@@ -303,12 +325,69 @@ class Song:
         self.requester = requester
         self.thumbnail = thumbnail
 
+
+class SaveToPlaylistModal(discord.ui.Modal, title="Save Track to Playlist"):
+    playlist_name = discord.ui.TextInput(
+        label="Playlist Name",
+        placeholder="e.g. Chill, Gym, Favorites, Bollywood",
+        default="Favorites",
+        min_length=1,
+        max_length=40,
+        required=True
+    )
+
+    def __init__(self, cog, song: Song):
+        super().__init__()
+        self.cog = cog
+        self.song = song
+
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            name = self.playlist_name.value.strip()
+            uid = str(interaction.user.id)
+            user_pls = db.playlists.setdefault(uid, {})
+            pl_tracks = user_pls.setdefault(name, [])
+
+            if any(item.get("url") == self.song.webpage_url for item in pl_tracks):
+                return await interaction.response.send_message(
+                    f"ℹ️ **[{self.song.title}]({self.song.webpage_url})** is already inside playlist **{name}**.",
+                    ephemeral=True
+                )
+
+            if len(pl_tracks) >= 150:
+                return await interaction.response.send_message(
+                    f"⚠️ Playlist **{name}** is at maximum capacity (150 tracks).",
+                    ephemeral=True
+                )
+
+            pl_tracks.append({
+                "title": self.song.title,
+                "url": self.song.webpage_url,
+                "duration": self.song.duration
+            })
+            db.save_data()
+
+            embed = make_box_embed(
+                title="Added to Playlist",
+                description=f"Saved **[{self.song.title}]({self.song.webpage_url})** into playlist **{name}**!\nTotal tracks in `{name}`: **{len(pl_tracks)}**\n*Play it anytime using `/playlist play name:{name}`.*",
+                status="success"
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            print(f"[Playlist Modal Error] {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("⚠️ An error occurred saving to playlist.", ephemeral=True)
+            except Exception:
+                pass
+
+
 class MusicControlView(discord.ui.View):
     """
     Studio High-Fidelity Music Controller View.
     Row 0: Pause/Resume, Skip, Loop, Stop (4 buttons - Core Playback)
     Row 1: Shuffle, Queue, Vol -, Vol + (4 buttons - Queue & Audio Level)
-    Row 2: Add to Liked Songs (1 button - Favorites)
+    Row 2: Like, Autoplay, Save to Playlist (3 buttons - Library & Discovery)
     Row 3: Equalizer / DSP Mastering Filter Dropdown (Real-time live switch)
     """
     def __init__(self, cog=None, guild_id: int = None):
@@ -322,6 +401,11 @@ class MusicControlView(discord.ui.View):
                     for child in self.children:
                         if getattr(child, "custom_id", None) == "music_loop":
                             child.label = "Looping"
+                            child.style = discord.ButtonStyle.primary
+                if state.get("autoplay"):
+                    for child in self.children:
+                        if getattr(child, "custom_id", None) == "music_autoplay":
+                            child.label = "Autoplay: ON"
                             child.style = discord.ButtonStyle.primary
             except Exception:
                 pass
@@ -597,7 +681,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: vol_up] {e}")
 
-    @discord.ui.button(label="Add to Liked Songs", style=discord.ButtonStyle.success, emoji="💚", custom_id="music_like", row=2)
+    @discord.ui.button(label="Like", style=discord.ButtonStyle.secondary, emoji="💚", custom_id="music_like", row=2)
     async def like_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -639,6 +723,61 @@ class MusicControlView(discord.ui.View):
                 pass
         except Exception as e:
             print(f"[Music Button Error: like] {e}")
+
+    @discord.ui.button(label="Autoplay: OFF", style=discord.ButtonStyle.secondary, emoji="📻", custom_id="music_autoplay", row=2)
+    async def autoplay_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
+            gid, cog = self._get_context(interaction)
+            if not cog:
+                return
+            state = cog.get_state(gid)
+            new_auto = not state.get("autoplay", False)
+            state["autoplay"] = new_auto
+
+            button.label = "Autoplay: ON" if new_auto else "Autoplay: OFF"
+            button.style = discord.ButtonStyle.primary if new_auto else discord.ButtonStyle.secondary
+
+            try:
+                await interaction.message.edit(view=self)
+            except Exception:
+                pass
+
+            msg = "Friday will automatically queue similar tracks with matching mood and language when the queue ends." if new_auto else "Autoplay has been turned off."
+            try:
+                await interaction.followup.send(
+                    embed=make_box_embed(title="Autoplay Mode", description=f"Autoplay is now **{'ENABLED' if new_auto else 'DISABLED'}**.\n{msg}", status="audio"),
+                    ephemeral=True
+                )
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[Music Button Error: autoplay] {e}")
+
+    @discord.ui.button(label="Save to Playlist", style=discord.ButtonStyle.secondary, emoji="📑", custom_id="music_add_playlist", row=2)
+    async def add_playlist_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            gid, cog = self._get_context(interaction)
+            if not cog:
+                return
+            state = cog.get_state(gid)
+            current = state.get("current")
+            if not current:
+                return await interaction.response.send_message("❌ No track currently playing to save.", ephemeral=True)
+
+            await interaction.response.send_modal(SaveToPlaylistModal(cog, current))
+        except Exception as e:
+            print(f"[Music Button Error: add_playlist] {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("⚠️ Failed to open playlist dialog.", ephemeral=True)
+            except Exception:
+                pass
 
     @discord.ui.select(
         placeholder="🎛️ Equalizer & DSP Audio Filters...",
@@ -828,6 +967,9 @@ class Music(commands.Cog):
                 "current": None,
                 "channel": None,
                 "loop": False,
+                "autoplay": False,
+                "autoplay_history": [],
+                "last_played": None,
                 "volume": 1.0,
                 "transformer": None,
                 "filter": "studio",
@@ -837,6 +979,180 @@ class Music(commands.Cog):
                 "_switching_filter": False
             }
         return self.states[guild_id]
+
+    async def set_voice_channel_status(self, channel: Optional[discord.VoiceChannel], status: str):
+        """Sets temporary voice channel status so users outside the channel can see current song."""
+        if not channel or not isinstance(channel, discord.VoiceChannel):
+            return
+        try:
+            route = discord.http.Route('PUT', '/channels/{channel_id}/voice-status', channel_id=channel.id)
+            clean_status = status[:500]
+            await self.bot.http.request(route, json={'status': clean_status})
+        except Exception:
+            pass
+
+    async def clear_voice_channel_status(self, channel: Optional[discord.VoiceChannel]):
+        """Clears the temporary voice channel status when music playback finishes or stops."""
+        if not channel or not isinstance(channel, discord.VoiceChannel):
+            return
+        try:
+            route = discord.http.Route('PUT', '/channels/{channel_id}/voice-status', channel_id=channel.id)
+            await self.bot.http.request(route, json={'status': ''})
+        except Exception:
+            pass
+
+    def _detect_song_features(self, title: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """Extracts mood, language, and primary artist from a song title."""
+        t = title.lower()
+        
+        detected_mood = None
+        for mood, pattern in AUTOPLAY_MOOD_PATTERNS.items():
+            if pattern.search(t):
+                detected_mood = mood
+                break
+                
+        detected_lang = None
+        for lang, pattern in AUTOPLAY_LANG_PATTERNS.items():
+            if pattern.search(t):
+                detected_lang = lang
+                break
+
+        clean_artist = None
+        if " - " in title:
+            parts = title.split(" - ")
+            clean_artist = parts[0].strip()
+            clean_artist = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_artist).strip()
+        elif " by " in t:
+            parts = t.split(" by ")
+            clean_artist = parts[1].strip()
+
+        return detected_mood, detected_lang, clean_artist
+
+    def _flat_search_sync(self, query: str) -> list:
+        opts = {
+            'extract_flat': 'in_playlist',
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'http_headers': DEFAULT_HEADERS,
+            'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
+        }
+        cookie_path = get_cookie_file()
+        if cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0:
+            opts['cookiefile'] = cookie_path
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(query, download=False)
+                if not info:
+                    return []
+                if 'entries' in info:
+                    return [e for e in info['entries'] if e]
+                return [info]
+        except Exception as e:
+            print(f"[Music Autoplay Flat Search Error] {e}")
+            return []
+
+    async def _find_autoplay_track(self, last_song: Song, guild_id: int) -> Optional[Song]:
+        """Finds next track with matching mood, language, or artist recommendations."""
+        state = self.get_state(guild_id)
+        mood, lang, artist = self._detect_song_features(last_song.title)
+
+        clean_title = re.sub(r'(?i)\b(official\s+video|official\s+audio|lyrics|lyric\s+video|hd|4k|remastered|full\s+song|visualizer)\b', '', last_song.title)
+        clean_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_title).strip()
+
+        queries = []
+        if artist and mood and lang:
+            queries.append(f"{artist} {mood} {lang} songs audio")
+            queries.append(f"{mood} {lang} popular songs audio")
+        elif artist and mood:
+            queries.append(f"{artist} {mood} songs audio")
+            queries.append(f"{mood} songs audio")
+        elif artist:
+            queries.append(f"{artist} popular songs audio")
+            queries.append(f"{clean_title} similar songs audio")
+        elif mood:
+            queries.append(f"{mood} music audio")
+
+        queries.append(f"{clean_title} radio mix audio")
+
+        history = set(state.get("autoplay_history", []))
+        candidates = []
+
+        for q in queries:
+            try:
+                results = await self.bot.loop.run_in_executor(None, lambda: self._flat_search_sync(f"ytsearch10:{q}"))
+                for entry in results:
+                    t_name = entry.get("title", "")
+                    dur = entry.get("duration") or 0
+                    if not t_name:
+                        continue
+                    if t_name in history:
+                        continue
+                    if clean_title.lower() in t_name.lower() or t_name.lower() in clean_title.lower():
+                        continue
+                    if dur and (dur > 720 or dur < 45):
+                        continue
+                    candidates.append(entry)
+                if len(candidates) >= 3:
+                    break
+            except Exception as search_ex:
+                print(f"[Autoplay Search Error for '{q}'] {search_ex}")
+
+        if not candidates:
+            return None
+
+        chosen_entry = random.choice(candidates[:3])
+        track_target = chosen_entry.get("url") or chosen_entry.get("id") or chosen_entry.get("title")
+        try:
+            info = await self.extract_audio_info(track_target)
+            return Song(
+                title=info["title"],
+                url=info["url"],
+                webpage_url=info["webpage_url"],
+                duration=info.get("duration", 0),
+                requester=self.bot.user,
+                thumbnail=info.get("thumbnail")
+            )
+        except Exception as ex:
+            print(f"[Autoplay Audio Extract Error] {ex}")
+            return None
+
+    async def _handle_autoplay(self, guild_id: int, last_song: Song):
+        """Asynchronously discovers and plays next autoplay track matching current song features."""
+        state = self.get_state(guild_id)
+        guild = self.bot.get_guild(guild_id)
+        if not guild or not guild.voice_client or not guild.voice_client.is_connected():
+            return
+        if not state.get("autoplay") or state.get("_stopping"):
+            return
+
+        mood, lang, _ = self._detect_song_features(last_song.title)
+        channel = state.get("channel")
+        if channel:
+            try:
+                mood_desc = f"mood: **{mood.capitalize()}**" if mood else "similar genre"
+                lang_desc = f" • language: **{lang.capitalize()}**" if lang else ""
+                await channel.send(f"📻 **Autoplay:** Finding next track with {mood_desc}{lang_desc}...", delete_after=6)
+            except Exception:
+                pass
+
+        next_song = await self._find_autoplay_track(last_song, guild_id)
+        if next_song:
+            vc = guild.voice_client
+            if not state.get("queue") and not (vc.is_playing() or vc.is_paused()):
+                state["queue"].append(next_song)
+                self.play_next(guild_id)
+            else:
+                state["queue"].append(next_song)
+        else:
+            if channel:
+                try:
+                    await channel.send("📻 **Autoplay:** Reached the end of matching recommendations for this mood.", delete_after=8)
+                except Exception:
+                    pass
+            vc = guild.voice_client
+            if vc and vc.channel:
+                await self.clear_voice_channel_status(vc.channel)
 
     def get_ffmpeg_options(self, guild_id: int, seek_seconds: int = 0):
         state = self.get_state(guild_id)
@@ -1309,9 +1625,17 @@ class Music(commands.Cog):
         elif state["queue"]:
             next_song = state["queue"].pop(0)
             state["current"] = next_song
+        elif state.get("autoplay") and state.get("last_played"):
+            last_song = state.get("last_played")
+            state["current"] = None
+            state["transformer"] = None
+            asyncio.run_coroutine_threadsafe(self._handle_autoplay(guild_id, last_song), self.bot.loop)
+            return
         else:
             state["current"] = None
             state["transformer"] = None
+            if vc and vc.channel:
+                asyncio.run_coroutine_threadsafe(self.clear_voice_channel_status(vc.channel), self.bot.loop)
             return
 
         def after_play(err):
@@ -1342,6 +1666,19 @@ class Music(commands.Cog):
                     pass
 
             state["start_time"] = time.time()
+            state["last_played"] = next_song
+            if "autoplay_history" not in state:
+                state["autoplay_history"] = []
+            if next_song.title not in state["autoplay_history"]:
+                state["autoplay_history"].append(next_song.title)
+                if len(state["autoplay_history"]) > 50:
+                    state["autoplay_history"].pop(0)
+
+            # Update voice channel status so users outside can see the playing track!
+            if vc and vc.channel:
+                status_title = f"🎵 {next_song.title}"[:48]
+                asyncio.run_coroutine_threadsafe(self.set_voice_channel_status(vc.channel, status_title), self.bot.loop)
+
             vc.play(source, after=after_play)
 
             if state["channel"]:
@@ -1491,6 +1828,8 @@ class Music(commands.Cog):
         state["transformer"] = None
 
         if vc and vc.is_connected():
+            if vc.channel:
+                await self.clear_voice_channel_status(vc.channel)
             await vc.disconnect()
             msg = self.get_resp(interaction.guild_id, "music_disconnected", "Disconnected from voice channel.")
             await reply_box(interaction, msg, title="VOICE DISCONNECTED", status="info")
@@ -1785,10 +2124,14 @@ class Music(commands.Cog):
         state["transformer"] = None
 
         if vc and (vc.is_playing() or vc.is_paused()):
+            if vc.channel:
+                await self.clear_voice_channel_status(vc.channel)
             asyncio.get_event_loop().run_in_executor(None, vc.stop)
             msg = self.get_resp(interaction.guild_id, "music_stopped", "Playback stopped and queue cleared.")
             await reply_box(interaction, msg, title="PLAYBACK STOPPED", status="danger")
         else:
+            if vc and vc.channel:
+                await self.clear_voice_channel_status(vc.channel)
             msg = self.get_resp(interaction.guild_id, "music_nothing_playing", "Nothing was currently playing.")
             await reply_box(interaction, msg, title="PLAYBACK STOPPED", status="info")
 
@@ -1868,6 +2211,205 @@ class Music(commands.Cog):
                 title="EQ FILTER PRESET",
                 status="info"
             )
+
+    @app_commands.command(name="autoplay", description="Toggle intelligent music autoplay matching current track mood & language.")
+    async def autoplay_cmd(self, interaction: discord.Interaction):
+        state = self.get_state(interaction.guild_id)
+        new_status = not state.get("autoplay", False)
+        state["autoplay"] = new_status
+
+        desc = (
+            "Friday will intelligently analyze each track's mood, language, and artist to seamlessly queue matching songs when the queue finishes! 🌸"
+            if new_status else
+            "Autoplay disabled. Playback will stop once the current queue finishes."
+        )
+        await reply_box(
+            interaction,
+            desc,
+            title=f"AUTOPLAY {'ENABLED' if new_status else 'DISABLED'}",
+            status="audio"
+        )
+
+    playlist_group = app_commands.Group(name="playlist", description="Manage and play personal music playlists")
+
+    @playlist_group.command(name="add", description="Add a track to your personal playlist (or current playing track if omitted).")
+    @app_commands.describe(
+        name="Name of your playlist (e.g. Favorites, Gym, Sad Melodies, Bollywood)",
+        music="Song title, artist, or URL (optional; if omitted, saves the currently playing song in VC)"
+    )
+    async def playlist_add(self, interaction: discord.Interaction, name: str, music: Optional[str] = None):
+        await interaction.response.defer(ephemeral=True)
+        clean_name = name.strip()[:40]
+        if not clean_name:
+            return await interaction.followup.send("❌ Please provide a valid playlist name.", ephemeral=True)
+
+        uid = str(interaction.user.id)
+        user_pls = db.playlists.setdefault(uid, {})
+        pl_tracks = user_pls.setdefault(clean_name, [])
+
+        if len(pl_tracks) >= 150:
+            return await interaction.followup.send(f"⚠️ Playlist **{clean_name}** is at maximum capacity (150 tracks).", ephemeral=True)
+
+        song_to_add = None
+        if music:
+            try:
+                info = await self.extract_audio_info(music)
+                song_to_add = {
+                    "title": info["title"],
+                    "url": info["webpage_url"],
+                    "duration": info.get("duration", 0)
+                }
+            except Exception as e:
+                return await interaction.followup.send(f"❌ Could not resolve audio for `{music}`: {e}", ephemeral=True)
+        else:
+            state = self.get_state(interaction.guild_id)
+            current = state.get("current")
+            if not current:
+                return await interaction.followup.send("❌ No track is currently playing in VC. Please specify a song name or URL: `/playlist add name:<name> music:<song>`.", ephemeral=True)
+            song_to_add = {
+                "title": current.title,
+                "url": current.webpage_url,
+                "duration": current.duration
+            }
+
+        if any(item.get("url") == song_to_add["url"] for item in pl_tracks):
+            return await interaction.followup.send(f"ℹ️ **[{song_to_add['title']}]({song_to_add['url']})** is already inside playlist **{clean_name}**.", ephemeral=True)
+
+        pl_tracks.append(song_to_add)
+        db.save_data()
+
+        embed = make_box_embed(
+            title="Playlist Updated",
+            description=f"Saved **[{song_to_add['title']}]({song_to_add['url']})** into playlist **{clean_name}**!\nTotal tracks in `{clean_name}`: **{len(pl_tracks)}**\n*Play it anytime using `/playlist play name:{clean_name}`.*",
+            status="success"
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @playlist_group.command(name="play", description="Enqueue all tracks from your personal playlist into the voice channel.")
+    @app_commands.describe(name="Name of your saved playlist")
+    async def playlist_play(self, interaction: discord.Interaction, name: str):
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            return await reply_box(interaction, "You must join a voice channel first.", title="VOICE CHANNEL REQUIRED", status="warning", ephemeral=True)
+
+        await interaction.response.defer()
+        uid = str(interaction.user.id)
+        user_pls = db.playlists.get(uid, {})
+        clean_name = name.strip()
+        pl_tracks = user_pls.get(clean_name)
+
+        if not pl_tracks:
+            return await reply_box(interaction, f"Playlist **{clean_name}** not found or is empty. Use `/playlist list` to see your playlists.", title="PLAYLIST EMPTY", status="error", ephemeral=True)
+
+        vc, warn = await self.ensure_voice_connection(interaction)
+        if not vc:
+            return await reply_box(interaction, warn or "Could not connect to voice channel.", title="CONNECTION FAILED", status="danger")
+
+        state = self.get_state(interaction.guild_id)
+        state["channel"] = interaction.channel
+        state["_stopping"] = False
+
+        added = 0
+        for item in pl_tracks:
+            song = Song(
+                title=item["title"],
+                url=item["url"],
+                webpage_url=item["url"],
+                duration=item.get("duration", 0),
+                requester=interaction.user
+            )
+            state["queue"].append(song)
+            added += 1
+
+        if not vc.is_playing() and not vc.is_paused():
+            self.play_next(interaction.guild_id)
+
+        embed = make_box_embed(
+            title="Playlist Loaded",
+            description=f"Enqueued **{added} tracks** from playlist **{clean_name}** into the queue!\nUse `/queue` to view upcoming songs.",
+            status="audio"
+        )
+        await interaction.followup.send(embed=embed)
+
+    @playlist_group.command(name="list", description="List all your saved personal playlists.")
+    async def playlist_list(self, interaction: discord.Interaction):
+        uid = str(interaction.user.id)
+        user_pls = db.playlists.get(uid, {})
+
+        if not user_pls:
+            return await reply_box(interaction, "You haven't created any playlists yet.\nCreate one with `/playlist add name:<name> music:<song>` or click **Save to Playlist** on any player card!", title="NO PLAYLISTS", status="info", ephemeral=True)
+
+        lines = []
+        for idx, (p_name, tracks) in enumerate(user_pls.items(), start=1):
+            lines.append(f"`{idx}.` 📑 **{p_name}** — `{len(tracks)} songs`")
+
+        embed = discord.Embed(
+            title="📑 Your Personal Playlists",
+            description="\n".join(lines),
+            color=discord.Color.from_rgb(139, 92, 246)
+        )
+        embed.set_footer(text=f"Total: {len(user_pls)} playlists • Friday Audio Studio")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @playlist_group.command(name="view", description="View songs inside a specific personal playlist.")
+    @app_commands.describe(name="Playlist name")
+    async def playlist_view(self, interaction: discord.Interaction, name: str):
+        uid = str(interaction.user.id)
+        user_pls = db.playlists.get(uid, {})
+        clean_name = name.strip()
+        tracks = user_pls.get(clean_name)
+
+        if not tracks:
+            return await reply_box(interaction, f"Playlist **{clean_name}** does not exist or is empty.", title="PLAYLIST EMPTY", status="error", ephemeral=True)
+
+        lines = []
+        for idx, t in enumerate(tracks[:20], start=1):
+            dur = t.get("duration", 0)
+            mins, secs = divmod(dur, 60)
+            time_str = f" (`{mins:02d}:{secs:02d}`)" if dur else ""
+            lines.append(f"`{idx}.` **[{t['title']}]({t['url']})**{time_str}")
+
+        if len(tracks) > 20:
+            lines.append(f"*... and {len(tracks) - 20} more tracks*")
+
+        embed = discord.Embed(
+            title=f"📑 Playlist: {clean_name}",
+            description="\n".join(lines),
+            color=discord.Color.from_rgb(16, 185, 129)
+        )
+        embed.set_footer(text=f"Total: {len(tracks)} songs • Play with /playlist play name:{clean_name}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @playlist_group.command(name="remove", description="Remove a track from a playlist by index.")
+    @app_commands.describe(name="Playlist name", track_number="Song number from /playlist view")
+    async def playlist_remove(self, interaction: discord.Interaction, name: str, track_number: int):
+        uid = str(interaction.user.id)
+        user_pls = db.playlists.get(uid, {})
+        clean_name = name.strip()
+        tracks = user_pls.get(clean_name)
+
+        if not tracks:
+            return await reply_box(interaction, f"Playlist **{clean_name}** does not exist.", title="PLAYLIST NOT FOUND", status="error", ephemeral=True)
+
+        if track_number < 1 or track_number > len(tracks):
+            return await reply_box(interaction, f"Invalid track number. Please enter a number between 1 and {len(tracks)}.", title="INVALID INDEX", status="warning", ephemeral=True)
+
+        removed = tracks.pop(track_number - 1)
+        db.save_data()
+        await reply_box(interaction, f"Removed **{removed['title']}** from playlist **{clean_name}**.\nRemaining tracks: **{len(tracks)}**", title="TRACK REMOVED", status="success", ephemeral=True)
+
+    @playlist_group.command(name="delete", description="Delete an entire playlist.")
+    @app_commands.describe(name="Playlist name to delete")
+    async def playlist_delete(self, interaction: discord.Interaction, name: str):
+        uid = str(interaction.user.id)
+        user_pls = db.playlists.get(uid, {})
+        clean_name = name.strip()
+
+        if clean_name not in user_pls:
+            return await reply_box(interaction, f"Playlist **{clean_name}** not found.", title="PLAYLIST NOT FOUND", status="error", ephemeral=True)
+
+        del user_pls[clean_name]
+        db.save_data()
+        await reply_box(interaction, f"Deleted playlist **{clean_name}** permanently.", title="PLAYLIST DELETED", status="success", ephemeral=True)
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         print(f"[Music AppCommandError] {error}")
