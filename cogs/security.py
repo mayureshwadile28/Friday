@@ -5,6 +5,7 @@ import asyncio
 import time
 import datetime
 import re
+import copy
 from database import db
 
 CHANNELS_TO_CHECK = [
@@ -81,11 +82,9 @@ class Security(commands.Cog):
     def get_security_config(self, gid: str):
         """Retrieve guild security config merged with defaults."""
         if gid not in db.security_settings:
-            import copy
             db.security_settings[gid] = copy.deepcopy(DEFAULT_SECURITY_CONFIG)
             db.save_data()
         cfg = db.security_settings[gid]
-        import copy
         for key in ["limits", "instant", "detect", "antiraid", "antispam"]:
             if key not in cfg:
                 cfg[key] = copy.deepcopy(DEFAULT_SECURITY_CONFIG[key])

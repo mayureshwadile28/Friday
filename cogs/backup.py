@@ -590,6 +590,16 @@ class BackupRestoreConfirmView(discord.ui.View):
             purge_btn.callback = self.confirm_purge_button
             self.add_item(purge_btn)
 
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[BackupRestore] View interaction error on {item}: {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An unexpected error occurred during restoration.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An unexpected error occurred during restoration.", ephemeral=True)
+        except Exception:
+            pass
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author.id:
             await interaction.response.send_message("❌ Only the member who requested this restoration can confirm it.", ephemeral=True)

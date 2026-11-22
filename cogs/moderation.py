@@ -46,11 +46,18 @@ class Moderation(commands.Cog):
         if not await self.require_mod_permission(interaction, "ban_members", "Ban Members"):
             return
         gid = str(interaction.guild.id)
+        if member.id == interaction.user.id:
+            await reply_box(interaction, "You cannot ban yourself.", title="INVALID TARGET", status="warning", ephemeral=True)
+            return
+        if member.id == interaction.guild.owner_id:
+            await reply_box(interaction, "You cannot ban the server owner.", title="INVALID TARGET", status="danger", ephemeral=True)
+            return
         if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
             err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot moderate someone with a higher or equal role hierarchy.")
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="HIERARCHY CONFLICT", status="danger", ephemeral=True)
             return
-        if member.top_role >= interaction.guild.me.top_role and member != interaction.guild.owner:
+        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+        if bot_member and member.top_role >= bot_member.top_role:
             err_tpl = db.custom_responses.get(gid, {}).get("perm_err_ban", "Friday's role hierarchy is not high enough to ban this user.")
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
             return
@@ -149,6 +156,12 @@ class Moderation(commands.Cog):
         if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
             return
         gid = str(interaction.guild.id)
+        if member.id == interaction.user.id:
+            await reply_box(interaction, "You cannot timeout yourself.", title="INVALID TARGET", status="warning", ephemeral=True)
+            return
+        if member.id == interaction.guild.owner_id:
+            await reply_box(interaction, "You cannot timeout the server owner.", title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
+            return
         if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
             err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot moderate someone with a higher or equal role hierarchy.")
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="HIERARCHY CONFLICT", status="danger", ephemeral=True)
@@ -157,7 +170,8 @@ class Moderation(commands.Cog):
             err_tpl = db.custom_responses.get(gid, {}).get("admin_timeout_err", "Cannot apply timeout to a server Administrator.")
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
             return
-        if member.top_role >= interaction.guild.me.top_role and member != interaction.guild.owner:
+        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+        if bot_member and member.top_role >= bot_member.top_role:
             err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday's role hierarchy is not high enough to timeout this user.")
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
             return
@@ -188,6 +202,9 @@ class Moderation(commands.Cog):
         if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
             return
         gid = str(interaction.guild.id)
+        if member.id == interaction.guild.owner_id:
+            await reply_box(interaction, "The server owner cannot be timed out.", title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
+            return
         if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
             err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot remove a timeout from someone with a higher or equal role.")
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="HIERARCHY CONFLICT", status="danger", ephemeral=True)
@@ -203,7 +220,8 @@ class Moderation(commands.Cog):
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
             return
 
-        if member.top_role >= interaction.guild.me.top_role and member != interaction.guild.owner:
+        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+        if bot_member and member.top_role >= bot_member.top_role:
             err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday's role hierarchy is not high enough to modify {member}'s timeout status.")
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
             return
