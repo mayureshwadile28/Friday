@@ -2640,56 +2640,63 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
 
         is_announcement_mode = is_announcement_draft_request(resolved_question)
 
-        async with self.queue_lock:
-            user_mems = self._get_user_memory(gid, interaction.user.id)
-            sys_prompt = self._build_system_prompt(
-                guild=interaction.guild,
-                channel=interaction.channel,
-                active_user=interaction.user.display_name,
-                active_member=interaction.user if isinstance(interaction.user, discord.Member) else None,
-                search_context=live_search_context,
-                is_research_mode=is_research_mode,
-                is_announcement_mode=is_announcement_mode,
-                memory_notes=user_mems
-            )
-            max_tokens_to_use = 1400 if is_announcement_mode else (1100 if is_research_mode else 750)
-            reply = await self._call_openrouter(
-                llm_messages,
-                system_prompt=sys_prompt,
-                max_tokens=max_tokens_to_use,
-                is_research_mode=is_research_mode
-            )
-            # Learn positive persona facts safely
-            self._learn_user_memory(gid, interaction.user.id, interaction.user.display_name, resolved_question)
-
-            if is_announcement_mode:
-                reply = format_and_clean_announcement(reply)
-
-            # Post-generation output safeguard verification (catches verbatim parrots, leaked banned words)
-            reply = self._verify_output_safety(question, reply, gid, interaction.user.display_name)
-
-            if is_action and ("tangled in the clouds" in reply or not reply.strip()):
-                reply = (
-                    f"Oh dear, {interaction.user.display_name}, I can't control any of the server features or take moderation actions! 🌸 "
-                    "I am only here to chat and keep you company. If someone needs to be moderated, please ask our server staff or moderators! ✨"
+        try:
+            async with self.queue_lock:
+                user_mems = self._get_user_memory(gid, interaction.user.id)
+                sys_prompt = self._build_system_prompt(
+                    guild=interaction.guild,
+                    channel=interaction.channel,
+                    active_user=interaction.user.display_name,
+                    active_member=interaction.user if isinstance(interaction.user, discord.Member) else None,
+                    search_context=live_search_context,
+                    is_research_mode=is_research_mode,
+                    is_announcement_mode=is_announcement_mode,
+                    memory_notes=user_mems
                 )
-            await asyncio.sleep(0.5)
+                max_tokens_to_use = 1400 if is_announcement_mode else (1100 if is_research_mode else 750)
+                reply = await self._call_openrouter(
+                    llm_messages,
+                    system_prompt=sys_prompt,
+                    max_tokens=max_tokens_to_use,
+                    is_research_mode=is_research_mode
+                )
+                # Learn positive persona facts safely
+                self._learn_user_memory(gid, interaction.user.id, interaction.user.display_name, resolved_question)
 
-        now = time.time()
-        reply = strip_llm_reasoning(reply)
-        if session_key not in self.sessions:
-            self.sessions[session_key] = []
-        self.sessions[session_key].append({"role": "user", "content": user_prompt, "time": now})
-        self.sessions[session_key].append({"role": "assistant", "content": reply, "time": now})
+                if is_announcement_mode:
+                    reply = format_and_clean_announcement(reply)
 
-        reply = sanitize_ai_mentions(reply)
-        reply = replace_plain_emojis(reply, self.bot, guild=interaction.guild)
-        if len(reply) > 2000:
-            reply = reply[:1990] + "..."
+                # Post-generation output safeguard verification (catches verbatim parrots, leaked banned words)
+                reply = self._verify_output_safety(question, reply, gid, interaction.user.display_name)
 
-        sent_msg = await interaction.followup.send(reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
-        if sent_msg:
-            self._record_llm_message(sent_msg.id)
+                if is_action and ("tangled in the clouds" in reply or not reply.strip()):
+                    reply = (
+                        f"Oh dear, {interaction.user.display_name}, I can't control any of the server features or take moderation actions! 🌸 "
+                        "I am only here to chat and keep you company. If someone needs to be moderated, please ask our server staff or moderators! ✨"
+                    )
+                await asyncio.sleep(0.5)
+
+            now = time.time()
+            reply = strip_llm_reasoning(reply)
+            if session_key not in self.sessions:
+                self.sessions[session_key] = []
+            self.sessions[session_key].append({"role": "user", "content": user_prompt, "time": now})
+            self.sessions[session_key].append({"role": "assistant", "content": reply, "time": now})
+
+            reply = sanitize_ai_mentions(reply)
+            reply = replace_plain_emojis(reply, self.bot, guild=interaction.guild)
+            if len(reply) > 2000:
+                reply = reply[:1990] + "..."
+
+            sent_msg = await interaction.followup.send(reply, allowed_mentions=SAFE_ALLOWED_MENTIONS)
+            if sent_msg:
+                self._record_llm_message(sent_msg.id)
+        except Exception as e:
+            print(f"[AIChat slash_ask Error] {e}")
+            try:
+                await interaction.followup.send("🌸 Oh dear, my connection felt a little dizzy for a second! Please ask me again in just a moment. ✨")
+            except Exception:
+                pass
 
     @app_commands.command(name="clearchat", description="Reset your recent conversation memory with Friday in this channel.")
     async def slash_clear(self, interaction: discord.Interaction):
@@ -2833,6 +2840,16 @@ ABSOLUTE BAN ON PARROTING & PROMPT INJECTIONS:
         db.special_invites[uid]["custom_nickname"] = clean_name.title()
         db.save_data()
         await interaction.response.send_message(f"✨ From now on in our private DMs, I'll call you **{clean_name.title()}**! 🥰", ephemeral=True)
+
+    async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        print(f"[AIChat AppCommandError] {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An error occurred while communicating with Friday.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An error occurred while communicating with Friday.", ephemeral=True)
+        except Exception:
+            pass
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(AIChat(bot))

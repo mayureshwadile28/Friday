@@ -221,6 +221,16 @@ class TTSVoiceSelectView(discord.ui.View):
         super().__init__(timeout=60)
         self.add_item(TTSVoiceSelect(current_key))
 
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[TTSVoiceSelectView Error] {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An error occurred while updating TTS voice.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An error occurred while updating TTS voice.", ephemeral=True)
+        except Exception:
+            pass
+
 
 class TTSCog(commands.Cog, name="TTS"):
     """Friday Text-to-Speech (TTS) Voice Engine for Discord voice channels."""

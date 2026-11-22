@@ -331,6 +331,16 @@ class MusicControlView(discord.ui.View):
         cog = self.cog or (interaction.client.get_cog("Music") if interaction.client else None)
         return gid, cog
 
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[MusicControlView Error on {item}] {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An error occurred while controlling music playback.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An error occurred while controlling music playback.", ephemeral=True)
+        except Exception:
+            pass
+
     @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏯️", custom_id="music_pause_resume", row=0)
     async def pause_resume_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
@@ -732,6 +742,16 @@ class QueueItemView(discord.ui.View):
         self.cog = cog
         self.guild_id = guild_id
         self.song = song
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[QueueItemView Error on {item}] {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An error occurred updating the music queue.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An error occurred updating the music queue.", ephemeral=True)
+        except Exception:
+            pass
 
     @discord.ui.button(label="Play Now", style=discord.ButtonStyle.success, emoji="⚡")
     async def play_now_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1848,6 +1868,16 @@ class Music(commands.Cog):
                 title="EQ FILTER PRESET",
                 status="info"
             )
+
+    async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        print(f"[Music AppCommandError] {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An error occurred while executing the music command.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An error occurred while executing the music command.", ephemeral=True)
+        except Exception:
+            pass
 
 async def setup(bot):
     await bot.add_cog(Music(bot))

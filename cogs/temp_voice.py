@@ -129,12 +129,32 @@ class VoiceKickSelectView(discord.ui.View):
         super().__init__(timeout=60)
         self.add_item(KickMemberSelect(channel, owner_id))
 
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[VoiceKickSelectView Error] {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An error occurred processing voice disconnect.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An error occurred processing voice disconnect.", ephemeral=True)
+        except Exception:
+            pass
+
 class VoiceControlView(discord.ui.View):
     def __init__(self, cog_ref, channel_id: int, owner_id: int):
         super().__init__(timeout=None)
         self.cog_ref = cog_ref
         self.channel_id = channel_id
         self.owner_id = owner_id
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[VoiceControlView Error on {item}] {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An error occurred updating voice settings.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An error occurred updating voice settings.", ephemeral=True)
+        except Exception:
+            pass
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         channel_data = self.cog_ref.active_channels.get(str(self.channel_id))
