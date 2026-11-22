@@ -3206,13 +3206,24 @@ class Economy(commands.Cog):
             await ctx.send("❌ Failed to spawn coin drop. Ensure economy is enabled and Friday has permission to send embeds here.")
 
     @commands.command(name="rob", aliases=["steal"])
-    async def prefix_rob(self, ctx: commands.Context, target: Optional[discord.Member] = None):
-        """Stage a wallet heist against another player: .rob @user"""
+    async def prefix_rob(self, ctx: commands.Context, *, target_or_emoji: Optional[str] = None):
+        """Stage a wallet heist against another player: .rob @user (or .steal <:emoji:> to steal emoji)"""
         if not ctx.guild or not self.check_prefix_channel(ctx):
             return
         p = ctx.prefix or "!"
-        if not target:
-            return await ctx.send(f"🥷 **Usage:** `{p}rob @user`")
+        if not target_or_emoji:
+            return await ctx.send(f"🥷 **Usage:** `{p}rob @user` (or `{p}emojisteal <:emoji:>` to steal emojis)")
+
+        # If user passed custom emojis or Discord CDN links to .steal, gracefully delegate to Expressions cog
+        if re.search(r'<a?:\w+:\d+>', target_or_emoji) or "cdn.discordapp.com/emojis/" in target_or_emoji:
+            expr_cog = self.bot.get_cog("Expressions")
+            if expr_cog and hasattr(expr_cog, "prefix_steal"):
+                return await expr_cog.prefix_steal(ctx, emojis=target_or_emoji)
+
+        try:
+            target = await commands.MemberConverter().convert(ctx, target_or_emoji.strip())
+        except Exception:
+            return await ctx.send(f"❌ Could not find member `{target_or_emoji}` to rob. Usage: `{p}rob @user`")
 
         async def send_response(content=None, embed=None, ephemeral=False):
             return await ctx.send(content=content, embed=embed)

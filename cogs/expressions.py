@@ -349,7 +349,7 @@ class Expressions(commands.Cog):
             except Exception:
                 pass
 
-    @commands.command(name="steal", aliases=["emojisteal", "stealemoji"])
+    @commands.command(name="emojisteal", aliases=["stealemoji", "stealemojis", "steal_emoji"])
     @commands.has_permissions(manage_expressions=True)
     async def prefix_steal(self, ctx: commands.Context, *, emojis: str):
         """Prefix command to steal custom emojis or Discord emoji CDN links (.steal <:emoji:id>)."""
