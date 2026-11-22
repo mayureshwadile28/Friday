@@ -1060,27 +1060,43 @@ class Music(commands.Cog):
         clean_title = re.sub(r'(?i)\b(official\s+video|official\s+audio|lyrics|lyric\s+video|hd|4k|remastered|full\s+song|visualizer)\b', '', last_song.title)
         clean_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_title).strip()
 
+        # Extract track name if artist is separated by ' - '
+        if " - " in clean_title:
+            parts = clean_title.split(" - ", 1)
+            track_name = parts[1].strip()
+        else:
+            track_name = clean_title
+
         queries = []
         if artist and mood and lang:
             queries.append(f"{artist} {mood} {lang} songs audio")
             queries.append(f"{mood} {lang} popular songs audio")
+            queries.append(f"songs like {clean_title} audio")
         elif artist and mood:
             queries.append(f"{artist} {mood} songs audio")
             queries.append(f"{mood} songs audio")
+            queries.append(f"songs like {clean_title} audio")
         elif artist:
             queries.append(f"{artist} popular songs audio")
+            queries.append(f"songs like {clean_title} audio")
             queries.append(f"{clean_title} similar songs audio")
         elif mood:
             queries.append(f"{mood} music audio")
+            queries.append(f"songs like {clean_title} audio")
 
-        queries.append(f"{clean_title} radio mix audio")
+        # General similarity queries as guaranteed fallbacks
+        queries.append(f"songs like {clean_title} audio")
+        queries.append(f"{clean_title} similar songs audio")
+        queries.append(f"{clean_title} radio playlist songs")
 
         history = set(state.get("autoplay_history", []))
         candidates = []
 
+        norm_track = re.sub(r'[^a-z0-9]', '', track_name.lower())
+
         for q in queries:
             try:
-                results = await self.bot.loop.run_in_executor(None, lambda: self._flat_search_sync(f"ytsearch10:{q}"))
+                results = await asyncio.to_thread(self._flat_search_sync, f"ytsearch8:{q}")
                 for entry in results:
                     t_name = entry.get("title", "")
                     dur = entry.get("duration") or 0
@@ -1088,7 +1104,9 @@ class Music(commands.Cog):
                         continue
                     if t_name in history:
                         continue
-                    if clean_title.lower() in t_name.lower() or t_name.lower() in clean_title.lower():
+                    # Check if candidate is duplicate of the current track
+                    norm_entry = re.sub(r'[^a-z0-9]', '', t_name.lower())
+                    if len(norm_track) >= 3 and norm_track in norm_entry:
                         continue
                     if dur and (dur > 720 or dur < 45):
                         continue
@@ -1139,11 +1157,9 @@ class Music(commands.Cog):
         next_song = await self._find_autoplay_track(last_song, guild_id)
         if next_song:
             vc = guild.voice_client
-            if not state.get("queue") and not (vc.is_playing() or vc.is_paused()):
-                state["queue"].append(next_song)
+            state["queue"].append(next_song)
+            if state.get("current") is None or not (vc.is_playing() or vc.is_paused()):
                 self.play_next(guild_id)
-            else:
-                state["queue"].append(next_song)
         else:
             if channel:
                 try:
@@ -1625,8 +1641,8 @@ class Music(commands.Cog):
         elif state["queue"]:
             next_song = state["queue"].pop(0)
             state["current"] = next_song
-        elif state.get("autoplay") and state.get("last_played"):
-            last_song = state.get("last_played")
+        elif state.get("autoplay") and (state.get("last_played") or state.get("current")):
+            last_song = state.get("last_played") or state.get("current")
             state["current"] = None
             state["transformer"] = None
             asyncio.run_coroutine_threadsafe(self._handle_autoplay(guild_id, last_song), self.bot.loop)
