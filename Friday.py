@@ -12,6 +12,8 @@ import random
 import re
 import aiohttp
 import io
+import traceback
+from PIL import Image
 from easy_pil import Editor, load_image_async, Font, Canvas
 
 load_dotenv()
@@ -371,66 +373,176 @@ async def reaction_panel(
         await interaction.followup.send("❌ Error: One or more emojis are invalid. Ensure they belong to this server.")
 
 # --- EXPRESSIONS (EMOJIS & RIGHT-CLICK STICKER STEAL) ---
+def sanitize_emoji_name(raw_name: str, fallback_id: str) -> str:
+    cleaned = re.sub(r'[^a-zA-Z0-9_]', '', raw_name)
+    if len(cleaned) < 2:
+        cleaned = f"emoji_{cleaned}" if cleaned else f"emoji_{str(fallback_id)[-4:]}"
+    if len(cleaned) > 32:
+        cleaned = cleaned[:32]
+    return cleaned
+
+def extract_emojis_from_string(text: str):
+    results = []
+    seen = set()
+    for m in re.finditer(r'<(a?):([a-zA-Z0-9_]+):([0-9]+)>', text):
+        is_animated = bool(m.group(1))
+        raw_name = m.group(2)
+        emoji_id = m.group(3)
+        if emoji_id not in seen:
+            seen.add(emoji_id)
+            results.append({
+                "animated": is_animated,
+                "name": sanitize_emoji_name(raw_name, emoji_id),
+                "id": emoji_id,
+                "url": f"https://cdn.discordapp.com/emojis/{emoji_id}.{'gif' if is_animated else 'png'}"
+            })
+    cdn_matches = re.finditer(r'https?://(?:cdn|media)\.discordapp\.(?:com|net)/emojis/([0-9]+)\.(gif|png|webp|jpg|jpeg)(?:\?[^\s]*)?', text, re.IGNORECASE)
+    for m in cdn_matches:
+        emoji_id = m.group(1)
+        ext = m.group(2).lower()
+        is_animated = (ext == "gif")
+        if emoji_id not in seen:
+            seen.add(emoji_id)
+            results.append({
+                "animated": is_animated,
+                "name": f"emoji_{str(emoji_id)[-6:]}",
+                "id": emoji_id,
+                "url": f"https://cdn.discordapp.com/emojis/{emoji_id}.{'gif' if is_animated else 'png'}"
+            })
+    return results
+
+def optimize_emoji_bytes(img_bytes: bytes, is_animated: bool = False, max_bytes: int = 256 * 1024) -> bytes:
+    if len(img_bytes) <= max_bytes:
+        return img_bytes
+    if is_animated:
+        try:
+            with Image.open(io.BytesIO(img_bytes)) as im:
+                frames = []
+                durations = []
+                for frame_idx in range(getattr(im, "n_frames", 1)):
+                    im.seek(frame_idx)
+                    new_frame = im.copy().convert("RGBA")
+                    w, h = new_frame.size
+                    new_frame = new_frame.resize((max(32, int(w * 0.8)), max(32, int(h * 0.8))), Image.Resampling.LANCZOS)
+                    frames.append(new_frame)
+                    durations.append(im.info.get("duration", 100))
+                out_buf = io.BytesIO()
+                frames[0].save(out_buf, format="GIF", save_all=True, append_images=frames[1:], duration=durations, loop=0, optimize=True)
+                optimized = out_buf.getvalue()
+                if len(optimized) < len(img_bytes):
+                    return optimized
+        except Exception:
+            return img_bytes
+        return img_bytes
+    try:
+        with Image.open(io.BytesIO(img_bytes)) as im:
+            im = im.convert("RGBA")
+            w, h = im.size
+            if max(w, h) > 128:
+                im.thumbnail((128, 128), Image.Resampling.LANCZOS)
+            out_buf = io.BytesIO()
+            im.save(out_buf, format="PNG", optimize=True)
+            optimized = out_buf.getvalue()
+            if len(optimized) <= max_bytes:
+                return optimized
+            im.thumbnail((96, 96), Image.Resampling.LANCZOS)
+            out_buf = io.BytesIO()
+            im.save(out_buf, format="PNG", optimize=True)
+            return out_buf.getvalue()
+    except Exception:
+        return img_bytes
+
 @bot.tree.command(name="emoji_steal", description="Steal emojis and add them to your server.")
-@app_commands.describe(emojis="Paste one or multiple emojis here to steal them in bulk.")
+@app_commands.describe(emojis="Paste one or multiple emojis or Discord emoji CDN links to steal them.")
 @app_commands.default_permissions(manage_expressions=True)
 async def emoji_steal(interaction: discord.Interaction, emojis: str):
-    await interaction.response.defer(ephemeral=True)
-    matches = re.findall(r'<(a?):([a-zA-Z0-9_]+):([0-9]+)>', emojis)
-    
-    if not matches:
-        await interaction.followup.send("❌ No valid custom emojis found in your message.", ephemeral=True)
-        return
-        
-    added = []
-    failed = 0
-    async with aiohttp.ClientSession() as session:
-        for animated, name, emoji_id in matches:
-            ext = "gif" if animated else "png"
-            url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}"
-            
-            async with session.get(url) as resp:
-                if resp.status == 200:
-                    img_bytes = await resp.read()
-                    try:
-                        new_emoji = await interaction.guild.create_custom_emoji(name=name, image=img_bytes)
-                        emoji_format = f"<{'a' if animated else ''}:{new_emoji.name}:{new_emoji.id}>"
-                        added.append(emoji_format)
-                    except discord.Forbidden:
-                        await interaction.followup.send("❌ I lack permissions to manage emojis.")
-                        return
-                    except discord.HTTPException:
-                        failed += 1 
-                        
-    result_msg = f"✅ Successfully stole **{len(added)}** emojis: {' '.join(added)}"
-    if failed > 0: result_msg += f"\n❌ Failed to add {failed} (your server might be out of slots)."
-    await interaction.followup.send(result_msg, ephemeral=True)
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except Exception:
+        pass
+
+    try:
+        if not interaction.guild:
+            await interaction.followup.send("❌ This command can only be used inside a server.", ephemeral=True)
+            return
+
+        perms = interaction.guild.me.guild_permissions
+        has_perm = getattr(perms, "manage_expressions", False) or getattr(perms, "manage_emojis_and_stickers", False) or perms.administrator
+        if not has_perm:
+            await interaction.followup.send("❌ Friday lacks the **Manage Expressions** permission in this server.", ephemeral=True)
+            return
+
+        extracted = extract_emojis_from_string(emojis)
+        if not extracted:
+            await interaction.followup.send("❌ No valid custom emojis or Discord CDN links found in your message.", ephemeral=True)
+            return
+
+        added = []
+        failed = 0
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            for item in extracted:
+                animated = item["animated"]
+                name = item["name"]
+                url = item["url"]
+                try:
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            raw_bytes = await resp.read()
+                            optimized_bytes = optimize_emoji_bytes(raw_bytes, is_animated=animated)
+                            new_emoji = await interaction.guild.create_custom_emoji(
+                                name=name,
+                                image=optimized_bytes,
+                                reason=f"Stolen by {interaction.user} via Friday"
+                            )
+                            emoji_format = f"<{'a' if animated else ''}:{new_emoji.name}:{new_emoji.id}>"
+                            added.append(emoji_format)
+                        else:
+                            failed += 1
+                except Exception:
+                    failed += 1
+
+        if added:
+            result_msg = f"✅ Successfully stole **{len(added)}** emojis: {' '.join(added)}"
+            if failed > 0:
+                result_msg += f"\n❌ Failed to add {failed} (server slots full or invalid image)."
+            await interaction.followup.send(result_msg, ephemeral=True)
+        else:
+            await interaction.followup.send(f"❌ Failed to add emojis (server slots full or invalid image).", ephemeral=True)
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+        except Exception:
+            pass
 
 @bot.tree.context_menu(name="Steal Sticker")
 @app_commands.default_permissions(manage_expressions=True)
 async def steal_sticker_context(interaction: discord.Interaction, message: discord.Message):
-    await interaction.response.defer(ephemeral=True)
-    
-    if not message.stickers:
-        await interaction.followup.send("❌ No sticker found in that message.", ephemeral=True)
-        return
-        
-    sticker_item = message.stickers[0]
-    
     try:
-        full_sticker = await sticker_item.fetch()
-    except discord.HTTPException:
-        await interaction.followup.send("❌ Failed to fetch full sticker data from Discord's servers.", ephemeral=True)
-        return
-        
-    if type(full_sticker) == discord.StandardSticker:
-        await interaction.followup.send("❌ You cannot steal Discord's official built-in standard stickers.", ephemeral=True)
-        return
-        
+        await interaction.response.defer(ephemeral=True)
+    except Exception:
+        pass
+
     try:
+        if not message.stickers:
+            await interaction.followup.send("❌ No sticker found in that message.", ephemeral=True)
+            return
+            
+        sticker_item = message.stickers[0]
+        try:
+            full_sticker = await sticker_item.fetch()
+        except discord.HTTPException:
+            await interaction.followup.send("❌ Failed to fetch full sticker data from Discord's servers.", ephemeral=True)
+            return
+            
+        if type(full_sticker) == discord.StandardSticker:
+            await interaction.followup.send("❌ You cannot steal Discord's official built-in standard stickers.", ephemeral=True)
+            return
+            
         img_bytes = await full_sticker.read()
         new_sticker = await interaction.guild.create_sticker(
-            name=full_sticker.name,
+            name=full_sticker.name[:30] if full_sticker.name else "stolen_sticker",
             description="Stolen by Friday",
             emoji=full_sticker.emoji or "✨",
             file=discord.File(fp=io.BytesIO(img_bytes), filename="sticker.png")
@@ -439,7 +551,13 @@ async def steal_sticker_context(interaction: discord.Interaction, message: disco
     except discord.Forbidden:
         await interaction.followup.send("❌ I lack permissions to manage stickers.", ephemeral=True)
     except discord.HTTPException as e:
-        await interaction.followup.send(f"❌ Failed to add sticker. Error: {e.text}", ephemeral=True)
+        await interaction.followup.send(f"❌ Failed to add sticker. Error: {e.text if hasattr(e, 'text') else e}", ephemeral=True)
+    except Exception as e:
+        traceback.print_exc()
+        try:
+            await interaction.followup.send(f"❌ Error: {e}", ephemeral=True)
+        except Exception:
+            pass
 
 # --- XP & LEVELING COMMANDS ---
 @bot.tree.command(name="level_setup", description="Activate leveling and set the channel for Level Up updates.")
