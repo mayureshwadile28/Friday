@@ -317,13 +317,14 @@ FFMPEG_OPTIONS = get_ffmpeg_options("studio")
 
 
 class Song:
-    def __init__(self, title, url, duration, requester, thumbnail=None, webpage_url=None):
+    def __init__(self, title, url, duration, requester, thumbnail=None, webpage_url=None, is_autoplay=False):
         self.title = title
         self.url = url
         self.webpage_url = webpage_url or url
         self.duration = duration
         self.requester = requester
         self.thumbnail = thumbnail
+        self.is_autoplay = is_autoplay
 
 
 class SaveToPlaylistModal(discord.ui.Modal, title="Save Track to Playlist"):
@@ -603,7 +604,10 @@ class MusicControlView(discord.ui.View):
             )
             if current:
                 mins, secs = divmod(current.duration or 0, 60)
-                req_mention = current.requester.mention if hasattr(current.requester, 'mention') else "Someone"
+                if getattr(current, "is_autoplay", False):
+                    req_mention = "📻 Autoplay Discovery"
+                else:
+                    req_mention = current.requester.mention if (getattr(current, 'requester', None) and hasattr(current.requester, 'mention')) else "DJ"
                 embed.add_field(
                     name="▶ Currently Playing",
                     value=f"• **[{current.title}]({current.webpage_url})**\n  ⏱ `{mins:02d}:{secs:02d}` • Requested by: {req_mention}",
@@ -613,7 +617,10 @@ class MusicControlView(discord.ui.View):
                 lines = []
                 for idx, s in enumerate(queue[:10], start=1):
                     mins, secs = divmod(s.duration or 0, 60)
-                    s_req = s.requester.mention if hasattr(s.requester, 'mention') else "Someone"
+                    if getattr(s, "is_autoplay", False):
+                        s_req = "📻 Autoplay"
+                    else:
+                        s_req = s.requester.mention if (getattr(s, 'requester', None) and hasattr(s.requester, 'mention')) else "DJ"
                     lines.append(f"`{idx}.` **[{s.title}]({s.webpage_url})** (`{mins:02d}:{secs:02d}`) — {s_req}")
                 if len(queue) > 10:
                     lines.append(f"*... and {len(queue) - 10} more songs in queue*")
@@ -748,7 +755,12 @@ class MusicControlView(discord.ui.View):
             except Exception:
                 pass
 
-            msg = "Friday will automatically queue similar tracks with matching mood and language when the queue ends." if new_auto else "Autoplay has been turned off."
+            if new_auto:
+                asyncio.create_task(cog.ensure_autoplay_queued(gid))
+                msg = "Friday will intelligently pre-fetch and stream similar tracks with matching mood and artist! 📻"
+            else:
+                state["queue"] = [s for s in state.get("queue", []) if not getattr(s, "is_autoplay", False)]
+                msg = "Autoplay has been turned off. Any upcoming autoplay recommendations have been removed from the queue."
             try:
                 await interaction.followup.send(
                     embed=make_box_embed(title="Autoplay Mode", description=f"Autoplay is now **{'ENABLED' if new_auto else 'DISABLED'}**.\n{msg}", status="audio"),
@@ -1135,40 +1147,67 @@ class Music(commands.Cog):
             print(f"[Autoplay Audio Extract Error] {ex}")
             return None
 
-    async def _handle_autoplay(self, guild_id: int, last_song: Song):
-        """Asynchronously discovers and plays next autoplay track matching current song features."""
+    async def ensure_autoplay_queued(self, guild_id: int):
+        """Pre-fetches the next matching autoplay track so the queue is never empty and playback never stalls."""
         state = self.get_state(guild_id)
         guild = self.bot.get_guild(guild_id)
         if not guild or not guild.voice_client or not guild.voice_client.is_connected():
             return
         if not state.get("autoplay") or state.get("_stopping"):
             return
+        if state.get("queue") or state.get("_fetching_autoplay"):
+            return
 
-        mood, lang, _ = self._detect_song_features(last_song.title)
-        channel = state.get("channel")
-        if channel:
-            try:
-                mood_desc = f"mood: **{mood.capitalize()}**" if mood else "similar genre"
-                lang_desc = f" • language: **{lang.capitalize()}**" if lang else ""
-                await channel.send(f"📻 **Autoplay:** Finding next track with {mood_desc}{lang_desc}...", delete_after=6)
-            except Exception:
-                pass
+        ref_song = state.get("current") or state.get("last_played")
+        if not ref_song:
+            return
 
-        next_song = await self._find_autoplay_track(last_song, guild_id)
-        if next_song:
-            vc = guild.voice_client
-            state["queue"].append(next_song)
-            if state.get("current") is None or not (vc.is_playing() or vc.is_paused()):
-                self.play_next(guild_id)
-        else:
-            if channel:
-                try:
-                    await channel.send("📻 **Autoplay:** Reached the end of matching recommendations for this mood.", delete_after=8)
-                except Exception:
-                    pass
-            vc = guild.voice_client
-            if vc and vc.channel:
-                await self.clear_voice_channel_status(vc.channel)
+        state["_fetching_autoplay"] = True
+        try:
+            print(f"[Music Autoplay] Pre-fetching next recommendation for guild {guild_id} based on '{ref_song.title}'...")
+            channel = state.get("channel")
+            next_song = await self._find_autoplay_track(ref_song, guild_id)
+            if next_song:
+                next_song.is_autoplay = True
+                vc = guild.voice_client
+                state["queue"].append(next_song)
+                print(f"[Music Autoplay] Queued next song: '{next_song.title}' (queue length: {len(state['queue'])})")
+
+                if channel:
+                    try:
+                        mood, lang, _ = self._detect_song_features(ref_song.title)
+                        desc_parts = []
+                        if mood: desc_parts.append(f"mood: **{mood.capitalize()}**")
+                        if lang: desc_parts.append(f"lang: **{lang.capitalize()}**")
+                        tag = f" ({' • '.join(desc_parts)})" if desc_parts else ""
+                        await channel.send(f"📻 **Autoplay:** Up next: **[{next_song.title}]({next_song.webpage_url})**{tag}")
+                    except Exception as ch_err:
+                        print(f"[Music Autoplay] Notice send note: {ch_err}")
+
+                # If Friday is idle (nothing currently playing or paused), trigger play_next immediately!
+                if state.get("current") is None or not (vc.is_playing() or vc.is_paused()):
+                    self.play_next(guild_id)
+            else:
+                print(f"[Music Autoplay] No similar tracks found for '{ref_song.title}'.")
+                if channel and (state.get("current") is None and not vc.is_playing()):
+                    try:
+                        await channel.send("📻 **Autoplay:** Reached the end of matching recommendations for this mood.", delete_after=10)
+                    except Exception:
+                        pass
+                vc = guild.voice_client
+                if vc and vc.channel and (state.get("current") is None and not vc.is_playing()):
+                    await self.clear_voice_channel_status(vc.channel)
+        except Exception as e:
+            print(f"[Music Autoplay Error in ensure_autoplay_queued] {e}")
+        finally:
+            state["_fetching_autoplay"] = False
+
+    async def _handle_autoplay(self, guild_id: int, last_song: Song = None):
+        """Backwards compatibility alias for ensure_autoplay_queued."""
+        if last_song:
+            state = self.get_state(guild_id)
+            state["last_played"] = last_song
+        await self.ensure_autoplay_queued(guild_id)
 
     def get_ffmpeg_options(self, guild_id: int, seek_seconds: int = 0):
         state = self.get_state(guild_id)
@@ -1606,7 +1645,10 @@ class Music(commands.Cog):
             profile = AUDIO_FILTERS.get(f_key, AUDIO_FILTERS["studio"])
             profile_name = f"{profile['emoji']} {profile['name']}"
 
-        req_mention = song.requester.mention if (hasattr(song, "requester") and hasattr(song.requester, "mention")) else "DJ"
+        if getattr(song, "is_autoplay", False):
+            req_mention = "📻 Autoplay Discovery"
+        else:
+            req_mention = song.requester.mention if (getattr(song, "requester", None) and hasattr(song.requester, "mention")) else "DJ"
         embed.description = (
             f"• **[{song.title}]({song.webpage_url})**\n"
             f"• ⏱ **Duration:** `{mins:02d}m {secs:02d}s` — ({req_mention})\n"
@@ -1643,9 +1685,10 @@ class Music(commands.Cog):
             state["current"] = next_song
         elif state.get("autoplay") and (state.get("last_played") or state.get("current")):
             last_song = state.get("last_played") or state.get("current")
+            state["last_played"] = last_song
             state["current"] = None
             state["transformer"] = None
-            asyncio.run_coroutine_threadsafe(self._handle_autoplay(guild_id, last_song), self.bot.loop)
+            asyncio.run_coroutine_threadsafe(self.ensure_autoplay_queued(guild_id), self.bot.loop)
             return
         else:
             state["current"] = None
@@ -1696,6 +1739,8 @@ class Music(commands.Cog):
                 asyncio.run_coroutine_threadsafe(self.set_voice_channel_status(vc.channel, status_title), self.bot.loop)
 
             vc.play(source, after=after_play)
+            if state.get("autoplay") and not state.get("queue"):
+                asyncio.run_coroutine_threadsafe(self.ensure_autoplay_queued(guild_id), self.bot.loop)
 
             if state["channel"]:
                 embed = self.create_now_playing_embed(next_song, vol, guild_id)
@@ -1982,7 +2027,10 @@ class Music(commands.Cog):
                         pass
 
                 state["start_time"] = time.time()
+                state["last_played"] = song
                 vc.play(source, after=after_play)
+                if state.get("autoplay") and not state.get("queue"):
+                    asyncio.create_task(self.ensure_autoplay_queued(interaction.guild.id))
                 old_msg = state.get("np_message")
                 if old_msg:
                     try:
@@ -2082,9 +2130,13 @@ class Music(commands.Cog):
         )
         if current:
             mins, secs = divmod(current.duration or 0, 60)
+            if getattr(current, "is_autoplay", False):
+                cur_req = "📻 Autoplay Discovery"
+            else:
+                cur_req = current.requester.mention if (getattr(current, "requester", None) and hasattr(current.requester, "mention")) else "DJ"
             embed.add_field(
                 name="▶ Current Track",
-                value=f"• **[{current.title}]({current.webpage_url})**\n  ⏱ `{mins:02d}m {secs:02d}s` • Requested by: {current.requester.mention}",
+                value=f"• **[{current.title}]({current.webpage_url})**\n  ⏱ `{mins:02d}m {secs:02d}s` • Requested by: {cur_req}",
                 inline=False
             )
 
@@ -2092,7 +2144,11 @@ class Music(commands.Cog):
             lines = []
             for idx, s in enumerate(queue[:10], start=1):
                 mins, secs = divmod(s.duration or 0, 60)
-                lines.append(f"`{idx}.` **[{s.title}]({s.webpage_url})** (`{mins:02d}:{secs:02d}`) — {s.requester.mention}")
+                if getattr(s, "is_autoplay", False):
+                    s_req = "📻 Autoplay"
+                else:
+                    s_req = s.requester.mention if (getattr(s, "requester", None) and hasattr(s.requester, "mention")) else "DJ"
+                lines.append(f"`{idx}.` **[{s.title}]({s.webpage_url})** (`{mins:02d}:{secs:02d}`) — {s_req}")
             if len(queue) > 10:
                 lines.append(f"*... and {len(queue) - 10} more songs in queue*")
             embed.add_field(name="Upcoming in Queue", value="\n".join(lines), inline=False)
@@ -2234,11 +2290,12 @@ class Music(commands.Cog):
         new_status = not state.get("autoplay", False)
         state["autoplay"] = new_status
 
-        desc = (
-            "Friday will intelligently analyze each track's mood, language, and artist to seamlessly queue matching songs when the queue finishes! 🌸"
-            if new_status else
-            "Autoplay disabled. Playback will stop once the current queue finishes."
-        )
+        if new_status:
+            asyncio.create_task(self.ensure_autoplay_queued(interaction.guild_id))
+            desc = "Friday will intelligently analyze each track's mood, language, and artist to seamlessly pre-fetch and stream matching songs! 🌸"
+        else:
+            state["queue"] = [s for s in state.get("queue", []) if not getattr(s, "is_autoplay", False)]
+            desc = "Autoplay disabled. Playback will stop once the current queue finishes."
         await reply_box(
             interaction,
             desc,
