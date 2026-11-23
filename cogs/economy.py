@@ -752,16 +752,22 @@ class PayConfirmView(discord.ui.View):
         if interaction.user.id != self.sender.id:
             return await interaction.response.send_message("❌ This confirmation prompt is not for you.", ephemeral=True)
 
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+        except Exception:
+            pass
+
         async with self._lock:
             if self.processed:
                 self.disable_all_items()
                 try:
-                    await interaction.response.edit_message(view=None)
-                except Exception:
-                    if not interaction.response.is_done():
-                        await interaction.response.send_message("⚠️ This transfer has already been processed.", ephemeral=True)
+                    if interaction.message:
+                        await interaction.message.edit(view=None)
                     else:
-                        await interaction.followup.send("⚠️ This transfer has already been processed.", ephemeral=True)
+                        await interaction.edit_original_response(view=None)
+                except Exception:
+                    pass
                 return
             self.processed = True
 
@@ -771,12 +777,15 @@ class PayConfirmView(discord.ui.View):
             self.disable_all_items()
             msg = f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet."
             try:
-                await interaction.response.edit_message(content=msg, embed=None, view=None)
-            except Exception:
-                if not interaction.response.is_done():
-                    await interaction.response.send_message(msg, ephemeral=True)
+                if interaction.message:
+                    await interaction.message.edit(content=msg, embed=None, view=None)
                 else:
+                    await interaction.edit_original_response(content=msg, embed=None, view=None)
+            except Exception:
+                try:
                     await interaction.followup.send(msg, ephemeral=True)
+                except Exception:
+                    pass
             return
 
         # Atomic deduction and credit
@@ -802,13 +811,13 @@ class PayConfirmView(discord.ui.View):
         embed.set_footer(text="Friday Anti-Inflation Economy • Funds delivered instantly")
 
         try:
-            await interaction.response.edit_message(content=None, embed=embed, view=None)
+            if interaction.message:
+                await interaction.message.edit(content=None, embed=embed, view=None)
+            else:
+                await interaction.edit_original_response(content=None, embed=embed, view=None)
         except Exception:
             try:
-                if interaction.message:
-                    await interaction.message.edit(content=None, embed=embed, view=None)
-                else:
-                    await interaction.edit_original_response(content=None, embed=embed, view=None)
+                await interaction.followup.send(embed=embed)
             except Exception:
                 pass
 
@@ -816,6 +825,13 @@ class PayConfirmView(discord.ui.View):
     async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.sender.id:
             return await interaction.response.send_message("❌ This confirmation prompt is not for you.", ephemeral=True)
+
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+        except Exception:
+            pass
+
         self.processed = True
         self.disable_all_items()
         try:
@@ -824,15 +840,12 @@ class PayConfirmView(discord.ui.View):
                 color=discord.Color.dark_gray(),
                 description=f"Transfer of **{self.gross:,}** {self.currency_emoji} {self.currency_name} to **{self.target.mention}** was cancelled by {self.sender.mention}."
             )
-            await interaction.response.edit_message(content=None, embed=embed, view=None)
+            if interaction.message:
+                await interaction.message.edit(content=None, embed=embed, view=None)
+            else:
+                await interaction.edit_original_response(content=None, embed=embed, view=None)
         except Exception:
-            try:
-                if interaction.message:
-                    await interaction.message.edit(content=None, embed=embed, view=None)
-                else:
-                    await interaction.edit_original_response(content=None, embed=embed, view=None)
-            except Exception:
-                pass
+            pass
 
 
 class ShopDeliveryTicketView(discord.ui.View):

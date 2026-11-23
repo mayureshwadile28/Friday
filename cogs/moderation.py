@@ -8,6 +8,62 @@ import datetime
 from typing import Optional, List, Dict, Union
 from database import db
 from response_utils import make_box_embed, reply_box
+from typing import Tuple
+
+
+def parse_timeout_duration(raw_dur: str) -> Tuple[Optional[int], Optional[str], Optional[str]]:
+    """
+    Parses user input into duration seconds, human-readable display string, or error message.
+    Max Discord timeout is 28 days (2,419,200 seconds / 40,320 minutes).
+    Min timeout is 10 seconds.
+    """
+    clean = raw_dur.strip().lower()
+    if not clean:
+        return None, None, "Please specify a duration (e.g. `10m`, `1h`, `1d`)."
+
+    # 1. Plain integer check -> defaults to minutes
+    if clean.isdigit():
+        mins = int(clean)
+        secs = mins * 60
+        if secs > 2419200:
+            return None, None, "Maximum timeout duration allowed by Discord is **28 days** (40,320 minutes / 672 hours)."
+        if secs < 10:
+            return None, None, "Minimum timeout duration is **10 seconds**."
+        return secs, f"{mins} minute{'s' if mins != 1 else ''}", None
+
+    # 2. Regex matching number + unit (including typos like minutr, mins, hrs, etc.)
+    pattern = r'^(\d+)\s*([a-z]+)$'
+    match = re.match(pattern, clean)
+    if not match:
+        return None, None, f"Invalid duration format: `{raw_dur}`. Use formats like `10m`, `1h`, `1d`, `7d` (max 28 days)."
+
+    val = int(match.group(1))
+    unit_str = match.group(2)
+
+    if unit_str in ('s', 'sec', 'secs', 'second', 'seconds'):
+        secs = val
+        disp = f"{val} second{'s' if val != 1 else ''}"
+    elif unit_str in ('m', 'min', 'mins', 'minute', 'minutes', 'minutr', 'minuts', 'mintes', 'mn'):
+        secs = val * 60
+        disp = f"{val} minute{'s' if val != 1 else ''}"
+    elif unit_str in ('h', 'hr', 'hrs', 'hour', 'hours'):
+        secs = val * 3600
+        disp = f"{val} hour{'s' if val != 1 else ''}"
+    elif unit_str in ('d', 'day', 'days'):
+        secs = val * 86400
+        disp = f"{val} day{'s' if val != 1 else ''}"
+    elif unit_str in ('w', 'wk', 'wks', 'week', 'weeks'):
+        secs = val * 604800
+        disp = f"{val} week{'s' if val != 1 else ''}"
+    else:
+        return None, None, f"Unrecognized time unit in `{raw_dur}`. Use `m` (minutes), `h` (hours), or `d` (days)."
+
+    if secs > 2419200:
+        return None, None, f"Duration `{raw_dur}` ({disp}) exceeds Discord's maximum limit of **28 days** (672 hours)."
+    if secs < 10:
+        return None, None, "Minimum timeout duration is **10 seconds**."
+
+    return secs, disp, None
 
 
 class Moderation(commands.Cog):
@@ -153,87 +209,91 @@ class Moderation(commands.Cog):
     @app_commands.command(name="timeout", description="Timeout a member for a set number of minutes.")
     @app_commands.default_permissions(moderate_members=True)
     async def timeout(self, interaction: discord.Interaction, member: discord.Member, minutes: int, reason: str = "Rule violation."):
-        if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
-            return
-        gid = str(interaction.guild.id)
-        if member.id == interaction.user.id:
-            await reply_box(interaction, "You cannot timeout yourself.", title="INVALID TARGET", status="warning", ephemeral=True)
-            return
-        if member.id == interaction.guild.owner_id:
-            await reply_box(interaction, "You cannot timeout the server owner.", title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
-            return
-        if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
-            err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot moderate someone with a higher or equal role hierarchy.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="HIERARCHY CONFLICT", status="danger", ephemeral=True)
-            return
-        if member.guild_permissions.administrator:
-            err_tpl = db.custom_responses.get(gid, {}).get("admin_timeout_err", "Cannot apply timeout to a server Administrator.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
-            return
-        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
-        if bot_member and member.top_role >= bot_member.top_role:
-            err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday's role hierarchy is not high enough to timeout this user.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
-            return
+        await interaction.response.defer(ephemeral=False)
         try:
-            duration = datetime.timedelta(minutes=minutes)
-            await member.timeout(duration, reason=reason)
-            resp_tpl = db.custom_responses.get(gid, {}).get("timeout_success", "{member} timed out for **{minutes}** minutes.\nReason: {reason}")
-            formatted = resp_tpl.replace("{member}", member.mention).replace("{minutes}", str(minutes)).replace("{reason}", reason)
-            await reply_box(interaction, formatted, title="TIMEOUT APPLIED", status="warning")
-            
-            log_id = db.server_logs.get(gid, {}).get("audit-timeouts")
-            if log_id: 
-                log_channel = self.bot.get_channel(log_id)
-                if log_channel:
-                    audit_embed = make_box_embed(
-                        title="AUDIT: TIMEOUT ENFORCED",
-                        description=f"• Target: {member.mention}\n• Duration: `{minutes}m`\n• Staff: {interaction.user.mention}\n• Reason: {reason}",
-                        status="warning"
-                    )
-                    await log_channel.send(embed=audit_embed)
-        except discord.Forbidden:
-            err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday lacks permission to modify this user's timeout status.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
+            if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
+                return
+            gid = str(interaction.guild.id)
+            if member.id == interaction.user.id:
+                return await reply_box(interaction, "You cannot timeout yourself.", title="INVALID TARGET", status="warning", ephemeral=True)
+            if member.id == interaction.guild.owner_id:
+                return await reply_box(interaction, "You cannot timeout the server owner.", title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
+            if minutes > 40320:
+                return await reply_box(interaction, "Maximum timeout duration allowed by Discord is **28 days** (40,320 minutes).", title="INVALID DURATION", status="warning", ephemeral=True)
+            if minutes < 1:
+                return await reply_box(interaction, "Timeout duration must be at least **1 minute**.", title="INVALID DURATION", status="warning", ephemeral=True)
+
+            if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
+                err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot moderate someone with a higher or equal role hierarchy.")
+                return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="HIERARCHY CONFLICT", status="danger", ephemeral=True)
+            if member.guild_permissions.administrator:
+                err_tpl = db.custom_responses.get(gid, {}).get("admin_timeout_err", "Cannot apply timeout to a server Administrator.")
+                return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
+            bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+            if bot_member and member.top_role >= bot_member.top_role:
+                err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday's role hierarchy is not high enough to timeout this user.")
+                return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
+
+            try:
+                duration = datetime.timedelta(minutes=minutes)
+                await member.timeout(duration, reason=reason)
+                resp_tpl = db.custom_responses.get(gid, {}).get("timeout_success", "{member} timed out for **{minutes}** minutes.\nReason: {reason}")
+                formatted = resp_tpl.replace("{member}", member.mention).replace("{minutes}", str(minutes)).replace("{reason}", reason)
+                await reply_box(interaction, formatted, title="TIMEOUT APPLIED", status="warning")
+                
+                log_id = db.server_logs.get(gid, {}).get("audit-timeouts")
+                if log_id: 
+                    log_channel = self.bot.get_channel(log_id)
+                    if log_channel:
+                        audit_embed = make_box_embed(
+                            title="AUDIT: TIMEOUT ENFORCED",
+                            description=f"• Target: {member.mention}\n• Duration: `{minutes}m`\n• Staff: {interaction.user.mention}\n• Reason: {reason}",
+                            status="warning"
+                        )
+                        await log_channel.send(embed=audit_embed)
+            except discord.Forbidden:
+                err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday lacks permission to modify this user's timeout status.")
+                await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
+        except Exception as e:
+            await reply_box(interaction, f"Error processing timeout: {e}", title="EXECUTION ERROR", status="danger", ephemeral=True)
 
     @app_commands.command(name="untimeout", description="Remove a timeout from a member.")
     @app_commands.default_permissions(moderate_members=True)
     async def untimeout(self, interaction: discord.Interaction, member: discord.Member, reason: str = "Timeout lifted."):
-        if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
-            return
-        gid = str(interaction.guild.id)
-        if member.id == interaction.guild.owner_id:
-            await reply_box(interaction, "The server owner cannot be timed out.", title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
-            return
-        if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
-            err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot remove a timeout from someone with a higher or equal role.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="HIERARCHY CONFLICT", status="danger", ephemeral=True)
-            return
-
-        if not member.is_timed_out():
-            err_tpl = db.custom_responses.get(gid, {}).get("not_timed_out", "{member} does not currently have an active timeout.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="NO TIMEOUT ACTIVE", status="info", ephemeral=True)
-            return
-
-        if member.guild_permissions.administrator:
-            err_tpl = db.custom_responses.get(gid, {}).get("admin_timeout_err", "Discord restricts timeout modifications on server Administrators.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
-            return
-
-        bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
-        if bot_member and member.top_role >= bot_member.top_role:
-            err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday's role hierarchy is not high enough to modify {member}'s timeout status.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
-            return
-
+        await interaction.response.defer(ephemeral=False)
         try:
-            await member.timeout(None, reason=reason)
-            resp_tpl = db.custom_responses.get(gid, {}).get("untimeout_success", "Timeout lifted for {member}.\nReason: {reason}")
-            formatted = resp_tpl.replace("{member}", member.mention).replace("{reason}", reason)
-            await reply_box(interaction, formatted, title="TIMEOUT RESCINDED", status="success")
-        except discord.Forbidden:
-            err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday lacks permission to modify this user's timeout status.")
-            await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
+            if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members (Timeout)"):
+                return
+            gid = str(interaction.guild.id)
+            if member.id == interaction.guild.owner_id:
+                return await reply_box(interaction, "The server owner cannot be timed out.", title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
+            if interaction.user.top_role <= member.top_role and interaction.user != interaction.guild.owner:
+                err_tpl = db.custom_responses.get(gid, {}).get("hierarchy_err", "You cannot remove a timeout from someone with a higher or equal role.")
+                return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="HIERARCHY CONFLICT", status="danger", ephemeral=True)
+
+            if not member.is_timed_out():
+                err_tpl = db.custom_responses.get(gid, {}).get("not_timed_out", "{member} does not currently have an active timeout.")
+                return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="NO TIMEOUT ACTIVE", status="info", ephemeral=True)
+
+            if member.guild_permissions.administrator:
+                err_tpl = db.custom_responses.get(gid, {}).get("admin_timeout_err", "Discord restricts timeout modifications on server Administrators.")
+                return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="IMMUNITY RESTRICTION", status="warning", ephemeral=True)
+
+            bot_member = interaction.guild.me or interaction.guild.get_member(self.bot.user.id)
+            if bot_member and member.top_role >= bot_member.top_role:
+                err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday's role hierarchy is not high enough to modify {member}'s timeout status.")
+                return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
+
+            try:
+                await member.timeout(None, reason=reason)
+                resp_tpl = db.custom_responses.get(gid, {}).get("untimeout_success", "Timeout lifted for {member}.\nReason: {reason}")
+                formatted = resp_tpl.replace("{member}", member.mention).replace("{reason}", reason)
+                await reply_box(interaction, formatted, title="TIMEOUT RESCINDED", status="success")
+            except discord.Forbidden:
+                err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday lacks permission to modify this user's timeout status.")
+                await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
+        except Exception as e:
+            await reply_box(interaction, f"Error processing untimeout: {e}", title="EXECUTION ERROR", status="danger", ephemeral=True)
 
     @app_commands.command(name="purge", description="Delete a specific number of recent messages in this channel.")
     @app_commands.default_permissions(manage_messages=True)
@@ -2105,21 +2165,12 @@ class Moderation(commands.Cog):
             raw_dur = reason_words[0].lower()
             dur_reason = " ".join(reason_words[1:]).strip() or "Timed out by staff via prefix command."
 
-            # Parse duration: 10m, 1h, 1d, 30s, or integer (default minutes)
-            seconds = 600
-            m_dur = re.match(r'^(\d+)([smhd]?)$', raw_dur)
-            if m_dur:
-                val = int(m_dur.group(1))
-                unit = m_dur.group(2) or "m"
-                if unit == "s": seconds = val
-                elif unit == "m": seconds = val * 60
-                elif unit == "h": seconds = val * 3600
-                elif unit == "d": seconds = val * 86400
-            elif raw_dur.isdigit():
-                seconds = int(raw_dur) * 60
+            # Robust duration parsing supporting typos (e.g. 60minutr) and max 28-day Discord enforcement
+            seconds, disp, err = parse_timeout_duration(raw_dur)
+            if err:
+                await channel.send(f"❌ {err}")
+                return
 
-            # Max Discord timeout is 28 days
-            seconds = max(10, min(seconds, 2419200))
             duration = datetime.timedelta(seconds=seconds)
 
             if not is_owner and author.top_role <= target_member.top_role:
@@ -2136,7 +2187,7 @@ class Moderation(commands.Cog):
                 await target_member.timeout(duration, reason=f"{author} via prefix: {dur_reason}")
                 tm_embed = make_box_embed(
                     title="TIMEOUT APPLIED",
-                    description=f"⏳ Successfully timed out {target_member.mention}.\n\n**Duration:** `{raw_dur}`\n**Staff:** {author.mention}\n**Reason:** {dur_reason}",
+                    description=f"⏳ Successfully timed out {target_member.mention}.\n\n**Duration:** `{disp}`\n**Staff:** {author.mention}\n**Reason:** {dur_reason}",
                     status="warning"
                 )
                 await channel.send(embed=tm_embed)
@@ -2144,6 +2195,47 @@ class Moderation(commands.Cog):
                 await channel.send("❌ Failed to timeout: Friday lacks Moderate Members permission.")
             except Exception as e:
                 await channel.send(f"❌ Error applying timeout: {e}")
+
+        # ── 6. UNTM: !untm @user [reason] or !untimeout @user [reason] ──
+        elif cmd_name in ("untm", "untimeout"):
+            target_member = None
+            reason_words = list(args)
+            if message.mentions:
+                target_member = message.mentions[0]
+                reason_words = [w for w in reason_words if not (w.startswith("<@") and w.endswith(">"))]
+            elif args and args[0].isdigit():
+                target_member = guild.get_member(int(args[0]))
+                reason_words = args[1:]
+
+            if not target_member:
+                await channel.send(f"❌ Usage: `{prefix}untm @user [reason]`")
+                return
+
+            untm_reason = " ".join(reason_words).strip() or "Timeout lifted by staff via prefix command."
+
+            if not is_owner and author.top_role <= target_member.top_role:
+                await channel.send("❌ You cannot remove a timeout from someone with a higher or equal role hierarchy.")
+                return
+            if target_member.top_role >= guild.me.top_role and target_member != guild.owner:
+                await channel.send("❌ Friday's role hierarchy is not high enough to modify this user's timeout status.")
+                return
+
+            if not target_member.is_timed_out():
+                await channel.send(f"ℹ️ {target_member.mention} does not currently have an active timeout.")
+                return
+
+            try:
+                await target_member.timeout(None, reason=f"{author} via prefix: {untm_reason}")
+                untm_embed = make_box_embed(
+                    title="TIMEOUT RESCINDED",
+                    description=f"✅ Successfully removed timeout from {target_member.mention}.\n\n**Staff:** {author.mention}\n**Reason:** {untm_reason}",
+                    status="success"
+                )
+                await channel.send(embed=untm_embed)
+            except discord.Forbidden:
+                await channel.send("❌ Failed to untimeout: Friday lacks Moderate Members permission.")
+            except Exception as e:
+                await channel.send(f"❌ Error lifting timeout: {e}")
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
