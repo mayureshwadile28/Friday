@@ -182,18 +182,17 @@ async def on_ready():
             except Exception as e:
                 print(f"⚠️ Security sync warning for '{g.name}': {e}")
 
-    # Sync commands globally and purge duplicate guild commands
+    # Sync commands across all connected guilds so slash commands appear instantly
     try:
         configure_command_dm_restrictions(bot.tree)
-        # Purge guild-level duplicate overrides so Discord only keeps the clean global command list
         for g in bot.guilds:
             try:
-                bot.tree.clear_commands(guild=g)
+                bot.tree.copy_global_to(guild=g)
                 await bot.tree.sync(guild=g)
-            except Exception as e:
-                pass
+            except Exception as ge:
+                print(f"⚠️ Guild sync note for '{g.name}': {ge}")
         synced_global = await bot.tree.sync()
-        print(f"✅ One clean list: {len(synced_global)} global slash commands registered (all duplicate guild commands cleared).")
+        print(f"✅ Instant slash command registration complete across {len(bot.guilds)} guilds ({len(synced_global)} commands).")
     except Exception as e:
         print(f"Global sync warning: {e}")
 
@@ -232,10 +231,8 @@ async def force_sync_commands(ctx: commands.Context):
                 await ctx.send(f"⚠️ Note on `cogs.tts`: `{te}`")
 
         configure_command_dm_restrictions(bot.tree)
-        # Clear legacy guild duplicates from this server
-        bot.tree.clear_commands(guild=ctx.guild)
-        await bot.tree.sync(guild=ctx.guild)
-        # Global sync
+        bot.tree.copy_global_to(guild=ctx.guild)
+        synced_guild = await bot.tree.sync(guild=ctx.guild)
         synced = await bot.tree.sync()
         
         eco_cmds = [c.name for c in synced if c.name in ("balance", "wallet", "work", "daily", "shop", "buy", "rob", "pay", "deposit", "withdraw", "coinflip")]

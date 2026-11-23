@@ -38,6 +38,19 @@ AUTOPLAY_LANG_PATTERNS = {
     "japanese": re.compile(r'\b(yoasobi|lisa|ado|kenshi yonezu|anime|jpop|j-pop|vocaloid|radwimps|aimer|milet)\b', re.IGNORECASE)
 }
 
+KNOWN_BOLLYWOOD_ARTISTS = [
+    "Arijit Singh", "Atif Aslam", "Shreya Ghoshal", "KK", "Mohit Chauhan",
+    "Sonu Nigam", "Jubin Nautiyal", "Darshan Raval", "Vishal Mishra",
+    "Armaan Malik", "Anuv Jain", "Prateek Kuhad", "B Praak", "Jasleen Royal",
+    "Sachin-Jigar", "Shankar Ehsaan Loy", "Amit Trivedi", "A.R. Rahman",
+    "Alka Yagnik", "Kumar Sanu", "Udit Narayan", "Kishore Kumar", "Lata Mangeshkar",
+    "Mohammed Rafi", "Diljit Dosanjh", "AP Dhillon", "Sidhu Moosewala",
+    "Karan Aujla", "Shubh", "Badshah", "Yo Yo Honey Singh", "Neha Kakkar",
+    "Sunidhi Chauhan", "Pritam", "Tanishk Bagchi", "Mithoon", "Ankit Tiwari",
+    "Akhil Sachdeva", "Stebin Ben", "King", "Guru Randhawa", "Hardy Sandhu",
+    "Ayushmann Khurrana", "Lucky Ali", "Shaan", "Javed Ali", "Papon"
+]
+
 
 # Pure-Python zero-dependency DES tables for JioSaavn CDN URL decryption
 _DES_IP = [
@@ -530,15 +543,15 @@ class MusicControlView(discord.ui.View):
             for child in self.children:
                 child.disabled = True
 
-            # 3. Safely stop the voice client
+            # 3. Immediate edit_message to acknowledge button instantly and show disabled state
+            await interaction.response.edit_message(view=self)
+
+            # 4. Safely stop the voice client in the background without blocking the interaction ACK
             if vc and (vc.is_playing() or vc.is_paused()):
                 try:
                     vc.stop()
                 except Exception:
                     pass
-
-            # 4. Immediate edit_message to acknowledge button and show disabled buttons
-            await interaction.response.edit_message(view=self)
         except Exception as e:
             print(f"[Music Button Error: stop] {e}")
             try:
@@ -734,15 +747,9 @@ class MusicControlView(discord.ui.View):
     @discord.ui.button(label="Autoplay: OFF", style=discord.ButtonStyle.secondary, emoji="📻", custom_id="music_autoplay", row=2)
     async def autoplay_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer(ephemeral=True)
-            except Exception:
-                pass
-
             gid, cog = self._get_context(interaction)
             if not cog:
-                return
+                return await interaction.response.defer(ephemeral=True)
             state = cog.get_state(gid)
             new_auto = not state.get("autoplay", False)
             state["autoplay"] = new_auto
@@ -750,10 +757,7 @@ class MusicControlView(discord.ui.View):
             button.label = "Autoplay: ON" if new_auto else "Autoplay: OFF"
             button.style = discord.ButtonStyle.primary if new_auto else discord.ButtonStyle.secondary
 
-            try:
-                await interaction.message.edit(view=self)
-            except Exception:
-                pass
+            await interaction.response.edit_message(view=self)
 
             if new_auto:
                 asyncio.create_task(cog.ensure_autoplay_queued(gid))
@@ -1029,14 +1033,23 @@ class Music(commands.Cog):
                 detected_lang = lang
                 break
 
+        # Check known Indian/Bollywood artists first
         clean_artist = None
-        if " - " in title:
-            parts = title.split(" - ")
-            clean_artist = parts[0].strip()
-            clean_artist = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_artist).strip()
-        elif " by " in t:
-            parts = t.split(" by ")
-            clean_artist = parts[1].strip()
+        for art in KNOWN_BOLLYWOOD_ARTISTS:
+            if art.lower() in t:
+                clean_artist = art
+                if not detected_lang:
+                    detected_lang = "hindi"
+                break
+
+        if not clean_artist:
+            if " - " in title:
+                parts = title.split(" - ")
+                clean_artist = parts[0].strip()
+                clean_artist = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_artist).strip()
+            elif " by " in t:
+                parts = t.split(" by ")
+                clean_artist = parts[1].strip()
 
         return detected_mood, detected_lang, clean_artist
 
@@ -1065,65 +1078,78 @@ class Music(commands.Cog):
             return []
 
     async def _find_autoplay_track(self, last_song: Song, guild_id: int) -> Optional[Song]:
-        """Finds next track with matching mood, language, or artist recommendations."""
+        """Finds next track with matching mood, language, or artist recommendations without repetition."""
         state = self.get_state(guild_id)
         mood, lang, artist = self._detect_song_features(last_song.title)
 
-        clean_title = re.sub(r'(?i)\b(official\s+video|official\s+audio|lyrics|lyric\s+video|hd|4k|remastered|full\s+song|visualizer)\b', '', last_song.title)
-        clean_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_title).strip()
+        # Extract core song title cleanly by splitting before metadata/movie separators (-, |, :, —)
+        raw_first = re.split(r'[-–—|:]', last_song.title)[0].strip()
+        core_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_first)
+        core_title = re.sub(r'(?i)\b(official|video|audio|lyrics|lyric|hd|4k|remastered|full\s+song|full\s+video|visualizer|song|track)\b', '', core_title).strip()
+        if not core_title or len(core_title) < 2:
+            core_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', last_song.title).strip()
 
-        # Extract track name if artist is separated by ' - '
-        if " - " in clean_title:
-            parts = clean_title.split(" - ", 1)
-            track_name = parts[1].strip()
-        else:
-            track_name = clean_title
+        # Core track keywords to prevent playing remix/slowed/lofi versions of the identical song
+        core_words = [w for w in re.findall(r'[a-zA-Z]{3,}', core_title.lower()) if w not in ('the', 'and', 'song', 'video', 'full', 'audio')]
 
         queries = []
-        if artist and mood and lang:
-            queries.append(f"{artist} {mood} {lang} songs audio")
-            queries.append(f"{mood} {lang} popular songs audio")
-            queries.append(f"songs like {clean_title} audio")
-        elif artist and mood:
-            queries.append(f"{artist} {mood} songs audio")
-            queries.append(f"{mood} songs audio")
-            queries.append(f"songs like {clean_title} audio")
-        elif artist:
-            queries.append(f"{artist} popular songs audio")
-            queries.append(f"songs like {clean_title} audio")
-            queries.append(f"{clean_title} similar songs audio")
-        elif mood:
-            queries.append(f"{mood} music audio")
-            queries.append(f"songs like {clean_title} audio")
+        is_desi = (lang in ("hindi", "punjabi")) or (artist in KNOWN_BOLLYWOOD_ARTISTS)
 
-        # General similarity queries as guaranteed fallbacks
-        queries.append(f"songs like {clean_title} audio")
-        queries.append(f"{clean_title} similar songs audio")
-        queries.append(f"{clean_title} radio playlist songs")
+        if is_desi:
+            # Queries designed to return DIFFERENT hit songs by that artist or genre
+            if artist:
+                queries.append(f"{artist} hit bollywood songs audio")
+                queries.append(f"best of {artist} songs audio")
+            if mood:
+                queries.append(f"top {lang or 'hindi'} {mood} songs audio")
+                queries.append(f"bollywood {mood} hit songs audio")
+            queries.append(f"top bollywood {mood or 'romantic'} songs audio")
+            queries.append(f"latest bollywood hit songs audio")
+        else:
+            # Western / Global tracks
+            if artist and mood:
+                queries.append(f"{artist} {mood} songs audio")
+                queries.append(f"{mood} popular songs audio")
+            elif artist:
+                queries.append(f"{artist} popular songs audio")
+                queries.append(f"top songs by {artist} audio")
+            if mood:
+                queries.append(f"{mood} songs audio")
+            queries.append(f"songs like {core_title} audio")
 
         history = set(state.get("autoplay_history", []))
         candidates = []
 
-        norm_track = re.sub(r'[^a-z0-9]', '', track_name.lower())
+        # Strict banned keywords for autoplay to prevent repeats, remixes, lofi, mashups
+        banned_terms = [
+            'lofi', 'lo-fi', 'slowed', 'reverb', 'remix', 'mashup', 'female version',
+            'male version', 'cover', 'acoustic', 'unplugged', 'status', 'shorts',
+            'ringtone', 'bass boosted', 'speed up', 'synthwave', '8d'
+        ]
 
         for q in queries:
             try:
-                results = await asyncio.to_thread(self._flat_search_sync, f"ytsearch8:{q}")
+                results = await asyncio.to_thread(self._flat_search_sync, f"ytsearch10:{q}")
                 for entry in results:
                     t_name = entry.get("title", "")
                     dur = entry.get("duration") or 0
                     if not t_name:
                         continue
+                    t_lower = t_name.lower()
                     if t_name in history:
                         continue
-                    # Check if candidate is duplicate of the current track
-                    norm_entry = re.sub(r'[^a-z0-9]', '', t_name.lower())
-                    if len(norm_track) >= 3 and norm_track in norm_entry:
+                    # Skip banned remix / lofi / mashup variants
+                    if any(bt in t_lower for bt in banned_terms):
                         continue
-                    if dur and (dur > 720 or dur < 45):
+                    # Reject candidate if it represents the exact same song
+                    if core_words and len(core_words) >= 2 and all(cw in t_lower for cw in core_words):
+                        continue
+                    if core_words and len(core_words) == 1 and core_words[0] in t_lower:
+                        continue
+                    if dur and (dur > 600 or dur < 60):
                         continue
                     candidates.append(entry)
-                if len(candidates) >= 3:
+                if len(candidates) >= 5:
                     break
             except Exception as search_ex:
                 print(f"[Autoplay Search Error for '{q}'] {search_ex}")
@@ -1131,7 +1157,7 @@ class Music(commands.Cog):
         if not candidates:
             return None
 
-        chosen_entry = random.choice(candidates[:3])
+        chosen_entry = random.choice(candidates[:5])
         track_target = chosen_entry.get("url") or chosen_entry.get("id") or chosen_entry.get("title")
         try:
             info = await self.extract_audio_info(track_target)
@@ -1735,7 +1761,7 @@ class Music(commands.Cog):
 
             # Update voice channel status so users outside can see the playing track!
             if vc and vc.channel:
-                status_title = f"🎵 {next_song.title}"[:48]
+                status_title = f"♪ {next_song.title}"[:48]
                 asyncio.run_coroutine_threadsafe(self.set_voice_channel_status(vc.channel, status_title), self.bot.loop)
 
             vc.play(source, after=after_play)
@@ -1749,19 +1775,15 @@ class Music(commands.Cog):
                 async def _send_and_track():
                     try:
                         old_msg = state.get("np_message")
-                        # When looping the same track, update the existing controller message smoothly
-                        if state.get("loop") and old_msg:
-                            try:
-                                await old_msg.edit(embed=embed, view=view)
-                                return
-                            except Exception:
-                                pass
-
+                        # Modern player architecture (Hade/Hydra): Edit the existing Now Playing card in-place so buttons never break
                         if old_msg:
                             try:
-                                await old_msg.delete()
-                            except Exception:
+                                await old_msg.edit(embed=embed, view=view)
+                                state["np_message"] = old_msg
+                                return
+                            except (discord.NotFound, discord.HTTPException):
                                 pass
+
                         msg = await state["channel"].send(embed=embed, view=view)
                         state["np_message"] = msg
                     except Exception as e:
@@ -2031,14 +2053,23 @@ class Music(commands.Cog):
                 vc.play(source, after=after_play)
                 if state.get("autoplay") and not state.get("queue"):
                     asyncio.create_task(self.ensure_autoplay_queued(interaction.guild.id))
+
+                if vc and vc.channel:
+                    status_title = f"♪ {song.title}"[:48]
+                    asyncio.create_task(self.set_voice_channel_status(vc.channel, status_title))
+
+                embed = self.create_now_playing_embed(song, vol, interaction.guild.id)
+                view = MusicControlView(self, interaction.guild.id)
                 old_msg = state.get("np_message")
                 if old_msg:
                     try:
-                        await old_msg.delete()
-                    except Exception:
+                        await old_msg.edit(embed=embed, view=view)
+                        state["np_message"] = old_msg
+                        await interaction.followup.send(embed=make_box_embed(title="Playback Started", description=f"Now playing **[{song.title}]({song.webpage_url})**.", status="success"), ephemeral=True)
+                        return
+                    except (discord.NotFound, discord.HTTPException):
                         pass
-                embed = self.create_now_playing_embed(song, vol, interaction.guild.id)
-                view = MusicControlView(self, interaction.guild.id)
+
                 try:
                     msg = await interaction.followup.send(embed=embed, view=view)
                     state["np_message"] = msg

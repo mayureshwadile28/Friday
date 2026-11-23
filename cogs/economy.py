@@ -1775,10 +1775,16 @@ class Economy(commands.Cog):
                     )
 
                 if robber["wallet"] < min_robber:
+                    bank_bal = robber.get("bank", 0)
+                    bank_hint = (
+                        f"\n💡 *You have **{bank_bal:,}** {cur_emoji} safely stored in your bank vault! "
+                        f"Use `.with {min_robber}` to withdraw bail cash before staging a heist.*"
+                        if bank_bal >= min_robber else
+                        f"\n*(Withdraw more cash into your wallet or adjust 'Min Robber Wallet' in Dashboard -> Economy)*"
+                    )
                     return await send_fn(
                         f"❌ **Robbery Aborted — Insufficient Bail:**\n"
-                        f"You need at least **{min_robber:,}** {cur_emoji} {cur_name} in your cash wallet to stage a heist, but you currently only have **{robber['wallet']:,}** {cur_emoji}!\n"
-                        f"*(Withdraw more cash into your wallet or lower 'Min Robber Wallet' in Dashboard -> Economy)*",
+                        f"You need at least **{min_robber:,}** {cur_emoji} {cur_name} in your cash wallet to stage a heist, but you currently only have **{robber['wallet']:,}** {cur_emoji}!{bank_hint}",
                         ephemeral=True
                     )
 
@@ -3220,9 +3226,26 @@ class Economy(commands.Cog):
             if expr_cog and hasattr(expr_cog, "prefix_steal"):
                 return await expr_cog.prefix_steal(ctx, emojis=target_or_emoji)
 
-        try:
-            target = await commands.MemberConverter().convert(ctx, target_or_emoji.strip())
-        except Exception:
+        target = None
+        if ctx.message.mentions:
+            target = ctx.message.mentions[0]
+        else:
+            match = re.search(r'\d{15,20}', target_or_emoji)
+            if match:
+                target = ctx.guild.get_member(int(match.group(0)))
+            if not target:
+                try:
+                    target = await commands.MemberConverter().convert(ctx, target_or_emoji.strip())
+                except Exception:
+                    pass
+            if not target:
+                clean_q = target_or_emoji.strip().lstrip('@').lower()
+                for m in ctx.guild.members:
+                    if clean_q == m.name.lower() or clean_q == m.display_name.lower():
+                        target = m
+                        break
+
+        if not target:
             return await ctx.send(f"❌ Could not find member `{target_or_emoji}` to rob. Usage: `{p}rob @user`")
 
         async def send_response(content=None, embed=None, ephemeral=False):
