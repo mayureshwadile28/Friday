@@ -1765,43 +1765,42 @@ class Ludo(commands.Cog, name="Ludo"):
         add_friday: Optional[bool] = False
     ):
         try:
+            await interaction.response.defer()
             author = interaction.user
             gid = str(interaction.guild_id or "")
 
             # Check bet validity if supplied
             if bet is not None:
                 if bet <= 0:
-                    return await interaction.response.send_message("❌ Wager amount must be greater than 0!", ephemeral=True)
+                    return await interaction.followup.send("❌ Wager amount must be greater than 0!", ephemeral=True)
                 if gid:
                     cfg = getattr(db, "economy_config", {}).get(gid, {})
                     if cfg.get("paused", False):
-                        return await interaction.response.send_message("⏸️ The server economy is currently paused. Please wait until staff resumes it!", ephemeral=True)
+                        return await interaction.followup.send("⏸️ The server economy is currently paused. Please wait until staff resumes it!", ephemeral=True)
                     max_bet = int(cfg.get("minigame_max_bet", 50000))
                     cur_name = cfg.get("currency_name", "Coins")
                     if bet > max_bet:
-                        return await interaction.response.send_message(f"❌ Maximum wager limit is **{max_bet:,} {cur_name}**!", ephemeral=True)
+                        return await interaction.followup.send(f"❌ Maximum wager limit is **{max_bet:,} {cur_name}**!", ephemeral=True)
                     from cogs.economy import get_economy_db
                     eco_db = get_economy_db()
                     prof = eco_db.get_or_init_user(gid, str(author.id))
                     if prof.get("wallet", 0) < bet:
-                        return await interaction.response.send_message(f"❌ You do not have enough coins in your wallet for a **{bet:,} {cur_name}** wager! Your wallet: **{prof.get('wallet', 0):,} {cur_name}**.", ephemeral=True)
+                        return await interaction.followup.send(f"❌ You do not have enough coins in your wallet for a **{bet:,} {cur_name}** wager! Your wallet: **{prof.get('wallet', 0):,} {cur_name}**.", ephemeral=True)
 
             # Check if active game exists
             active_game = ACTIVE_LUDO_GAMES.get(author.id)
             if active_game and not active_game.is_expired():
-                return await interaction.response.send_message(
+                return await interaction.followup.send(
                     "⚠️ You already have an active Ludo match! Finish it or click **Forfeit** before starting a new one.",
                     ephemeral=True
                 )
 
             # Check if active lobby exists
             if author.id in ACTIVE_LUDO_LOBBIES:
-                return await interaction.response.send_message(
+                return await interaction.followup.send(
                     "⚠️ You already have an open Matchmaking Lobby! Start it or cancel before creating another.",
                     ephemeral=True
                 )
-
-            await interaction.response.defer()
 
             invited_list = [p for p in (player2, player3, player4) if p is not None]
 
@@ -1836,10 +1835,17 @@ class Ludo(commands.Cog, name="Ludo"):
 
         except Exception as e:
             print(f"[Ludo] Slash command error: {e}")
-            if not interaction.response.is_done():
-                await interaction.response.send_message(f"❌ Failed to launch Ludo: {e}", ephemeral=True)
-            else:
-                await interaction.followup.send(f"❌ Failed to launch Ludo: {e}", ephemeral=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(f"❌ Failed to launch Ludo: {e}", ephemeral=True)
+                else:
+                    await interaction.followup.send(f"❌ Failed to launch Ludo: {e}", ephemeral=True)
+            except Exception:
+                if interaction.channel:
+                    try:
+                        await interaction.channel.send(f"❌ Failed to launch Ludo: {e}")
+                    except Exception:
+                        pass
 
 
 async def setup(bot: commands.Bot):

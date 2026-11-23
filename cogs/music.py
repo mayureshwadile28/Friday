@@ -413,25 +413,25 @@ def resolve_spotify_url(url: str) -> Optional[dict]:
     return None
 
 
-# Studio Audiophile DSP & Equalization Profiles (Spotify Premium Tuned Engine)
+# Studio Audiophile DSP & Equalization Profiles (Pure Studio Master Engine)
 AUDIO_FILTERS = {
     "studio": {
-        "name": "Studio Master (Spotify Premium)",
+        "name": "Studio Master (Pure 48kHz High-Fidelity)",
         "emoji": "🎧",
-        "description": "Crisp 48kHz highs, warm balanced low-end punch, anti-clipping limiter",
-        "af": "equalizer=f=64:width_type=o:width=1.5:g=1.5,equalizer=f=12000:width_type=o:width=1.5:g=1.5,alimiter=limit=0.98:attack=5:release=50"
+        "description": "Pristine uncompressed 48kHz audio with transparent dynamic range",
+        "af": "aresample=48000:resampler=soxr"
     },
     "bassboost": {
         "name": "Bass Boost",
         "emoji": "🔊",
         "description": "Deep sub-bass punch for EDM, Phonk, and Hip-Hop",
-        "af": "equalizer=f=60:width_type=h:width=60:g=6,equalizer=f=120:width_type=h:width=80:g=4,alimiter=limit=0.95:attack=5:release=50"
+        "af": "equalizer=f=60:width_type=h:width=60:g=4,equalizer=f=120:width_type=h:width=80:g=2.5,aresample=48000"
     },
     "vocal": {
         "name": "Vocal / Acoustic",
         "emoji": "🎙️",
         "description": "Enhanced vocal presence and instrument clarity",
-        "af": "equalizer=f=3000:width_type=o:width=2.0:g=3.0,equalizer=f=200:width_type=o:width=1.0:g=-1.5,alimiter=limit=0.98:attack=5:release=50"
+        "af": "equalizer=f=3000:width_type=o:width=2.0:g=2.0,aresample=48000"
     },
     "nightcore": {
         "name": "Nightcore",
@@ -1272,7 +1272,7 @@ class Music(commands.Cog):
             'no_warnings': True,
             'noplaylist': True,
             'http_headers': DEFAULT_HEADERS,
-            'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
+            'socket_timeout': 5
         }
         cookie_path = get_cookie_file()
         if cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0:
@@ -1392,6 +1392,12 @@ class Music(commands.Cog):
                             continue
                         elif len(distinct_words) > 2 and matches >= 2:
                             continue
+                    # For Desi / Bollywood tracks, ensure recommendation is authentic Indian / Bollywood
+                    if is_desi:
+                        cand_lang = self._detect_language(t_name)
+                        desi_markers = ('bollywood', 'hindi', 'punjabi', 't-series', 'zeemusic', 'sony music', 'yrf', 'tips', 'saregama', 'speed records')
+                        if cand_lang not in ("hindi", "punjabi") and not any(dm in t_lower for dm in desi_markers):
+                            continue
                     if dur and (dur > 600 or dur < 60):
                         continue
                     candidates.append(entry)
@@ -1433,6 +1439,11 @@ class Music(commands.Cog):
                         cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
                         if len(clean_norm) >= 4 and clean_norm in cand_norm:
                             continue
+                        if is_desi:
+                            cand_lang = self._detect_language(t_name)
+                            desi_markers = ('bollywood', 'hindi', 'punjabi', 't-series', 'zeemusic', 'sony music', 'yrf', 'tips', 'saregama', 'speed records')
+                            if cand_lang not in ("hindi", "punjabi") and not any(dm in t_lower for dm in desi_markers):
+                                continue
                         if dur and (dur > 600 or dur < 60):
                             continue
                         candidates.append(entry)
@@ -1444,21 +1455,27 @@ class Music(commands.Cog):
         if not candidates:
             return None
 
-        chosen_entry = random.choice(candidates[:5])
-        track_target = chosen_entry.get("url") or chosen_entry.get("id") or chosen_entry.get("title")
-        try:
-            info = await self.extract_audio_info(track_target)
-            return Song(
-                title=info["title"],
-                url=info["url"],
-                webpage_url=info["webpage_url"],
-                duration=info.get("duration", 0),
-                requester=self.bot.user,
-                thumbnail=info.get("thumbnail")
-            )
-        except Exception as ex:
-            print(f"[Autoplay Audio Extract Error] {ex}")
-            return None
+        # Try candidates until a working audio stream is successfully extracted
+        candidate_pool = list(candidates)
+        random.shuffle(candidate_pool)
+        for chosen_entry in candidate_pool[:6]:
+            track_target = chosen_entry.get("url") or chosen_entry.get("id") or chosen_entry.get("title")
+            try:
+                info = await self.extract_audio_info(track_target)
+                if info and info.get("url"):
+                    return Song(
+                        title=info["title"],
+                        url=info["url"],
+                        webpage_url=info.get("webpage_url", f"https://www.youtube.com/watch?v={chosen_entry.get('id')}"),
+                        duration=info.get("duration", 0),
+                        requester=self.bot.user,
+                        thumbnail=info.get("thumbnail") or chosen_entry.get("thumbnail")
+                    )
+            except Exception as ex:
+                print(f"[Autoplay Audio Extract Note for '{track_target}'] {ex}")
+                continue
+
+        return None
 
     async def ensure_autoplay_queued(self, guild_id: int):
         """Pre-fetches the next matching autoplay track so the queue is never empty and playback never stalls."""
@@ -1489,9 +1506,9 @@ class Music(commands.Cog):
                 if channel:
                     try:
                         n_mood, n_lang, _ = self._detect_song_features(next_song.title)
-                        r_mood, r_lang, _ = self._detect_song_features(ref_song.title)
+                        r_mood, _, _ = self._detect_song_features(ref_song.title)
                         disp_mood = n_mood or r_mood
-                        disp_lang = n_lang if n_lang != "english" else (r_lang if r_lang != "english" else None)
+                        disp_lang = n_lang if n_lang != "english" else None
                         desc_parts = []
                         if disp_mood: desc_parts.append(f"mood: **{disp_mood.capitalize()}**")
                         if disp_lang: desc_parts.append(f"lang: **{disp_lang.capitalize()}**")
@@ -1570,7 +1587,7 @@ class Music(commands.Cog):
         def _extract():
             is_url = query.startswith("http://") or query.startswith("https://")
             cookie_path = get_cookie_file()
-            format_chain = 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best/18/140'
+            format_chain = 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best'
 
             # Authenticated cookies path for yt-dlp
             active_cookie_path = cookie_path if (cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0) else None
@@ -1741,21 +1758,21 @@ class Music(commands.Cog):
             # Fast official YouTube search and single audio stream extraction
             def _extract_yt(target, use_cookies=False):
                 is_search = not (target.startswith("http://") or target.startswith("https://"))
-                if not is_search:
-                    opts = {
-                        'format': format_chain,
-                        'noplaylist': True,
-                        'quiet': True,
-                        'no_warnings': True,
-                        'geo_bypass': True,
-                        'nocheckcertificate': True,
-                        'http_headers': DEFAULT_HEADERS,
-                        'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
-                    }
-                    if use_cookies and active_cookie_path:
-                        opts['cookiefile'] = active_cookie_path
+                base_opts = {
+                    'format': format_chain,
+                    'noplaylist': True,
+                    'quiet': True,
+                    'no_warnings': True,
+                    'geo_bypass': True,
+                    'nocheckcertificate': True,
+                    'http_headers': DEFAULT_HEADERS,
+                    'socket_timeout': 6
+                }
+                if use_cookies and active_cookie_path:
+                    base_opts['cookiefile'] = active_cookie_path
 
-                    with yt_dlp.YoutubeDL(opts) as ydl:
+                if not is_search:
+                    with yt_dlp.YoutubeDL(base_opts) as ydl:
                         info = ydl.extract_info(target, download=False)
                         entries = info.get('entries', []) if info and 'entries' in info else ([info] if info else [])
                         if entries and entries[0] and entries[0].get('url'):
@@ -1769,15 +1786,32 @@ class Music(commands.Cog):
                             }
                     return None
 
-                # Step 1: Ultra-fast flat metadata query (<2s) with mobile client to bypass bot checks
+                # Fast Path: Single-shot direct search + audio extraction (<3.5s)
                 clean_query = target.replace('ytsearch1:', '').replace('ytsearch5:', '').strip()
+                try:
+                    with yt_dlp.YoutubeDL(base_opts) as ydl_direct:
+                        res = ydl_direct.extract_info(f"ytsearch1:{clean_query}", download=False)
+                        entries = res.get('entries', []) if res else []
+                        if entries and entries[0] and entries[0].get('url'):
+                            e = entries[0]
+                            return {
+                                'title': e.get('title', 'Unknown Track'),
+                                'url': e.get('url'),
+                                'webpage_url': e.get('webpage_url') or f"https://www.youtube.com/watch?v={e.get('id')}",
+                                'duration': e.get('duration', 0),
+                                'thumbnail': e.get('thumbnail')
+                            }
+                except Exception as direct_err:
+                    print(f"[Music] Direct ytsearch1 note for '{clean_query}': {direct_err}")
+
+                # Fallback: Flat search with relevance scoring if single-shot returned no direct stream
                 flat_opts = {
                     'extract_flat': 'in_playlist',
                     'quiet': True,
                     'no_warnings': True,
                     'noplaylist': True,
                     'http_headers': DEFAULT_HEADERS,
-                    'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
+                    'socket_timeout': 5
                 }
                 if use_cookies and active_cookie_path:
                     flat_opts['cookiefile'] = active_cookie_path
@@ -1788,7 +1822,7 @@ class Music(commands.Cog):
                     if not entries:
                         return None
 
-                    # Step 2: Relevance & Official release scoring
+                    # Relevance & Official release scoring
                     q_lower = clean_query.lower()
                     q_words = [w for w in re.findall(r'\w+', q_lower) if w not in ('song', 'video', 'audio', 'mp3', 'lyrics')]
                     if not q_words:
@@ -1819,21 +1853,8 @@ class Music(commands.Cog):
                 if not best_id:
                     return None
 
-                # Step 3: Extract direct audio stream for the single winning official track
-                stream_opts = {
-                    'format': format_chain,
-                    'quiet': True,
-                    'no_warnings': True,
-                    'noplaylist': True,
-                    'geo_bypass': True,
-                    'nocheckcertificate': True,
-                    'http_headers': DEFAULT_HEADERS,
-                    'extractor_args': {'youtube': {'player_client': ['android', 'ios', 'tv_embedded']}}
-                }
-                if use_cookies and active_cookie_path:
-                    stream_opts['cookiefile'] = active_cookie_path
-
-                with yt_dlp.YoutubeDL(stream_opts) as ydl_stream:
+                # Extract audio stream for winning match
+                with yt_dlp.YoutubeDL(base_opts) as ydl_stream:
                     info = ydl_stream.extract_info(f"https://www.youtube.com/watch?v={best_id}", download=False)
                     if info and info.get('url'):
                         return {
@@ -2256,13 +2277,13 @@ class Music(commands.Cog):
         # Pre-resolve Spotify Links (Tracks, Playlists, Albums, Shortlinks)
         spotify_batch = None
         if any(s in music.lower() for s in ("spotify.com", "spotify.link", "spoti.fi")):
-            sp_res = resolve_spotify_url(music)
+            sp_res = await asyncio.to_thread(resolve_spotify_url, music)
             if sp_res:
                 if sp_res.get("type") in ("playlist", "album") and sp_res.get("tracks"):
                     tracks = sp_res["tracks"]
                     coll_title = sp_res.get("title", "Spotify Collection")
                     coll_type = sp_res.get("type", "playlist").title()
-                    await interaction.channel.send(f"📑 Loading **{len(tracks)} tracks** from Spotify {coll_type}: **{coll_title}**...")
+                    await interaction.followup.send(f"📑 Loading **{len(tracks)} tracks** from Spotify {coll_type}: **{coll_title}**...")
                     music = tracks[0]["search_query"]
                     if len(tracks) > 1:
                         spotify_batch = tracks[1:]
