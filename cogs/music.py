@@ -1343,34 +1343,43 @@ class Music(commands.Cog):
                 queries.append(f"{artist} popular songs audio")
             queries.append("popular japanese anime songs audio")
         else:
-            # Western / Global tracks (English)
-            if artist and mood:
-                queries.append(f"{artist} {mood} songs audio")
-                queries.append(f"{mood} popular songs audio")
-            elif artist:
-                queries.append(f"{artist} popular songs audio")
-                queries.append(f"top songs by {artist} audio")
+            # Western / Global tracks (English) - target verified clean official studio music
+            if artist:
+                queries.append(f"{artist} official audio")
+                queries.append(f"{artist} top hit songs official audio")
             if mood:
-                queries.append(f"{mood} playlist songs audio")
-            queries.append(f"songs like {core_title} audio")
-            queries.append(f"{core_title} radio audio")
-            queries.append(f"top global hit acoustic songs audio")
+                queries.append(f"top {mood} clean songs official audio")
+            queries.append(f"top billboard clean pop hits official audio")
+            queries.append(f"popular clean radio songs official audio")
 
         history = set(state.get("autoplay_history", []))
         candidates = []
 
-        # Comprehensive banned keywords for autoplay to prevent repeats, remixes, lofi, mashups, tutorials, and non-music
+        # Comprehensive banned keywords for autoplay to prevent repeats, remixes, lofi, mashups, tutorials, non-music, and 18+/adult/provocative content
         banned_terms = [
+            # Tutorials, Behind the scenes, Podcasts, Non-music
             'how i made', 'how to', 'tutorial', 'making of', 'behind the scenes', 'bts',
             'interview', 'reaction', 'reacting', 'breakdown', 'vlog', 'review',
             'podcast', 'teaser', 'trailer', 'short film', 'documentary', 'episode',
             'explained', 'producing', 'in the studio', 'track by track', 'lesson',
+            'prank', 'challenge', 'roast', 'drama', 'troll', 'gaming', 'gameplay',
+            'tiktok', 'reels', 'highlight', 'twitch', 'stream', 'compilation',
+            # Low quality / altered audio
             'lyrics', 'lyric', 'lyrical', 'animated', 'animation',
             'lofi', 'lo-fi', 'slowed', 'reverb', 'remix', 'mashup', 'female version',
             'male version', 'cover', 'acoustic', 'unplugged', 'status', 'shorts',
             'ringtone', 'bass boosted', 'speed up', 'synthwave', '8d', 'karaoke',
-            'instrumental', '18+', 'nsfw', 'explicit', 'uncensored', 'hot video',
-            'sexy video', 'sexy', 'bhojpuri hot', 'vulgar', 'leaked', 'bhabhi'
+            'instrumental',
+            # 18+, Adult, NSFW, Sexualized, Inappropriate Content
+            '18+', 'nsfw', 'explicit', 'uncensored', 'hot video', 'sexy video',
+            'sexy', 'bhojpuri hot', 'vulgar', 'leaked', 'bhabhi', 'erotic',
+            'onlyfans', 'camgirl', 'stripper', 'strip club', 'twerk', 'booty',
+            'porn', 'xxx', 'adult', 'nude', 'naked', 'bikini', 'kiss scene',
+            'kissing', 'bed scene', 'romance scene', 'hot scene', 'sensual',
+            'lust', 'seduction', 'bold scene', 'web series hot', 'ullu', 'kooku',
+            'rabbit', 'prscene', 'dirty', 'blac chyna', 'angela white', 'too $hort',
+            'too short', 'mia khalifa', 'sunny leone', 'poonam pandey', 'sherlyn chopra',
+            'playboy', 'sensual music', 'adult movie', 'softcore', 'hardcore'
         ]
 
         for q in queries:
@@ -1381,11 +1390,12 @@ class Music(commands.Cog):
                     dur = entry.get("duration") or 0
                     if not t_name:
                         continue
-                    t_lower = t_name.lower()
+                    uploader = (entry.get("uploader") or entry.get("channel") or "").lower()
+                    combined_text = f"{t_name.lower()} {uploader}"
                     if t_name in history:
                         continue
-                    # Skip banned remix / lofi / mashup / lyric / tutorial variants
-                    if any(bt in t_lower for bt in banned_terms):
+                    # Skip banned remix / lofi / mashup / lyric / tutorial / 18+ variants
+                    if any(bt in combined_text for bt in banned_terms):
                         continue
                     # Reject candidate if it contains the exact normalized title
                     cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
@@ -1393,7 +1403,7 @@ class Music(commands.Cog):
                         continue
                     # Reject candidate if it shares all distinct identifying keywords of the current track
                     if distinct_words:
-                        matches = sum(1 for dw in distinct_words if dw in t_lower)
+                        matches = sum(1 for dw in distinct_words if dw in t_name.lower())
                         if len(distinct_words) <= 2 and matches == len(distinct_words):
                             continue
                         elif len(distinct_words) > 2 and matches >= 2:
@@ -1402,7 +1412,7 @@ class Music(commands.Cog):
                     if is_desi:
                         cand_lang = self._detect_language(t_name)
                         desi_markers = ('bollywood', 'hindi', 'punjabi', 't-series', 'zeemusic', 'sony music', 'yrf', 'tips', 'saregama', 'speed records')
-                        if cand_lang not in ("hindi", "punjabi") and not any(dm in t_lower for dm in desi_markers):
+                        if cand_lang not in ("hindi", "punjabi") and not any(dm in combined_text for dm in desi_markers):
                             continue
                     if dur and (dur > 600 or dur < 60):
                         continue
@@ -1425,9 +1435,9 @@ class Music(commands.Cog):
                 ])
             else:
                 fallback_queries.extend([
-                    f"{core_title} radio audio",
-                    f"{mood} playlist songs audio" if mood else f"{core_title} style songs audio",
-                    "top global hits audio"
+                    f"{core_title} clean audio",
+                    "top billboard clean pop hits official audio",
+                    "popular clean acoustic songs official audio"
                 ])
             for fq in fallback_queries:
                 if len(candidates) >= 5:
@@ -1439,8 +1449,9 @@ class Music(commands.Cog):
                         dur = entry.get("duration") or 0
                         if not t_name or t_name in history:
                             continue
-                        t_lower = t_name.lower()
-                        if any(bt in t_lower for bt in banned_terms):
+                        uploader = (entry.get("uploader") or entry.get("channel") or "").lower()
+                        combined_text = f"{t_name.lower()} {uploader}"
+                        if any(bt in combined_text for bt in banned_terms):
                             continue
                         cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
                         if len(clean_norm) >= 4 and clean_norm in cand_norm:
@@ -1448,7 +1459,7 @@ class Music(commands.Cog):
                         if is_desi:
                             cand_lang = self._detect_language(t_name)
                             desi_markers = ('bollywood', 'hindi', 'punjabi', 't-series', 'zeemusic', 'sony music', 'yrf', 'tips', 'saregama', 'speed records')
-                            if cand_lang not in ("hindi", "punjabi") and not any(dm in t_lower for dm in desi_markers):
+                            if cand_lang not in ("hindi", "punjabi") and not any(dm in combined_text for dm in desi_markers):
                                 continue
                         if dur and (dur > 600 or dur < 60):
                             continue
@@ -1468,15 +1479,27 @@ class Music(commands.Cog):
             track_target = chosen_entry.get("url") or chosen_entry.get("id") or chosen_entry.get("title")
             try:
                 info = await self.extract_audio_info(track_target)
-                if info and info.get("url"):
-                    return Song(
-                        title=info["title"],
-                        url=info["url"],
-                        webpage_url=info.get("webpage_url", f"https://www.youtube.com/watch?v={chosen_entry.get('id')}"),
-                        duration=info.get("duration", 0),
-                        requester=self.bot.user,
-                        thumbnail=info.get("thumbnail") or chosen_entry.get("thumbnail")
-                    )
+                if not info or not info.get("url"):
+                    continue
+
+                # Safety check extracted info for banned adult / non-music keywords and YouTube age-limit
+                info_title = (info.get("title") or "").lower()
+                info_uploader = (info.get("uploader") or info.get("channel") or "").lower()
+                info_combined = f"{info_title} {info_uploader}"
+                if any(bt in info_combined for bt in banned_terms):
+                    continue
+                if info.get("age_limit", 0) and info.get("age_limit") > 0:
+                    continue
+
+                return Song(
+                    title=info["title"],
+                    url=info["url"],
+                    webpage_url=info.get("webpage_url", f"https://www.youtube.com/watch?v={chosen_entry.get('id')}"),
+                    duration=info.get("duration", 0),
+                    requester=self.bot.user,
+                    thumbnail=info.get("thumbnail") or chosen_entry.get("thumbnail"),
+                    is_autoplay=True
+                )
             except Exception as ex:
                 print(f"[Autoplay Audio Extract Note for '{track_target}'] {ex}")
                 continue
@@ -1519,7 +1542,10 @@ class Music(commands.Cog):
                         if disp_mood: desc_parts.append(f"mood: **{disp_mood.capitalize()}**")
                         if disp_lang: desc_parts.append(f"lang: **{disp_lang.capitalize()}**")
                         tag = f" ({' • '.join(desc_parts)})" if desc_parts else ""
-                        await channel.send(f"📻 **Autoplay:** Up next: **[{next_song.title}]({next_song.webpage_url})**{tag}")
+                        await channel.send(
+                            f"📻 **Autoplay:** Up next: **[{next_song.title}](<{next_song.webpage_url}>)**{tag}",
+                            suppress_embeds=True
+                        )
                     except Exception as ch_err:
                         print(f"[Music Autoplay] Notice send note: {ch_err}")
 
@@ -1800,13 +1826,14 @@ class Music(commands.Cog):
                         entries = res.get('entries', []) if res else []
                         if entries and entries[0] and entries[0].get('url'):
                             e = entries[0]
-                            return {
-                                'title': e.get('title', 'Unknown Track'),
-                                'url': e.get('url'),
-                                'webpage_url': e.get('webpage_url') or f"https://www.youtube.com/watch?v={e.get('id')}",
-                                'duration': e.get('duration', 0),
-                                'thumbnail': e.get('thumbnail')
-                            }
+                            if not (e.get('age_limit', 0) and e.get('age_limit') > 0):
+                                return {
+                                    'title': e.get('title', 'Unknown Track'),
+                                    'url': e.get('url'),
+                                    'webpage_url': e.get('webpage_url') or f"https://www.youtube.com/watch?v={e.get('id')}",
+                                    'duration': e.get('duration', 0),
+                                    'thumbnail': e.get('thumbnail')
+                                }
                 except Exception as direct_err:
                     print(f"[Music] Direct ytsearch1 note for '{clean_query}': {direct_err}")
 
@@ -1847,9 +1874,9 @@ class Music(commands.Cog):
                         for good in ['official', 'vevo', 'audio', 'video', 'coke studio', 't-series', 'sony', 'zee', 'yrf', 'tips']:
                             if good in t or good in channel:
                                 score += 20
-                        for bad in ['cover', 'remix', 'slowed', 'reverb', 'parody', 'reaction', 'karaoke', 'instrumental', 'status', 'shorts', 'ringtone']:
-                            if bad in t and bad not in q_lower:
-                                score -= 40
+                        for bad in ['cover', 'remix', 'slowed', 'reverb', 'parody', 'reaction', 'karaoke', 'instrumental', 'status', 'shorts', 'ringtone', '18+', 'nsfw', 'sexy', 'hot scene', 'hot video', 'erotic', 'uncensored']:
+                            if bad in t or bad in channel:
+                                score -= 50
 
                         if score > best_score:
                             best_score = score
@@ -1982,7 +2009,9 @@ class Music(commands.Cog):
             f"• 🎚 **Engine:** `48kHz Studio Master (YouTube High-Fidelity Audio)`"
         )
         if song.thumbnail and isinstance(song.thumbnail, str) and song.thumbnail.startswith(("http://", "https://")):
-            embed.set_thumbnail(url=song.thumbnail)
+            # Autoplay recommendations omit third-party video thumbnail to avoid inappropriate YouTube images
+            if not getattr(song, "is_autoplay", False):
+                embed.set_thumbnail(url=song.thumbnail)
         embed.set_footer(text="Friday Studio Audio • 48kHz Stereo Master Engine • Pure High-Fidelity")
         return embed
 
