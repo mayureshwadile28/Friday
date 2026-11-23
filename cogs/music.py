@@ -30,13 +30,61 @@ AUTOPLAY_MOOD_PATTERNS = {
     "devotional": re.compile(r'\b(bhajan|aarti|mantra|shree ram|krishna|shiva|hanuman|devotional|chalisa|ram siye ram)\b', re.IGNORECASE)
 }
 
-AUTOPLAY_LANG_PATTERNS = {
-    "hindi": re.compile(r'\b(arijit|atif|shreya|jubin|neha kakkar|sonu nigam|kk|mohit chauhan|armaan malik|darshan raval|alka yagnik|kumar sanu|udit narayan|kishore|lata|pritam|anuv jain|vishal mishra|bollywood|hindi|t-series|zeemusic|mithoon|sachet|parampara|jasleen)\b', re.IGNORECASE),
-    "punjabi": re.compile(r'\b(sidhu|moosewala|karan aujla|shubh|diljit|dosanjh|ap dhillon|gurinder gill|amrit maan|b praak|jaani|harrdy sandhu|jassi|punjabi|chani nattan|arjan dhillon)\b', re.IGNORECASE),
-    "english": re.compile(r'\b(taylor swift|ed sheeran|weeknd|drake|eminem|billie eilish|ariana grande|bruno mars|post malone|dua lipa|coldplay|imagine dragons|maroon 5|charlie puth|travis scott|pop|rock|justin bieber|adele|conan gray|olivia rodrigo)\b', re.IGNORECASE),
-    "kpop": re.compile(r'\b(bts|blackpink|twice|stray kids|newjeans|txt|kpop|k-pop|seventeen|aespa|le sserafim)\b', re.IGNORECASE),
-    "japanese": re.compile(r'\b(yoasobi|lisa|ado|kenshi yonezu|anime|jpop|j-pop|vocaloid|radwimps|aimer|milet)\b', re.IGNORECASE)
-}
+# Native script regular expressions for 100% accurate language detection
+HINDI_SCRIPT_RE = re.compile(r'[\u0900-\u097F]')
+PUNJABI_SCRIPT_RE = re.compile(r'[\u0A00-\u0A7F]')
+KOREAN_SCRIPT_RE = re.compile(r'[\uAC00-\uD7AF]')
+JAPANESE_SCRIPT_RE = re.compile(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]')
+
+KPOP_ARTISTS_RE = re.compile(
+    r'\b(bts|blackpink|twice|stray kids|newjeans|txt|enhypen|seventeen|aespa|le sserafim|exo|red velvet|itzy|ateez|kpop|k-pop)\b',
+    re.IGNORECASE
+)
+
+JAPANESE_ARTISTS_RE = re.compile(
+    r'\b(yoasobi|lisa|ado|kenshi yonezu|anime|jpop|j-pop|vocaloid|radwimps|aimer|milet|eve|official hige dandism)\b',
+    re.IGNORECASE
+)
+
+PUNJABI_ARTISTS_RE = re.compile(
+    r'\b(sidhu moose wala|sidhu moosewala|moose wala|moosewala|karan aujla|shubh|diljit dosanjh|diljit|'
+    r'ap dhillon|gurinder gill|amrit maan|b praak|jaani|harrdy sandhu|hardy sandhu|jassi gill|'
+    r'chani nattan|arjan dhillon|prem dhillon|jordan sandhu|mankirt aulakh)\b',
+    re.IGNORECASE
+)
+
+INDIAN_ARTISTS_RE = re.compile(
+    r'\b(arijit singh|arijit|atif aslam|atif|shreya ghoshal|shreya|jubin nautiyal|jubin|'
+    r'sonu nigam|neha kakkar|darshan raval|vishal mishra|pritam|armaan malik|anuv jain|'
+    r'prateek kuhad|b praak|jasleen royal|sachin-jigar|sachin jigar|amit trivedi|'
+    r'a\.?r\.?\s*rahman|alka yagnik|kumar sanu|udit narayan|kishore kumar|lata mangeshkar|'
+    r'mohammed rafi|badshah|honey singh|yo yo honey singh|guru randhawa|'
+    r'ayushmann khurrana|lucky ali|papon|asees kaur|goldie sohel|tulsi kumar|dhvani bhanushali|'
+    r'palak muchhal|shilpa rao|monali thakur|neeti mohan|sunidhi chauhan|mohit chauhan|'
+    r'tanishk bagchi|mithoon|ankit tiwari|akhil sachdeva|stebin ben)\b',
+    re.IGNORECASE
+)
+
+INDIAN_LABELS_KEYWORDS_RE = re.compile(
+    r'\b(bollywood|t-series|tseries|zee music|zeemusic|yrf|speed records|desi music factory|'
+    r'geetmp3|white hill|bhangra|sufi|ghazal|qawwali|coke studio|desi)\b',
+    re.IGNORECASE
+)
+
+HINDI_ROMAN_WORDS_RE = re.compile(
+    r'\b(dil|pyaar|pyar|ishq|mohabbat|tere|meri|mera|mere|tum|hum|zindagi|rabba|'
+    r'dhol|chitta|nach|kudi|yaar|duniya|raataan|intezaar|khuda|sajna|dhadkan|'
+    r'aashiqui|ashiqui|bewafa|deewana|dewana|tujhe|mujhko|humko|tumhe|apna|'
+    r'banale|chaleya|kesariya|akhiyaan|akhiyan|nazar|lagi|khairiyat|shayari|'
+    r'gaana|geet|hona|suno|kaho|jaane|jana|sath|saath|tu hi|tum hi|mere bina|'
+    r'jeena|marjaani|khwab|sapne|yaad|yaadein|rooh|sukoon|chahoon)\b',
+    re.IGNORECASE
+)
+
+PUNJABI_ROMAN_WORDS_RE = re.compile(
+    r'\b(punjabi|jatt|munda|kudi|gabru|pind|soorma|gediyan|veham|mittran|yaar|chitta|soch)\b',
+    re.IGNORECASE
+)
 
 KNOWN_BOLLYWOOD_ARTISTS = [
     "Arijit Singh", "Atif Aslam", "Shreya Ghoshal", "KK", "Mohit Chauhan",
@@ -1027,52 +1075,92 @@ class Music(commands.Cog):
         except Exception:
             pass
 
-    def _detect_song_features(self, title: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _detect_language(self, title: str) -> str:
+        """Determines the linguistic origin and genre classification of a song title."""
+        t = title.lower()
+
+        # 1. Native script detection (100% precision)
+        if HINDI_SCRIPT_RE.search(title):
+            return "hindi"
+        if PUNJABI_SCRIPT_RE.search(title):
+            return "punjabi"
+        if KOREAN_SCRIPT_RE.search(title):
+            return "kpop"
+        if JAPANESE_SCRIPT_RE.search(title):
+            return "japanese"
+
+        # 2. Specific Asian Genres
+        if KPOP_ARTISTS_RE.search(t):
+            return "kpop"
+        if JAPANESE_ARTISTS_RE.search(t):
+            return "japanese"
+        if PUNJABI_ARTISTS_RE.search(t) or PUNJABI_ROMAN_WORDS_RE.search(t):
+            return "punjabi"
+
+        # 3. Indian / Bollywood Artists
+        if INDIAN_ARTISTS_RE.search(t):
+            return "hindi"
+
+        # 4. Indian Labels / Studio channels
+        if INDIAN_LABELS_KEYWORDS_RE.search(t):
+            if 'punjabi' in t or 'bhangra' in t:
+                return "punjabi"
+            return "hindi"
+
+        # 5. Romanized Hindi words
+        if HINDI_ROMAN_WORDS_RE.search(t):
+            return "hindi"
+
+        # 6. Default for Latin text: English (NEVER arbitrary Hindi!)
+        return "english"
+
+    def _extract_artist_and_title(self, raw_title: str) -> Tuple[Optional[str], str]:
+        """Intelligently parses artist and track name across Western and Bollywood naming styles."""
+        junk = r'(?i)\b(official|music|video|audio|lyrics|lyric|hd|4k|remastered|song|track|full\s+song|visualizer|feat\.?|ft\.?)\b'
+
+        # Check Bollywood pipe format: "Title | Movie | Singers"
+        if "|" in raw_title:
+            parts = [p.strip() for p in raw_title.split("|") if p.strip()]
+            title_part = re.sub(junk, '', re.sub(r'[\(\[\{].*?[\)\]\}]', '', parts[0])).strip()
+            if " - " in title_part:
+                title_part = title_part.split(" - ")[0].strip()
+
+            artist_part = None
+            for p in parts[1:]:
+                m = PUNJABI_ARTISTS_RE.search(p) or INDIAN_ARTISTS_RE.search(p)
+                if m:
+                    artist_part = m.group(0).title()
+                    break
+            if not artist_part and len(parts) > 1:
+                artist_part = re.sub(junk, '', re.sub(r'[\(\[\{].*?[\)\]\}]', '', parts[-1])).strip()
+            return artist_part, title_part
+
+        # Standard Western "Artist - Title" format
+        cleaned = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_title).strip()
+        cleaned = re.sub(junk, '', cleaned).strip()
+
+        if " - " in cleaned:
+            parts = cleaned.split(" - ", 1)
+            artist_part = parts[0].strip()
+            title_part = parts[1].strip()
+            return artist_part, title_part
+
+        return None, cleaned
+
+    def _detect_song_features(self, title: str) -> Tuple[Optional[str], str, Optional[str]]:
         """Extracts mood, language, and primary artist from a song title."""
         t = title.lower()
-        
+
         detected_mood = None
         for mood, pattern in AUTOPLAY_MOOD_PATTERNS.items():
             if pattern.search(t):
                 detected_mood = mood
                 break
-                
-        detected_lang = None
-        for lang, pattern in AUTOPLAY_LANG_PATTERNS.items():
-            if pattern.search(t):
-                detected_lang = lang
-                break
 
-        # Check known Indian/Bollywood artists first
-        clean_artist = None
-        for art in KNOWN_BOLLYWOOD_ARTISTS:
-            if art.lower() in t:
-                clean_artist = art
-                if not detected_lang:
-                    detected_lang = "hindi"
-                break
+        detected_lang = self._detect_language(title)
+        artist, _ = self._extract_artist_and_title(title)
 
-        if not clean_artist:
-            parts = [p.strip() for p in re.split(r'[-–—|]', title) if p.strip()]
-            for p in parts[1:]:
-                p_clean = re.sub(r'[\(\[\{].*?[\)\]\}]', '', p).strip()
-                p_clean = re.sub(r'(?i)\b(official|music|video|audio|lyrics|lyric|hd|4k|remastered|song|track|new\s+song|new\s+music|feat|ft|records|label|company|t-series|zee|yrf|tips|sony)\b', '', p_clean).strip()
-                if p_clean and len(p_clean) >= 3 and not re.search(r'\d', p_clean):
-                    clean_artist = p_clean
-                    if not detected_lang:
-                        detected_lang = "hindi"
-                    break
-
-        if not clean_artist:
-            if " - " in title:
-                parts = title.split(" - ")
-                clean_artist = parts[0].strip()
-                clean_artist = re.sub(r'[\(\[\{].*?[\)\]\}]', '', clean_artist).strip()
-            elif " by " in t:
-                parts = t.split(" by ")
-                clean_artist = parts[1].strip()
-
-        return detected_mood, detected_lang, clean_artist
+        return detected_mood, detected_lang, artist
 
     def _flat_search_sync(self, query: str) -> list:
         opts = {
@@ -1102,15 +1190,11 @@ class Music(commands.Cog):
         """Finds next track with matching mood, language, or artist recommendations without repetition."""
         state = self.get_state(guild_id)
         mood, lang, artist = self._detect_song_features(last_song.title)
-
-        # Extract core song title cleanly by splitting before metadata/movie separators (-, |, :, —)
-        raw_first = re.split(r'[-–—|:]', last_song.title)[0].strip()
-        raw_first = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_first)
-        junk_pattern = r'(?i)\b(official|music|video|audio|lyrics|lyric|lyrical|hd|4k|remastered|full\s+song|full\s+video|visualizer|song|track|new\s+song|new\s+music|feat|ft)\b'
-        core_title = re.sub(junk_pattern, '', raw_first).strip()
+        extracted_artist, core_title = self._extract_artist_and_title(last_song.title)
+        if not artist and extracted_artist:
+            artist = extracted_artist
         if not core_title or len(core_title) < 2:
-            core_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', last_song.title).strip()
-            core_title = re.sub(junk_pattern, '', core_title).strip()
+            core_title = last_song.title
 
         # Normalized core title for exact title repetition rejection
         clean_norm = re.sub(r'[^a-z0-9]', '', core_title.lower())
@@ -1125,7 +1209,7 @@ class Music(commands.Cog):
         distinct_words = [w for w in re.findall(r'[a-zA-Z]{3,}', core_title.lower()) if w not in COMMON_STOPWORDS]
 
         queries = []
-        is_desi = (lang in ("hindi", "punjabi")) or (artist in KNOWN_BOLLYWOOD_ARTISTS)
+        is_desi = lang in ("hindi", "punjabi")
 
         if is_desi:
             # Queries designed to return DIFFERENT hit songs by that artist or genre
@@ -1133,12 +1217,20 @@ class Music(commands.Cog):
                 queries.append(f"{artist} top hit bollywood songs audio")
                 queries.append(f"best of {artist} songs audio")
             if mood:
-                queries.append(f"top {lang or 'hindi'} {mood} songs audio")
+                queries.append(f"top {lang} {mood} songs audio")
                 queries.append(f"bollywood {mood} hit songs audio")
             queries.append(f"top bollywood hit songs audio")
             queries.append(f"popular hindi bollywood songs audio")
+        elif lang == "kpop":
+            if artist:
+                queries.append(f"{artist} popular songs audio")
+            queries.append("top kpop hit songs audio")
+        elif lang == "japanese":
+            if artist:
+                queries.append(f"{artist} popular songs audio")
+            queries.append("popular japanese anime songs audio")
         else:
-            # Western / Global tracks
+            # Western / Global tracks (English)
             if artist and mood:
                 queries.append(f"{artist} {mood} songs audio")
                 queries.append(f"{mood} popular songs audio")
@@ -1148,6 +1240,7 @@ class Music(commands.Cog):
             if mood:
                 queries.append(f"{mood} songs audio")
             queries.append(f"songs like {core_title} audio")
+            queries.append(f"top hit pop songs audio")
 
         history = set(state.get("autoplay_history", []))
         candidates = []
@@ -1284,10 +1377,13 @@ class Music(commands.Cog):
 
                 if channel:
                     try:
-                        mood, lang, _ = self._detect_song_features(ref_song.title)
+                        n_mood, n_lang, _ = self._detect_song_features(next_song.title)
+                        r_mood, r_lang, _ = self._detect_song_features(ref_song.title)
+                        disp_mood = n_mood or r_mood
+                        disp_lang = n_lang if n_lang != "english" else (r_lang if r_lang != "english" else None)
                         desc_parts = []
-                        if mood: desc_parts.append(f"mood: **{mood.capitalize()}**")
-                        if lang: desc_parts.append(f"lang: **{lang.capitalize()}**")
+                        if disp_mood: desc_parts.append(f"mood: **{disp_mood.capitalize()}**")
+                        if disp_lang: desc_parts.append(f"lang: **{disp_lang.capitalize()}**")
                         tag = f" ({' • '.join(desc_parts)})" if desc_parts else ""
                         await channel.send(f"📻 **Autoplay:** Up next: **[{next_song.title}]({next_song.webpage_url})**{tag}")
                     except Exception as ch_err:
