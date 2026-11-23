@@ -112,10 +112,13 @@ async def dm_interaction_guard(interaction: discord.Interaction) -> bool:
             return False
     return True
 
-@bot.event
-async def on_ready():
-    print(f'System online: {bot.user.name} is connected to Discord!')
-    
+async def setup_hook():
+    """
+    Runs BEFORE the bot connects to Discord. This is the correct place to load
+    cogs and register persistent views — Discord guarantees that persistent view
+    handlers are ready before any interaction events arrive, so buttons never
+    show 'Friday didn't respond in time' after a restart.
+    """
     # Auto-sync root music.py into cogs/music.py if user dropped it into root folder
     root_music = os.path.join(os.path.dirname(__file__), "music.py")
     cog_music = os.path.join(os.path.dirname(__file__), "cogs", "music.py")
@@ -124,11 +127,11 @@ async def on_ready():
             import shutil
             if os.path.getmtime(root_music) > os.path.getmtime(cog_music):
                 shutil.copy2(root_music, cog_music)
-                print("🔄 Auto-synced updated music.py from root into cogs/music.py!")
+                print("\U0001f504 Auto-synced updated music.py from root into cogs/music.py!")
         except Exception:
             pass
 
-    # Load all cogs
+    # Load all cogs BEFORE bot connects so persistent views are ready for interactions
     cogs_list = [
         "cogs.moderation",
         "cogs.security",
@@ -166,21 +169,31 @@ async def on_ready():
         except Exception as e:
             print(f"Failed to load {cog}: {e}")
 
+
+# Wire setup_hook AFTER defining it so the assignment is valid.
+# setup_hook runs before the first READY, so persistent views are always ready.
+bot.setup_hook = setup_hook
+
+
+@bot.event
+async def on_ready():
+    print(f'System online: {bot.user.name} is connected to Discord!')
+
     # Clean online presence (removes streaming card from profile)
     try:
         await bot.change_presence(status=discord.Status.online, activity=None)
     except Exception as e:
         print(f"Presence warning: {e}")
-            
+
     # Auto-sync security audit channels across all connected guilds on startup/restart
     sec_cog = bot.get_cog("Security")
     if sec_cog:
         for g in bot.guilds:
             try:
                 cnt = await sec_cog.auto_sync_security_channels(g)
-                print(f"🛡️ Auto-synced {cnt} security channels in '{g.name}'")
+                print(f"\U0001f6e1\ufe0f Auto-synced {cnt} security channels in '{g.name}'")
             except Exception as e:
-                print(f"⚠️ Security sync warning for '{g.name}': {e}")
+                print(f"\u26a0\ufe0f Security sync warning for '{g.name}': {e}")
 
     # Sync commands across all connected guilds so slash commands appear instantly
     try:
@@ -190,9 +203,9 @@ async def on_ready():
                 bot.tree.copy_global_to(guild=g)
                 await bot.tree.sync(guild=g)
             except Exception as ge:
-                print(f"⚠️ Guild sync note for '{g.name}': {ge}")
+                print(f"\u26a0\ufe0f Guild sync note for '{g.name}': {ge}")
         synced_global = await bot.tree.sync()
-        print(f"✅ Instant slash command registration complete across {len(bot.guilds)} guilds ({len(synced_global)} commands).")
+        print(f"\u2705 Instant slash command registration complete across {len(bot.guilds)} guilds ({len(synced_global)} commands).")
     except Exception as e:
         print(f"Global sync warning: {e}")
 

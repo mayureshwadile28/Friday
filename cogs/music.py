@@ -1131,11 +1131,17 @@ class Music(commands.Cog):
         self.bot = bot
         # Per-guild music state
         self.states = {}
-        # Register persistent controller view so buttons never time out across restarts
+
+    async def cog_load(self):
+        # Register persistent controller view AFTER the bot is fully connected so
+        # Discord's internal view store is ready. Registering in __init__ races
+        # against on_ready cog loading and can silently fail to bind, causing the
+        # "Friday didn't respond in time" error on every music button click.
         try:
             self.bot.add_view(MusicControlView(self))
+            print("[Music] ✅ Persistent MusicControlView registered via cog_load.")
         except Exception as e:
-            print(f"[Music] Note: Persistent view registration: {e}")
+            print(f"[Music] Note: Persistent view registration in cog_load: {e}")
 
     def get_state(self, guild_id: int):
         if guild_id not in self.states:
