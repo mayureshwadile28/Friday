@@ -732,20 +732,59 @@ class PayConfirmView(discord.ui.View):
         self._lock = asyncio.Lock()
         self.message: Optional[discord.Message] = None
 
+    async def _safe_update(self, interaction: discord.Interaction, *, content=None, embed=None, view=None) -> bool:
+        """Safely and reliably update the prompt message or interaction response."""
+        # 1. Primary: If interaction was deferred/responded, edit via interaction webhook
+        if interaction.response.is_done():
+            try:
+                await interaction.edit_original_response(content=content, embed=embed, view=view)
+                return True
+            except Exception as e:
+                print(f"[PayConfirmView] edit_original_response failed: {e}")
+        else:
+            try:
+                await interaction.response.edit_message(content=content, embed=embed, view=view)
+                return True
+            except Exception as e:
+                print(f"[PayConfirmView] response.edit_message failed: {e}")
+
+        # 2. Secondary fallback: Edit via direct message object
+        target_msg = self.message or interaction.message
+        if target_msg:
+            try:
+                await target_msg.edit(content=content, embed=embed, view=view)
+                return True
+            except Exception as e:
+                print(f"[PayConfirmView] target_msg.edit failed: {e}")
+
+        # 3. Tertiary fallback: Post into channel directly so user gets confirmation
+        if embed or content:
+            try:
+                ch = interaction.channel or (target_msg.channel if target_msg else None)
+                if ch:
+                    await ch.send(content=content, embed=embed)
+                    return True
+            except Exception as e:
+                print(f"[PayConfirmView] channel.send failed: {e}")
+
+        return False
+
     async def on_timeout(self):
-        if not self.processed:
-            self.processed = True
-            self.disable_all_items()
-            if self.message:
-                try:
-                    embed = discord.Embed(
-                        title="⌛ Transfer Expired",
-                        color=discord.Color.dark_gray(),
-                        description="This transfer confirmation prompt has expired. No funds were deducted from your wallet."
-                    )
-                    await self.message.edit(embed=embed, view=None)
-                except Exception:
-                    pass
+        async with self._lock:
+            if not self.processed:
+                self.processed = True
+                self.disable_all_items()
+                target_msg = self.message
+                if target_msg:
+                    try:
+                        embed = discord.Embed(
+                            title="⌛ Transfer Expired",
+                            color=discord.Color.dark_gray(),
+                            description="This transfer confirmation prompt has expired. No funds were deducted from your wallet."
+                        )
+                        await target_msg.edit(embed=embed, view=None)
+                    except Exception as e:
+                        print(f"[PayConfirmView] timeout edit failed: {e}")
 
     @discord.ui.button(label="Confirm Transfer", style=discord.ButtonStyle.success, emoji="✅")
     async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -761,13 +800,7 @@ class PayConfirmView(discord.ui.View):
         async with self._lock:
             if self.processed:
                 self.disable_all_items()
-                try:
-                    if interaction.message:
-                        await interaction.message.edit(view=None)
-                    else:
-                        await interaction.edit_original_response(view=None)
-                except Exception:
-                    pass
+                await self._safe_update(interaction, view=None)
                 return
             self.processed = True
 
@@ -776,16 +809,7 @@ class PayConfirmView(discord.ui.View):
         if sender_profile["wallet"] < self.gross:
             self.disable_all_items()
             msg = f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet."
-            try:
-                if interaction.message:
-                    await interaction.message.edit(content=msg, embed=None, view=None)
-                else:
-                    await interaction.edit_original_response(content=msg, embed=None, view=None)
-            except Exception:
-                try:
-                    await interaction.followup.send(msg, ephemeral=True)
-                except Exception:
-                    pass
+            await self._safe_update(interaction, content=msg, embed=None, view=None)
             return
 
         # Atomic deduction and credit
@@ -810,16 +834,7 @@ class PayConfirmView(discord.ui.View):
         )
         embed.set_footer(text="Friday Anti-Inflation Economy • Funds delivered instantly")
 
-        try:
-            if interaction.message:
-                await interaction.message.edit(content=None, embed=embed, view=None)
-            else:
-                await interaction.edit_original_response(content=None, embed=embed, view=None)
-        except Exception:
-            try:
-                await interaction.followup.send(embed=embed)
-            except Exception:
-                pass
+        await self._safe_update(interaction, content=None, embed=embed, view=None)
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, emoji="✖️")
     async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -832,20 +847,20 @@ class PayConfirmView(discord.ui.View):
         except Exception:
             pass
 
-        self.processed = True
+        async with self._lock:
+            if self.processed:
+                self.disable_all_items()
+                await self._safe_update(interaction, view=None)
+                return
+            self.processed = True
+
         self.disable_all_items()
-        try:
-            embed = discord.Embed(
-                title="❌ Transfer Cancelled",
-                color=discord.Color.dark_gray(),
-                description=f"Transfer of **{self.gross:,}** {self.currency_emoji} {self.currency_name} to **{self.target.mention}** was cancelled by {self.sender.mention}."
-            )
-            if interaction.message:
-                await interaction.message.edit(content=None, embed=embed, view=None)
-            else:
-                await interaction.edit_original_response(content=None, embed=embed, view=None)
-        except Exception:
-            pass
+        embed = discord.Embed(
+            title="❌ Transfer Cancelled",
+            color=discord.Color.dark_gray(),
+            description=f"Transfer of **{self.gross:,}** {self.currency_emoji} {self.currency_name} to **{self.target.mention}** was cancelled by {self.sender.mention}."
+        )
+        await self._safe_update(interaction, content=None, embed=embed, view=None)
 
 
 class ShopDeliveryTicketView(discord.ui.View):
