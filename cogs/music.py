@@ -48,7 +48,12 @@ KNOWN_BOLLYWOOD_ARTISTS = [
     "Karan Aujla", "Shubh", "Badshah", "Yo Yo Honey Singh", "Neha Kakkar",
     "Sunidhi Chauhan", "Pritam", "Tanishk Bagchi", "Mithoon", "Ankit Tiwari",
     "Akhil Sachdeva", "Stebin Ben", "King", "Guru Randhawa", "Hardy Sandhu",
-    "Ayushmann Khurrana", "Lucky Ali", "Shaan", "Javed Ali", "Papon"
+    "Ayushmann Khurrana", "Lucky Ali", "Shaan", "Javed Ali", "Papon",
+    "Asees Kaur", "Goldie Sohel", "Tulsi Kumar", "Dhvani Bhanushali", "Palak Muchhal",
+    "Shilpa Rao", "Monali Thakur", "Neeti Mohan", "Prakriti Kakar", "Sukriti Kakar",
+    "Jonita Gandhi", "Parampara Tandon", "Sachet Tandon", "Abhay Jodhpurkar",
+    "Raghav Chaitanya", "Zack Knight", "Kailash Kher", "Himesh Reshammiya",
+    "Meet Bros", "Vishal-Shekhar", "Manan Bhardwaj", "Adnan Sami"
 ]
 
 
@@ -442,10 +447,12 @@ class MusicControlView(discord.ui.View):
     @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏯️", custom_id="music_pause_resume", row=0)
     async def pause_resume_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
             gid, cog = self._get_context(interaction)
             vc = interaction.guild.voice_client if interaction.guild else None
             if not vc or not (vc.is_playing() or vc.is_paused()):
-                return await interaction.response.send_message(
+                return await interaction.followup.send(
                     embed=make_box_embed(title="Playback Inactive", description="Nothing is currently playing.", status="error"),
                     ephemeral=True
                 )
@@ -459,22 +466,22 @@ class MusicControlView(discord.ui.View):
                 button.label = "Resume"
                 button.style = discord.ButtonStyle.success
 
-            await interaction.response.edit_message(view=self)
-        except Exception as e:
-            print(f"[Music Button Error: pause] {e}")
             try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer(ephemeral=True)
+                await interaction.message.edit(view=self)
             except Exception:
                 pass
+        except Exception as e:
+            print(f"[Music Button Error: pause] {e}")
 
     @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭️", custom_id="music_skip", row=0)
     async def skip_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
             gid, cog = self._get_context(interaction)
             vc = interaction.guild.voice_client if interaction.guild else None
             if not vc or not (vc.is_playing() or vc.is_paused()):
-                return await interaction.response.send_message(
+                return await interaction.followup.send(
                     embed=make_box_embed(title="Playback Inactive", description="Nothing is currently playing.", status="error"),
                     ephemeral=True
                 )
@@ -482,8 +489,6 @@ class MusicControlView(discord.ui.View):
             if cog:
                 state = cog.get_state(gid)
                 state["loop"] = False
-
-            await interaction.response.defer(ephemeral=True)
 
             if vc and (vc.is_playing() or vc.is_paused()):
                 try:
@@ -498,35 +503,32 @@ class MusicControlView(discord.ui.View):
                 pass
         except Exception as e:
             print(f"[Music Button Error: skip] {e}")
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer(ephemeral=True)
-            except Exception:
-                pass
 
     @discord.ui.button(label="Loop", style=discord.ButtonStyle.secondary, emoji="🔁", custom_id="music_loop", row=0)
     async def loop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
             gid, cog = self._get_context(interaction)
             if not cog:
-                return await interaction.response.defer(ephemeral=True)
+                return
             state = cog.get_state(gid)
             is_loop = not state.get("loop", False)
             state["loop"] = is_loop
             button.label = "Looping" if is_loop else "Loop"
             button.style = discord.ButtonStyle.primary if is_loop else discord.ButtonStyle.secondary
-            await interaction.response.edit_message(view=self)
-        except Exception as e:
-            print(f"[Music Button Error: loop] {e}")
             try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer(ephemeral=True)
+                await interaction.message.edit(view=self)
             except Exception:
                 pass
+        except Exception as e:
+            print(f"[Music Button Error: loop] {e}")
 
     @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="music_stop", row=0)
     async def stop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
+            if not interaction.response.is_done():
+                await interaction.response.defer()
             gid, cog = self._get_context(interaction)
             vc = interaction.guild.voice_client if interaction.guild else None
 
@@ -543,10 +545,13 @@ class MusicControlView(discord.ui.View):
             for child in self.children:
                 child.disabled = True
 
-            # 3. Immediate edit_message to acknowledge button instantly and show disabled state
-            await interaction.response.edit_message(view=self)
+            # 3. Immediate edit message
+            try:
+                await interaction.message.edit(view=self)
+            except Exception:
+                pass
 
-            # 4. Safely stop the voice client in the background without blocking the interaction ACK
+            # 4. Safely stop the voice client in the background without blocking
             if vc and (vc.is_playing() or vc.is_paused()):
                 try:
                     vc.stop()
@@ -747,9 +752,11 @@ class MusicControlView(discord.ui.View):
     @discord.ui.button(label="Autoplay: OFF", style=discord.ButtonStyle.secondary, emoji="📻", custom_id="music_autoplay", row=2)
     async def autoplay_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
             gid, cog = self._get_context(interaction)
             if not cog:
-                return await interaction.response.defer(ephemeral=True)
+                return
             state = cog.get_state(gid)
             new_auto = not state.get("autoplay", False)
             state["autoplay"] = new_auto
@@ -757,7 +764,10 @@ class MusicControlView(discord.ui.View):
             button.label = "Autoplay: ON" if new_auto else "Autoplay: OFF"
             button.style = discord.ButtonStyle.primary if new_auto else discord.ButtonStyle.secondary
 
-            await interaction.response.edit_message(view=self)
+            try:
+                await interaction.message.edit(view=self)
+            except Exception:
+                pass
 
             if new_auto:
                 asyncio.create_task(cog.ensure_autoplay_queued(gid))
@@ -1043,6 +1053,17 @@ class Music(commands.Cog):
                 break
 
         if not clean_artist:
+            parts = [p.strip() for p in re.split(r'[-–—|]', title) if p.strip()]
+            for p in parts[1:]:
+                p_clean = re.sub(r'[\(\[\{].*?[\)\]\}]', '', p).strip()
+                p_clean = re.sub(r'(?i)\b(official|music|video|audio|lyrics|lyric|hd|4k|remastered|song|track|new\s+song|new\s+music|feat|ft|records|label|company|t-series|zee|yrf|tips|sony)\b', '', p_clean).strip()
+                if p_clean and len(p_clean) >= 3 and not re.search(r'\d', p_clean):
+                    clean_artist = p_clean
+                    if not detected_lang:
+                        detected_lang = "hindi"
+                    break
+
+        if not clean_artist:
             if " - " in title:
                 parts = title.split(" - ")
                 clean_artist = parts[0].strip()
@@ -1084,13 +1105,15 @@ class Music(commands.Cog):
 
         # Extract core song title cleanly by splitting before metadata/movie separators (-, |, :, —)
         raw_first = re.split(r'[-–—|:]', last_song.title)[0].strip()
-        core_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_first)
-        core_title = re.sub(r'(?i)\b(official|video|audio|lyrics|lyric|hd|4k|remastered|full\s+song|full\s+video|visualizer|song|track)\b', '', core_title).strip()
+        raw_first = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_first)
+        junk_pattern = r'(?i)\b(official|music|video|audio|lyrics|lyric|lyrical|hd|4k|remastered|full\s+song|full\s+video|visualizer|song|track|new\s+song|new\s+music|feat|ft)\b'
+        core_title = re.sub(junk_pattern, '', raw_first).strip()
         if not core_title or len(core_title) < 2:
             core_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', last_song.title).strip()
+            core_title = re.sub(junk_pattern, '', core_title).strip()
 
-        # Core track keywords to prevent playing remix/slowed/lofi versions of the identical song
-        core_words = [w for w in re.findall(r'[a-zA-Z]{3,}', core_title.lower()) if w not in ('the', 'and', 'song', 'video', 'full', 'audio')]
+        # Core track keywords to prevent playing remix/slowed/lofi/lyric versions of the identical song
+        core_words = [w for w in re.findall(r'[a-zA-Z]{3,}', core_title.lower()) if w not in ('the', 'and', 'for', 'you', 'with', 'from')]
 
         queries = []
         is_desi = (lang in ("hindi", "punjabi")) or (artist in KNOWN_BOLLYWOOD_ARTISTS)
@@ -1098,13 +1121,13 @@ class Music(commands.Cog):
         if is_desi:
             # Queries designed to return DIFFERENT hit songs by that artist or genre
             if artist:
-                queries.append(f"{artist} hit bollywood songs audio")
+                queries.append(f"{artist} top hit bollywood songs audio")
                 queries.append(f"best of {artist} songs audio")
             if mood:
                 queries.append(f"top {lang or 'hindi'} {mood} songs audio")
                 queries.append(f"bollywood {mood} hit songs audio")
-            queries.append(f"top bollywood {mood or 'romantic'} songs audio")
-            queries.append(f"latest bollywood hit songs audio")
+            queries.append(f"top bollywood hit songs audio")
+            queries.append(f"popular hindi bollywood songs audio")
         else:
             # Western / Global tracks
             if artist and mood:
@@ -1120,8 +1143,9 @@ class Music(commands.Cog):
         history = set(state.get("autoplay_history", []))
         candidates = []
 
-        # Strict banned keywords for autoplay to prevent repeats, remixes, lofi, mashups
+        # Strict banned keywords for autoplay to prevent repeats, remixes, lofi, mashups, lyric videos
         banned_terms = [
+            'lyrics', 'lyric', 'lyrical', 'animated', 'animation',
             'lofi', 'lo-fi', 'slowed', 'reverb', 'remix', 'mashup', 'female version',
             'male version', 'cover', 'acoustic', 'unplugged', 'status', 'shorts',
             'ringtone', 'bass boosted', 'speed up', 'synthwave', '8d'
@@ -1138,14 +1162,17 @@ class Music(commands.Cog):
                     t_lower = t_name.lower()
                     if t_name in history:
                         continue
-                    # Skip banned remix / lofi / mashup variants
+                    # Skip banned remix / lofi / mashup / lyric variants
                     if any(bt in t_lower for bt in banned_terms):
                         continue
                     # Reject candidate if it represents the exact same song
-                    if core_words and len(core_words) >= 2 and all(cw in t_lower for cw in core_words):
-                        continue
-                    if core_words and len(core_words) == 1 and core_words[0] in t_lower:
-                        continue
+                    if core_words and len(core_words) >= 2:
+                        matches = sum(1 for cw in core_words if cw in t_lower)
+                        if matches >= 1:
+                            continue
+                    elif core_words and len(core_words) == 1:
+                        if core_words[0] in t_lower:
+                            continue
                     if dur and (dur > 600 or dur < 60):
                         continue
                     candidates.append(entry)
@@ -1775,23 +1802,23 @@ class Music(commands.Cog):
                 async def _send_and_track():
                     try:
                         old_msg = state.get("np_message")
-                        # Modern player architecture (Hade/Hydra): Edit the existing Now Playing card in-place so buttons never break
+                        # Send fresh now playing card and clean up previous message
                         if old_msg:
                             try:
-                                await old_msg.edit(embed=embed, view=view)
-                                state["np_message"] = old_msg
-                                return
-                            except (discord.NotFound, discord.HTTPException):
+                                await old_msg.delete()
+                            except Exception:
                                 pass
 
                         msg = await state["channel"].send(embed=embed, view=view)
                         state["np_message"] = msg
+                        self.bot.add_view(view, message_id=msg.id)
                     except Exception as e:
                         print(f"[Music] Error sending Now Playing card: {e}")
                         try:
                             embed.set_thumbnail(url=None)
                             msg = await state["channel"].send(embed=embed, view=view)
                             state["np_message"] = msg
+                            self.bot.add_view(view, message_id=msg.id)
                         except Exception as e2:
                             print(f"[Music] Fallback Now Playing send failed: {e2}")
 
@@ -2063,20 +2090,19 @@ class Music(commands.Cog):
                 old_msg = state.get("np_message")
                 if old_msg:
                     try:
-                        await old_msg.edit(embed=embed, view=view)
-                        state["np_message"] = old_msg
-                        await interaction.followup.send(embed=make_box_embed(title="Playback Started", description=f"Now playing **[{song.title}]({song.webpage_url})**.", status="success"), ephemeral=True)
-                        return
-                    except (discord.NotFound, discord.HTTPException):
+                        await old_msg.delete()
+                    except Exception:
                         pass
 
                 try:
                     msg = await interaction.followup.send(embed=embed, view=view)
                     state["np_message"] = msg
+                    self.bot.add_view(view, message_id=msg.id)
                 except Exception:
                     embed.set_thumbnail(url=None)
                     msg = await interaction.followup.send(embed=embed, view=view)
                     state["np_message"] = msg
+                    self.bot.add_view(view, message_id=msg.id)
             except Exception as e:
                 await reply_box(interaction, f"Error initializing audio stream: {e}", title="STREAM ERROR", status="danger")
                 self.play_next(interaction.guild.id)

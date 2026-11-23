@@ -738,11 +738,12 @@ class PayConfirmView(discord.ui.View):
             self.disable_all_items()
             if self.message:
                 try:
-                    embed = self.message.embeds[0] if self.message.embeds else discord.Embed(title="💸 Transfer Cancelled")
-                    embed.color = discord.Color.dark_gray()
-                    embed.description = "⌛ **Transfer prompt timed out.** No funds were deducted from your wallet."
-                    embed.set_footer(text="Expired • Run /pay or .pay again to transfer.")
-                    await self.message.edit(embed=embed, view=self)
+                    embed = discord.Embed(
+                        title="⌛ Transfer Expired",
+                        color=discord.Color.dark_gray(),
+                        description="This transfer confirmation prompt has expired. No funds were deducted from your wallet."
+                    )
+                    await self.message.edit(embed=embed, view=None)
                 except Exception:
                     pass
 
@@ -755,7 +756,7 @@ class PayConfirmView(discord.ui.View):
             if self.processed:
                 self.disable_all_items()
                 try:
-                    await interaction.response.edit_message(view=self)
+                    await interaction.response.edit_message(view=None)
                 except Exception:
                     if not interaction.response.is_done():
                         await interaction.response.send_message("⚠️ This transfer has already been processed.", ephemeral=True)
@@ -770,7 +771,7 @@ class PayConfirmView(discord.ui.View):
             self.disable_all_items()
             msg = f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet."
             try:
-                await interaction.response.edit_message(content=msg, embed=None, view=self)
+                await interaction.response.edit_message(content=msg, embed=None, view=None)
             except Exception:
                 if not interaction.response.is_done():
                     await interaction.response.send_message(msg, ephemeral=True)
@@ -791,21 +792,23 @@ class PayConfirmView(discord.ui.View):
         embed = discord.Embed(
             title="💸 Payment Successful",
             color=discord.Color.green(),
-            description=f"**{self.sender.mention}** transferred **{self.net:,}** {self.currency_emoji} {self.currency_name} to **{self.target.mention}**!"
+            description=(
+                f"✅ **{self.sender.mention}** successfully transferred **{self.net:,}** {self.currency_emoji} {self.currency_name} to **{self.target.mention}**!\n\n"
+                f"• **Gross Sent:** `{self.gross:,} {self.currency_name}`\n"
+                f"• **Server Anti-Inflation Tax ({tax_rate_disp}):** `-{self.tax:,} {self.currency_name}` 🔥 (Permanently Burned)\n"
+                f"• **Recipient Received:** `+{self.net:,} {self.currency_name}`"
+            )
         )
-        embed.add_field(name="Gross Sent", value=f"`{self.gross:,}`", inline=True)
-        embed.add_field(name=f"Server Tax ({tax_rate_disp})", value=f"`{self.tax:,}` 🔥 (Burned)", inline=True)
-        embed.add_field(name="Net Received", value=f"`{self.net:,}`", inline=True)
         embed.set_footer(text="Friday Anti-Inflation Economy • Funds delivered instantly")
 
         try:
-            await interaction.response.edit_message(content=None, embed=embed, view=self)
+            await interaction.response.edit_message(content=None, embed=embed, view=None)
         except Exception:
             try:
                 if interaction.message:
-                    await interaction.message.edit(content=None, embed=embed, view=self)
+                    await interaction.message.edit(content=None, embed=embed, view=None)
                 else:
-                    await interaction.edit_original_response(content=None, embed=embed, view=self)
+                    await interaction.edit_original_response(content=None, embed=embed, view=None)
             except Exception:
                 pass
 
@@ -816,13 +819,18 @@ class PayConfirmView(discord.ui.View):
         self.processed = True
         self.disable_all_items()
         try:
-            await interaction.response.edit_message(content="❌ Transfer cancelled.", embed=None, view=self)
+            embed = discord.Embed(
+                title="❌ Transfer Cancelled",
+                color=discord.Color.dark_gray(),
+                description=f"Transfer of **{self.gross:,}** {self.currency_emoji} {self.currency_name} to **{self.target.mention}** was cancelled by {self.sender.mention}."
+            )
+            await interaction.response.edit_message(content=None, embed=embed, view=None)
         except Exception:
             try:
                 if interaction.message:
-                    await interaction.message.edit(content="❌ Transfer cancelled.", embed=None, view=self)
+                    await interaction.message.edit(content=None, embed=embed, view=None)
                 else:
-                    await interaction.edit_original_response(content="❌ Transfer cancelled.", embed=None, view=self)
+                    await interaction.edit_original_response(content=None, embed=embed, view=None)
             except Exception:
                 pass
 
