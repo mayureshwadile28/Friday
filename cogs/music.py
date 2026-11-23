@@ -1013,7 +1013,7 @@ class Music(commands.Cog):
         try:
             route = discord.http.Route('PUT', '/channels/{channel_id}/voice-status', channel_id=channel.id)
             clean_status = status[:500]
-            await self.bot.http.request(route, json={'status': clean_status})
+            await self.bot.http.request(route, json={'status': clean_status, 'emoji_name': None, 'emoji_id': None})
         except Exception:
             pass
 
@@ -1023,7 +1023,7 @@ class Music(commands.Cog):
             return
         try:
             route = discord.http.Route('PUT', '/channels/{channel_id}/voice-status', channel_id=channel.id)
-            await self.bot.http.request(route, json={'status': ''})
+            await self.bot.http.request(route, json={'status': '', 'emoji_name': None, 'emoji_id': None})
         except Exception:
             pass
 
@@ -1112,8 +1112,17 @@ class Music(commands.Cog):
             core_title = re.sub(r'[\(\[\{].*?[\)\]\}]', '', last_song.title).strip()
             core_title = re.sub(junk_pattern, '', core_title).strip()
 
-        # Core track keywords to prevent playing remix/slowed/lofi/lyric versions of the identical song
-        core_words = [w for w in re.findall(r'[a-zA-Z]{3,}', core_title.lower()) if w not in ('the', 'and', 'for', 'you', 'with', 'from')]
+        # Normalized core title for exact title repetition rejection
+        clean_norm = re.sub(r'[^a-z0-9]', '', core_title.lower())
+
+        # Exclude common stopwords so words like 'love', 'like', 'dil', 'mere' don't reject different songs
+        COMMON_STOPWORDS = {
+            'the', 'and', 'for', 'you', 'with', 'from', 'this', 'that', 'what', 'love',
+            'like', 'feels', 'feel', 'life', 'time', 'girl', 'baby', 'yeah', 'mere',
+            'meri', 'mera', 'tere', 'teri', 'tera', 'yeh', 'hai', 'hum', 'dil', 'ek',
+            'main', 'tune', 'koi', 'kuch', 'hona', 'song', 'audio', 'video'
+        }
+        distinct_words = [w for w in re.findall(r'[a-zA-Z]{3,}', core_title.lower()) if w not in COMMON_STOPWORDS]
 
         queries = []
         is_desi = (lang in ("hindi", "punjabi")) or (artist in KNOWN_BOLLYWOOD_ARTISTS)
@@ -1143,12 +1152,17 @@ class Music(commands.Cog):
         history = set(state.get("autoplay_history", []))
         candidates = []
 
-        # Strict banned keywords for autoplay to prevent repeats, remixes, lofi, mashups, lyric videos
+        # Comprehensive banned keywords for autoplay to prevent repeats, remixes, lofi, mashups, tutorials, and non-music
         banned_terms = [
+            'how i made', 'how to', 'tutorial', 'making of', 'behind the scenes', 'bts',
+            'interview', 'reaction', 'reacting', 'breakdown', 'vlog', 'review',
+            'podcast', 'teaser', 'trailer', 'short film', 'documentary', 'episode',
+            'explained', 'producing', 'in the studio', 'track by track', 'lesson',
             'lyrics', 'lyric', 'lyrical', 'animated', 'animation',
             'lofi', 'lo-fi', 'slowed', 'reverb', 'remix', 'mashup', 'female version',
             'male version', 'cover', 'acoustic', 'unplugged', 'status', 'shorts',
-            'ringtone', 'bass boosted', 'speed up', 'synthwave', '8d'
+            'ringtone', 'bass boosted', 'speed up', 'synthwave', '8d', 'karaoke',
+            'instrumental'
         ]
 
         for q in queries:
@@ -1162,16 +1176,19 @@ class Music(commands.Cog):
                     t_lower = t_name.lower()
                     if t_name in history:
                         continue
-                    # Skip banned remix / lofi / mashup / lyric variants
+                    # Skip banned remix / lofi / mashup / lyric / tutorial variants
                     if any(bt in t_lower for bt in banned_terms):
                         continue
-                    # Reject candidate if it represents the exact same song
-                    if core_words and len(core_words) >= 2:
-                        matches = sum(1 for cw in core_words if cw in t_lower)
-                        if matches >= 1:
+                    # Reject candidate if it contains the exact normalized title
+                    cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
+                    if len(clean_norm) >= 4 and clean_norm in cand_norm:
+                        continue
+                    # Reject candidate if it shares all distinct identifying keywords of the current track
+                    if distinct_words:
+                        matches = sum(1 for dw in distinct_words if dw in t_lower)
+                        if len(distinct_words) <= 2 and matches == len(distinct_words):
                             continue
-                    elif core_words and len(core_words) == 1:
-                        if core_words[0] in t_lower:
+                        elif len(distinct_words) > 2 and matches >= 2:
                             continue
                     if dur and (dur > 600 or dur < 60):
                         continue
@@ -1180,6 +1197,45 @@ class Music(commands.Cog):
                     break
             except Exception as search_ex:
                 print(f"[Autoplay Search Error for '{q}'] {search_ex}")
+
+        # Broad fallback queries if candidates are sparse, guaranteeing autoplay never stalls or runs silent
+        if len(candidates) < 3:
+            fallback_queries = []
+            if is_desi:
+                fallback_queries.extend([
+                    "top bollywood hit songs audio",
+                    "popular hindi romantic songs audio",
+                    "latest hindi hit songs audio"
+                ])
+            else:
+                fallback_queries.extend([
+                    "today top hit songs audio",
+                    "billboard hot 100 audio",
+                    "popular hit songs audio"
+                ])
+            for fq in fallback_queries:
+                if len(candidates) >= 5:
+                    break
+                try:
+                    f_results = await asyncio.to_thread(self._flat_search_sync, f"ytsearch5:{fq}")
+                    for entry in f_results:
+                        t_name = entry.get("title", "")
+                        dur = entry.get("duration") or 0
+                        if not t_name or t_name in history:
+                            continue
+                        t_lower = t_name.lower()
+                        if any(bt in t_lower for bt in banned_terms):
+                            continue
+                        cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
+                        if len(clean_norm) >= 4 and clean_norm in cand_norm:
+                            continue
+                        if dur and (dur > 600 or dur < 60):
+                            continue
+                        candidates.append(entry)
+                        if len(candidates) >= 5:
+                            break
+                except Exception as fb_ex:
+                    print(f"[Autoplay Fallback Search Error for '{fq}'] {fb_ex}")
 
         if not candidates:
             return None
@@ -1788,7 +1844,7 @@ class Music(commands.Cog):
 
             # Update voice channel status so users outside can see the playing track!
             if vc and vc.channel:
-                status_title = f"♪ {next_song.title}"[:48]
+                status_title = f"✦ {next_song.title}"[:48]
                 asyncio.run_coroutine_threadsafe(self.set_voice_channel_status(vc.channel, status_title), self.bot.loop)
 
             vc.play(source, after=after_play)

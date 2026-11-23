@@ -1365,16 +1365,6 @@ class LudoLobbyView(discord.ui.View):
         self.start_timestamp = int(time.time()) + 100
         self.launching: bool = False
 
-    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
-        print(f"[LudoLobby] Interaction error on {item}: {error}")
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("⚠️ An unexpected error occurred in the lobby.", ephemeral=True)
-            else:
-                await interaction.followup.send("⚠️ An unexpected error occurred in the lobby.", ephemeral=True)
-        except Exception:
-            pass
-
         # Assign initial slots: Slot 0 = Red (Host)
         self.slots: Dict[str, Dict[str, Any]] = {
             "red": {"member": host, "name": host.display_name, "is_ai": False, "ready": True},
@@ -1396,6 +1386,16 @@ class LudoLobbyView(discord.ui.View):
             self.slots[col] = {"member": None, "name": "Friday (AI)", "is_ai": True, "ready": True}
 
         self.setup_lobby_buttons()
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
+        print(f"[LudoLobby] Interaction error on {item}: {error}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("⚠️ An unexpected error occurred in the lobby.", ephemeral=True)
+            else:
+                await interaction.followup.send("⚠️ An unexpected error occurred in the lobby.", ephemeral=True)
+        except Exception:
+            pass
 
     def get_active_count(self) -> int:
         return sum(1 for s in self.slots.values() if s is not None and s.get("ready"))
@@ -1838,6 +1838,8 @@ class Ludo(commands.Cog, name="Ludo"):
             print(f"[Ludo] Slash command error: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(f"❌ Failed to launch Ludo: {e}", ephemeral=True)
+            else:
+                await interaction.followup.send(f"❌ Failed to launch Ludo: {e}", ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
