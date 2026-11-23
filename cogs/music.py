@@ -72,12 +72,18 @@ INDIAN_LABELS_KEYWORDS_RE = re.compile(
 )
 
 HINDI_ROMAN_WORDS_RE = re.compile(
-    r'\b(dil|pyaar|pyar|ishq|mohabbat|tere|meri|mera|mere|tum|hum|zindagi|rabba|'
-    r'dhol|chitta|nach|kudi|yaar|duniya|raataan|intezaar|khuda|sajna|dhadkan|'
-    r'aashiqui|ashiqui|bewafa|deewana|dewana|tujhe|mujhko|humko|tumhe|apna|'
-    r'banale|chaleya|kesariya|akhiyaan|akhiyan|nazar|lagi|khairiyat|shayari|'
-    r'gaana|geet|hona|suno|kaho|jaane|jana|sath|saath|tu hi|tum hi|mere bina|'
-    r'jeena|marjaani|khwab|sapne|yaad|yaadein|rooh|sukoon|chahoon)\b',
+    r'\b(dil|pyaar|pyar|ishq|mohabbat|muhabbat|tere|teri|tera|tujhe|tujhko|tujhse|'
+    r'meri|mera|mere|mujhe|mujhko|mujhse|tum|hum|humko|humein|humse|tumko|tumhe|tumhein|tumse|'
+    r'apna|apni|apne|zindagi|rabba|rab|khuda|maula|dhol|chitta|nach|kudi|yaar|duniya|jahaan|'
+    r'raataan|raat|raatein|raaten|raatan|intezaar|sajna|dhadkan|aashiqui|ashiqui|bewafa|deewana|dewana|deewani|'
+    r'banale|chaleya|kesariya|akhiyaan|akhiyan|naina|naino|nazar|lagi|khairiyat|shayari|shayar|'
+    r'gaana|geet|hona|hoga|hogi|honge|hota|hoti|hote|suno|kaho|jaane|jana|sath|saath|tu hi|tum hi|mere bina|'
+    r'jeena|marjaani|khwab|sapne|sapna|yaad|yaadein|rooh|sukoon|suroor|chahoon|chahun|chahu|chahunga|chahungi|'
+    r'phir|bhi|bhee|kya|kyun|kyu|kaise|kaisa|kaisi|kabhi|kisi|raha|rahi|rahe|gaya|gayi|gaye|aaya|aayi|aaye|'
+    r'baat|baatein|ankhein|aankhon|lab|saans|saansen|saansein|pal|din|subah|shaam|haseen|khamosh|khamoshi|'
+    r'alvida|kahani|afsaana|gham|gam|dard|tasveer|ibadat|dua|sitam|karam|reham|wafa|wafaa|mulaqat|safar|'
+    r'manzil|raasta|rasta|musafir|awara|shiddat|kasam|vaada|wada|channa|mereya|hawayein|baarish|muskurane|'
+    r'kamleya|satranga|heeriye|kasoor|baarishein|lehanga|yeh|woh|mausam|barsaat)\b',
     re.IGNORECASE
 )
 
@@ -309,6 +315,103 @@ YDL_OPTIONS = {
     'nocheckcertificate': True,
     'http_headers': DEFAULT_HEADERS,
 }
+
+def resolve_spotify_url(url: str) -> Optional[dict]:
+    """Robust zero-dependency Spotify resolver for tracks, albums, playlists, and shortlinks."""
+    clean_url = url.strip()
+    if not clean_url.startswith(("http://", "https://")):
+        clean_url = f"https://{clean_url}"
+
+    # 1. Expand shortlinks (spotify.link / spoti.fi)
+    if "spotify.link" in clean_url or "spoti.fi" in clean_url:
+        try:
+            req = urllib.request.Request(clean_url, headers=DEFAULT_HEADERS)
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                clean_url = resp.geturl()
+        except Exception as e:
+            print(f"[Music] Spotify shortlink expansion error: {e}")
+
+    # 2. Extract Spotify entity type and ID
+    m = re.search(r'spotify\.com/(?:intl-[a-z]+/)?(track|playlist|album)/([a-zA-Z0-9]+)', clean_url)
+    if not m:
+        return None
+
+    item_type, item_id = m.group(1), m.group(2)
+    embed_url = f"https://open.spotify.com/embed/{item_type}/{item_id}"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9'
+    }
+
+    try:
+        req = urllib.request.Request(embed_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=6) as r:
+            content = r.read().decode('utf-8', errors='ignore')
+            nd = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', content)
+            if nd:
+                data = json.loads(nd.group(1))
+                pp = data.get('props', {}).get('pageProps', {})
+                state = pp.get('state', {}).get('data', {}).get('entity', {})
+
+                if item_type == 'track':
+                    title = state.get('name') or pp.get('title')
+                    artists = [a.get('name') for a in state.get('artists', []) if a.get('name')]
+                    artist_str = " ".join(artists) if artists else ""
+                    if title and artist_str and artist_str.lower() not in title.lower():
+                        search_query = f"{title} {artist_str}".strip()
+                    else:
+                        search_query = (title or "").strip()
+                    return {
+                        'type': 'track',
+                        'title': title,
+                        'artist': artist_str,
+                        'search_query': search_query
+                    }
+                elif item_type in ('playlist', 'album'):
+                    container_title = state.get('name') or pp.get('title') or f"Spotify {item_type.title()}"
+                    track_list = state.get('trackList', [])
+                    resolved_tracks = []
+                    for t in track_list:
+                        t_name = t.get('title')
+                        if not t_name:
+                            continue
+                        sub = t.get('subtitle', '')
+                        q = f"{t_name} {sub}".strip() if (sub and sub.lower() not in t_name.lower()) else t_name
+                        resolved_tracks.append({
+                            'title': t_name,
+                            'artist': sub,
+                            'search_query': q,
+                            'duration': t.get('duration', 0) // 1000 if t.get('duration') else 0
+                        })
+                    return {
+                        'type': item_type,
+                        'title': container_title,
+                        'tracks': resolved_tracks
+                    }
+    except Exception as e:
+        print(f"[Music] Spotify embed scraping note: {e}")
+
+    # Fallback to oEmbed if embed page fails
+    try:
+        clean_target = clean_url.split('?')[0]
+        oe = f"https://open.spotify.com/oembed?url={urllib.parse.quote(clean_target)}"
+        req = urllib.request.Request(oe, headers=headers)
+        with urllib.request.urlopen(req, timeout=5) as r:
+            raw = json.loads(r.read().decode())
+            title = raw.get('title', '')
+            if title:
+                return {
+                    'type': item_type,
+                    'title': title,
+                    'artist': '',
+                    'search_query': title
+                }
+    except Exception as oe_e:
+        print(f"[Music] Spotify oEmbed fallback error: {oe_e}")
+
+    return None
+
 
 # Studio Audiophile DSP & Equalization Profiles (Spotify Premium Tuned Engine)
 AUDIO_FILTERS = {
@@ -1216,6 +1319,10 @@ class Music(commands.Cog):
             if artist:
                 queries.append(f"{artist} top hit bollywood songs audio")
                 queries.append(f"best of {artist} songs audio")
+            else:
+                sample_artists = random.sample(KNOWN_BOLLYWOOD_ARTISTS[:25], min(3, len(KNOWN_BOLLYWOOD_ARTISTS)))
+                queries.append(f"{sample_artists[0]} hit songs audio")
+                queries.append(f"{sample_artists[1]} popular bollywood songs audio")
             if mood:
                 queries.append(f"top {lang} {mood} songs audio")
                 queries.append(f"bollywood {mood} hit songs audio")
@@ -1238,9 +1345,10 @@ class Music(commands.Cog):
                 queries.append(f"{artist} popular songs audio")
                 queries.append(f"top songs by {artist} audio")
             if mood:
-                queries.append(f"{mood} songs audio")
+                queries.append(f"{mood} playlist songs audio")
             queries.append(f"songs like {core_title} audio")
-            queries.append(f"top hit pop songs audio")
+            queries.append(f"{core_title} radio audio")
+            queries.append(f"top global hit acoustic songs audio")
 
         history = set(state.get("autoplay_history", []))
         candidates = []
@@ -1255,7 +1363,8 @@ class Music(commands.Cog):
             'lofi', 'lo-fi', 'slowed', 'reverb', 'remix', 'mashup', 'female version',
             'male version', 'cover', 'acoustic', 'unplugged', 'status', 'shorts',
             'ringtone', 'bass boosted', 'speed up', 'synthwave', '8d', 'karaoke',
-            'instrumental'
+            'instrumental', '18+', 'nsfw', 'explicit', 'uncensored', 'hot video',
+            'sexy video', 'sexy', 'bhojpuri hot', 'vulgar', 'leaked', 'bhabhi'
         ]
 
         for q in queries:
@@ -1295,16 +1404,18 @@ class Music(commands.Cog):
         if len(candidates) < 3:
             fallback_queries = []
             if is_desi:
+                sample_artists = random.sample(KNOWN_BOLLYWOOD_ARTISTS[:25], min(2, len(KNOWN_BOLLYWOOD_ARTISTS)))
                 fallback_queries.extend([
+                    f"top songs by {sample_artists[0]} audio",
                     "top bollywood hit songs audio",
                     "popular hindi romantic songs audio",
                     "latest hindi hit songs audio"
                 ])
             else:
                 fallback_queries.extend([
-                    "today top hit songs audio",
-                    "billboard hot 100 audio",
-                    "popular hit songs audio"
+                    f"{core_title} radio audio",
+                    f"{mood} playlist songs audio" if mood else f"{core_title} style songs audio",
+                    "top global hits audio"
                 ])
             for fq in fallback_queries:
                 if len(candidates) >= 5:
@@ -1735,39 +1846,22 @@ class Music(commands.Cog):
                 return None
 
             search_title = query
-            is_spotify = is_url and "spotify.com" in query
+            is_spotify = is_url and any(s in query.lower() for s in ("spotify.com", "spotify.link", "spoti.fi"))
             if is_spotify:
-                try:
-                    clean_u = query.split('?')[0]
-                    sp_req = urllib.request.Request(
-                        clean_u,
-                        headers={'User-Agent': 'Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)'}
-                    )
-                    with urllib.request.urlopen(sp_req, timeout=5) as sp_resp:
-                        page = sp_resp.read().decode('utf-8', errors='ignore')
-                        og_title = re.search(r'<meta property=["\']og:title["\'] content=["\'](.*?)["\']', page)
-                        og_desc = re.search(r'<meta property=["\']og:description["\'] content=["\'](.*?)["\']', page)
-                        title = html.unescape(og_title.group(1)).strip() if og_title else None
-                        desc = html.unescape(og_desc.group(1)).strip() if og_desc else None
-                        if title and desc:
-                            parts = [p.strip() for p in desc.split('·')]
-                            artist = parts[0] if parts else ''
-                            if artist and artist.lower() not in title.lower():
-                                search_title = f"{title} {artist}"
-                            else:
-                                search_title = title
-                        elif title:
-                            search_title = title
-                        print(f"[Music] Spotify resolved metadata: '{search_title}'")
-                except Exception as sp_err:
-                    print(f"[Music] Spotify scraper note: {sp_err}")
+                sp_data = resolve_spotify_url(query)
+                if sp_data and sp_data.get("search_query"):
+                    search_title = sp_data["search_query"]
+                    print(f"[Music] Spotify resolved metadata: '{search_title}'")
+                else:
                     try:
-                        oe = f"https://open.spotify.com/oembed?url={urllib.parse.quote(query)}"
+                        clean_u = query.split('?')[0]
+                        oe = f"https://open.spotify.com/oembed?url={urllib.parse.quote(clean_u)}"
                         req = urllib.request.Request(oe, headers=DEFAULT_HEADERS)
                         with urllib.request.urlopen(req, timeout=5) as r:
                             raw_title = json.loads(r.read().decode()).get('title', '')
                             if raw_title:
                                 search_title = raw_title
+                                print(f"[Music] Spotify oEmbed fallback resolved: '{search_title}'")
                     except Exception as oe_err:
                         print(f"[Music] Spotify oEmbed note: {oe_err}")
 
@@ -2159,6 +2253,22 @@ class Music(commands.Cog):
         if not vc.is_playing() and not vc.is_paused() and not state.get("queue"):
             state["loop"] = False
 
+        # Pre-resolve Spotify Links (Tracks, Playlists, Albums, Shortlinks)
+        spotify_batch = None
+        if any(s in music.lower() for s in ("spotify.com", "spotify.link", "spoti.fi")):
+            sp_res = resolve_spotify_url(music)
+            if sp_res:
+                if sp_res.get("type") in ("playlist", "album") and sp_res.get("tracks"):
+                    tracks = sp_res["tracks"]
+                    coll_title = sp_res.get("title", "Spotify Collection")
+                    coll_type = sp_res.get("type", "playlist").title()
+                    await interaction.channel.send(f"📑 Loading **{len(tracks)} tracks** from Spotify {coll_type}: **{coll_title}**...")
+                    music = tracks[0]["search_query"]
+                    if len(tracks) > 1:
+                        spotify_batch = tracks[1:]
+                elif sp_res.get("type") == "track" and sp_res.get("search_query"):
+                    music = sp_res["search_query"]
+
         try:
             song_info = await self.extract_audio_info(music)
         except Exception as e:
@@ -2258,6 +2368,32 @@ class Music(commands.Cog):
             except Exception as e:
                 await reply_box(interaction, f"Error initializing audio stream: {e}", title="STREAM ERROR", status="danger")
                 self.play_next(interaction.guild.id)
+
+        if spotify_batch:
+            asyncio.create_task(self._enqueue_spotify_batch(interaction.guild.id, spotify_batch, interaction.user))
+
+    async def _enqueue_spotify_batch(self, guild_id: int, tracks: list, requester: discord.Member):
+        """Asynchronously resolves and queues remaining tracks from a Spotify playlist or album."""
+        state = self.get_state(guild_id)
+        for t in tracks[:50]:
+            if state.get("_stopping"):
+                break
+            try:
+                info = await self.extract_audio_info(t["search_query"])
+                if info:
+                    song = Song(
+                        title=info['title'],
+                        url=info['url'],
+                        webpage_url=info['webpage_url'],
+                        duration=info['duration'],
+                        requester=requester,
+                        thumbnail=info.get('thumbnail')
+                    )
+                    state["queue"].append(song)
+                    print(f"[Music] Enqueued Spotify batch track: '{song.title}' (queue: {len(state['queue'])})")
+            except Exception as e:
+                print(f"[Music] Spotify batch track error for '{t.get('title')}': {e}")
+            await asyncio.sleep(0.5)
 
     @play.autocomplete('music')
     async def play_autocomplete(self, interaction: discord.Interaction, current: str):
