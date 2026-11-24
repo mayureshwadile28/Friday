@@ -27,7 +27,7 @@ def get_bold_font(size: int):
     return ImageFont.load_default()
 
 # ─────────────────────────────────────────────────────────────
-# BOARD GEOMETRY & TRACK DEFINITIONS (15x15 GRID ON 700x850 CANVAS)
+# BOARD GEOMETRY & TRACK DEFINITIONS (15x15 GRID ON 860x1010 CANVAS)
 # ─────────────────────────────────────────────────────────────
 
 CELL_SIZE = 54
@@ -37,47 +37,30 @@ CANVAS_H = 1010
 BOARD_X = 25
 BOARD_Y = 95
 
-# Authentic 52-square Ludo track coordinates (row, col)
 TRACK_COORDS: List[Tuple[int, int]] = []
-# Col 6, rows 13 down to 9 (5 squares)
 for r in range(13, 8, -1): TRACK_COORDS.append((r, 6))
-# Row 8, cols 5 down to 0 (6 squares)
 for c in range(5, -1, -1): TRACK_COORDS.append((8, c))
-# Col 0, row 7 (1 square)
 TRACK_COORDS.append((7, 0))
-# Row 6, cols 0 up to 5 (6 squares)
 for c in range(0, 6): TRACK_COORDS.append((6, c))
-# Col 6, rows 5 down to 0 (6 squares)
 for r in range(5, -1, -1): TRACK_COORDS.append((r, 6))
-# Row 0, col 7 (1 square)
 TRACK_COORDS.append((0, 7))
-# Col 8, rows 0 up to 5 (6 squares)
 for r in range(0, 6): TRACK_COORDS.append((r, 8))
-# Row 6, cols 9 up to 14 (6 squares)
 for c in range(9, 15): TRACK_COORDS.append((6, c))
-# Col 14, row 7 (1 square)
 TRACK_COORDS.append((7, 14))
-# Row 8, cols 14 down to 9 (6 squares)
 for c in range(14, 8, -1): TRACK_COORDS.append((8, c))
-# Col 8, rows 9 up to 14 (6 squares)
 for r in range(9, 15): TRACK_COORDS.append((r, 8))
-# Row 14, col 7 (1 square)
 TRACK_COORDS.append((14, 7))
-# Col 6, row 14 (1 square)
 TRACK_COORDS.append((14, 6))
 
-# Safe track square indices (no captures permitted here)
 SAFE_TRACK_INDICES = {0, 8, 13, 21, 26, 34, 39, 47}
 
-# Track start offsets for each of the 4 colors (Clockwise)
 COLOR_TRACK_OFFSET = {
-    "red": 0,       # Bottom-Left start (13, 6)
-    "green": 13,    # Top-Left start (6, 1)
-    "yellow": 26,   # Top-Right start (1, 8)
-    "blue": 39      # Bottom-Right start (8, 13)
+    "red": 0,
+    "green": 13,
+    "yellow": 26,
+    "blue": 39
 }
 
-# 5 Home run path squares before center for each color
 HOME_PATHS = {
     "red": [(13, 7), (12, 7), (11, 7), (10, 7), (9, 7)],
     "green": [(7, 1), (7, 2), (7, 3), (7, 4), (7, 5)],
@@ -85,7 +68,6 @@ HOME_PATHS = {
     "blue": [(7, 13), (7, 12), (7, 11), (7, 10), (7, 9)]
 }
 
-# Center triangle home coordinates (step 56)
 HOME_CENTERS = {
     "red": (8.0, 7.0),
     "green": (7.0, 6.0),
@@ -93,7 +75,6 @@ HOME_CENTERS = {
     "blue": (7.0, 8.0)
 }
 
-# Base (Yard) token resting spots for up to 4 tokens per color (row, col)
 BASE_SPOTS = {
     "green": [(1.8, 1.8), (1.8, 3.8), (3.8, 1.8), (3.8, 3.8)],
     "yellow": [(1.8, 10.8), (1.8, 12.8), (3.8, 10.8), (3.8, 12.8)],
@@ -102,35 +83,14 @@ BASE_SPOTS = {
 }
 
 COLOR_THEMES = {
-    "red": {
-        "name": "Red",
-        "emoji": "🔴",
-        "rgb": (220, 53, 69),
-        "highlight": (255, 75, 90)
-    },
-    "green": {
-        "name": "Green",
-        "emoji": "🟢",
-        "rgb": (40, 167, 69),
-        "highlight": (50, 205, 50)
-    },
-    "yellow": {
-        "name": "Yellow",
-        "emoji": "🟡",
-        "rgb": (245, 185, 15),
-        "highlight": (255, 215, 0)
-    },
-    "blue": {
-        "name": "Blue",
-        "emoji": "🔵",
-        "rgb": (23, 162, 184),
-        "highlight": (0, 210, 255)
-    }
+    "red": {"name": "Red", "emoji": "🔴", "rgb": (220, 53, 69), "highlight": (255, 75, 90)},
+    "green": {"name": "Green", "emoji": "🟢", "rgb": (40, 167, 69), "highlight": (50, 205, 50)},
+    "yellow": {"name": "Yellow", "emoji": "🟡", "rgb": (245, 185, 15), "highlight": (255, 215, 0)},
+    "blue": {"name": "Blue", "emoji": "🔵", "rgb": (23, 162, 184), "highlight": (0, 210, 255)}
 }
 
 COLOR_CLOCKWISE = ["red", "green", "yellow", "blue"]
 
-# Active game and lobby session registries (host_id -> Game/Lobby)
 ACTIVE_LUDO_GAMES: Dict[int, "LudoGame"] = {}
 ACTIVE_LUDO_LOBBIES: Dict[int, "LudoLobbyView"] = {}
 
@@ -154,7 +114,6 @@ def _create_base_board() -> Image.Image:
     c_base_slot = (240, 243, 246)
     c_base_slot_border = (195, 200, 210)
 
-    # 1. Base Yards
     d.rectangle([BOARD_X, BOARD_Y, BOARD_X + CELL_SIZE * 6, BOARD_Y + CELL_SIZE * 6], fill=c_green)
     d.rectangle([BOARD_X + CELL_SIZE, BOARD_Y + CELL_SIZE, BOARD_X + CELL_SIZE * 5, BOARD_Y + CELL_SIZE * 5], fill=c_white)
 
@@ -167,7 +126,6 @@ def _create_base_board() -> Image.Image:
     d.rectangle([BOARD_X + CELL_SIZE * 9, BOARD_Y + CELL_SIZE * 9, BOARD_X + BOARD_SIZE, BOARD_Y + BOARD_SIZE], fill=c_blue)
     d.rectangle([BOARD_X + CELL_SIZE * 10, BOARD_Y + CELL_SIZE * 10, BOARD_X + CELL_SIZE * 14, BOARD_Y + CELL_SIZE * 14], fill=c_white)
 
-    # Base resting circles (Ivory pedestal slots with high contrast)
     all_bases = [
         (1.8, 1.8), (1.8, 3.8), (3.8, 1.8), (3.8, 3.8),
         (1.8, 10.8), (1.8, 12.8), (3.8, 10.8), (3.8, 12.8),
@@ -180,7 +138,6 @@ def _create_base_board() -> Image.Image:
         d.ellipse([x - 24, y - 23, x + 24, y + 25], fill=(215, 220, 228))
         d.ellipse([x - 24, y - 24, x + 24, y + 24], fill=c_base_slot, outline=c_base_slot_border, width=2)
 
-    # 2. Track cells
     for r in range(15):
         for c in range(15):
             in_cross = (6 <= r <= 8) or (6 <= c <= 8)
@@ -188,33 +145,25 @@ def _create_base_board() -> Image.Image:
             if in_cross and not in_center:
                 x1 = BOARD_X + c * CELL_SIZE
                 y1 = BOARD_Y + r * CELL_SIZE
-                x2, y2 = x1 + CELL_SIZE, y1 + CELL_SIZE
-                d.rectangle([x1, y1, x2, y2], fill=c_white, outline=c_dark_line, width=1)
+                d.rectangle([x1, y1, x1 + CELL_SIZE, y1 + CELL_SIZE], fill=c_white, outline=c_dark_line, width=1)
 
-    # 3. Colored Start squares & Home columns
-    # Red start (13, 6) & home column (cols 7, rows 9..13)
     d.rectangle([BOARD_X + 6 * CELL_SIZE, BOARD_Y + 13 * CELL_SIZE, BOARD_X + 7 * CELL_SIZE, BOARD_Y + 14 * CELL_SIZE], fill=c_red, outline=c_dark_line)
     for r in range(9, 14):
         d.rectangle([BOARD_X + 7 * CELL_SIZE, BOARD_Y + r * CELL_SIZE, BOARD_X + 8 * CELL_SIZE, BOARD_Y + (r + 1) * CELL_SIZE], fill=c_red, outline=c_dark_line)
 
-    # Yellow start (1, 8) & home column (cols 7, rows 1..5)
     d.rectangle([BOARD_X + 8 * CELL_SIZE, BOARD_Y + 1 * CELL_SIZE, BOARD_X + 9 * CELL_SIZE, BOARD_Y + 2 * CELL_SIZE], fill=c_yellow, outline=c_dark_line)
     for r in range(1, 6):
         d.rectangle([BOARD_X + 7 * CELL_SIZE, BOARD_Y + r * CELL_SIZE, BOARD_X + 8 * CELL_SIZE, BOARD_Y + (r + 1) * CELL_SIZE], fill=c_yellow, outline=c_dark_line)
 
-    # Green start (6, 1) & home column
     d.rectangle([BOARD_X + 1 * CELL_SIZE, BOARD_Y + 6 * CELL_SIZE, BOARD_X + 2 * CELL_SIZE, BOARD_Y + 7 * CELL_SIZE], fill=c_green, outline=c_dark_line)
     for c in range(1, 6):
         d.rectangle([BOARD_X + c * CELL_SIZE, BOARD_Y + 7 * CELL_SIZE, BOARD_X + (c + 1) * CELL_SIZE, BOARD_Y + 8 * CELL_SIZE], fill=c_green, outline=c_dark_line)
 
-    # Blue start (8, 13) & home column
     d.rectangle([BOARD_X + 13 * CELL_SIZE, BOARD_Y + 8 * CELL_SIZE, BOARD_X + 14 * CELL_SIZE, BOARD_Y + 9 * CELL_SIZE], fill=c_blue, outline=c_dark_line)
     for c in range(9, 14):
         d.rectangle([BOARD_X + c * CELL_SIZE, BOARD_Y + 7 * CELL_SIZE, BOARD_X + (c + 1) * CELL_SIZE, BOARD_Y + 8 * CELL_SIZE], fill=c_blue, outline=c_dark_line)
 
-    # 4. Safe Star tiles (⭐)
-    stars = [(8, 2), (2, 6), (6, 12), (12, 8)]
-    for r, c in stars:
+    for r, c in [(8, 2), (2, 6), (6, 12), (12, 8)]:
         x1, y1 = BOARD_X + c * CELL_SIZE, BOARD_Y + r * CELL_SIZE
         x2, y2 = x1 + CELL_SIZE, y1 + CELL_SIZE
         d.rectangle([x1, y1, x2, y2], fill=c_safe, outline=c_dark_line)
@@ -225,17 +174,14 @@ def _create_base_board() -> Image.Image:
             (cx - 15, cy - 4), (cx - 4, cy - 4)
         ], fill=(212, 175, 55))
 
-    # 5. Center Home Triangles
     cx1, cy1 = BOARD_X + 6 * CELL_SIZE, BOARD_Y + 6 * CELL_SIZE
     cx2, cy2 = BOARD_X + 9 * CELL_SIZE, BOARD_Y + 9 * CELL_SIZE
     mid_x, mid_y = (cx1 + cx2) // 2, (cy1 + cy2) // 2
-
     d.polygon([(cx1, cy1), (cx1, cy2), (mid_x, mid_y)], fill=c_green, outline=c_dark_line)
     d.polygon([(cx1, cy1), (cx2, cy1), (mid_x, mid_y)], fill=c_yellow, outline=c_dark_line)
     d.polygon([(cx2, cy1), (cx2, cy2), (mid_x, mid_y)], fill=c_blue, outline=c_dark_line)
     d.polygon([(cx1, cy2), (cx2, cy2), (mid_x, mid_y)], fill=c_red, outline=c_dark_line)
 
-    # Outer board border
     d.rectangle([BOARD_X, BOARD_Y, BOARD_X + BOARD_SIZE - 1, BOARD_Y + BOARD_SIZE - 1], outline=(40, 44, 52), width=3)
     return img
 
@@ -243,14 +189,10 @@ _CACHED_BASE_BOARD = _create_base_board()
 
 
 def get_token_xy(color: str, token_idx: int, steps: int) -> Tuple[float, float]:
-    """Returns the (x, y) canvas pixel center for a token at a given step count."""
     if steps == -1:
-        # In Yard Base
         r, c = BASE_SPOTS[color][token_idx]
         return (BOARD_X + c * CELL_SIZE, BOARD_Y + r * CELL_SIZE)
-
     if steps == 56:
-        # Inside Center Home Triangle
         r, c = HOME_CENTERS[color]
         if color in ("red", "yellow"):
             offset_x = (token_idx - 0.5) * 14 if token_idx in (0, 1) else (token_idx - 2.5) * 14
@@ -262,48 +204,29 @@ def get_token_xy(color: str, token_idx: int, steps: int) -> Tuple[float, float]:
             BOARD_X + c * CELL_SIZE + CELL_SIZE // 2 + offset_x,
             BOARD_Y + r * CELL_SIZE + CELL_SIZE // 2 + offset_y
         )
-
     if steps >= 51:
-        # Inside Home Run Path (51..55)
-        path = HOME_PATHS[color]
-        r, c = path[steps - 51]
+        r, c = HOME_PATHS[color][steps - 51]
         return (BOARD_X + c * CELL_SIZE + CELL_SIZE // 2, BOARD_Y + r * CELL_SIZE + CELL_SIZE // 2)
-
-    # Main Track (0..50)
-    track_offset = COLOR_TRACK_OFFSET[color]
-    track_idx = (track_offset + steps) % 52
+    track_idx = (COLOR_TRACK_OFFSET[color] + steps) % 52
     r, c = TRACK_COORDS[track_idx]
     return (BOARD_X + c * CELL_SIZE + CELL_SIZE // 2, BOARD_Y + r * CELL_SIZE + CELL_SIZE // 2)
 
 
 def draw_corner_player_hud(
-    draw: ImageDraw.ImageDraw,
-    x: int,
-    y: int,
-    w: int,
-    h: int,
-    color_name: str,
-    player_info: Optional[Dict[str, Any]],
-    roll: Optional[int],
-    is_active: bool,
-    align_left: bool = True
+    draw: ImageDraw.ImageDraw, x: int, y: int, w: int, h: int, color_name: str,
+    player_info: Optional[Dict[str, Any]], roll: Optional[int], is_active: bool, align_left: bool = True
 ):
-    """Renders a dedicated 3D corner player profile card and their dice block."""
     if not player_info:
-        # Empty/Unused Slot
         draw.rounded_rectangle([x, y, x + w, y + h], radius=12, fill=(24, 25, 29), outline=(42, 45, 52), width=1)
         draw.text((x + w // 2 - 40, y + h // 2 - 8), "[ Empty Slot ]", fill=(100, 105, 115), font=get_bold_font(12))
         return
 
     theme = COLOR_THEMES[color_name]
-    card_bg = (30, 32, 38)
-    border_col = theme["highlight"] if is_active else (52, 55, 63)
-    border_w = 3 if is_active else 1
+    draw.rounded_rectangle(
+        [x, y, x + w, y + h], radius=12, fill=(30, 32, 38),
+        outline=theme["highlight"] if is_active else (52, 55, 63), width=3 if is_active else 1
+    )
 
-    # Card background
-    draw.rounded_rectangle([x, y, x + w, y + h], radius=12, fill=card_bg, outline=border_col, width=border_w)
-
-    # Position dice (56x56 px)
     if align_left:
         dx, dy = x + 9, y + 9
         tx = x + 76
@@ -311,13 +234,10 @@ def draw_corner_player_hud(
         dx, dy = x + w - 65, y + 9
         tx = x + 16
 
-    # 3D Dice block
     draw.rounded_rectangle([dx + 2, dy + 2, dx + 58, dy + 58], radius=8, fill=(12, 13, 15))
     draw.rounded_rectangle([dx, dy, dx + 56, dy + 56], radius=8, fill=(255, 255, 255), outline=(210, 215, 220), width=2)
 
-    # 3D Dots in matching player theme color
     if roll and 1 <= roll <= 6:
-        dot_r = 5
         coords = {
             1: [(28, 28)],
             2: [(15, 15), (41, 41)],
@@ -327,140 +247,64 @@ def draw_corner_player_hud(
             6: [(15, 15), (15, 28), (15, 41), (41, 15), (41, 28), (41, 41)]
         }
         for px, py in coords[roll]:
-            draw.ellipse([dx + px - dot_r, dy + py - dot_r, dx + px + dot_r, dy + py + dot_r], fill=theme["rgb"])
+            draw.ellipse([dx + px - 5, dy + py - 5, dx + px + 5, dy + py + 5], fill=theme["rgb"])
     else:
         draw.text((dx + 22, dy + 16), "?", fill=(120, 125, 135), font=get_bold_font(18))
 
-    # Player labels
     name = player_info["name"][:16]
     home_cnt = sum(1 for p in player_info["tokens"] if p == 56)
-    total_tokens = len(player_info["tokens"])
-
-    font_title = get_bold_font(14)
-    font_sub = get_bold_font(12)
-
-    draw.text((tx, y + 14), f"{theme['emoji']} {name}", fill=(255, 255, 255), font=font_title)
+    draw.text((tx, y + 14), f"{theme['emoji']} {name}", fill=(255, 255, 255), font=get_bold_font(14))
     if is_active:
-        draw.text((tx, y + 38), "👉 YOUR TURN!", fill=(87, 242, 135), font=font_sub)
+        draw.text((tx, y + 38), "👉 YOUR TURN!", fill=(87, 242, 135), font=get_bold_font(12))
     else:
-        draw.text((tx, y + 38), f"Score: {home_cnt}/{total_tokens} Home", fill=(160, 165, 175), font=font_sub)
+        draw.text((tx, y + 38), f"Score: {home_cnt}/{len(player_info['tokens'])} Home", fill=(160, 165, 175), font=get_bold_font(12))
 
 
 def render_board_image(
-    players: Dict[str, Dict[str, Any]],
-    current_turn: str,
-    last_rolls: Dict[str, Optional[int]],
-    tokens_per_player: int,
-    movable_tokens: Optional[List[int]] = None
+    players: Dict[str, Dict[str, Any]], current_turn: str, last_rolls: Dict[str, Optional[int]],
+    tokens_per_player: int, movable_tokens: Optional[List[int]] = None
 ) -> io.BytesIO:
-    """Renders the 15x15 Ludo board with all 4 corner player HUD cards and their dice blocks."""
     canvas = _CACHED_BASE_BOARD.copy()
     draw = ImageDraw.Draw(canvas)
 
-    # 1. Render All 4 Corner Player Cards & Dedicated Dice
-    # Top-Left: Green
-    draw_corner_player_hud(
-        draw, 25, 10, 380, 74, "green",
-        players.get("green"), last_rolls.get("green"),
-        (current_turn == "green"), align_left=True
-    )
-    # Top-Right: Yellow
-    draw_corner_player_hud(
-        draw, 455, 10, 380, 74, "yellow",
-        players.get("yellow"), last_rolls.get("yellow"),
-        (current_turn == "yellow"), align_left=False
-    )
-    # Bottom-Left: Red
-    draw_corner_player_hud(
-        draw, 25, 920, 380, 74, "red",
-        players.get("red"), last_rolls.get("red"),
-        (current_turn == "red"), align_left=True
-    )
-    # Bottom-Right: Blue
-    draw_corner_player_hud(
-        draw, 455, 920, 380, 74, "blue",
-        players.get("blue"), last_rolls.get("blue"),
-        (current_turn == "blue"), align_left=False
-    )
+    draw_corner_player_hud(draw, 25, 10, 380, 74, "green", players.get("green"), last_rolls.get("green"), (current_turn == "green"), align_left=True)
+    draw_corner_player_hud(draw, 455, 10, 380, 74, "yellow", players.get("yellow"), last_rolls.get("yellow"), (current_turn == "yellow"), align_left=False)
+    draw_corner_player_hud(draw, 25, 920, 380, 74, "red", players.get("red"), last_rolls.get("red"), (current_turn == "red"), align_left=True)
+    draw_corner_player_hud(draw, 455, 920, 380, 74, "blue", players.get("blue"), last_rolls.get("blue"), (current_turn == "blue"), align_left=False)
 
-    # 2. Map token positions for overlap handling across all players
     pos_map: Dict[Tuple[int, int], List[Tuple[str, int, float, float, bool]]] = {}
     movable_set = set(movable_tokens or [])
 
     for col, pdata in players.items():
         for i in range(tokens_per_player):
-            pos = pdata["tokens"][i]
-            is_movable = (col == current_turn and i in movable_set)
-            x, y = get_token_xy(col, i, pos)
-            key = (int(round(x)), int(round(y)))
-            pos_map.setdefault(key, []).append((col, i + 1, x, y, is_movable))
+            x, y = get_token_xy(col, i, pdata["tokens"][i])
+            pos_map.setdefault((int(round(x)), int(round(y))), []).append((col, i + 1, x, y, (col == current_turn and i in movable_set)))
 
-    # 3. Render 3D Tokens with High-Contrast Centered Number Badges & Glow
-    font_single = get_bold_font(14)
-    font_multi_2 = get_bold_font(11)
-    font_multi_4 = get_bold_font(9)
+    font_single, font_multi_2, font_multi_4 = get_bold_font(14), get_bold_font(11), get_bold_font(9)
 
-    for key, tokens_on_spot in pos_map.items():
+    for tokens_on_spot in pos_map.values():
         count = len(tokens_on_spot)
         for idx, (col, num, x, y, is_movable) in enumerate(tokens_on_spot):
             if count == 1:
-                token_radius = 20
-                px, py = int(round(x)), int(round(y))
-                in_badge_r = 11
-                cur_font = font_single
+                token_radius, px, py, in_badge_r, cur_font = 20, int(round(x)), int(round(y)), 11, font_single
             elif count == 2:
-                # 2 Tokens in 1 box: Place side-by-side (offset ±13px, radius 15px)
-                token_radius = 15
-                offset_x = -13 if idx == 0 else 13
-                px, py = int(round(x + offset_x)), int(round(y))
-                in_badge_r = 9
-                cur_font = font_multi_2
+                token_radius, px, py, in_badge_r, cur_font = 15, int(round(x + (-13 if idx == 0 else 13))), int(round(y)), 9, font_multi_2
             else:
-                # 3 or 4 Tokens: 2x2 grid layout inside the 54px cell (radius 12px)
-                token_radius = 12
-                quad_offsets = [(-11, -11), (11, -11), (-11, 11), (11, 11)]
-                ox, oy = quad_offsets[idx % 4]
-                px, py = int(round(x + ox)), int(round(y + oy))
-                in_badge_r = 7
-                cur_font = font_multi_4
+                ox, oy = [(-11, -11), (11, -11), (-11, 11), (11, 11)][idx % 4]
+                token_radius, px, py, in_badge_r, cur_font = 12, int(round(x + ox)), int(round(y + oy)), 7, font_multi_4
 
-            # Glowing Neon Green Ring if token is legal to move!
             if is_movable:
                 ring_r = token_radius + 4
                 draw.ellipse([px - ring_r, py - ring_r, px + ring_r, py + ring_r], outline=(87, 242, 135), width=3)
 
-            # Drop shadow
             draw.ellipse([px - token_radius + 1, py - token_radius + 2, px + token_radius + 1, py + token_radius + 2], fill=(0, 0, 0, 160))
-
-            # Token 3D Body
             theme = COLOR_THEMES[col]
-            fill_color = theme["rgb"]
             rim_color = (255, 255, 255) if col in ("red", "blue") else (30, 30, 30)
+            draw.ellipse([px - token_radius, py - token_radius, px + token_radius, py + token_radius], fill=theme["rgb"], outline=rim_color, width=2 if count > 1 else 3)
 
-            draw.ellipse(
-                [px - token_radius, py - token_radius, px + token_radius, py + token_radius],
-                fill=fill_color,
-                outline=rim_color,
-                width=2 if count > 1 else 3
-            )
-
-            # Specular 3D highlight (top-left shine)
-            shine_color = theme["highlight"]
             shine_w = max(3, token_radius // 2)
-            draw.ellipse(
-                [px - token_radius + 2, py - token_radius + 2, px - token_radius + 2 + shine_w, py - token_radius + 2 + shine_w],
-                fill=shine_color
-            )
-
-            # Inner high-contrast solid white badge disc with dark rim
-            draw.ellipse(
-                [px - in_badge_r, py - in_badge_r, px + in_badge_r, py + in_badge_r],
-                fill=(255, 255, 255),
-                outline=(40, 40, 40),
-                width=1
-            )
-
-            # Crisp bold black number centered inside the white disc
+            draw.ellipse([px - token_radius + 2, py - token_radius + 2, px - token_radius + 2 + shine_w, py - token_radius + 2 + shine_w], fill=theme["highlight"])
+            draw.ellipse([px - in_badge_r, py - in_badge_r, px + in_badge_r, py + in_badge_r], fill=(255, 255, 255), outline=(40, 40, 40), width=1)
             draw.text((px, py), str(num), fill=(20, 20, 20), font=cur_font, anchor="mm")
 
     buf = io.BytesIO()
@@ -479,6 +323,7 @@ class LudoGame:
         self.players: Dict[str, Dict[str, Any]] = {}
         self.turn_order: List[str] = []
         self.guild_id: Optional[int] = None
+        self.host_id: Optional[int] = None
         self.bet_pot: int = 0
         self.bet_per_player: int = 0
         self.bet_participants: List[int] = []
@@ -505,34 +350,24 @@ class LudoGame:
         self.log_history: List[str] = ["🎲 **Match initialized!** Click **Roll Dice** to begin."]
 
     def is_expired(self) -> bool:
-        """Returns True if inactive for > 180 seconds."""
         return (time.time() - self.last_updated) > 180
 
     def get_track_index(self, color: str, steps: int) -> int:
-        offset = COLOR_TRACK_OFFSET[color]
-        return (offset + steps) % 52
+        return (COLOR_TRACK_OFFSET[color] + steps) % 52
 
     def get_legal_moves(self, color: str, roll: int) -> List[int]:
-        tokens = self.players[color]["tokens"]
         legal = []
-        for i, pos in enumerate(tokens):
-            if pos == -1:
-                if roll == 6:
-                    legal.append(i)
-            elif 0 <= pos < 56:
-                if pos + roll <= 56:
-                    legal.append(i)
+        for i, pos in enumerate(self.players[color]["tokens"]):
+            if pos == -1 and roll == 6:
+                legal.append(i)
+            elif 0 <= pos < 56 and pos + roll <= 56:
+                legal.append(i)
         return legal
 
     def apply_move(self, color: str, token_idx: int, roll: int) -> Dict[str, Any]:
-        """Applies movement, checks captures against all opponents, and tests for win."""
-        player = self.players[color]
-        tokens = player["tokens"]
+        tokens = self.players[color]["tokens"]
         pos = tokens[token_idx]
-
-        captured_info: Optional[str] = None
-        reached_home = False
-        brought_out = False
+        captured_info, reached_home, brought_out = None, False, False
 
         if pos == -1 and roll == 6:
             tokens[token_idx] = 0
@@ -545,15 +380,13 @@ class LudoGame:
             elif 0 <= new_pos <= 50:
                 track_idx = self.get_track_index(color, new_pos)
                 if track_idx not in SAFE_TRACK_INDICES:
-                    # Check all opponent tokens for capture
                     for opp_col, opp_data in self.players.items():
                         if opp_col != color:
                             for opp_i, opp_pos in enumerate(opp_data["tokens"]):
-                                if 0 <= opp_pos <= 50:
-                                    if self.get_track_index(opp_col, opp_pos) == track_idx:
-                                        opp_data["tokens"][opp_i] = -1
-                                        captured_info = f"{opp_data['name']} ({opp_col.title()})"
-                                        break
+                                if 0 <= opp_pos <= 50 and self.get_track_index(opp_col, opp_pos) == track_idx:
+                                    opp_data["tokens"][opp_i] = -1
+                                    captured_info = f"{opp_data['name']} ({opp_col.title()})"
+                                    break
 
         self.last_updated = time.time()
         self.check_win()
@@ -572,57 +405,35 @@ class LudoGame:
                 break
 
     def advance_turn(self):
-        """Passes turn to the next active player in clockwise rotation."""
         idx = self.turn_order.index(self.current_turn)
         self.current_turn = self.turn_order[(idx + 1) % len(self.turn_order)]
         self.consecutive_sixes = 0
 
     def choose_ai_move(self, color: str, roll: int, legal_moves: List[int]) -> int:
-        """Deterministic, zero-latency rule-based heuristic AI (Strictly NO LLM)."""
         if len(legal_moves) == 1:
             return legal_moves[0]
-
         tokens = self.players[color]["tokens"]
-        best_score = -9999
-        best_token = legal_moves[0]
-
+        best_score, best_token = -9999, legal_moves[0]
         for t_idx in legal_moves:
             pos = tokens[t_idx]
             score = 0
-
-            # 1. Immediate capture of an opponent token (Top Priority!)
             if pos >= 0 and pos + roll <= 50:
                 target_track = (COLOR_TRACK_OFFSET[color] + pos + roll) % 52
                 if target_track not in SAFE_TRACK_INDICES:
                     for opp_col, opp_data in self.players.items():
                         if opp_col != color:
                             for opp_pos in opp_data["tokens"]:
-                                if 0 <= opp_pos <= 50:
-                                    opp_track = (COLOR_TRACK_OFFSET[opp_col] + opp_pos) % 52
-                                    if opp_track == target_track:
-                                        score += 1500
-
-            # 2. Enter Center Home (Winning move!)
+                                if 0 <= opp_pos <= 50 and (COLOR_TRACK_OFFSET[opp_col] + opp_pos) % 52 == target_track:
+                                    score += 1500
+                else:
+                    score += 300
             if pos + roll == 56:
                 score += 1000
-
-            # 3. Release piece from base on a 6
             if pos == -1 and roll == 6:
                 score += 500
-
-            # 4. Land on a Safe Star tile ⭐
-            if pos >= 0 and pos + roll <= 50:
-                target_track = (COLOR_TRACK_OFFSET[color] + pos + roll) % 52
-                if target_track in SAFE_TRACK_INDICES:
-                    score += 300
-
-            # 5. Move tokens closer to home
             score += (pos + roll) * 5
-
             if score > best_score:
-                best_score = score
-                best_token = t_idx
-
+                best_score, best_token = score, t_idx
         return best_token
 
 
@@ -636,11 +447,10 @@ class LudoRollButton(discord.ui.Button):
         btn_style = discord.ButtonStyle.danger if color_name == "red" else (
             discord.ButtonStyle.success if color_name == "green" else discord.ButtonStyle.primary
         )
-        super().__init__(style=btn_style, label=f"Roll Dice ({theme['name']}: {player_name[:10]}) [15s]", emoji="🎲", row=0)
+        super().__init__(style=btn_style, label=f"Roll Dice ({theme['name']}: {player_name[:10]}) [45s]", emoji="🎲", row=0)
 
     async def callback(self, interaction: discord.Interaction):
-        view: LudoView = self.view
-        await view.handle_human_roll(interaction)
+        await self.view.handle_human_roll(interaction)
 
 
 class LudoTokenSelectButton(discord.ui.Button):
@@ -649,17 +459,11 @@ class LudoTokenSelectButton(discord.ui.Button):
         btn_style = discord.ButtonStyle.danger if color_name == "red" else (
             discord.ButtonStyle.success if color_name == "green" else discord.ButtonStyle.primary
         )
-        super().__init__(
-            style=btn_style,
-            label=label,
-            emoji=theme["emoji"],
-            row=0 if token_idx < 2 else 1
-        )
+        super().__init__(style=btn_style, label=label, emoji=theme["emoji"], row=0 if token_idx < 2 else 1)
         self.token_idx = token_idx
 
     async def callback(self, interaction: discord.Interaction):
-        view: LudoView = self.view
-        await view.handle_human_token_pick(interaction, self.token_idx)
+        await self.view.handle_human_token_pick(interaction, self.token_idx)
 
 
 class LudoForfeitConfirmView(discord.ui.View):
@@ -689,8 +493,7 @@ class LudoForfeitButton(discord.ui.Button):
         super().__init__(style=discord.ButtonStyle.secondary, label="Forfeit", emoji="🏳️", row=2)
 
     async def callback(self, interaction: discord.Interaction):
-        view: LudoView = self.view
-        await view.handle_forfeit(interaction)
+        await self.view.handle_forfeit(interaction)
 
 
 class LudoRematchButton(discord.ui.Button):
@@ -698,20 +501,28 @@ class LudoRematchButton(discord.ui.Button):
         super().__init__(style=discord.ButtonStyle.primary, label="Play Rematch", emoji="🔄", row=0)
 
     async def callback(self, interaction: discord.Interaction):
-        view: LudoView = self.view
-        await view.handle_rematch(interaction)
+        await self.view.handle_rematch(interaction)
 
 
 class LudoView(discord.ui.View):
     def __init__(self, game: LudoGame):
         super().__init__(timeout=None)
         self.game = game
-        self.message: Optional[discord.Message] = None
+        self.channel: Optional[discord.abc.Messageable] = None
+        self.message_id: Optional[int] = None
         self.movable_tokens: List[int] = []
         self.turn_timer_task: Optional[asyncio.Task] = None
         self.turn_deadline: float = 0
         self.consecutive_afk: int = 0
+        self._lock = asyncio.Lock()
         self.setup_buttons_for_roll()
+
+    def bind_message(self, msg: Optional[discord.Message]):
+        """Stores permanent channel + message_id so edits use the bot token and never expire after 15 min."""
+        if msg:
+            self.message_id = msg.id
+            if msg.channel:
+                self.channel = msg.channel
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
         print(f"[Ludo] View interaction error on {item}: {error}")
@@ -742,84 +553,80 @@ class LudoView(discord.ui.View):
     async def _turn_timeout_worker(self, color: str, stage: str, legal_moves: Optional[List[int]], roll: Optional[int]):
         try:
             await asyncio.sleep(45)
-            if self.game.game_over or self.game.current_turn != color:
-                return
-
-            cur_p = self.game.players.get(color)
-            if not cur_p:
-                return
-
-            self.consecutive_afk += 1
-            self.game.last_updated = time.time()
-
-            # If all players have been AFK for 16 consecutive turns, abandon match
-            if self.consecutive_afk >= 16:
-                self.game.game_over = True
-                self.clear_items()
-                self.game.log_history.append("⏰ **Match Abandoned:** All players were AFK for multiple rounds.")
-                if self.game.bet_pot > 0 and not self.game.pot_awarded and self.game.guild_id:
-                    try:
-                        from cogs.economy import get_economy_db
-                        eco_db = get_economy_db()
-                        gid = str(self.game.guild_id)
-                        for uid in self.game.bet_participants:
-                            eco_db.delta_wallet(gid, str(uid), self.game.bet_per_player)
-                            eco_db.log_tx(gid, str(uid), "ludo_refund", self.game.bet_per_player, 0, note="Ludo Inactivity Timeout Refund")
-                        self.game.log_history.append(f"💰 **Wagers Refunded:** **{self.game.bet_per_player:,} Coins** returned to all participants.")
-                        self.game.bet_pot = 0
-                    except Exception as ex:
-                        print(f"[Ludo] Timeout refund error: {ex}")
-                host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
-                if host_id:
-                    ACTIVE_LUDO_GAMES.pop(host_id, None)
-                return await self.update_view()
-
-            if stage == "roll":
-                theme = COLOR_THEMES[color]
-                self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out (45s elapsed)! Turn passed.")
-                self.game.advance_turn()
-                self.setup_buttons_for_roll()
-                await self.update_view()
-                await self.check_and_run_ai_turn()
-
-            elif stage == "pick":
-                theme = COLOR_THEMES[color]
-                if not legal_moves:
-                    self.game.advance_turn()
-                    self.setup_buttons_for_roll()
-                    await self.update_view()
-                    await self.check_and_run_ai_turn()
+            async with self._lock:
+                if self.game.game_over or self.game.current_turn != color:
+                    return
+                cur_p = self.game.players.get(color)
+                if not cur_p:
                     return
 
-                # Auto-pick best legal move
-                chosen_t = self.game.choose_ai_move(color, roll or 6, legal_moves)
-                ev = self.game.apply_move(color, chosen_t, roll or 6)
-                extra_str = ""
-                if ev["brought_out"]: extra_str = " (brought token onto track! 🚀)"
-                elif ev["reached_home"]: extra_str = " (token reached Home! 🌟)"
-                elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
+                self.consecutive_afk += 1
+                self.game.last_updated = time.time()
 
-                self.game.log_history.append(
-                    f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out choosing token (45s)! "
-                    f"Auto-moved **Token {chosen_t+1}** by **[ {roll or 6} ]**{extra_str}"
-                )
-
-                if self.game.game_over:
-                    await self.settle_economy()
-                    self.setup_buttons_game_over()
-                    host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                if self.consecutive_afk >= 16:
+                    self.game.game_over = True
+                    self.clear_items()
+                    self.game.log_history.append("⏰ **Match Abandoned:** All players were AFK for multiple rounds.")
+                    if self.game.bet_pot > 0 and not self.game.pot_awarded and self.game.guild_id:
+                        try:
+                            from cogs.economy import get_economy_db
+                            eco_db = get_economy_db()
+                            gid = str(self.game.guild_id)
+                            for uid in self.game.bet_participants:
+                                eco_db.delta_wallet(gid, str(uid), self.game.bet_per_player)
+                                eco_db.log_tx(gid, str(uid), "ludo_refund", self.game.bet_per_player, 0, note="Ludo Inactivity Timeout Refund")
+                            self.game.log_history.append(f"💰 **Wagers Refunded:** **{self.game.bet_per_player:,} Coins** returned to all participants.")
+                            self.game.bet_pot = 0
+                        except Exception as ex:
+                            print(f"[Ludo] Timeout refund error: {ex}")
+                    host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
                     if host_id:
                         ACTIVE_LUDO_GAMES.pop(host_id, None)
                     return await self.update_view()
 
-                if (roll == 6) or ev["captured"]:
-                    self.setup_buttons_for_roll()
-                    await self.update_view()
-                else:
+                theme = COLOR_THEMES[color]
+                if stage == "roll":
+                    self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out (45s elapsed)! Turn passed.")
                     self.game.advance_turn()
                     self.setup_buttons_for_roll()
                     await self.update_view()
                     await self.check_and_run_ai_turn()
+                elif stage == "pick":
+                    if not legal_moves:
+                        self.game.advance_turn()
+                        self.setup_buttons_for_roll()
+                        await self.update_view()
+                        await self.check_and_run_ai_turn()
+                        return
+
+                    chosen_t = self.game.choose_ai_move(color, roll or 6, legal_moves)
+                    ev = self.game.apply_move(color, chosen_t, roll or 6)
+                    extra_str = ""
+                    if ev["brought_out"]: extra_str = " (brought token onto track! 🚀)"
+                    elif ev["reached_home"]: extra_str = " (token reached Home! 🌟)"
+                    elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
+
+                    self.game.log_history.append(
+                        f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out choosing token (45s)! "
+                        f"Auto-moved **Token {chosen_t+1}** by **[ {roll or 6} ]**{extra_str}"
+                    )
+
+                    if self.game.game_over:
+                        await self.settle_economy()
+                        self.setup_buttons_game_over()
+                        host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                        if host_id:
+                            ACTIVE_LUDO_GAMES.pop(host_id, None)
+                        return await self.update_view()
+
+                    if (roll == 6) or ev["captured"]:
+                        self.setup_buttons_for_roll()
+                        await self.update_view()
+                    else:
+                        self.game.advance_turn()
+                        self.setup_buttons_for_roll()
+                        await self.update_view()
+                        await self.check_and_run_ai_turn()
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -864,7 +671,6 @@ class LudoView(discord.ui.View):
                     label = f"Token {idx+1}: Move {roll} (Safe Star ⭐)"
                 else:
                     label = f"Token {idx+1}: Advance {roll} Steps 🏃"
-
             self.add_item(LudoTokenSelectButton(idx, label=label[:80], color_name=current_col))
         self.add_item(LudoForfeitButton())
         if not pdata.get("is_ai") and not g.game_over:
@@ -877,33 +683,23 @@ class LudoView(discord.ui.View):
         self.add_item(LudoRematchButton())
 
     async def settle_economy(self) -> Optional[str]:
-        """Settles Friday AI bounty and PvP wager prize pots atomically."""
         if not self.game.game_over or not self.game.winner:
             return None
-
-        winner_col = self.game.winner
-        winner_data = self.game.players.get(winner_col)
-        if not winner_data:
-            return None
-
+        winner_data = self.game.players.get(self.game.winner)
         gid = str(self.game.guild_id or "")
-        if not gid:
+        if not winner_data or not gid:
             return None
 
         notes = []
         try:
             cfg = getattr(db, "economy_config", {}).get(gid, {})
-            eco_enabled = cfg.get("enabled", True) and not cfg.get("paused", False)
+            if not (cfg.get("enabled", True) and not cfg.get("paused", False)):
+                return None
             cur_name = cfg.get("currency_name", "Coins")
             cur_emoji = cfg.get("currency_emoji", "🪙")
-
-            if not eco_enabled:
-                return None
-
             from cogs.economy import get_economy_db
             eco_db = get_economy_db()
 
-            # 1. Friday AI Bounty Reward
             is_winner_human = not winner_data.get("is_ai", False) and winner_data.get("member") is not None
             has_friday_ai = any(p.get("is_ai", False) for p in self.game.players.values())
 
@@ -917,7 +713,6 @@ class LudoView(discord.ui.View):
                     eco_db.log_tx(gid, winner_id, "ludo_friday_win", reward, new_w, note="Defeated Friday AI in Ludo Royale")
                     notes.append(f"🤖 **Friday AI Bounty:** Awarded **+{reward:,} {cur_emoji} {cur_name}** to {winner_data['member'].mention}!")
 
-            # 2. PvP Wager Prize Pot
             if self.game.bet_pot > 0 and not self.game.pot_awarded:
                 self.game.pot_awarded = True
                 if is_winner_human:
@@ -928,7 +723,6 @@ class LudoView(discord.ui.View):
                 else:
                     notes.append(f"🤖 Friday AI won! The **{self.game.bet_pot:,} {cur_emoji} {cur_name}** pot was captured by Friday Treasury.")
                 self.game.bet_pot = 0
-
         except Exception as ex:
             print(f"[Ludo] Economy settlement error: {ex}")
 
@@ -944,17 +738,13 @@ class LudoView(discord.ui.View):
         cur_p = g.players[cur_col]
         theme = COLOR_THEMES[cur_col]
 
-        title = f"🎲  Ludo Royale • {len(g.turn_order)} Players"
-        if g.bet_pot > 0 and not g.game_over:
-            title = f"🎲  Ludo Royale • 💰 Pot: {g.bet_pot:,} Coins"
+        title = f"🎲  Ludo Royale • 💰 Pot: {g.bet_pot:,} Coins" if (g.bet_pot > 0 and not g.game_over) else f"🎲  Ludo Royale • {len(g.turn_order)} Players"
         color = discord.Color.from_rgb(*theme["rgb"])
 
         if g.game_over:
-            winner_p = g.players[g.winner]
-            title = f"🏆  Victory! {winner_p['name']} Won the Match!"
+            title = f"🏆  Victory! {g.players[g.winner]['name']} Won the Match!"
             color = discord.Color.green()
 
-        # Clean Player Standings Table
         standings_lines = []
         for col in g.turn_order:
             p = g.players[col]
@@ -966,9 +756,7 @@ class LudoView(discord.ui.View):
             standings_lines.append(
                 f"{t['emoji']} **{p['name']}**: `🏠 Base: {base_cnt}` · `🛤️ Track: {track_cnt}` · `🏁 Home: {home_cnt}/{g.tokens_per_player}`{active_marker}"
             )
-        standings_str = "\n".join(standings_lines)
 
-        # Upper Live Guidance (Clean compact box)
         if status_text:
             turn_box = status_text
         elif g.game_over:
@@ -980,73 +768,66 @@ class LudoView(discord.ui.View):
         else:
             turn_box = f"🎯 **CURRENT CHANCE:** {theme['emoji']} **{cur_p['name']}**\n👉 *Click your {theme['name']} 'Roll Dice' button below! (⏰ 45s Timer)*"
 
-        # Recent actions
-        log_str = "\n".join(g.log_history[-3:])
-
-        desc = (
-            f"{turn_box}\n\n"
-            f"📊 **Live Player Standings:**\n{standings_str}\n\n"
-            f"📜 **Match Log:**\n{log_str}"
-        )
-
         embed = discord.Embed(
             title=title,
-            description=desc,
+            description=f"{turn_box}\n\n📊 **Live Player Standings:**\n" + "\n".join(standings_lines) + "\n\n📜 **Match Log:**\n" + "\n".join(g.log_history[-3:]),
             color=color,
             timestamp=datetime.now(pytz.utc)
         )
         embed.set_image(url="attachment://ludo_board.png")
-        footer_text = "Friday Ludo Royale • ⏰ 45s AFK Turn Timer"
-        if g.bet_pot > 0:
-            footer_text = f"Friday Ludo Royale • 🏆 Prize Pot: {g.bet_pot:,} Coins • ⏰ 45s AFK Turn Timer"
+        footer_text = f"Friday Ludo Royale • 🏆 Prize Pot: {g.bet_pot:,} Coins • ⏰ 45s AFK Turn Timer" if g.bet_pot > 0 else "Friday Ludo Royale • ⏰ 45s AFK Turn Timer"
         embed.set_footer(text=footer_text)
         return embed
 
-    async def update_view(self, interaction: Optional[discord.Interaction] = None):
-        """Renders board in background thread and updates message with resilient fallback."""
+    async def update_view(self, interaction: Optional[discord.Interaction] = None, status_text: Optional[str] = None):
+        """Renders board and edits via permanent channel message (bot token) so matches never expire after 15 mins."""
         try:
             buf = await asyncio.to_thread(
                 render_board_image,
-                self.game.players,
-                self.game.current_turn,
-                self.game.last_rolls,
-                self.game.tokens_per_player,
-                self.movable_tokens
+                self.game.players, self.game.current_turn, self.game.last_rolls,
+                self.game.tokens_per_player, self.movable_tokens
             )
-            file = discord.File(buf, filename="ludo_board.png")
-            embed = self.build_embed()
+            embed = self.build_embed(status_text=status_text)
+
+            if interaction and interaction.message:
+                self.bind_message(interaction.message)
+            if interaction and interaction.channel and not self.channel:
+                self.channel = interaction.channel
 
             updated = False
-            if interaction:
-                if not interaction.response.is_done():
-                    try:
-                        await interaction.response.edit_message(embed=embed, view=self, attachments=[file])
-                        updated = True
-                    except Exception as ex:
-                        print(f"[Ludo] Direct edit_message error in update_view: {ex}")
-                else:
-                    try:
-                        msg = await interaction.edit_original_response(embed=embed, view=self, attachments=[file])
-                        if msg:
-                            self.message = msg
-                        updated = True
-                    except Exception as ex:
-                        print(f"[Ludo] edit_original_response error in update_view: {ex}")
 
-            if not updated and self.message:
+            # 1. Primary: Edit via permanent PartialMessage (uses Bot Token — NEVER expires after 15 min)
+            if self.channel and self.message_id:
                 try:
-                    await self.message.edit(embed=embed, view=self, attachments=[file])
+                    buf.seek(0)
+                    partial_msg = self.channel.get_partial_message(self.message_id)
+                    await partial_msg.edit(content=None, embed=embed, view=self, attachments=[discord.File(buf, filename="ludo_board.png")])
                     updated = True
                 except Exception as e:
-                    print(f"[Ludo] message.edit error in update_view: {e}")
+                    print(f"[Ludo] PartialMessage edit error: {e}")
 
-            if not updated:
-                channel = (interaction.channel if interaction else None) or (self.message.channel if self.message else None)
-                if channel:
-                    try:
-                        self.message = await channel.send(embed=embed, view=self, file=file)
-                    except Exception as e:
-                        print(f"[Ludo] Fallback channel send error in update_view: {e}")
+            # 2. Fallback: Direct interaction response if not yet updated
+            if not updated and interaction:
+                try:
+                    buf.seek(0)
+                    file = discord.File(buf, filename="ludo_board.png")
+                    if not interaction.response.is_done():
+                        await interaction.response.edit_message(content=None, embed=embed, view=self, attachments=[file])
+                    else:
+                        msg = await interaction.edit_original_response(content=None, embed=embed, view=self, attachments=[file])
+                        self.bind_message(msg)
+                    updated = True
+                except Exception as ex:
+                    print(f"[Ludo] Interaction edit fallback error: {ex}")
+
+            # 3. Last-resort fallback: Send a fresh message in channel
+            if not updated and self.channel:
+                try:
+                    buf.seek(0)
+                    msg = await self.channel.send(embed=embed, view=self, file=discord.File(buf, filename="ludo_board.png"))
+                    self.bind_message(msg)
+                except Exception as e:
+                    print(f"[Ludo] Channel send fallback error: {e}")
         except Exception as e:
             print(f"[Ludo] Critical update_view failure: {e}")
 
@@ -1057,58 +838,51 @@ class LudoView(discord.ui.View):
 
             if cur_p.get("is_ai"):
                 return await interaction.response.send_message("🤖 It is Friday AI's turn!", ephemeral=True)
-
             if not cur_p.get("member") or interaction.user.id != cur_p["member"].id:
                 return await interaction.response.send_message(f"❌ It is currently {cur_p['name']}'s turn!", ephemeral=True)
-
             if self.game.game_over:
                 return await interaction.response.send_message("🏁 This match has already ended!", ephemeral=True)
 
-            # Always defer immediately so Discord interaction never expires and view doesn't get stuck!
             await interaction.response.defer()
-            self._cancel_turn_timer()
-            self.consecutive_afk = 0
-            self.game.last_updated = time.time()
-            if interaction.message:
-                self.message = interaction.message
+            async with self._lock:
+                if self.game.game_over or self.game.current_turn != cur_col:
+                    return
+                self._cancel_turn_timer()
+                self.consecutive_afk = 0
+                self.game.last_updated = time.time()
+                self.bind_message(interaction.message)
 
-            # Generate Roll
-            roll = random.randint(1, 6)
-            self.game.last_rolls[cur_col] = roll
-            theme = COLOR_THEMES[cur_col]
+                roll = random.randint(1, 6)
+                self.game.last_rolls[cur_col] = roll
+                theme = COLOR_THEMES[cur_col]
+                legal = self.game.get_legal_moves(cur_col, roll)
 
-            legal = self.game.get_legal_moves(cur_col, roll)
+                self.game.consecutive_sixes = (self.game.consecutive_sixes + 1) if roll == 6 else 0
 
-            if roll == 6:
-                self.game.consecutive_sixes += 1
-            else:
-                self.game.consecutive_sixes = 0
-
-            # 3 consecutive sixes penalty
-            if self.game.consecutive_sixes >= 3:
-                self.game.log_history.append(f"⚠️ {theme['emoji']} **{cur_p['name']}** rolled three 6s in a row! Turn forfeited.")
-                self.game.advance_turn()
-                self.setup_buttons_for_roll()
-                await self.update_view(interaction)
-                return await self.check_and_run_ai_turn()
-
-            if not legal:
-                if roll == 6:
-                    self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves, roll again!).")
-                    self.setup_buttons_for_roll()
-                    await self.update_view(interaction)
-                else:
-                    self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves). Passing turn...")
+                if self.game.consecutive_sixes >= 3:
+                    self.game.log_history.append(f"⚠️ {theme['emoji']} **{cur_p['name']}** rolled three 6s in a row! Turn forfeited.")
                     self.game.advance_turn()
                     self.setup_buttons_for_roll()
                     await self.update_view(interaction)
                     return await self.check_and_run_ai_turn()
-                return
 
-            action_text = "Choose which token to release from base or move:" if roll == 6 else "Choose which token to move:"
-            self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]**! {action_text}")
-            self.setup_buttons_for_token_pick(legal, roll)
-            await self.update_view(interaction)
+                if not legal:
+                    if roll == 6:
+                        self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves, roll again!).")
+                        self.setup_buttons_for_roll()
+                        await self.update_view(interaction)
+                    else:
+                        self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves). Passing turn...")
+                        self.game.advance_turn()
+                        self.setup_buttons_for_roll()
+                        await self.update_view(interaction)
+                        return await self.check_and_run_ai_turn()
+                    return
+
+                action_text = "Choose which token to release from base or move:" if roll == 6 else "Choose which token to move:"
+                self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** rolled a **[ {roll} ]**! {action_text}")
+                self.setup_buttons_for_token_pick(legal, roll)
+                await self.update_view(interaction)
         except Exception as e:
             print(f"[Ludo] Error in handle_human_roll: {e}")
             self.setup_buttons_for_roll()
@@ -1121,138 +895,122 @@ class LudoView(discord.ui.View):
 
             if cur_p.get("is_ai"):
                 return await interaction.response.send_message("🤖 It is Friday AI's turn!", ephemeral=True)
-
             if not cur_p.get("member") or interaction.user.id != cur_p["member"].id:
                 return await interaction.response.send_message(f"❌ It is currently {cur_p['name']}'s turn!", ephemeral=True)
-
             if self.game.game_over:
                 return await interaction.response.send_message("🏁 This match has already ended!", ephemeral=True)
 
             await interaction.response.defer()
-            self._cancel_turn_timer()
-            self.consecutive_afk = 0
-            self.game.last_updated = time.time()
-            if interaction.message:
-                self.message = interaction.message
+            async with self._lock:
+                if self.game.game_over or self.game.current_turn != cur_col:
+                    return
+                self._cancel_turn_timer()
+                self.consecutive_afk = 0
+                self.game.last_updated = time.time()
+                self.bind_message(interaction.message)
 
-            roll = self.game.last_rolls.get(cur_col) or 6
-            theme = COLOR_THEMES[cur_col]
+                roll = self.game.last_rolls.get(cur_col) or 6
+                theme = COLOR_THEMES[cur_col]
 
-            ev = self.game.apply_move(cur_col, token_idx, roll)
-            extra_str = ""
-            if ev["brought_out"]: extra_str = " (brought token onto track! 🚀)"
-            elif ev["reached_home"]: extra_str = " (token reached Home! 🌟)"
-            elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
+                ev = self.game.apply_move(cur_col, token_idx, roll)
+                extra_str = ""
+                if ev["brought_out"]: extra_str = " (brought token onto track! 🚀)"
+                elif ev["reached_home"]: extra_str = " (token reached Home! 🌟)"
+                elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
 
-            self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** moved **Token {token_idx+1}** by **[ {roll} ]** steps{extra_str}")
+                self.game.log_history.append(f"{theme['emoji']} **{cur_p['name']}** moved **Token {token_idx+1}** by **[ {roll} ]** steps{extra_str}")
 
-            if self.game.game_over:
-                await self.settle_economy()
-                self.setup_buttons_game_over()
-                host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
-                if host_id:
-                    ACTIVE_LUDO_GAMES.pop(host_id, None)
-                return await self.update_view(interaction)
+                if self.game.game_over:
+                    await self.settle_economy()
+                    self.setup_buttons_game_over()
+                    host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                    if host_id:
+                        ACTIVE_LUDO_GAMES.pop(host_id, None)
+                    return await self.update_view(interaction)
 
-            if roll == 6 or ev["captured"]:
-                self.setup_buttons_for_roll()
-                await self.update_view(interaction)
-            else:
-                self.game.advance_turn()
-                self.setup_buttons_for_roll()
-                await self.update_view(interaction)
-                await self.check_and_run_ai_turn()
+                if roll == 6 or ev["captured"]:
+                    self.setup_buttons_for_roll()
+                    await self.update_view(interaction)
+                else:
+                    self.game.advance_turn()
+                    self.setup_buttons_for_roll()
+                    await self.update_view(interaction)
+                    await self.check_and_run_ai_turn()
         except Exception as e:
             print(f"[Ludo] Error in handle_human_token_pick: {e}")
             self.setup_buttons_for_roll()
             await self.update_view(interaction)
 
     async def check_and_run_ai_turn(self):
-        """If current turn belongs to Friday AI, triggers automated turn execution."""
-        cur_col = self.game.current_turn
-        cur_p = self.game.players[cur_col]
+        cur_p = self.game.players[self.game.current_turn]
         if cur_p["is_ai"] and not self.game.game_over:
             asyncio.create_task(self.run_ai_turn())
 
     async def run_ai_turn(self):
-        """Asynchronously executes Friday AI's turn with human-like realistic pacing (Strictly NO LLM)."""
         try:
             await asyncio.sleep(1.6)
-            if self.game.game_over:
-                return
+            async with self._lock:
+                if self.game.game_over:
+                    return
+                cur_col = self.game.current_turn
+                cur_p = self.game.players[cur_col]
+                if not cur_p["is_ai"]:
+                    return
 
-            cur_col = self.game.current_turn
-            cur_p = self.game.players[cur_col]
-            if not cur_p["is_ai"]:
-                return
+                roll = random.randint(1, 6)
+                self.game.last_rolls[cur_col] = roll
+                legal = self.game.get_legal_moves(cur_col, roll)
 
-            roll = random.randint(1, 6)
-            self.game.last_rolls[cur_col] = roll
-            theme = COLOR_THEMES[cur_col]
-
-            legal = self.game.get_legal_moves(cur_col, roll)
-
-            if not legal:
-                self.game.log_history.append(f"🤖 **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves).")
-                if roll == 6:
+                if not legal:
+                    self.game.log_history.append(f"🤖 **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves).")
+                    if roll == 6:
+                        await self.update_view()
+                        asyncio.create_task(self.run_ai_turn())
+                        return
+                    self.game.advance_turn()
+                    self.setup_buttons_for_roll()
                     await self.update_view()
-                    await asyncio.sleep(1.6)
-                    return asyncio.create_task(self.run_ai_turn())
+                    await self.check_and_run_ai_turn()
+                    return
+
+                chosen_t = self.game.choose_ai_move(cur_col, roll, legal)
+                ev = self.game.apply_move(cur_col, chosen_t, roll)
+                extra_str = ""
+                if ev["brought_out"]: extra_str = " (brought token out! 🚀)"
+                elif ev["reached_home"]: extra_str = " (token entered Home! 🌟)"
+                elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
+
+                self.game.log_history.append(f"🤖 **{cur_p['name']}** rolled a **[ {roll} ]** & moved **Token {chosen_t+1}**{extra_str}")
+
+                if self.game.game_over:
+                    await self.settle_economy()
+                    self.setup_buttons_game_over()
+                    host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                    if host_id:
+                        ACTIVE_LUDO_GAMES.pop(host_id, None)
+                    return await self.update_view()
+
+                if roll == 6 or ev["captured"]:
+                    await self.update_view()
+                    asyncio.create_task(self.run_ai_turn())
                 else:
                     self.game.advance_turn()
                     self.setup_buttons_for_roll()
                     await self.update_view()
-                    return await self.check_and_run_ai_turn()
-
-            chosen_t = self.game.choose_ai_move(cur_col, roll, legal)
-            ev = self.game.apply_move(cur_col, chosen_t, roll)
-
-            extra_str = ""
-            if ev["brought_out"]: extra_str = " (brought token out! 🚀)"
-            elif ev["reached_home"]: extra_str = " (token entered Home! 🌟)"
-            elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
-
-            self.game.log_history.append(f"🤖 **{cur_p['name']}** rolled a **[ {roll} ]** & moved **Token {chosen_t+1}**{extra_str}")
-
-            if self.game.game_over:
-                await self.settle_economy()
-                self.setup_buttons_game_over()
-                host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
-                if host_id:
-                    ACTIVE_LUDO_GAMES.pop(host_id, None)
-                return await self.update_view()
-
-            if roll == 6 or ev["captured"]:
-                await self.update_view()
-                await asyncio.sleep(1.6)
-                return asyncio.create_task(self.run_ai_turn())
-            else:
-                self.game.advance_turn()
-                self.setup_buttons_for_roll()
-                await self.update_view()
-                await self.check_and_run_ai_turn()
+                    await self.check_and_run_ai_turn()
         except Exception as e:
             print(f"[Ludo] Error in run_ai_turn: {e}")
 
     async def handle_forfeit(self, interaction: discord.Interaction):
         try:
             author = interaction.user
-            user_color = None
-            for col, pdata in self.game.players.items():
-                if pdata["member"] and pdata["member"].id == author.id:
-                    user_color = col
-                    break
-
-            if not user_color:
+            if not any(p["member"] and p["member"].id == author.id for p in self.game.players.values()):
                 return await interaction.response.send_message("❌ You are not part of this match.", ephemeral=True)
-
             if self.game.game_over:
                 return await interaction.response.send_message("The game is already over.", ephemeral=True)
-
-            confirm_view = LudoForfeitConfirmView(self, author.id)
             await interaction.response.send_message(
                 f"⚠️ **Are you sure you want to forfeit and exit the match, {author.mention}?**\nSurrendering will immediately concede victory to your opponents.",
-                view=confirm_view,
+                view=LudoForfeitConfirmView(self, author.id),
                 ephemeral=True
             )
         except Exception as e:
@@ -1260,84 +1018,46 @@ class LudoView(discord.ui.View):
 
     async def execute_forfeit(self, author: discord.User):
         try:
-            user_color = None
-            for col, pdata in self.game.players.items():
-                if pdata["member"] and pdata["member"].id == author.id:
-                    user_color = col
-                    break
-
-            if not user_color or self.game.game_over:
-                return
-
-            self.game.game_over = True
-            # Winner is next active player
-            idx = self.game.turn_order.index(user_color)
-            self.game.winner = self.game.turn_order[(idx + 1) % len(self.game.turn_order)]
-            host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
-            if host_id:
-                ACTIVE_LUDO_GAMES.pop(host_id, None)
-
-            await self.settle_economy()
-            self.setup_buttons_game_over()
-            self.game.log_history.append(f"🏳️ **{author.display_name}** surrendered the match.")
-            await self.update_view()
+            async with self._lock:
+                user_color = next((col for col, p in self.game.players.items() if p["member"] and p["member"].id == author.id), None)
+                if not user_color or self.game.game_over:
+                    return
+                self.game.game_over = True
+                idx = self.game.turn_order.index(user_color)
+                self.game.winner = self.game.turn_order[(idx + 1) % len(self.game.turn_order)]
+                host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                if host_id:
+                    ACTIVE_LUDO_GAMES.pop(host_id, None)
+                await self.settle_economy()
+                self.setup_buttons_game_over()
+                self.game.log_history.append(f"🏳️ **{author.display_name}** surrendered the match.")
+                await self.update_view()
         except Exception as e:
             print(f"[Ludo] Error in execute_forfeit: {e}")
 
     async def handle_rematch(self, interaction: discord.Interaction):
         try:
             author = interaction.user
-            is_player = any(p["member"] and p["member"].id == author.id for p in self.game.players.values())
-            if not is_player:
+            if not any(p["member"] and p["member"].id == author.id for p in self.game.players.values()):
                 return await interaction.response.send_message("❌ Only players from this match can start a rematch.", ephemeral=True)
 
-            new_configs = []
-            for col in self.game.turn_order:
-                old_p = self.game.players[col]
-                new_configs.append({
-                    "color": col,
-                    "member": old_p["member"],
-                    "name": old_p["name"],
-                    "is_ai": old_p["is_ai"]
-                })
-
+            await interaction.response.defer()
+            new_configs = [
+                {"color": col, "member": self.game.players[col]["member"], "name": self.game.players[col]["name"], "is_ai": self.game.players[col]["is_ai"]}
+                for col in self.game.turn_order
+            ]
             new_game = LudoGame(new_configs, tokens_per_player=self.game.tokens_per_player)
             new_game.guild_id = self.game.guild_id
-            host_id = getattr(self.game, "host_id", None) or author.id
+            host_id = self.game.host_id or author.id
             new_game.host_id = host_id
-            new_game.bet_pot = 0
-            new_game.bet_per_player = 0
-            new_game.bet_participants = []
             new_game.log_history = ["🎲 **Rematch started!** (Friendly mode — start a new game to wager)"]
             ACTIVE_LUDO_GAMES[host_id] = new_game
 
             new_view = LudoView(new_game)
-            new_view.message = interaction.message
+            new_view.bind_message(interaction.message)
             await new_view.update_view(interaction)
         except Exception as e:
             print(f"[Ludo] Error in handle_rematch: {e}")
-
-    async def on_timeout(self):
-        host_id = getattr(self.game, "host_id", None) or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
-        if host_id:
-            ACTIVE_LUDO_GAMES.pop(host_id, None)
-        if not self.game.game_over:
-            self.game.game_over = True
-            self.clear_items()
-            self.game.log_history.append("⏰ **Match Abandoned:** Game timed out after inactivity.")
-            if self.game.bet_pot > 0 and not self.game.pot_awarded and self.game.guild_id:
-                try:
-                    from cogs.economy import get_economy_db
-                    eco_db = get_economy_db()
-                    gid = str(self.game.guild_id)
-                    for uid in self.game.bet_participants:
-                        eco_db.delta_wallet(gid, str(uid), self.game.bet_per_player)
-                        eco_db.log_tx(gid, str(uid), "ludo_refund", self.game.bet_per_player, 0, note="Ludo Inactivity Timeout Refund")
-                    self.game.log_history.append(f"💰 **Wagers Refunded:** **{self.game.bet_per_player:,} Coins** returned to all participants.")
-                    self.game.bet_pot = 0
-                except Exception as ex:
-                    print(f"[Ludo] Timeout refund error: {ex}")
-            await self.update_view()
 
 
 # ─────────────────────────────────────────────────────────────
@@ -1346,14 +1066,8 @@ class LudoView(discord.ui.View):
 
 class LudoLobbyView(discord.ui.View):
     def __init__(
-        self,
-        bot: commands.Bot,
-        host: discord.Member,
-        invited_members: List[discord.Member],
-        tokens_per_player: int = 4,
-        add_friday: bool = False,
-        bet: int = 0,
-        guild_id: Optional[int] = None
+        self, bot: commands.Bot, host: discord.Member, invited_members: List[discord.Member],
+        tokens_per_player: int = 4, add_friday: bool = False, bet: int = 0, guild_id: Optional[int] = None
     ):
         super().__init__(timeout=100)
         self.bot = bot
@@ -1361,31 +1075,30 @@ class LudoLobbyView(discord.ui.View):
         self.tokens_per_player = tokens_per_player
         self.bet = max(0, int(bet or 0))
         self.guild_id = guild_id
-        self.message: Optional[discord.Message] = None
+        self.channel: Optional[discord.abc.Messageable] = None
+        self.message_id: Optional[int] = None
         self.start_timestamp = int(time.time()) + 100
         self.launching: bool = False
 
-        # Assign initial slots: Slot 0 = Red (Host)
-        self.slots: Dict[str, Dict[str, Any]] = {
+        self.slots: Dict[str, Optional[Dict[str, Any]]] = {
             "red": {"member": host, "name": host.display_name, "is_ai": False, "ready": True},
-            "green": None,
-            "yellow": None,
-            "blue": None
+            "green": None, "yellow": None, "blue": None
         }
 
-        # Pre-assign invited members into slots
         open_colors = ["green", "yellow", "blue"]
         for m in invited_members:
             if open_colors and m.id != host.id:
-                col = open_colors.pop(0)
-                self.slots[col] = {"member": m, "name": m.display_name, "is_ai": False, "ready": False}
-
-        # If add_friday requested or host invited bot
+                self.slots[open_colors.pop(0)] = {"member": m, "name": m.display_name, "is_ai": False, "ready": False}
         if add_friday and open_colors:
-            col = open_colors.pop(0)
-            self.slots[col] = {"member": None, "name": "Friday (AI)", "is_ai": True, "ready": True}
+            self.slots[open_colors.pop(0)] = {"member": None, "name": "Friday (AI)", "is_ai": True, "ready": True}
 
         self.setup_lobby_buttons()
+
+    def bind_message(self, msg: Optional[discord.Message]):
+        if msg:
+            self.message_id = msg.id
+            if msg.channel:
+                self.channel = msg.channel
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
         print(f"[LudoLobby] Interaction error on {item}: {error}")
@@ -1402,30 +1115,22 @@ class LudoLobbyView(discord.ui.View):
 
     def setup_lobby_buttons(self):
         self.clear_items()
-
-        # Join button
         btn_join = discord.ui.Button(style=discord.ButtonStyle.success, label="Join Game", emoji="🎮", custom_id="ludo_lobby_join")
         btn_join.callback = self.handle_join
         self.add_item(btn_join)
 
-        # Add Friday AI button
         btn_ai = discord.ui.Button(style=discord.ButtonStyle.primary, label="Add Friday AI", emoji="🤖", custom_id="ludo_lobby_ai")
         btn_ai.callback = self.handle_add_ai
         self.add_item(btn_ai)
 
-        # Start button (Host only, enabled when >= 2 ready)
         can_start = self.get_active_count() >= 2
         btn_start = discord.ui.Button(
             style=discord.ButtonStyle.success if can_start else discord.ButtonStyle.secondary,
-            label="Start Game Now",
-            emoji="🚀",
-            disabled=not can_start,
-            custom_id="ludo_lobby_start"
+            label="Start Game Now", emoji="🚀", disabled=not can_start, custom_id="ludo_lobby_start"
         )
         btn_start.callback = self.handle_start_now
         self.add_item(btn_start)
 
-        # Cancel button (Host only)
         btn_cancel = discord.ui.Button(style=discord.ButtonStyle.danger, label="Cancel", emoji="❌", custom_id="ludo_lobby_cancel")
         btn_cancel.callback = self.handle_cancel
         self.add_item(btn_cancel)
@@ -1445,33 +1150,26 @@ class LudoLobbyView(discord.ui.View):
             else:
                 lines.append(f"{theme['emoji']} **{theme['name']} Slot:** {slot['member'].mention} `[ ⏳ Invited — Click Join ]`")
 
-        slots_str = "\n".join(lines)
         ready_cnt = self.get_active_count()
         ready_humans = sum(1 for s in self.slots.values() if s is not None and s.get("ready") and not s.get("is_ai"))
 
         wager_str = ""
         if self.bet > 0 and self.guild_id:
             cfg = getattr(db, "economy_config", {}).get(str(self.guild_id), {})
-            cur_name = cfg.get("currency_name", "Coins")
-            cur_emoji = cfg.get("currency_emoji", "🪙")
-            pot = self.bet * ready_humans
+            cur_name, cur_emoji = cfg.get("currency_name", "Coins"), cfg.get("currency_emoji", "🪙")
             wager_str = (
                 f"💰 **Wager Stakes:** `{self.bet:,}` {cur_emoji} {cur_name} / human player\n"
-                f"🏆 **Current Prize Pot:** `{pot:,}` {cur_emoji} {cur_name} ({ready_humans} player{'s' if ready_humans != 1 else ''})\n"
+                f"🏆 **Current Prize Pot:** `{self.bet * ready_humans:,}` {cur_emoji} {cur_name} ({ready_humans} player{'s' if ready_humans != 1 else ''})\n"
             )
-
-        desc = (
-            f"👑 **Host:** {self.host.mention} · Mode: **Classic 4 Tokens**\n"
-            f"{wager_str}"
-            f"⏳ **Starts automatically:** <t:{self.start_timestamp}:R> (100s timer)\n\n"
-            f"👥 **Player Rosters ({ready_cnt}/4 Ready):**\n"
-            f"{slots_str}\n\n"
-            f"👉 *Click **Join Game** to grab a seat, or **Add Friday AI** to fill open slots!*"
-        )
 
         embed = discord.Embed(
             title="🎲  Ludo Royale Matchmaking Lobby",
-            description=desc,
+            description=(
+                f"👑 **Host:** {self.host.mention} · Mode: **Classic 4 Tokens**\n{wager_str}"
+                f"⏳ **Starts automatically:** <t:{self.start_timestamp}:R> (100s timer)\n\n"
+                f"👥 **Player Rosters ({ready_cnt}/4 Ready):**\n" + "\n".join(lines) +
+                "\n\n👉 *Click **Join Game** to grab a seat, or **Add Friday AI** to fill open slots!*"
+            ),
             color=0x2dd4bf,
             timestamp=datetime.now(pytz.utc)
         )
@@ -1480,57 +1178,37 @@ class LudoLobbyView(discord.ui.View):
 
     async def handle_join(self, interaction: discord.Interaction):
         user = interaction.user
-
-        # Check wallet balance if wager is set
         if self.bet > 0 and self.guild_id:
             try:
                 from cogs.economy import get_economy_db
                 eco_db = get_economy_db()
                 gid = str(self.guild_id)
-                prof = eco_db.get_or_init_user(gid, str(user.id))
-                wallet_bal = prof.get("wallet", 0)
+                wallet_bal = eco_db.get_or_init_user(gid, str(user.id)).get("wallet", 0)
                 if wallet_bal < self.bet:
-                    cfg = getattr(db, "economy_config", {}).get(gid, {})
-                    cur_name = cfg.get("currency_name", "Coins")
+                    cur_name = getattr(db, "economy_config", {}).get(gid, {}).get("currency_name", "Coins")
                     return await interaction.response.send_message(
-                        f"❌ **Insufficient Wallet Balance!** This match requires a **{self.bet:,} {cur_name}** entry wager, but your wallet only holds **{wallet_bal:,} {cur_name}**.\nUse `/withdraw` to move coins from your bank vault to your wallet.",
+                        f"❌ **Insufficient Wallet Balance!** Requires **{self.bet:,} {cur_name}**, you have **{wallet_bal:,} {cur_name}**.",
                         ephemeral=True
                     )
             except Exception as ex:
                 print(f"[Ludo] Join balance check error: {ex}")
 
-        # Check if already joined
         for col, slot in self.slots.items():
             if slot and not slot["is_ai"] and slot["member"].id == user.id:
                 if slot["ready"]:
                     return await interaction.response.send_message("✅ You are already ready in the lobby!", ephemeral=True)
-                else:
-                    # User accepted invite
-                    slot["ready"] = True
-                    self.setup_lobby_buttons()
-                    if self.get_active_count() == 4:
-                        await interaction.response.defer()
-                        await self.launch_game(interaction)
-                    else:
-                        await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
-                    return
+                slot["ready"] = True
+                self.setup_lobby_buttons()
+                if self.get_active_count() == 4:
+                    await interaction.response.defer()
+                    return await self.launch_game(interaction)
+                return await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
 
-        # Find first open slot
-        open_col = None
-        for col in COLOR_CLOCKWISE:
-            if self.slots[col] is None:
-                open_col = col
-                break
-
+        open_col = next((c for c in COLOR_CLOCKWISE if self.slots[c] is None), None)
         if not open_col:
             return await interaction.response.send_message("❌ The lobby is already full (4/4 players)!", ephemeral=True)
 
-        self.slots[open_col] = {
-            "member": user,
-            "name": user.display_name,
-            "is_ai": False,
-            "ready": True
-        }
+        self.slots[open_col] = {"member": user, "name": user.display_name, "is_ai": False, "ready": True}
         self.setup_lobby_buttons()
         if self.get_active_count() == 4:
             await interaction.response.defer()
@@ -1539,22 +1217,11 @@ class LudoLobbyView(discord.ui.View):
             await interaction.response.edit_message(embed=self.build_lobby_embed(), view=self)
 
     async def handle_add_ai(self, interaction: discord.Interaction):
-        # Find first open slot
-        open_col = None
-        for col in COLOR_CLOCKWISE:
-            if self.slots[col] is None:
-                open_col = col
-                break
-
+        open_col = next((c for c in COLOR_CLOCKWISE if self.slots[c] is None), None)
         if not open_col:
             return await interaction.response.send_message("❌ No open slots remaining for AI!", ephemeral=True)
 
-        self.slots[open_col] = {
-            "member": None,
-            "name": "Friday (AI)",
-            "is_ai": True,
-            "ready": True
-        }
+        self.slots[open_col] = {"member": None, "name": "Friday (AI)", "is_ai": True, "ready": True}
         self.setup_lobby_buttons()
         if self.get_active_count() == 4:
             await interaction.response.defer()
@@ -1565,92 +1232,54 @@ class LudoLobbyView(discord.ui.View):
     async def handle_start_now(self, interaction: discord.Interaction):
         if interaction.user.id != self.host.id:
             return await interaction.response.send_message("❌ Only the lobby host can force-start the match!", ephemeral=True)
-
         if self.get_active_count() < 2:
-            return await interaction.response.send_message("⚠️ You need at least 2 players to start! Click 'Add Friday AI' to fill a slot.", ephemeral=True)
-
-        if interaction.message:
-            self.message = interaction.message
-
-        if getattr(self, "launching", False):
+            return await interaction.response.send_message("⚠️ You need at least 2 players to start!", ephemeral=True)
+        if self.launching:
             return await interaction.response.send_message("⏳ Match is already launching, please wait...", ephemeral=True)
-
+        self.bind_message(interaction.message)
         await interaction.response.defer()
         await self.launch_game(interaction)
 
     async def handle_cancel(self, interaction: discord.Interaction):
         if interaction.user.id != self.host.id:
             return await interaction.response.send_message("❌ Only the lobby host can cancel this game.", ephemeral=True)
-
         ACTIVE_LUDO_LOBBIES.pop(self.host.id, None)
         self.stop()
-        await interaction.response.edit_message(
-            content="❌ **Matchmaking Lobby Cancelled by Host.**",
-            embed=None,
-            view=None
-        )
+        await interaction.response.edit_message(content="❌ **Matchmaking Lobby Cancelled by Host.**", embed=None, view=None)
 
     async def launch_game(self, interaction: Optional[discord.Interaction] = None):
-        """Builds game configurations from active ready slots, escrows wagers, and launches match."""
-        if getattr(self, "launching", False):
+        if self.launching:
             return
         self.launching = True
         ACTIVE_LUDO_LOBBIES.pop(self.host.id, None)
-
         if interaction and interaction.message:
-            self.message = interaction.message
+            self.bind_message(interaction.message)
 
-        active_configs = []
-        for col in COLOR_CLOCKWISE:
-            slot = self.slots[col]
-            if slot and slot.get("ready"):
-                active_configs.append({
-                    "color": col,
-                    "member": slot.get("member"),
-                    "name": slot.get("name"),
-                    "is_ai": slot.get("is_ai", False)
-                })
-
-        # Fallback: if only host ready, add Friday AI automatically
+        active_configs = [
+            {"color": col, "member": slot.get("member"), "name": slot.get("name"), "is_ai": slot.get("is_ai", False)}
+            for col in COLOR_CLOCKWISE if (slot := self.slots[col]) and slot.get("ready")
+        ]
         if len(active_configs) == 1:
-            active_configs.append({
-                "color": "yellow",
-                "member": None,
-                "name": "Friday (AI)",
-                "is_ai": True
-            })
+            active_configs.append({"color": "yellow", "member": None, "name": "Friday (AI)", "is_ai": True})
 
-        # Escrow wagers if bet > 0
-        bet_pot = 0
-        bet_participants = []
+        bet_pot, bet_participants = 0, []
         if self.bet > 0 and self.guild_id:
             try:
                 from cogs.economy import get_economy_db
                 eco_db = get_economy_db()
                 gid = str(self.guild_id)
-                cfg = getattr(db, "economy_config", {}).get(gid, {})
-                cur_name = cfg.get("currency_name", "Coins")
-
-                failed_players = []
-                for p in active_configs:
-                    if not p["is_ai"] and p["member"]:
-                        prof = eco_db.get_or_init_user(gid, str(p["member"].id))
-                        if prof.get("wallet", 0) < self.bet:
-                            failed_players.append(p["member"].display_name)
-
+                cur_name = getattr(db, "economy_config", {}).get(gid, {}).get("currency_name", "Coins")
+                failed_players = [
+                    p["member"].display_name for p in active_configs
+                    if not p["is_ai"] and p["member"] and eco_db.get_or_init_user(gid, str(p["member"].id)).get("wallet", 0) < self.bet
+                ]
                 if failed_players:
-                    cancel_msg = f"❌ **Match Cancelled:** The following players do not have enough wallet coins for the **{self.bet:,} {cur_name}** wager: {', '.join(failed_players)}"
+                    cancel_msg = f"❌ **Match Cancelled:** Insufficient wallet coins for **{self.bet:,} {cur_name}** wager: {', '.join(failed_players)}"
                     self.launching = False
                     self.stop()
-                    if interaction:
-                        if not interaction.response.is_done():
-                            await interaction.response.edit_message(content=cancel_msg, embed=None, view=None)
-                        else:
-                            await interaction.edit_original_response(content=cancel_msg, embed=None, view=None)
-                    elif self.message:
-                        await self.message.edit(content=cancel_msg, embed=None, view=None)
+                    if self.channel and self.message_id:
+                        await self.channel.get_partial_message(self.message_id).edit(content=cancel_msg, embed=None, view=None)
                     return
-
                 for p in active_configs:
                     if not p["is_ai"] and p["member"]:
                         uid = str(p["member"].id)
@@ -1670,69 +1299,17 @@ class LudoLobbyView(discord.ui.View):
         ACTIVE_LUDO_GAMES[self.host.id] = game
 
         game_view = LudoView(game)
-        game_view.message = self.message
+        game_view.channel = self.channel
+        game_view.message_id = self.message_id
 
         try:
-            buf = await asyncio.to_thread(
-                render_board_image,
-                game.players,
-                game.current_turn,
-                game.last_rolls,
-                game.tokens_per_player,
-                []
-            )
-            file = discord.File(buf, filename="ludo_board.png")
-            embed = game_view.build_embed(status_text="🎉 **Match Started!** May the best tactician reach Center Home!")
-
-            updated = False
-            if interaction:
-                if not interaction.response.is_done():
-                    try:
-                        await interaction.response.edit_message(content=None, embed=embed, view=game_view, attachments=[file])
-                        updated = True
-                    except Exception as ex:
-                        print(f"[Ludo] Failed direct edit_message in launch_game: {ex}")
-                else:
-                    try:
-                        msg = await interaction.edit_original_response(content=None, embed=embed, view=game_view, attachments=[file])
-                        if msg:
-                            game_view.message = msg
-                        updated = True
-                    except Exception as ex:
-                        print(f"[Ludo] Failed edit_original_response in launch_game: {ex}")
-
-            if not updated and self.message:
-                try:
-                    await self.message.edit(content=None, embed=embed, view=game_view, attachments=[file])
-                    updated = True
-                except Exception as e:
-                    print(f"[Ludo] Failed to edit lobby message into game: {e}")
-
-            if not updated:
-                channel = (interaction.channel if interaction else None) or (self.message.channel if self.message else None)
-                if channel:
-                    try:
-                        game_view.message = await channel.send(
-                            content="🎲 **Ludo Match Started!**",
-                            embed=embed,
-                            view=game_view,
-                            file=file
-                        )
-                    except Exception as ex:
-                        print(f"[Ludo] Channel send fallback error in launch_game: {ex}")
-        except Exception as ex:
-            print(f"[Ludo] Critical launch_game error: {ex}")
+            await game_view.update_view(interaction, status_text="🎉 **Match Started!** May the best tactician reach Center Home!")
         finally:
             self.stop()
 
-        # If starting player is AI (unlikely since host is Red, but safe guard)
-        await game_view.check_and_run_ai_turn()
-
-        # If starting player is AI (unlikely since host is Red, but safe guard)
         await game_view.check_and_run_ai_turn()
 
     async def on_timeout(self):
-        """When 100s timer expires, launches automatically with joined players."""
         if self.host.id in ACTIVE_LUDO_LOBBIES:
             await self.launch_game()
 
@@ -1742,8 +1319,6 @@ class LudoLobbyView(discord.ui.View):
 # ─────────────────────────────────────────────────────────────
 
 class Ludo(commands.Cog, name="Ludo"):
-    """Interactive multiplayer Ludo board game with 4-player support and zero-latency heuristic AI."""
-
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
@@ -1756,82 +1331,57 @@ class Ludo(commands.Cog, name="Ludo"):
         add_friday="Include Friday AI in the match"
     )
     async def ludo_slash(
-        self,
-        interaction: discord.Interaction,
-        bet: Optional[int] = None,
-        player2: Optional[discord.Member] = None,
-        player3: Optional[discord.Member] = None,
-        player4: Optional[discord.Member] = None,
-        add_friday: Optional[bool] = False
+        self, interaction: discord.Interaction, bet: Optional[int] = None,
+        player2: Optional[discord.Member] = None, player3: Optional[discord.Member] = None,
+        player4: Optional[discord.Member] = None, add_friday: Optional[bool] = False
     ):
         try:
             await interaction.response.defer()
             author = interaction.user
             gid = str(interaction.guild_id or "")
 
-            # Check bet validity if supplied
             if bet is not None:
                 if bet <= 0:
                     return await interaction.followup.send("❌ Wager amount must be greater than 0!", ephemeral=True)
                 if gid:
                     cfg = getattr(db, "economy_config", {}).get(gid, {})
                     if cfg.get("paused", False):
-                        return await interaction.followup.send("⏸️ The server economy is currently paused. Please wait until staff resumes it!", ephemeral=True)
+                        return await interaction.followup.send("⏸️ The server economy is currently paused.", ephemeral=True)
                     max_bet = int(cfg.get("minigame_max_bet", 50000))
                     cur_name = cfg.get("currency_name", "Coins")
                     if bet > max_bet:
                         return await interaction.followup.send(f"❌ Maximum wager limit is **{max_bet:,} {cur_name}**!", ephemeral=True)
                     from cogs.economy import get_economy_db
-                    eco_db = get_economy_db()
-                    prof = eco_db.get_or_init_user(gid, str(author.id))
+                    prof = get_economy_db().get_or_init_user(gid, str(author.id))
                     if prof.get("wallet", 0) < bet:
-                        return await interaction.followup.send(f"❌ You do not have enough coins in your wallet for a **{bet:,} {cur_name}** wager! Your wallet: **{prof.get('wallet', 0):,} {cur_name}**.", ephemeral=True)
+                        return await interaction.followup.send(f"❌ Insufficient wallet balance (**{prof.get('wallet', 0):,} {cur_name}**).", ephemeral=True)
 
-            # Check if active game exists
             active_game = ACTIVE_LUDO_GAMES.get(author.id)
             if active_game and not active_game.is_expired():
-                return await interaction.followup.send(
-                    "⚠️ You already have an active Ludo match! Finish it or click **Forfeit** before starting a new one.",
-                    ephemeral=True
-                )
+                return await interaction.followup.send("⚠️ You already have an active Ludo match! Finish it or click **Forfeit** first.", ephemeral=True)
 
-            # Check if active lobby exists
             if author.id in ACTIVE_LUDO_LOBBIES:
-                return await interaction.followup.send(
-                    "⚠️ You already have an open Matchmaking Lobby! Start it or cancel before creating another.",
-                    ephemeral=True
-                )
+                return await interaction.followup.send("⚠️ You already have an open Matchmaking Lobby!", ephemeral=True)
 
             invited_list = [p for p in (player2, player3, player4) if p is not None]
-
-            # If user mentioned the bot itself as one of the players, set add_friday = True
-            for p in invited_list:
-                if p.id == self.bot.user.id or p.bot:
-                    add_friday = True
+            if any(p.id == self.bot.user.id or p.bot for p in invited_list):
+                add_friday = True
             invited_list = [p for p in invited_list if not p.bot]
 
             lobby = LudoLobbyView(
-                bot=self.bot,
-                host=author,
-                invited_members=invited_list,
-                tokens_per_player=4,
-                add_friday=bool(add_friday),
-                bet=bet or 0,
-                guild_id=interaction.guild_id
+                bot=self.bot, host=author, invited_members=invited_list,
+                tokens_per_player=4, add_friday=bool(add_friday), bet=bet or 0, guild_id=interaction.guild_id
             )
             ACTIVE_LUDO_LOBBIES[author.id] = lobby
 
-            embed = lobby.build_lobby_embed()
-
-            # Mentions notification for invited members
             content = None
             if invited_list:
                 mentions_str = " ".join(p.mention for p in invited_list)
                 wager_note = f" with a **{bet:,} Coins** wager" if bet else ""
                 content = f"👋 {mentions_str} You have been invited to a game of **Ludo Royale**{wager_note} by {author.mention}!"
 
-            msg = await interaction.followup.send(content=content, embed=embed, view=lobby)
-            lobby.message = msg
+            msg = await interaction.followup.send(content=content, embed=lobby.build_lobby_embed(), view=lobby)
+            lobby.bind_message(msg)
 
         except Exception as e:
             print(f"[Ludo] Slash command error: {e}")
@@ -1841,11 +1391,7 @@ class Ludo(commands.Cog, name="Ludo"):
                 else:
                     await interaction.followup.send(f"❌ Failed to launch Ludo: {e}", ephemeral=True)
             except Exception:
-                if interaction.channel:
-                    try:
-                        await interaction.channel.send(f"❌ Failed to launch Ludo: {e}")
-                    except Exception:
-                        pass
+                pass
 
 
 async def setup(bot: commands.Bot):
