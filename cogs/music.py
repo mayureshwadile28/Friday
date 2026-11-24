@@ -250,7 +250,6 @@ def _des_block_decrypt(block_bytes, subkeys):
 def decrypt_saavn_url(encrypted_url: str) -> str:
     """Zero-dependency pure-Python DES-ECB decryptor for JioSaavn 320kbps Akamai CDN streaming URLs."""
     try:
-        # First try C-accelerated library if cryptography package is installed
         try:
             from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
             key = b"38346591" * 3
@@ -265,7 +264,6 @@ def decrypt_saavn_url(encrypted_url: str) -> str:
         except ImportError:
             pass
 
-        # Standalone pure-Python fallback (requires zero third-party packages, works everywhere)
         data = base64.b64decode(encrypted_url.strip())
         subkeys = _des_key_schedule(b"38346591")
         decrypted = bytearray()
@@ -304,7 +302,6 @@ DEFAULT_HEADERS = {
     'Sec-Fetch-Mode': 'navigate',
 }
 
-# Studio audio extraction options via yt-dlp with multi-format fallback chain
 YDL_OPTIONS = {
     'format': 'bestaudio[ext=m4a]/bestaudio/best/18/140',
     'noplaylist': True,
@@ -322,7 +319,6 @@ def resolve_spotify_url(url: str) -> Optional[dict]:
     if not clean_url.startswith(("http://", "https://")):
         clean_url = f"https://{clean_url}"
 
-    # 1. Expand shortlinks (spotify.link / spoti.fi)
     if "spotify.link" in clean_url or "spoti.fi" in clean_url:
         try:
             req = urllib.request.Request(clean_url, headers=DEFAULT_HEADERS)
@@ -331,7 +327,6 @@ def resolve_spotify_url(url: str) -> Optional[dict]:
         except Exception as e:
             print(f"[Music] Spotify shortlink expansion error: {e}")
 
-    # 2. Extract Spotify entity type and ID
     m = re.search(r'spotify\.com/(?:intl-[a-z]+/)?(track|playlist|album)/([a-zA-Z0-9]+)', clean_url)
     if not m:
         return None
@@ -392,7 +387,6 @@ def resolve_spotify_url(url: str) -> Optional[dict]:
     except Exception as e:
         print(f"[Music] Spotify embed scraping note: {e}")
 
-    # Fallback to oEmbed if embed page fails
     try:
         clean_target = clean_url.split('?')[0]
         oe = f"https://open.spotify.com/oembed?url={urllib.parse.quote(clean_target)}"
@@ -480,9 +474,7 @@ def get_ffmpeg_options(filter_key="studio", seek_seconds=0):
         options = '-vn -sn -dn'
     return {'before_options': before, 'options': options}
 
-# Legacy default options fallback
 FFMPEG_OPTIONS = get_ffmpeg_options("studio")
-
 
 
 class Song:
@@ -683,7 +675,6 @@ class MusicControlView(discord.ui.View):
             gid, cog = self._get_context(interaction)
             vc = interaction.guild.voice_client if interaction.guild else None
 
-            # 1. Flag stopping state so after_play never triggers ghost play_next executions
             if cog:
                 state = cog.get_state(gid)
                 state["_stopping"] = True
@@ -692,17 +683,14 @@ class MusicControlView(discord.ui.View):
                 state["current"] = None
                 state["transformer"] = None
 
-            # 2. Disable all view controls
             for child in self.children:
                 child.disabled = True
 
-            # 3. Immediate edit message
             try:
                 await interaction.message.edit(view=self)
             except Exception:
                 pass
 
-            # 4. Safely stop the voice client in the background without blocking
             if vc and (vc.is_playing() or vc.is_paused()):
                 try:
                     vc.stop()
@@ -1126,17 +1114,13 @@ class QueueItemView(discord.ui.View):
         except Exception as e:
             print(f"[Music Queue Button Error] {e}")
 
+
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Per-guild music state
         self.states = {}
 
     async def cog_load(self):
-        # Register persistent controller view AFTER the bot is fully connected so
-        # Discord's internal view store is ready. Registering in __init__ races
-        # against on_ready cog loading and can silently fail to bind, causing the
-        # "Friday didn't respond in time" error on every music button click.
         try:
             self.bot.add_view(MusicControlView(self))
             print("[Music] ✅ Persistent MusicControlView registered via cog_load.")
@@ -1164,7 +1148,6 @@ class Music(commands.Cog):
         return self.states[guild_id]
 
     async def set_voice_channel_status(self, channel: Optional[discord.VoiceChannel], status: str):
-        """Sets temporary voice channel status so users outside the channel can see current song."""
         if not channel or not isinstance(channel, discord.VoiceChannel):
             return
         try:
@@ -1175,7 +1158,6 @@ class Music(commands.Cog):
             pass
 
     async def clear_voice_channel_status(self, channel: Optional[discord.VoiceChannel]):
-        """Clears the temporary voice channel status when music playback finishes or stops."""
         if not channel or not isinstance(channel, discord.VoiceChannel):
             return
         try:
@@ -1185,10 +1167,7 @@ class Music(commands.Cog):
             pass
 
     def _detect_language(self, title: str) -> str:
-        """Determines the linguistic origin and genre classification of a song title."""
         t = title.lower()
-
-        # 1. Native script detection (100% precision)
         if HINDI_SCRIPT_RE.search(title):
             return "hindi"
         if PUNJABI_SCRIPT_RE.search(title):
@@ -1197,37 +1176,25 @@ class Music(commands.Cog):
             return "kpop"
         if JAPANESE_SCRIPT_RE.search(title):
             return "japanese"
-
-        # 2. Specific Asian Genres
         if KPOP_ARTISTS_RE.search(t):
             return "kpop"
         if JAPANESE_ARTISTS_RE.search(t):
             return "japanese"
         if PUNJABI_ARTISTS_RE.search(t) or PUNJABI_ROMAN_WORDS_RE.search(t):
             return "punjabi"
-
-        # 3. Indian / Bollywood Artists
         if INDIAN_ARTISTS_RE.search(t):
             return "hindi"
-
-        # 4. Indian Labels / Studio channels
         if INDIAN_LABELS_KEYWORDS_RE.search(t):
             if 'punjabi' in t or 'bhangra' in t:
                 return "punjabi"
             return "hindi"
-
-        # 5. Romanized Hindi words
         if HINDI_ROMAN_WORDS_RE.search(t):
             return "hindi"
-
-        # 6. Default for Latin text: English (NEVER arbitrary Hindi!)
         return "english"
 
     def _extract_artist_and_title(self, raw_title: str) -> Tuple[Optional[str], str]:
-        """Intelligently parses artist and track name across Western and Bollywood naming styles."""
         junk = r'(?i)\b(official|music|video|audio|lyrics|lyric|hd|4k|remastered|song|track|full\s+song|visualizer|feat\.?|ft\.?)\b'
 
-        # Check Bollywood pipe format: "Title | Movie | Singers"
         if "|" in raw_title:
             parts = [p.strip() for p in raw_title.split("|") if p.strip()]
             title_part = re.sub(junk, '', re.sub(r'[\(\[\{].*?[\)\]\}]', '', parts[0])).strip()
@@ -1244,41 +1211,34 @@ class Music(commands.Cog):
                 artist_part = re.sub(junk, '', re.sub(r'[\(\[\{].*?[\)\]\}]', '', parts[-1])).strip()
             return artist_part, title_part
 
-        # Standard Western "Artist - Title" format
         cleaned = re.sub(r'[\(\[\{].*?[\)\]\}]', '', raw_title).strip()
         cleaned = re.sub(junk, '', cleaned).strip()
 
         if " - " in cleaned:
             parts = cleaned.split(" - ", 1)
-            artist_part = parts[0].strip()
-            title_part = parts[1].strip()
-            return artist_part, title_part
+            return parts[0].strip(), parts[1].strip()
 
         return None, cleaned
 
     def _detect_song_features(self, title: str) -> Tuple[Optional[str], str, Optional[str]]:
-        """Extracts mood, language, and primary artist from a song title."""
         t = title.lower()
-
         detected_mood = None
         for mood, pattern in AUTOPLAY_MOOD_PATTERNS.items():
             if pattern.search(t):
                 detected_mood = mood
                 break
-
         detected_lang = self._detect_language(title)
         artist, _ = self._extract_artist_and_title(title)
-
         return detected_mood, detected_lang, artist
 
-    def _flat_search_sync(self, query: str) -> list:
+    def _flat_search_sync(self, query: str, playlist_end: int = 12) -> list:
         opts = {
             'extract_flat': 'in_playlist',
             'quiet': True,
             'no_warnings': True,
-            'noplaylist': True,
+            'playlistend': playlist_end,
             'http_headers': DEFAULT_HEADERS,
-            'socket_timeout': 5
+            'socket_timeout': 6
         }
         cookie_path = get_cookie_file()
         if cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0:
@@ -1296,7 +1256,7 @@ class Music(commands.Cog):
             return []
 
     async def _find_autoplay_track(self, last_song: Song, guild_id: int) -> Optional[Song]:
-        """Finds next track with matching mood, language, or artist recommendations without repetition."""
+        """Uses YouTube Mix Radio (RD playlist) first, then strict Music-only fallback, blocking 18+ & non-music."""
         state = self.get_state(guild_id)
         mood, lang, artist = self._detect_song_features(last_song.title)
         extracted_artist, core_title = self._extract_artist_and_title(last_song.title)
@@ -1305,203 +1265,115 @@ class Music(commands.Cog):
         if not core_title or len(core_title) < 2:
             core_title = last_song.title
 
-        # Normalized core title for exact title repetition rejection
         clean_norm = re.sub(r'[^a-z0-9]', '', core_title.lower())
-
-        # Exclude common stopwords so words like 'love', 'like', 'dil', 'mere' don't reject different songs
-        COMMON_STOPWORDS = {
-            'the', 'and', 'for', 'you', 'with', 'from', 'this', 'that', 'what', 'love',
-            'like', 'feels', 'feel', 'life', 'time', 'girl', 'baby', 'yeah', 'mere',
-            'meri', 'mera', 'tere', 'teri', 'tera', 'yeh', 'hai', 'hum', 'dil', 'ek',
-            'main', 'tune', 'koi', 'kuch', 'hona', 'song', 'audio', 'video'
-        }
-        distinct_words = [w for w in re.findall(r'[a-zA-Z]{3,}', core_title.lower()) if w not in COMMON_STOPWORDS]
-
-        queries = []
-        is_desi = lang in ("hindi", "punjabi")
-
-        if is_desi:
-            # Queries designed to return DIFFERENT hit songs by that artist or genre
-            if artist:
-                queries.append(f"{artist} top hit bollywood songs audio")
-                queries.append(f"best of {artist} songs audio")
-            else:
-                sample_artists = random.sample(KNOWN_BOLLYWOOD_ARTISTS[:25], min(3, len(KNOWN_BOLLYWOOD_ARTISTS)))
-                queries.append(f"{sample_artists[0]} hit songs audio")
-                queries.append(f"{sample_artists[1]} popular bollywood songs audio")
-            if mood:
-                queries.append(f"top {lang} {mood} songs audio")
-                queries.append(f"bollywood {mood} hit songs audio")
-            queries.append(f"top bollywood hit songs audio")
-            queries.append(f"popular hindi bollywood songs audio")
-        elif lang == "kpop":
-            if artist:
-                queries.append(f"{artist} popular songs audio")
-            queries.append("top kpop hit songs audio")
-        elif lang == "japanese":
-            if artist:
-                queries.append(f"{artist} popular songs audio")
-            queries.append("popular japanese anime songs audio")
-        else:
-            # Western / Global tracks (English) - target verified clean official studio music
-            if artist:
-                queries.append(f"{artist} official audio")
-                queries.append(f"{artist} top hit songs official audio")
-            if mood:
-                queries.append(f"top {mood} clean songs official audio")
-            queries.append(f"top billboard clean pop hits official audio")
-            queries.append(f"popular clean radio songs official audio")
-
         history = set(state.get("autoplay_history", []))
         candidates = []
 
-        # Comprehensive banned keywords for autoplay to prevent repeats, remixes, lofi, mashups, tutorials, non-music, and 18+/adult/provocative content
         banned_terms = [
-            # Tutorials, Behind the scenes, Podcasts, Non-music
-            'how i made', 'how to', 'tutorial', 'making of', 'behind the scenes', 'bts',
+            'how i made', 'how to', 'tutorial', 'making of', 'behind the scenes',
             'interview', 'reaction', 'reacting', 'breakdown', 'vlog', 'review',
             'podcast', 'teaser', 'trailer', 'short film', 'documentary', 'episode',
-            'explained', 'producing', 'in the studio', 'track by track', 'lesson',
-            'prank', 'challenge', 'roast', 'drama', 'troll', 'gaming', 'gameplay',
-            'tiktok', 'reels', 'highlight', 'twitch', 'stream', 'compilation',
-            # Low quality / altered audio
-            'lyrics', 'lyric', 'lyrical', 'animated', 'animation',
-            'lofi', 'lo-fi', 'slowed', 'reverb', 'remix', 'mashup', 'female version',
-            'male version', 'cover', 'acoustic', 'unplugged', 'status', 'shorts',
-            'ringtone', 'bass boosted', 'speed up', 'synthwave', '8d', 'karaoke',
-            'instrumental',
-            # 18+, Adult, NSFW, Sexualized, Inappropriate Content
-            '18+', 'nsfw', 'explicit', 'uncensored', 'hot video', 'sexy video',
-            'sexy', 'bhojpuri hot', 'vulgar', 'leaked', 'bhabhi', 'erotic',
-            'onlyfans', 'camgirl', 'stripper', 'strip club', 'twerk', 'booty',
-            'porn', 'xxx', 'adult', 'nude', 'naked', 'bikini', 'kiss scene',
-            'kissing', 'bed scene', 'romance scene', 'hot scene', 'sensual',
-            'lust', 'seduction', 'bold scene', 'web series hot', 'ullu', 'kooku',
-            'rabbit', 'prscene', 'dirty', 'blac chyna', 'angela white', 'too $hort',
-            'too short', 'mia khalifa', 'sunny leone', 'poonam pandey', 'sherlyn chopra',
-            'playboy', 'sensual music', 'adult movie', 'softcore', 'hardcore'
+            'prank', 'challenge', 'roast', 'drama', 'gaming', 'gameplay',
+            'tiktok', 'reels', 'highlight', 'twitch', 'stream', 'compilation', 'jukebox',
+            'lyrics', 'lyric', 'lyrical', 'animated', 'animation', 'mashup', 'cover',
+            'status', 'shorts', 'ringtone', 'karaoke', 'instrumental',
+            '18+', 'nsfw', 'explicit', 'uncensored', 'hot video', 'sexy', 'vulgar',
+            'leaked', 'bhabhi', 'erotic', 'onlyfans', 'porn', 'xxx', 'adult', 'nude',
+            'naked', 'bikini', 'kiss scene', 'bed scene', 'hot scene', 'sensual',
+            'bold scene', 'web series', 'ullu', 'kooku', 'softcore', 'hardcore'
         ]
 
-        for q in queries:
-            try:
-                results = await asyncio.to_thread(self._flat_search_sync, f"ytsearch10:{q}")
-                for entry in results:
-                    t_name = entry.get("title", "")
-                    dur = entry.get("duration") or 0
-                    if not t_name:
-                        continue
-                    uploader = (entry.get("uploader") or entry.get("channel") or "").lower()
-                    combined_text = f"{t_name.lower()} {uploader}"
-                    if t_name in history:
-                        continue
-                    # Skip banned remix / lofi / mashup / lyric / tutorial / 18+ variants
-                    if any(bt in combined_text for bt in banned_terms):
-                        continue
-                    # Reject candidate if it contains the exact normalized title
-                    cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
-                    if len(clean_norm) >= 4 and clean_norm in cand_norm:
-                        continue
-                    # Reject candidate if it shares all distinct identifying keywords of the current track
-                    if distinct_words:
-                        matches = sum(1 for dw in distinct_words if dw in t_name.lower())
-                        if len(distinct_words) <= 2 and matches == len(distinct_words):
-                            continue
-                        elif len(distinct_words) > 2 and matches >= 2:
-                            continue
-                    # For Desi / Bollywood tracks, ensure recommendation is authentic Indian / Bollywood
-                    if is_desi:
-                        cand_lang = self._detect_language(t_name)
-                        desi_markers = ('bollywood', 'hindi', 'punjabi', 't-series', 'zeemusic', 'sony music', 'yrf', 'tips', 'saregama', 'speed records')
-                        if cand_lang not in ("hindi", "punjabi") and not any(dm in combined_text for dm in desi_markers):
-                            continue
-                    if dur and (dur > 600 or dur < 60):
-                        continue
-                    candidates.append(entry)
-                if len(candidates) >= 5:
-                    break
-            except Exception as search_ex:
-                print(f"[Autoplay Search Error for '{q}'] {search_ex}")
+        def _is_valid_entry(entry: dict) -> bool:
+            t_name = entry.get("title") or ""
+            if not t_name or t_name in history:
+                return False
+            dur = entry.get("duration") or 0
+            # Strict music length: 90s to 8 mins (blocks Shorts, trailers, 1-hour mixes)
+            if dur and (dur < 90 or dur > 480):
+                return False
+            uploader = (entry.get("uploader") or entry.get("channel") or "").lower()
+            combined = f"{t_name.lower()} {uploader}"
+            if any(bt in combined for bt in banned_terms):
+                return False
+            cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
+            if len(clean_norm) >= 4 and clean_norm in cand_norm:
+                return False
+            return True
 
-        # Broad fallback queries if candidates are sparse, guaranteeing autoplay never stalls or runs silent
-        if len(candidates) < 3:
-            fallback_queries = []
-            if is_desi:
-                sample_artists = random.sample(KNOWN_BOLLYWOOD_ARTISTS[:25], min(2, len(KNOWN_BOLLYWOOD_ARTISTS)))
-                fallback_queries.extend([
-                    f"top songs by {sample_artists[0]} audio",
-                    "top bollywood hit songs audio",
-                    "popular hindi romantic songs audio",
-                    "latest hindi hit songs audio"
-                ])
-            else:
-                fallback_queries.extend([
-                    f"{core_title} clean audio",
-                    "top billboard clean pop hits official audio",
-                    "popular clean acoustic songs official audio"
-                ])
-            for fq in fallback_queries:
-                if len(candidates) >= 5:
-                    break
-                try:
-                    f_results = await asyncio.to_thread(self._flat_search_sync, f"ytsearch5:{fq}")
-                    for entry in f_results:
-                        t_name = entry.get("title", "")
-                        dur = entry.get("duration") or 0
-                        if not t_name or t_name in history:
-                            continue
-                        uploader = (entry.get("uploader") or entry.get("channel") or "").lower()
-                        combined_text = f"{t_name.lower()} {uploader}"
-                        if any(bt in combined_text for bt in banned_terms):
-                            continue
-                        cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
-                        if len(clean_norm) >= 4 and clean_norm in cand_norm:
-                            continue
-                        if is_desi:
-                            cand_lang = self._detect_language(t_name)
-                            desi_markers = ('bollywood', 'hindi', 'punjabi', 't-series', 'zeemusic', 'sony music', 'yrf', 'tips', 'saregama', 'speed records')
-                            if cand_lang not in ("hindi", "punjabi") and not any(dm in combined_text for dm in desi_markers):
-                                continue
-                        if dur and (dur > 600 or dur < 60):
-                            continue
+        # 1. Primary: YouTube Native Music Mix Radio (RD<video_id>)
+        yt_id_match = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', last_song.webpage_url or "")
+        if yt_id_match:
+            vid_id = yt_id_match.group(1)
+            mix_url = f"https://www.youtube.com/watch?v={vid_id}&list=RD{vid_id}"
+            try:
+                mix_entries = await asyncio.to_thread(self._flat_search_sync, mix_url, 15)
+                for entry in mix_entries:
+                    if entry.get("id") == vid_id:
+                        continue
+                    if _is_valid_entry(entry):
                         candidates.append(entry)
-                        if len(candidates) >= 5:
-                            break
-                except Exception as fb_ex:
-                    print(f"[Autoplay Fallback Search Error for '{fq}'] {fb_ex}")
+            except Exception as mix_err:
+                print(f"[Autoplay Mix Error] {mix_err}")
+
+        # 2. Fallback: Targeted Official Audio / Topic Search
+        if len(candidates) < 3:
+            is_desi = lang in ("hindi", "punjabi")
+            queries = []
+            if artist:
+                queries.append(f"{artist} official audio topic")
+            if is_desi:
+                queries.append(f"top {lang} {mood or 'hit'} songs official audio")
+            else:
+                queries.append(f"top {mood or 'pop'} songs official audio topic")
+
+            for q in queries:
+                try:
+                    results = await asyncio.to_thread(self._flat_search_sync, f"ytsearch10:{q}", 10)
+                    for entry in results:
+                        if _is_valid_entry(entry):
+                            candidates.append(entry)
+                    if len(candidates) >= 5:
+                        break
+                except Exception as search_ex:
+                    print(f"[Autoplay Search Error for '{q}'] {search_ex}")
 
         if not candidates:
             return None
 
-        # Try candidates until a working audio stream is successfully extracted
-        candidate_pool = list(candidates)
+        # 3. Extract & Verify: Must be Music category + Not age-restricted
+        candidate_pool = list(candidates[:8])
         random.shuffle(candidate_pool)
-        for chosen_entry in candidate_pool[:6]:
-            track_target = chosen_entry.get("url") or chosen_entry.get("id") or chosen_entry.get("title")
+        for chosen_entry in candidate_pool:
+            vid_id = chosen_entry.get("id")
+            track_target = f"https://www.youtube.com/watch?v={vid_id}" if vid_id else (chosen_entry.get("url") or chosen_entry.get("title"))
             try:
                 info = await self.extract_audio_info(track_target)
                 if not info or not info.get("url"):
                     continue
 
-                # Safety check extracted info for banned adult / non-music keywords and YouTube age-limit
+                if (info.get("age_limit") or 0) > 0:
+                    continue
+
+                categories = [c.lower() for c in (info.get("categories") or [])]
+                if categories and "music" not in categories:
+                    continue
+
                 info_title = (info.get("title") or "").lower()
                 info_uploader = (info.get("uploader") or info.get("channel") or "").lower()
-                info_combined = f"{info_title} {info_uploader}"
-                if any(bt in info_combined for bt in banned_terms):
-                    continue
-                if info.get("age_limit", 0) and info.get("age_limit") > 0:
+                if any(bt in f"{info_title} {info_uploader}" for bt in banned_terms):
                     continue
 
                 return Song(
                     title=info["title"],
                     url=info["url"],
-                    webpage_url=info.get("webpage_url", f"https://www.youtube.com/watch?v={chosen_entry.get('id')}"),
+                    webpage_url=info.get("webpage_url", track_target),
                     duration=info.get("duration", 0),
                     requester=self.bot.user,
                     thumbnail=info.get("thumbnail") or chosen_entry.get("thumbnail"),
                     is_autoplay=True
                 )
             except Exception as ex:
-                print(f"[Autoplay Audio Extract Note for '{track_target}'] {ex}")
+                print(f"[Autoplay Extract Note] {ex}")
                 continue
 
         return None
@@ -1526,9 +1398,9 @@ class Music(commands.Cog):
             print(f"[Music Autoplay] Pre-fetching next recommendation for guild {guild_id} based on '{ref_song.title}'...")
             channel = state.get("channel")
             next_song = await self._find_autoplay_track(ref_song, guild_id)
+            vc = guild.voice_client
             if next_song:
                 next_song.is_autoplay = True
-                vc = guild.voice_client
                 state["queue"].append(next_song)
                 print(f"[Music Autoplay] Queued next song: '{next_song.title}' (queue length: {len(state['queue'])})")
 
@@ -1549,17 +1421,15 @@ class Music(commands.Cog):
                     except Exception as ch_err:
                         print(f"[Music Autoplay] Notice send note: {ch_err}")
 
-                # If Friday is idle (nothing currently playing or paused), trigger play_next immediately!
                 if state.get("current") is None or not (vc.is_playing() or vc.is_paused()):
                     self.play_next(guild_id)
             else:
                 print(f"[Music Autoplay] No similar tracks found for '{ref_song.title}'.")
-                if channel and (state.get("current") is None and not vc.is_playing()):
+                if channel and (state.get("current") is None and vc and not vc.is_playing()):
                     try:
                         await channel.send("📻 **Autoplay:** Reached the end of matching recommendations for this mood.", delete_after=10)
                     except Exception:
                         pass
-                vc = guild.voice_client
                 if vc and vc.channel and (state.get("current") is None and not vc.is_playing()):
                     await self.clear_voice_channel_status(vc.channel)
         except Exception as e:
@@ -1568,7 +1438,6 @@ class Music(commands.Cog):
             state["_fetching_autoplay"] = False
 
     async def _handle_autoplay(self, guild_id: int, last_song: Song = None):
-        """Backwards compatibility alias for ensure_autoplay_queued."""
         if last_song:
             state = self.get_state(guild_id)
             state["last_played"] = last_song
@@ -1579,10 +1448,7 @@ class Music(commands.Cog):
         f_key = state.get("filter", "studio")
         return get_ffmpeg_options(f_key, seek_seconds=seek_seconds)
 
-
-
     def get_resp(self, guild_id: int, key: str, default: str, **kwargs) -> str:
-        """Fetch custom server response from database or fallback to default template."""
         gid_str = str(guild_id)
         msg = db.custom_responses.get(gid_str, {}).get(key, default)
         for k, v in kwargs.items():
@@ -1590,7 +1456,6 @@ class Music(commands.Cog):
         return msg
 
     async def fetch_suggestions(self, query: str):
-        """Ultra-fast, zero-load YouTube search query autocomplete via Google suggest API (<500ms)."""
         if not query or len(query.strip()) < 2:
             return []
         try:
@@ -1598,7 +1463,7 @@ class Music(commands.Cog):
             url = f"https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q={encoded}"
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
             loop = asyncio.get_event_loop()
-            
+
             def do_fetch():
                 with urllib.request.urlopen(req, timeout=1.8) as resp:
                     data = json.loads(resp.read().decode('utf-8'))
@@ -1616,15 +1481,13 @@ class Music(commands.Cog):
     async def extract_audio_info(self, query: str):
         """Extract high-fidelity stream URL and rich metadata with multi-source cloud fallback."""
         loop = asyncio.get_event_loop()
+
         def _extract():
             is_url = query.startswith("http://") or query.startswith("https://")
             cookie_path = get_cookie_file()
             format_chain = 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best'
-
-            # Authenticated cookies path for yt-dlp
             active_cookie_path = cookie_path if (cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0) else None
 
-            # Direct audio stream handling (.mp3, .m4a, .wav, .aac, .ogg, .flac, .opus, .m3u8, radio streams)
             DIRECT_AUDIO_EXTS = ('.mp3', '.m4a', '.wav', '.aac', '.ogg', '.flac', '.opus', '.m3u8')
             if is_url and any(query.lower().split('?')[0].endswith(ext) for ext in DIRECT_AUDIO_EXTS):
                 clean_name = query.split('/')[-1].split('?')[0]
@@ -1633,10 +1496,13 @@ class Music(commands.Cog):
                     'url': query,
                     'webpage_url': query,
                     'duration': 0,
-                    'thumbnail': None
+                    'thumbnail': None,
+                    'age_limit': 0,
+                    'uploader': '',
+                    'channel': '',
+                    'categories': ['Music']
                 }
 
-            # Dedicated helper for JioSaavn 320kbps CDN stream extraction
             def _extract_saavn(search_text):
                 try:
                     clean_query = re.sub(r'\b(song|songs|video|audio|mp3|official track|track)\b', '', search_text, flags=re.IGNORECASE).strip()
@@ -1675,7 +1541,6 @@ class Music(commands.Cog):
                                 continue
 
                             score = len(matched_words) * 20
-
                             penalty_terms = ['different version', 'sad version', 'slowed', 'reverb', 'remix', 'instrumental', 'cover', 'acoustic', 'mashup', 'slap', 'harddope', 'lexmorris']
                             for pt in penalty_terms:
                                 if pt in full_text and pt not in search_text.lower():
@@ -1691,7 +1556,6 @@ class Music(commands.Cog):
                                 best_score = score
                                 best_candidate = item
 
-                        # Require >= 55 score so random covers don't hijack English songs
                         if not best_candidate or best_score < 55:
                             print(f"[Music] Saavn skipped low-confidence match (score {best_score} < 55) for: '{search_text}'.")
                             return None
@@ -1718,13 +1582,16 @@ class Music(commands.Cog):
                             'url': stream_url,
                             'webpage_url': perma or stream_url,
                             'duration': dur,
-                            'thumbnail': img
+                            'thumbnail': img,
+                            'age_limit': 0,
+                            'uploader': artists,
+                            'channel': 'JioSaavn',
+                            'categories': ['Music']
                         }
                 except Exception as saavn_err:
                     print(f"[Music] Saavn extraction error: {saavn_err}")
                     return None
 
-            # Helper for SoundCloud extraction with browser headers
             def _extract_sc(search_text):
                 sc_opts = {
                     'format': 'bestaudio/best',
@@ -1755,15 +1622,9 @@ class Music(commands.Cog):
                         dur = entry.get('duration', 0)
                         dur_sec = int(dur / 1000) if dur > 10000 else int(dur)
 
-                        # Skip short 30-second SoundCloud Go+ previews
                         if 0 < dur_sec <= 35:
                             continue
-                        # Penalize 1-hour loops unless requested
-                        if dur_sec > 600 and "hour" not in q_lower:
-                            score_pen = 50
-                        else:
-                            score_pen = 0
-
+                        score_pen = 50 if (dur_sec > 600 and "hour" not in q_lower) else 0
                         score = sum(20 for w in q_words if w in t) - score_pen
                         if any(w in uploader for w in q_words):
                             score += 25
@@ -1783,11 +1644,14 @@ class Music(commands.Cog):
                             'url': best_entry.get('url'),
                             'webpage_url': best_entry.get('permalink_url', best_entry.get('webpage_url', best_entry.get('url'))),
                             'duration': dur_sec,
-                            'thumbnail': best_entry.get('thumbnail')
+                            'thumbnail': best_entry.get('thumbnail'),
+                            'age_limit': 0,
+                            'uploader': best_entry.get('uploader', ''),
+                            'channel': 'SoundCloud',
+                            'categories': ['Music']
                         }
                 return None
 
-            # Fast official YouTube search and single audio stream extraction
             def _extract_yt(target, use_cookies=False):
                 is_search = not (target.startswith("http://") or target.startswith("https://"))
                 base_opts = {
@@ -1814,11 +1678,14 @@ class Music(commands.Cog):
                                 'url': e.get('url'),
                                 'webpage_url': e.get('webpage_url', target),
                                 'duration': e.get('duration', 0),
-                                'thumbnail': e.get('thumbnail')
+                                'thumbnail': e.get('thumbnail'),
+                                'age_limit': e.get('age_limit', 0),
+                                'uploader': e.get('uploader', ''),
+                                'channel': e.get('channel', ''),
+                                'categories': e.get('categories', []),
                             }
                     return None
 
-                # Fast Path: Single-shot direct search + audio extraction (<3.5s)
                 clean_query = target.replace('ytsearch1:', '').replace('ytsearch5:', '').strip()
                 try:
                     with yt_dlp.YoutubeDL(base_opts) as ydl_direct:
@@ -1832,12 +1699,15 @@ class Music(commands.Cog):
                                     'url': e.get('url'),
                                     'webpage_url': e.get('webpage_url') or f"https://www.youtube.com/watch?v={e.get('id')}",
                                     'duration': e.get('duration', 0),
-                                    'thumbnail': e.get('thumbnail')
+                                    'thumbnail': e.get('thumbnail'),
+                                    'age_limit': e.get('age_limit', 0),
+                                    'uploader': e.get('uploader', ''),
+                                    'channel': e.get('channel', ''),
+                                    'categories': e.get('categories', []),
                                 }
                 except Exception as direct_err:
                     print(f"[Music] Direct ytsearch1 note for '{clean_query}': {direct_err}")
 
-                # Fallback: Flat search with relevance scoring if single-shot returned no direct stream
                 flat_opts = {
                     'extract_flat': 'in_playlist',
                     'quiet': True,
@@ -1855,7 +1725,6 @@ class Music(commands.Cog):
                     if not entries:
                         return None
 
-                    # Relevance & Official release scoring
                     q_lower = clean_query.lower()
                     q_words = [w for w in re.findall(r'\w+', q_lower) if w not in ('song', 'video', 'audio', 'mp3', 'lyrics')]
                     if not q_words:
@@ -1886,7 +1755,6 @@ class Music(commands.Cog):
                 if not best_id:
                     return None
 
-                # Extract audio stream for winning match
                 with yt_dlp.YoutubeDL(base_opts) as ydl_stream:
                     info = ydl_stream.extract_info(f"https://www.youtube.com/watch?v={best_id}", download=False)
                     if info and info.get('url'):
@@ -1895,7 +1763,11 @@ class Music(commands.Cog):
                             'url': info.get('url'),
                             'webpage_url': info.get('webpage_url', f"https://www.youtube.com/watch?v={best_id}"),
                             'duration': info.get('duration', 0),
-                            'thumbnail': info.get('thumbnail') or best_entry.get('thumbnail')
+                            'thumbnail': info.get('thumbnail') or best_entry.get('thumbnail'),
+                            'age_limit': info.get('age_limit', 0),
+                            'uploader': info.get('uploader', ''),
+                            'channel': info.get('channel', ''),
+                            'categories': info.get('categories', []),
                         }
                 return None
 
@@ -1921,7 +1793,6 @@ class Music(commands.Cog):
 
             search_target = query if (is_url and not is_spotify) else search_title
 
-            # Tier 1a: Authenticated YouTube extraction (with active cookies + mobile clients)
             if active_cookie_path:
                 try:
                     res_cookie = _extract_yt(search_target, use_cookies=True)
@@ -1931,7 +1802,6 @@ class Music(commands.Cog):
                 except Exception as e_cook:
                     print(f"[Music] YouTube cookie extraction note: {e_cook}")
 
-            # Tier 1b: Primary YouTube Extraction (Mobile clients android/ios)
             try:
                 yt_res = _extract_yt(search_target, use_cookies=False)
                 if yt_res:
@@ -1940,7 +1810,6 @@ class Music(commands.Cog):
             except Exception as e1:
                 print(f"[Music] YouTube extraction note: {e1}")
 
-            # Detect if song is Indian/Bollywood vs Western/Global/Spotify
             indian_keywords = {
                 'arijit', 'shreya', 'kumar', 'singh', 'sonu', 'atif', 'badshah', 'neha', 'kakkar',
                 'jubin', 'nautiyal', 'diljit', 'dosanjh', 'sidhu', 'moosewala', 'ap dhillon',
@@ -1950,9 +1819,6 @@ class Music(commands.Cog):
             q_lower = search_title.lower()
             is_indian = any(k in q_lower for k in indian_keywords)
 
-            # Smart Fallback Order:
-            # For Western, Pop, and Spotify links: SoundCloud is prioritized because it contains original studio audio without datacenter IP blocks!
-            # For Indian / Bollywood tracks: JioSaavn is prioritized for 320kbps Akamai CDN streams.
             if is_spotify or not is_indian:
                 try:
                     sc_res = _extract_sc(search_title)
@@ -1985,7 +1851,6 @@ class Music(commands.Cog):
         return await loop.run_in_executor(None, _extract)
 
     def create_now_playing_embed(self, song: Song, volume: float = 1.0, guild_id: int = None) -> discord.Embed:
-        """Constructs a sleek, modern Now Playing card inspired by premier music bots."""
         mins, secs = divmod(song.duration or 0, 60)
         embed = discord.Embed(
             title="◈  NOW PLAYING",
@@ -2009,13 +1874,16 @@ class Music(commands.Cog):
             f"• 🎚 **Engine:** `48kHz Studio Master (YouTube High-Fidelity Audio)`"
         )
         if song.thumbnail and isinstance(song.thumbnail, str) and song.thumbnail.startswith(("http://", "https://")):
-            # Autoplay recommendations omit third-party video thumbnail to avoid inappropriate YouTube images
             if not getattr(song, "is_autoplay", False):
                 embed.set_thumbnail(url=song.thumbnail)
         embed.set_footer(text="Friday Studio Audio • 48kHz Stereo Master Engine • Pure High-Fidelity")
         return embed
 
     def play_next(self, guild_id: int):
+        """Thread-safe entry point called from FFmpeg's after_play thread."""
+        asyncio.run_coroutine_threadsafe(self._play_next_async(guild_id), self.bot.loop)
+
+    async def _play_next_async(self, guild_id: int):
         state = self.get_state(guild_id)
         guild = self.bot.get_guild(guild_id)
         if not guild or not guild.voice_client or not guild.voice_client.is_connected():
@@ -2025,7 +1893,6 @@ class Music(commands.Cog):
 
         vc = guild.voice_client
 
-        # Guard: If bot is stopping playback, do not start another track
         if state.get("_stopping"):
             state["_stopping"] = False
             state["current"] = None
@@ -2043,13 +1910,13 @@ class Music(commands.Cog):
             state["last_played"] = last_song
             state["current"] = None
             state["transformer"] = None
-            asyncio.run_coroutine_threadsafe(self.ensure_autoplay_queued(guild_id), self.bot.loop)
+            asyncio.create_task(self.ensure_autoplay_queued(guild_id))
             return
         else:
             state["current"] = None
             state["transformer"] = None
             if vc and vc.channel:
-                asyncio.run_coroutine_threadsafe(self.clear_voice_channel_status(vc.channel), self.bot.loop)
+                await self.clear_voice_channel_status(vc.channel)
             return
 
         def after_play(err):
@@ -2069,7 +1936,7 @@ class Music(commands.Cog):
 
             if vc.ws:
                 try:
-                    asyncio.run_coroutine_threadsafe(vc.ws.speak(discord.SpeakingState.voice), self.bot.loop)
+                    await vc.ws.speak(discord.SpeakingState.voice)
                 except Exception:
                     pass
 
@@ -2081,73 +1948,57 @@ class Music(commands.Cog):
 
             state["start_time"] = time.time()
             state["last_played"] = next_song
-            if "autoplay_history" not in state:
-                state["autoplay_history"] = []
-            if next_song.title not in state["autoplay_history"]:
-                state["autoplay_history"].append(next_song.title)
-                if len(state["autoplay_history"]) > 50:
-                    state["autoplay_history"].pop(0)
+            history = state.setdefault("autoplay_history", [])
+            if next_song.title not in history:
+                history.append(next_song.title)
+                if len(history) > 50:
+                    history.pop(0)
 
-            # Update voice channel status so users outside can see the playing track!
             if vc and vc.channel:
                 status_title = f"✦ {next_song.title}"[:48]
-                asyncio.run_coroutine_threadsafe(self.set_voice_channel_status(vc.channel, status_title), self.bot.loop)
+                asyncio.create_task(self.set_voice_channel_status(vc.channel, status_title))
 
             vc.play(source, after=after_play)
             if state.get("autoplay") and not state.get("queue"):
-                asyncio.run_coroutine_threadsafe(self.ensure_autoplay_queued(guild_id), self.bot.loop)
+                asyncio.create_task(self.ensure_autoplay_queued(guild_id))
 
             if state["channel"]:
                 embed = self.create_now_playing_embed(next_song, vol, guild_id)
                 view = MusicControlView(self, guild_id)
 
-                async def _send_and_track():
+                old_msg = state.get("np_message")
+                if old_msg:
                     try:
-                        old_msg = state.get("np_message")
-                        # Send fresh now playing card and clean up previous message
-                        if old_msg:
-                            try:
-                                await old_msg.delete()
-                            except Exception:
-                                pass
+                        await old_msg.delete()
+                    except Exception:
+                        pass
 
+                try:
+                    msg = await state["channel"].send(embed=embed, view=view)
+                    state["np_message"] = msg
+                except Exception as e:
+                    print(f"[Music] Error sending Now Playing card: {e}")
+                    try:
+                        embed.set_thumbnail(url=None)
                         msg = await state["channel"].send(embed=embed, view=view)
                         state["np_message"] = msg
-                        self.bot.add_view(view, message_id=msg.id)
-                    except Exception as e:
-                        print(f"[Music] Error sending Now Playing card: {e}")
-                        try:
-                            embed.set_thumbnail(url=None)
-                            msg = await state["channel"].send(embed=embed, view=view)
-                            state["np_message"] = msg
-                            self.bot.add_view(view, message_id=msg.id)
-                        except Exception as e2:
-                            print(f"[Music] Fallback Now Playing send failed: {e2}")
-
-                asyncio.run_coroutine_threadsafe(_send_and_track(), self.bot.loop)
+                    except Exception as e2:
+                        print(f"[Music] Fallback Now Playing send failed: {e2}")
         except Exception as e:
             print(f"[Music] Playback error on '{next_song.title}': {e}. Attempting stream refresh...")
             if not getattr(next_song, "_refreshed", False):
                 next_song._refreshed = True
-                async def _refresh_and_retry():
-                    try:
-                        fresh_info = await self.extract_audio_info(next_song.webpage_url or next_song.title)
-                        next_song.url = fresh_info['url']
-                        state["queue"].insert(0, next_song)
-                    except Exception as ref_err:
-                        print(f"[Music] Stream refresh failed for '{next_song.title}': {ref_err}")
-                    self.play_next(guild_id)
-                asyncio.run_coroutine_threadsafe(_refresh_and_retry(), self.bot.loop)
-                return
+                try:
+                    fresh_info = await self.extract_audio_info(next_song.webpage_url or next_song.title)
+                    next_song.url = fresh_info['url']
+                    state["queue"].insert(0, next_song)
+                except Exception as ref_err:
+                    print(f"[Music] Stream refresh failed for '{next_song.title}': {ref_err}")
             self.play_next(guild_id)
 
     # ───────────────────── Slash Commands ─────────────────────
 
     async def ensure_voice_connection(self, interaction: discord.Interaction) -> tuple:
-        """
-        Validates voice permissions, ensures clean connection without self-deafening,
-        and verifies audio transmit readiness. Returns (vc, warning_or_error_msg).
-        """
         user_voice = interaction.user.voice
         if not user_voice or not user_voice.channel:
             msg = self.get_resp(interaction.guild_id, "music_not_in_vc", "❌ You must be connected to a voice channel first!")
@@ -2166,7 +2017,6 @@ class Music(commands.Cog):
 
         vc = interaction.guild.voice_client
 
-        # Clean up broken/stale voice clients if disconnected
         if vc and not vc.is_connected():
             try:
                 await vc.disconnect(force=True)
@@ -2187,7 +2037,6 @@ class Music(commands.Cog):
             except Exception as e:
                 return None, f"❌ Failed to move to {channel.mention}: {e}"
 
-        # Check server-mute and stage suppression
         if bot_member.voice:
             if bot_member.voice.mute:
                 mute_warn = "⚠️ **Server Mute**: Friday is currently **Server-Muted** in this server! An administrator must right-click Friday and uncheck 'Server Mute' for audio to be heard."
@@ -2196,9 +2045,6 @@ class Music(commands.Cog):
                 suppress_warn = "⚠️ **Stage Suppression**: Friday is in a Stage channel as an audience listener! Please invite Friday to Speak."
                 warning = f"{warning}\n{suppress_warn}" if warning else suppress_warn
 
-        # Note: Do NOT perform channel.edit(bitrate=...) here.
-        # Modifying channel settings during/right after connecting causes Discord
-        # to reset the Voice Gateway connection with code 1006 (Abnormal Closure).
         return vc, warning
 
     @app_commands.command(name="join", description="Make Friday join your current voice channel.")
@@ -2305,11 +2151,9 @@ class Music(commands.Cog):
         state = self.get_state(interaction.guild.id)
         state["channel"] = interaction.channel
         state["_stopping"] = False
-        # If Friday was idle (not playing and queue empty), start fresh without lingering loop mode!
         if not vc.is_playing() and not vc.is_paused() and not state.get("queue"):
             state["loop"] = False
 
-        # Pre-resolve Spotify Links (Tracks, Playlists, Albums, Shortlinks)
         spotify_batch = None
         if any(s in music.lower() for s in ("spotify.com", "spotify.link", "spoti.fi")):
             sp_res = await asyncio.to_thread(resolve_spotify_url, music)
@@ -2361,6 +2205,7 @@ class Music(commands.Cog):
             await interaction.followup.send(embed=embed, view=view)
         else:
             state["current"] = song
+
             def after_play(err):
                 if state.get("_switching_filter") or state.get("_stopping"):
                     state["_stopping"] = False
@@ -2415,12 +2260,10 @@ class Music(commands.Cog):
                 try:
                     msg = await interaction.followup.send(embed=embed, view=view)
                     state["np_message"] = msg
-                    self.bot.add_view(view, message_id=msg.id)
                 except Exception:
                     embed.set_thumbnail(url=None)
                     msg = await interaction.followup.send(embed=embed, view=view)
                     state["np_message"] = msg
-                    self.bot.add_view(view, message_id=msg.id)
             except Exception as e:
                 await reply_box(interaction, f"Error initializing audio stream: {e}", title="STREAM ERROR", status="danger")
                 self.play_next(interaction.guild.id)
@@ -2429,7 +2272,6 @@ class Music(commands.Cog):
             asyncio.create_task(self._enqueue_spotify_batch(interaction.guild.id, spotify_batch, interaction.user))
 
     async def _enqueue_spotify_batch(self, guild_id: int, tracks: list, requester: discord.Member):
-        """Asynchronously resolves and queues remaining tracks from a Spotify playlist or album."""
         state = self.get_state(guild_id)
         for t in tracks[:50]:
             if state.get("_stopping"):
@@ -2630,7 +2472,6 @@ class Music(commands.Cog):
             current = state["current"]
             vol = state.get("volume", 1.0)
 
-            # Calculate elapsed time for seamless real-time seek
             start_t = state.get("start_time", 0)
             elapsed = int(time.time() - start_t) if start_t else 0
             if elapsed < 0:
@@ -2661,7 +2502,6 @@ class Music(commands.Cog):
             state["start_time"] = time.time() - ss_pos
             vc.play(source, after=after_play)
 
-            # Live edit Now Playing embed if available
             np_msg = state.get("np_message")
             if np_msg:
                 try:
