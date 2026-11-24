@@ -5,10 +5,9 @@ import time
 from discord.ext import commands
 from discord import app_commands
 import datetime
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Union, Tuple
 from database import db
 from response_utils import make_box_embed, reply_box
-from typing import Tuple
 
 
 def parse_timeout_duration(raw_dur: str) -> Tuple[Optional[int], Optional[str], Optional[str]]:
@@ -151,7 +150,6 @@ class Moderation(commands.Cog):
         gid = str(interaction.guild.id)
         target_user = None
 
-        # 1. Direct ID check (if user is numeric string or from autocomplete)
         if user.isdigit():
             user_id = int(user)
             try:
@@ -160,7 +158,6 @@ class Moderation(commands.Cog):
             except Exception:
                 target_user = discord.Object(id=user_id)
 
-        # 2. Search banned list by username or global name or tag
         if not target_user or isinstance(target_user, discord.Object):
             search_str = user.lower().strip()
             try:
@@ -187,7 +184,6 @@ class Moderation(commands.Cog):
             formatted = msg_fmt.replace("{member}", display_name)
             await reply_box(interaction, formatted, title="UNBAN EXECUTED", status="success")
 
-            # Log to audit-banned channel if configured
             log_id = db.server_logs.get(gid, {}).get("audit-banned")
             if log_id:
                 log_channel = self.bot.get_channel(log_id)
@@ -240,9 +236,9 @@ class Moderation(commands.Cog):
                 resp_tpl = db.custom_responses.get(gid, {}).get("timeout_success", "{member} timed out for **{minutes}** minutes.\nReason: {reason}")
                 formatted = resp_tpl.replace("{member}", member.mention).replace("{minutes}", str(minutes)).replace("{reason}", reason)
                 await reply_box(interaction, formatted, title="TIMEOUT APPLIED", status="warning")
-                
+
                 log_id = db.server_logs.get(gid, {}).get("audit-timeouts")
-                if log_id: 
+                if log_id:
                     log_channel = self.bot.get_channel(log_id)
                     if log_channel:
                         audit_embed = make_box_embed(
@@ -350,10 +346,8 @@ class Moderation(commands.Cog):
             return False, "Friday lacks Manage Channels permission to modify channel overwrites.", []
 
         affected_roles = []
-        # In Discord, role overwrites override @everyone. Check existing overwrites to deny non-staff member roles
         for target_obj, ow in list(target.overwrites.items()):
             if isinstance(target_obj, discord.Role) and target_obj != default_role:
-                # Do NOT lock staff roles with administrative/mod powers
                 if not (target_obj.permissions.administrator or target_obj.permissions.manage_guild or target_obj.permissions.manage_channels):
                     if ow.send_messages is True:
                         ow.send_messages = False
@@ -392,8 +386,6 @@ class Moderation(commands.Cog):
             except discord.Forbidden:
                 return False, "Friday lacks permission to unlock this thread.", 0
 
-        # 1. Pop locked_channels record and register in _unlocking_channels BEFORE modifying permissions
-        # This completely prevents on_guild_channel_update race condition where Discord events re-lock the channel
         stored_info = db.data.setdefault("locked_channels", {}).pop(str(target.id), None)
         db.save_data()
 
@@ -413,7 +405,6 @@ class Moderation(commands.Cog):
             try:
                 await target.set_permissions(default_role, overwrite=current_ow, reason=f"Channel unlocked by {user}: {reason}")
             except discord.Forbidden:
-                # If failed due to lack of bot permissions, restore database record
                 if stored_info:
                     db.data.setdefault("locked_channels", {})[str(target.id)] = stored_info
                     db.save_data()
@@ -468,7 +459,6 @@ class Moderation(commands.Cog):
 
         channel_type_name = "Voice Chat" if isinstance(target, discord.VoiceChannel) else ("Stage Chat" if isinstance(target, discord.StageChannel) else ("Thread" if isinstance(target, discord.Thread) else "Channel"))
 
-        # Check if already locked
         if isinstance(target, discord.Thread):
             if target.locked:
                 await reply_box(interaction, f"This thread ({target.mention}) is already locked.", title="ALREADY LOCKED", status="info", ephemeral=True)
@@ -480,6 +470,9 @@ class Moderation(commands.Cog):
                 await reply_box(interaction, f"This {channel_type_name.lower()} ({target.mention}) is already locked.", title="ALREADY LOCKED", status="info", ephemeral=True)
                 return
 
+        is_same_channel = (target.id == interaction.channel_id)
+        await interaction.response.defer(ephemeral=not is_same_channel)
+
         success, err_msg, affected = await self.execute_channel_lock(target, interaction.user, reason=reason)
         if not success:
             await reply_box(interaction, err_msg, title="LOCK FAILED", status="error", ephemeral=True)
@@ -490,8 +483,8 @@ class Moderation(commands.Cog):
             description=f"🔒 This {channel_type_name.lower()} has been locked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Regular members cannot send messages until unlocked by staff.*",
             status="error"
         )
-        if target.id == interaction.channel_id:
-            await interaction.response.send_message(embed=lock_embed)
+        if is_same_channel:
+            await interaction.followup.send(embed=lock_embed)
         else:
             await target.send(embed=lock_embed)
             await reply_box(interaction, f"Successfully locked {target.mention}.", title=f"{channel_type_name.upper()} LOCKED", status="error", ephemeral=True)
@@ -522,7 +515,6 @@ class Moderation(commands.Cog):
 
         channel_type_name = "Voice Chat" if isinstance(target, discord.VoiceChannel) else ("Stage Chat" if isinstance(target, discord.StageChannel) else ("Thread" if isinstance(target, discord.Thread) else "Channel"))
 
-        # Check if channel is already unlocked
         if isinstance(target, discord.Thread):
             if not target.locked:
                 await reply_box(interaction, f"This thread ({target.mention}) is already unlocked.", title="ALREADY UNLOCKED", status="info", ephemeral=True)
@@ -534,6 +526,9 @@ class Moderation(commands.Cog):
                 await reply_box(interaction, f"This {channel_type_name.lower()} ({target.mention}) is already unlocked.", title="ALREADY UNLOCKED", status="info", ephemeral=True)
                 return
 
+        is_same_channel = (target.id == interaction.channel_id)
+        await interaction.response.defer(ephemeral=not is_same_channel)
+
         success, err_msg, restored = await self.execute_channel_unlock(target, interaction.user, reason=reason)
         if not success:
             await reply_box(interaction, err_msg, title="UNLOCK FAILED", status="error", ephemeral=True)
@@ -544,8 +539,8 @@ class Moderation(commands.Cog):
             description=f"🔓 This {channel_type_name.lower()} has been unlocked by {interaction.user.mention}.\n\n**Reason:** {reason}\n*Members may now send messages and participate in chat.*",
             status="success"
         )
-        if target.id == interaction.channel_id:
-            await interaction.response.send_message(embed=unlock_embed)
+        if is_same_channel:
+            await interaction.followup.send(embed=unlock_embed)
         else:
             await target.send(embed=unlock_embed)
             await reply_box(interaction, f"Successfully unlocked {target.mention}.", title=f"{channel_type_name.upper()} UNLOCKED", status="success", ephemeral=True)
@@ -655,7 +650,6 @@ class Moderation(commands.Cog):
         gid = str(interaction.guild.id)
         uid = str(member.id)
 
-        # 1. Validation checks
         if member.bot:
             await reply_box(interaction, "Bot accounts cannot be warned.", title="INVALID TARGET", status="warning", ephemeral=True)
             return
@@ -677,7 +671,6 @@ class Moderation(commands.Cog):
             await reply_box(interaction, "Friday's role hierarchy is not high enough to moderate this user.", title="PERMISSION FAULT", status="danger", ephemeral=True)
             return
 
-        # 2. Record warning in database
         if not hasattr(db, "warnings") or not isinstance(db.warnings, dict):
             db.warnings = {}
         if gid not in db.warnings:
@@ -685,7 +678,8 @@ class Moderation(commands.Cog):
         if uid not in db.warnings[gid]:
             db.warnings[gid][uid] = []
 
-        warn_id = len(db.warnings[gid][uid]) + 1
+        # Monotonic warning ID so deleting earlier warnings never creates duplicate IDs
+        warn_id = max((w.get("warn_id", 0) for w in db.warnings[gid][uid]), default=0) + 1
         now_ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         warn_entry = {
             "warn_id": warn_id,
@@ -699,7 +693,6 @@ class Moderation(commands.Cog):
         db.save_data()
         total_warns = len(db.warnings[gid][uid])
 
-        # 3. Direct Message Delivery
         dm_delivered = False
         if delivery in ("both", "dm"):
             dm_embed = make_box_embed(
@@ -719,7 +712,6 @@ class Moderation(commands.Cog):
             except (discord.Forbidden, discord.HTTPException):
                 dm_delivered = False
 
-        # 4. Response Dispatch
         if delivery == "dm":
             status_text = "Delivered to member's DM ✓" if dm_delivered else "DM delivery failed (User's DMs are closed/blocked) ✕"
             desc = (
@@ -743,7 +735,6 @@ class Moderation(commands.Cog):
             )
             await reply_box(interaction, desc, title="WARNING ISSUED", status="warning", ephemeral=False)
 
-        # 5. Audit Logging
         log_id = db.server_logs.get(gid, {}).get("audit-warns") or db.server_logs.get(gid, {}).get("audit-abuse")
         if log_id:
             log_channel = self.bot.get_channel(log_id)
@@ -755,7 +746,7 @@ class Moderation(commands.Cog):
                         f"• Staff: {interaction.user.mention}\n"
                         f"• Reason: {reason}\n"
                         f"• Mode: `{delivery.upper()}`\n"
-                        f"• Total Warnings:** `{total_warns}`"
+                        f"• Total Warnings: `{total_warns}`"
                     ),
                     status="warning"
                 )
@@ -765,6 +756,8 @@ class Moderation(commands.Cog):
     @app_commands.describe(member="The member whose warnings you want to review")
     @app_commands.default_permissions(moderate_members=True)
     async def warnings(self, interaction: discord.Interaction, member: discord.Member):
+        if not await self.require_mod_permission(interaction, "moderate_members", "Moderate Members"):
+            return
         gid = str(interaction.guild.id)
         uid = str(member.id)
         warn_list = db.warnings.get(gid, {}).get(uid, [])
@@ -852,7 +845,6 @@ class Moderation(commands.Cog):
         if not text:
             return results
 
-        # 1. Regex find all user mentions <@!?(\d+)>
         for match in re.finditer(r'<@!?(\d+)>', text):
             uid = int(match.group(1))
             if uid not in seen_ids:
@@ -861,7 +853,6 @@ class Moderation(commands.Cog):
                     results.append(m)
                     seen_ids.add(uid)
 
-        # 2. Split remainder by whitespace and commas
         cleaned_text = re.sub(r'<@!?\d+>', ' ', text)
         tokens = [t.strip() for t in re.split(r'[,;\s]+', cleaned_text) if t.strip()]
 
@@ -956,11 +947,7 @@ class Moderation(commands.Cog):
 
         await interaction.response.defer()
 
-        moved = []
-        not_in_vc = []
-        already_there = []
-        failed = []
-
+        moved, not_in_vc, already_there, failed = [], [], [], []
         for m in members_to_process:
             if not m.voice or not m.voice.channel:
                 not_in_vc.append(m)
@@ -975,24 +962,16 @@ class Moderation(commands.Cog):
 
         lines = []
         if moved:
-            m_list = ", ".join(m.mention for m in moved)
-            lines.append(f"✓ **Transferred ({len(moved)}):** {m_list} ➔ {target_channel.mention}")
+            lines.append(f"✓ **Transferred ({len(moved)}):** " + ", ".join(m.mention for m in moved) + f" ➔ {target_channel.mention}")
         if already_there:
-            a_list = ", ".join(m.mention for m in already_there)
-            lines.append(f"• **Already in {target_channel.mention} ({len(already_there)}):** {a_list}")
+            lines.append(f"• **Already in {target_channel.mention} ({len(already_there)}):** " + ", ".join(m.mention for m in already_there))
         if not_in_vc:
-            n_list = ", ".join(m.mention for m in not_in_vc)
-            lines.append(f"▲ **Not in any voice channel ({len(not_in_vc)}):** {n_list}")
+            lines.append(f"▲ **Not in any voice channel ({len(not_in_vc)}):** " + ", ".join(m.mention for m in not_in_vc))
         if failed:
-            f_list = ", ".join(f"{m.mention} ({err})" for m, err in failed)
-            lines.append(f"✕ **Failed to move ({len(failed)}):** {f_list}")
+            lines.append(f"✕ **Failed to move ({len(failed)}):** " + ", ".join(f"{m.mention} ({err})" for m, err in failed))
 
         status = "success" if moved else ("warning" if already_there or not_in_vc else "danger")
-        embed = make_box_embed(
-            title="VOICE MEMBERS SHIFT",
-            description="\n\n".join(lines) or "No members were moved.",
-            status=status
-        )
+        embed = make_box_embed(title="VOICE MEMBERS SHIFT", description="\n\n".join(lines) or "No members were moved.", status=status)
         await interaction.followup.send(embed=embed)
 
     @app_commands.command(name="moveall", description="Move all members from one voice channel to another.")
@@ -1058,8 +1037,7 @@ class Moderation(commands.Cog):
 
         await interaction.response.defer()
 
-        moved = []
-        failed = []
+        moved, failed = [], []
         for m in members_to_move:
             try:
                 await m.move_to(target_channel, reason=f"Mass voice shift commanded by {interaction.user.name} ({interaction.user.id})")
@@ -1073,21 +1051,11 @@ class Moderation(commands.Cog):
         if failed:
             desc += f"\n\n✕ **Failed ({len(failed)}):** " + ", ".join(f"{m.mention} ({err})" for m, err in failed)
 
-        embed = make_box_embed(
-            title="MASS VOICE MIGRATION",
-            description=desc,
-            status="success" if moved else "danger"
-        )
+        embed = make_box_embed(title="MASS VOICE MIGRATION", description=desc, status="success" if moved else "danger")
         await interaction.followup.send(embed=embed)
 
     @commands.command(name="move")
     async def prefix_move(self, ctx: commands.Context, *args):
-        """
-        Move members to a voice channel via prefix command.
-        Usage:
-          !move <#target_channel> <@member1 @member2...>
-          !move all <#target_channel> [#source_channel]
-        """
         if not self._check_voice_perms(ctx.author, ctx.guild):
             embed = make_box_embed(
                 title="ACCESS DENIED",
@@ -1165,11 +1133,19 @@ class Moderation(commands.Cog):
 
     @commands.command(name="moveall")
     async def prefix_moveall(self, ctx: commands.Context, target: str = None, source: str = None):
-        """Move all members from one voice channel to another: !moveall <#dest> [#source]"""
         if not self._check_voice_perms(ctx.author, ctx.guild):
             embed = make_box_embed(
                 title="ACCESS DENIED",
                 description="Only Server Owners, Administrators, and staff with **Manage Channels** or **Move Members** permissions can shift voice members.",
+                status="danger"
+            )
+            await ctx.reply(embed=embed, mention_author=False)
+            return
+
+        if not ctx.guild.me.guild_permissions.move_members:
+            embed = make_box_embed(
+                title="PERMISSION FAULT",
+                description="Friday lacks the **Move Members** permission in this server to transfer members between voice channels.",
                 status="danger"
             )
             await ctx.reply(embed=embed, mention_author=False)
@@ -1200,11 +1176,7 @@ class Moderation(commands.Cog):
         await self._run_mass_move(ctx, target_ch, source_ch)
 
     async def _run_members_move(self, ctx: commands.Context, target_channel: discord.VoiceChannel, members: List[discord.Member]):
-        moved = []
-        not_in_vc = []
-        already_there = []
-        failed = []
-
+        moved, not_in_vc, already_there, failed = [], [], [], []
         for m in members:
             if not m.voice or not m.voice.channel:
                 not_in_vc.append(m)
@@ -1219,24 +1191,16 @@ class Moderation(commands.Cog):
 
         lines = []
         if moved:
-            m_list = ", ".join(m.mention for m in moved)
-            lines.append(f"✓ **Transferred ({len(moved)}):** {m_list} ➔ {target_channel.mention}")
+            lines.append(f"✓ **Transferred ({len(moved)}):** " + ", ".join(m.mention for m in moved) + f" ➔ {target_channel.mention}")
         if already_there:
-            a_list = ", ".join(m.mention for m in already_there)
-            lines.append(f"• **Already in {target_channel.mention} ({len(already_there)}):** {a_list}")
+            lines.append(f"• **Already in {target_channel.mention} ({len(already_there)}):** " + ", ".join(m.mention for m in already_there))
         if not_in_vc:
-            n_list = ", ".join(m.mention for m in not_in_vc)
-            lines.append(f"▲ **Not in any voice channel ({len(not_in_vc)}):** {n_list}")
+            lines.append(f"▲ **Not in any voice channel ({len(not_in_vc)}):** " + ", ".join(m.mention for m in not_in_vc))
         if failed:
-            f_list = ", ".join(f"{m.mention} ({err})" for m, err in failed)
-            lines.append(f"✕ **Failed to move ({len(failed)}):** {f_list}")
+            lines.append(f"✕ **Failed to move ({len(failed)}):** " + ", ".join(f"{m.mention} ({err})" for m, err in failed))
 
         status = "success" if moved else ("warning" if already_there or not_in_vc else "danger")
-        embed = make_box_embed(
-            title="VOICE MEMBERS SHIFT",
-            description="\n\n".join(lines) or "No members were moved.",
-            status=status
-        )
+        embed = make_box_embed(title="VOICE MEMBERS SHIFT", description="\n\n".join(lines) or "No members were moved.", status=status)
         await ctx.reply(embed=embed, mention_author=False)
 
     async def _run_mass_move(self, ctx: commands.Context, target_channel: discord.VoiceChannel, source_channel: discord.VoiceChannel):
@@ -1259,8 +1223,7 @@ class Moderation(commands.Cog):
             await ctx.reply(embed=embed, mention_author=False)
             return
 
-        moved = []
-        failed = []
+        moved, failed = [], []
         for m in members_to_move:
             try:
                 await m.move_to(target_channel, reason=f"Mass voice shift commanded by {ctx.author.name} ({ctx.author.id})")
@@ -1274,11 +1237,7 @@ class Moderation(commands.Cog):
         if failed:
             desc += f"\n\n✕ **Failed ({len(failed)}):** " + ", ".join(f"{m.mention} ({err})" for m, err in failed)
 
-        embed = make_box_embed(
-            title="MASS VOICE MIGRATION",
-            description=desc,
-            status="success" if moved else "danger"
-        )
+        embed = make_box_embed(title="MASS VOICE MIGRATION", description=desc, status="success" if moved else "danger")
         await ctx.reply(embed=embed, mention_author=False)
 
     # ─────────────────────────────────────────────────────────────
@@ -1296,62 +1255,41 @@ class Moderation(commands.Cog):
     async def role_add(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
         if not await self.require_mod_permission(interaction, "manage_roles", "Manage Roles"):
             return
-        # 1. Invalid / default / managed role checks
         if role.is_default():
             await reply_box(interaction, "Cannot assign the default @everyone role.", title="INVALID ROLE", status="error", ephemeral=True)
             return
         if role.managed:
             await reply_box(interaction, f"The role {role.mention} is managed by an integration or bot and cannot be assigned manually.", title="INTEGRATION ROLE", status="error", ephemeral=True)
             return
-
-        # 2. Already has role check
         if role in member.roles:
             await reply_box(interaction, f"{member.mention} already has the {role.mention} role.", title="ALREADY ASSIGNED", status="error", ephemeral=True)
             return
-
-        # 3. Hierarchy check: executor vs target role
         if interaction.user.id != interaction.guild.owner_id and role >= interaction.user.top_role:
             await reply_box(
                 interaction,
                 f"You cannot assign {role.mention} because it is higher than or equal to your highest role ({interaction.user.top_role.mention}).",
-                title="HIERARCHY ERROR",
-                status="error",
-                ephemeral=True
+                title="HIERARCHY ERROR", status="error", ephemeral=True
             )
             return
-
-        # 4. Hierarchy check: executor vs target member
         if interaction.user.id != interaction.guild.owner_id and member.top_role >= interaction.user.top_role and member.id != interaction.user.id:
             await reply_box(
                 interaction,
                 f"You cannot modify roles for {member.mention} because their highest role ({member.top_role.mention}) is equal to or higher than yours.",
-                title="HIERARCHY ERROR",
-                status="error",
-                ephemeral=True
+                title="HIERARCHY ERROR", status="error", ephemeral=True
             )
             return
-
-        # 5. Hierarchy check: bot vs target role
         if role >= interaction.guild.me.top_role:
             await reply_box(
                 interaction,
                 f"Friday cannot assign {role.mention} because it is higher than or equal to Friday's highest role ({interaction.guild.me.top_role.mention}).\n"
                 "Please drag Friday's role higher in Server Settings > Roles.",
-                title="BOT HIERARCHY LIMIT",
-                status="error",
-                ephemeral=True
+                title="BOT HIERARCHY LIMIT", status="error", ephemeral=True
             )
             return
 
-        # 6. Assign role
         try:
             await member.add_roles(role, reason=f"Role added by {interaction.user} ({interaction.user.id})")
-            await reply_box(
-                interaction,
-                f"Successfully added {role.mention} to {member.mention}.",
-                title="ROLE ASSIGNED",
-                status="success"
-            )
+            await reply_box(interaction, f"Successfully added {role.mention} to {member.mention}.", title="ROLE ASSIGNED", status="success")
         except discord.Forbidden:
             await reply_box(interaction, f"Friday lacks permission to assign {role.mention}.", title="PERMISSION DENIED", status="error", ephemeral=True)
         except Exception as e:
@@ -1363,58 +1301,38 @@ class Moderation(commands.Cog):
     async def role_remove(self, interaction: discord.Interaction, member: discord.Member, role: discord.Role):
         if not await self.require_mod_permission(interaction, "manage_roles", "Manage Roles"):
             return
-        # 1. Has role check
         if role not in member.roles:
             await reply_box(interaction, f"{member.mention} does not have the {role.mention} role.", title="ROLE NOT FOUND", status="error", ephemeral=True)
             return
-
         if role.is_default() or role.managed:
             await reply_box(interaction, f"The role {role.mention} cannot be modified manually.", title="INVALID ROLE", status="error", ephemeral=True)
             return
-
-        # 2. Hierarchy check: executor vs target role
         if interaction.user.id != interaction.guild.owner_id and role >= interaction.user.top_role:
             await reply_box(
                 interaction,
                 f"You cannot remove {role.mention} because it is higher than or equal to your highest role ({interaction.user.top_role.mention}).",
-                title="HIERARCHY ERROR",
-                status="error",
-                ephemeral=True
+                title="HIERARCHY ERROR", status="error", ephemeral=True
             )
             return
-
-        # 3. Hierarchy check: executor vs target member
         if interaction.user.id != interaction.guild.owner_id and member.top_role >= interaction.user.top_role and member.id != interaction.user.id:
             await reply_box(
                 interaction,
                 f"You cannot modify roles for {member.mention} because their highest role ({member.top_role.mention}) is equal to or higher than yours.",
-                title="HIERARCHY ERROR",
-                status="error",
-                ephemeral=True
+                title="HIERARCHY ERROR", status="error", ephemeral=True
             )
             return
-
-        # 4. Hierarchy check: bot vs target role
         if role >= interaction.guild.me.top_role:
             await reply_box(
                 interaction,
                 f"Friday cannot remove {role.mention} because it is higher than or equal to Friday's highest role ({interaction.guild.me.top_role.mention}).\n"
                 "Please drag Friday's role higher in Server Settings > Roles.",
-                title="BOT HIERARCHY LIMIT",
-                status="error",
-                ephemeral=True
+                title="BOT HIERARCHY LIMIT", status="error", ephemeral=True
             )
             return
 
-        # 5. Remove role
         try:
             await member.remove_roles(role, reason=f"Role removed by {interaction.user} ({interaction.user.id})")
-            await reply_box(
-                interaction,
-                f"Successfully removed {role.mention} from {member.mention}.",
-                title="ROLE REMOVED",
-                status="success"
-            )
+            await reply_box(interaction, f"Successfully removed {role.mention} from {member.mention}.", title="ROLE REMOVED", status="success")
         except discord.Forbidden:
             await reply_box(interaction, f"Friday lacks permission to remove {role.mention}.", title="PERMISSION DENIED", status="error", ephemeral=True)
         except Exception as e:
@@ -1426,7 +1344,7 @@ class Moderation(commands.Cog):
         created_ts = int(role.created_at.timestamp())
         member_count = len(role.members)
         hex_color = str(role.color).upper()
-        
+
         desc = (
             f"> **Name:** {role.mention} (`{role.name}`)\n"
             f"> **Role ID:** `{role.id}`\n"
@@ -1445,10 +1363,7 @@ class Moderation(commands.Cog):
     async def role_list(self, interaction: discord.Interaction, member: discord.Member):
         roles = [r.mention for r in reversed(member.roles) if not r.is_default()]
         count = len(roles)
-        if not roles:
-            desc = f"{member.mention} has no special roles assigned."
-        else:
-            desc = f"**Total Roles ({count}):**\n" + ", ".join(roles)
+        desc = f"{member.mention} has no special roles assigned." if not roles else f"**Total Roles ({count}):**\n" + ", ".join(roles)
         await reply_box(interaction, desc, title=f"ROLES: {member.display_name}", status="info")
 
     @role_group.command(name="emoji", description="Set, update, or remove the emoji / icon for a server role.")
@@ -1457,39 +1372,29 @@ class Moderation(commands.Cog):
     async def role_emoji(self, interaction: discord.Interaction, role: discord.Role, emoji: str):
         if not await self.require_mod_permission(interaction, "manage_roles", "Manage Roles"):
             return
-        # 1. Invalid / default / managed role checks
         if role.is_default():
             await reply_box(interaction, "Cannot modify the default @everyone role.", title="INVALID ROLE", status="error", ephemeral=True)
             return
         if role.managed:
             await reply_box(interaction, f"The role {role.mention} is managed by an integration or bot and cannot be modified manually.", title="INTEGRATION ROLE", status="error", ephemeral=True)
             return
-
-        # 2. Hierarchy check: executor vs target role
         if interaction.user.id != interaction.guild.owner_id and role >= interaction.user.top_role:
             await reply_box(
                 interaction,
                 f"You cannot modify {role.mention} because it is higher than or equal to your highest role ({interaction.user.top_role.mention}).",
-                title="HIERARCHY ERROR",
-                status="error",
-                ephemeral=True
+                title="HIERARCHY ERROR", status="error", ephemeral=True
             )
             return
-
-        # 3. Hierarchy check: bot vs target role
         if role >= interaction.guild.me.top_role:
             await reply_box(
                 interaction,
                 f"Friday cannot modify {role.mention} because it is higher than or equal to Friday's highest role ({interaction.guild.me.top_role.mention}).\n"
                 "Please drag Friday's role higher in Server Settings > Roles.",
-                title="BOT HIERARCHY LIMIT",
-                status="error",
-                ephemeral=True
+                title="BOT HIERARCHY LIMIT", status="error", ephemeral=True
             )
             return
 
         clean = emoji.strip()
-        # Removal case
         if clean.lower() in ("none", "remove", "clear", "0", "delete", "off"):
             try:
                 await role.edit(display_icon=None, reason=f"Role icon removed by {interaction.user} ({interaction.user.id})")
@@ -1502,7 +1407,6 @@ class Moderation(commands.Cog):
                 await reply_box(interaction, f"Failed to clear role icon: {e}", title="EXECUTION ERROR", status="error", ephemeral=True)
                 return
 
-        # Custom Discord emoji: <:name:id> or <a:name:id>
         custom_m = re.match(r'<a?:([a-zA-Z0-9_]+):([0-9]+)>', clean)
         icon_val = None
         if custom_m:
@@ -1520,11 +1424,9 @@ class Moderation(commands.Cog):
                     await reply_box(interaction, f"Failed to load custom emoji bytes: {e}", title="EMOJI FETCH ERROR", status="error", ephemeral=True)
                     return
             else:
-                # Fallback: fetch asset directly from Discord CDN
                 try:
                     async with aiohttp.ClientSession() as session:
-                        url = f"https://cdn.discordapp.com/emojis/{emoji_id}.png"
-                        async with session.get(url) as resp:
+                        async with session.get(f"https://cdn.discordapp.com/emojis/{emoji_id}.png") as resp:
                             if resp.status == 200:
                                 icon_val = await resp.read()
                 except Exception:
@@ -1534,28 +1436,20 @@ class Moderation(commands.Cog):
                 await reply_box(interaction, f"Could not find or load custom emoji `{clean}`.", title="EMOJI NOT FOUND", status="error", ephemeral=True)
                 return
         else:
-            # Standard unicode emoji (e.g. 👑, 🔥, 🛡️)
             icon_val = clean
 
         try:
             await role.edit(display_icon=icon_val, reason=f"Role icon updated by {interaction.user} ({interaction.user.id})")
-            await reply_box(
-                interaction,
-                f"Successfully set the emoji for {role.mention} to {clean}!",
-                title="ROLE EMOJI UPDATED",
-                status="success"
-            )
+            await reply_box(interaction, f"Successfully set the emoji for {role.mention} to {clean}!", title="ROLE EMOJI UPDATED", status="success")
         except discord.Forbidden:
             await reply_box(interaction, f"Friday lacks permission to update {role.mention}.", title="PERMISSION DENIED", status="error", ephemeral=True)
         except discord.HTTPException as e:
             if "ROLE_ICONS" in str(e) or "feature" in str(e).lower():
                 await reply_box(
                     interaction,
-                    f"⚠️ This server has not unlocked the **Role Icons** perk yet (Discord requires Server Boost Level 2).\n\n"
-                    f"Once your server reaches Level 2 Boost, Friday will be able to display role emojis!",
-                    title="SERVER BOOST REQUIRED",
-                    status="warning",
-                    ephemeral=True
+                    "⚠️ This server has not unlocked the **Role Icons** perk yet (Discord requires Server Boost Level 2).\n\n"
+                    "Once your server reaches Level 2 Boost, Friday will be able to display role emojis!",
+                    title="SERVER BOOST REQUIRED", status="warning", ephemeral=True
                 )
             else:
                 await reply_box(interaction, f"Discord error while setting role emoji: {e}", title="DISCORD API ERROR", status="error", ephemeral=True)
@@ -1588,7 +1482,6 @@ class Moderation(commands.Cog):
         author = message.author
         guild = message.guild
 
-        # 1. Resolve Target Member
         target_member = None
         if isinstance(target_user_input, discord.Member):
             target_member = target_user_input
@@ -1608,7 +1501,6 @@ class Moderation(commands.Cog):
             await message.reply(embed=embed, mention_author=False)
             return
 
-        # 2. Permission Check for Command Author
         perms = author.guild_permissions
         is_staff = bool(perms.administrator or perms.manage_nicknames or author.id == guild.owner_id)
         if not is_staff:
@@ -1617,17 +1509,11 @@ class Moderation(commands.Cog):
             await message.reply(embed=embed, mention_author=False)
             return
 
-        # 3. Server Owner Protection Check
         if target_member.id == guild.owner_id and author.id != guild.owner_id:
-            embed = make_box_embed(
-                title="HIERARCHY RESTRICTION",
-                description="You cannot change the nickname of the Server Owner.",
-                status="danger"
-            )
+            embed = make_box_embed(title="HIERARCHY RESTRICTION", description="You cannot change the nickname of the Server Owner.", status="danger")
             await message.reply(embed=embed, mention_author=False)
             return
 
-        # 4. Author Role Hierarchy Check
         if target_member.top_role >= author.top_role and author.id != guild.owner_id:
             embed = make_box_embed(
                 title="HIERARCHY RESTRICTION",
@@ -1637,7 +1523,6 @@ class Moderation(commands.Cog):
             await message.reply(embed=embed, mention_author=False)
             return
 
-        # 5. Friday Bot Role Hierarchy & Permission Check
         me = guild.me
         if not me.guild_permissions.manage_nicknames:
             embed = make_box_embed(title="PERMISSION FAULT", description="Friday lacks the **Manage Nicknames** permission in this server.", status="danger")
@@ -1650,7 +1535,6 @@ class Moderation(commands.Cog):
             await message.reply(embed=embed, mention_author=False)
             return
 
-        # 6. Nickname Length Check
         if new_nickname:
             new_nickname = new_nickname.strip()
             if len(new_nickname) > 32:
@@ -1660,7 +1544,6 @@ class Moderation(commands.Cog):
             if not new_nickname:
                 new_nickname = None
 
-        # 7. Apply Nickname Update
         try:
             await target_member.edit(nick=new_nickname, reason=f"Nickname update commanded by {author.name} ({author.id})")
             if new_nickname:
@@ -1686,7 +1569,7 @@ class Moderation(commands.Cog):
         """Unified message processor handling:
         1. Nickname Changes via Bot Mention: @Friday @User [New Nickname] or @Friday nick @User [New Nickname]
         2. Prefix Commands:
-           - Staff Moderation: purge, lock, unlock, ban, tm, nick
+           - Staff Moderation: purge, lock, unlock, ban, tm, untm, untimeout, nick
            - Member Features (Channel-Restricted): rank, level, lvl, lb, m, stats
         """
         if not message.guild or message.author.bot:
@@ -1700,18 +1583,15 @@ class Moderation(commands.Cog):
         if bot_id and (raw_content.startswith(f"<@{bot_id}>") or raw_content.startswith(f"<@!{bot_id}>")):
             parts = raw_content.split()
             if len(parts) >= 2:
-                # Format A: @Friday nick/setnick/nickname/resetnick @User [New Nickname]
                 if parts[1].lower() in ("nick", "setnick", "nickname", "resetnick") and len(parts) >= 3:
                     new_nick = " ".join(parts[3:]).strip() if len(parts) > 3 and parts[1].lower() != "resetnick" else None
                     await self._execute_nickname_change(message, parts[2], new_nick)
                     return
-                # Format B: @Friday @User [New Nickname]
                 elif re.match(r'^<@!?\d+>$', parts[1]):
                     target_match = re.match(r'^<@!?(\d+)>$', parts[1])
                     if target_match and int(target_match.group(1)) != bot_id:
                         remainder = " ".join(parts[2:]).strip() if len(parts) > 2 else None
                         if remainder and ("?" in remainder):
-                            # Conversational question for Friday AI chat, do not intercept!
                             return
                         await self._execute_nickname_change(message, parts[1], remainder)
                         return
@@ -1748,13 +1628,10 @@ class Moderation(commands.Cog):
             "vc", "voice", "voiceactivity", "vcs"
         }
         if cmd_name in member_cmds:
-            # Check UI-configured channel restriction
             allowed_chan = getattr(db, "bot_command_channels", {}).get(gid)
             if allowed_chan and str(message.channel.id) != str(allowed_chan):
-                # Critical Requirement: If member runs this in other channels, Friday strictly ignores it!
                 return
 
-            # 1. Server Activity Chart: !server, !serverchat, or !act/chart server
             if cmd_name in ("server", "serverchat") or (cmd_name in ("act", "activity", "chart", "graph") and len(parts) > 1 and parts[1].lower() in ("server", "chat")):
                 act_cog = self.bot.get_cog("Activity")
                 if act_cog:
@@ -1766,7 +1643,6 @@ class Moderation(commands.Cog):
                         print(f"Error rendering server activity chart: {e}")
                 return
 
-            # 2. Rank & Level: !rank, !rank @user, !level, !lvl
             if cmd_name in ("rank", "level", "lvl"):
                 if len(parts) > 1 and parts[1].lower() in ("rich", "richest", "baltop", "eco", "economy", "money", "coins", "wealth"):
                     eco_cog = self.bot.get_cog("Economy")
@@ -1808,7 +1684,6 @@ class Moderation(commands.Cog):
                         print(f"Error rendering rank prefix card: {e}")
                 return
 
-            # 3. Invites Card: !invites, !invites @user, !inv
             elif cmd_name in ("invites", "inv"):
                 target_user = None
                 if message.mentions:
@@ -1837,7 +1712,6 @@ class Moderation(commands.Cog):
                         print(f"Error rendering invite card: {e}")
                 return
 
-            # 4. Leaderboards: !lb invite, !lb msg, !lb xp
             elif cmd_name in ("lb", "leaderboard"):
                 sub = parts[1].lower() if len(parts) > 1 else "msg"
                 if sub in ("invite", "invites", "inv"):
@@ -1887,7 +1761,6 @@ class Moderation(commands.Cog):
                             print(f"Error rendering economy lb: {e}")
                     return
                 else:
-                    # Message / Chat Leaderboard (!lb msg or !lb)
                     act_cog = self.bot.get_cog("Activity")
                     if act_cog:
                         try:
@@ -1900,7 +1773,6 @@ class Moderation(commands.Cog):
                             print(f"Error rendering activity lb prefix card: {e}")
                     return
 
-            # 5. Personal & Member Activity Charts: !m, !stats, !mystats, !act, !activity, !chart, !graph
             elif cmd_name in ("m", "stats", "mystats", "act", "activity", "chart", "graph"):
                 target_user = None
                 if message.mentions:
@@ -1929,7 +1801,6 @@ class Moderation(commands.Cog):
                         print(f"Error rendering member activity chart: {e}")
                 return
 
-            # 6. Voice Analytics & VC Leaderboard Card: !vc, .vc, !vc #channel, !voice
             elif cmd_name in ("vc", "voice", "voiceactivity", "vcs"):
                 act_cog = self.bot.get_cog("Activity")
                 if act_cog:
@@ -1957,11 +1828,10 @@ class Moderation(commands.Cog):
                 return
 
         # C. Strict set of essential staff prefix commands
-        allowed_prefix_cmds = {"purge", "lock", "unlock", "ban", "tm"}
+        allowed_prefix_cmds = {"purge", "lock", "unlock", "ban", "tm", "untm", "untimeout"}
         if cmd_name not in allowed_prefix_cmds:
             return
 
-        # 1. Ironclad Whitelist & In-Server Permission Check
         author = message.author
         guild = message.guild
         channel = message.channel
@@ -1983,44 +1853,38 @@ class Moderation(commands.Cog):
         has_role = any(r.id in wl_roles for r in author_roles)
         is_user_whitelisted = author.id in wl_users
 
-        # Check native in-server Discord permissions specifically required for each command
         chan_perms = channel.permissions_for(author) if hasattr(channel, "permissions_for") else perms
         has_native_perm = False
 
         if is_admin:
             has_native_perm = True
         elif cmd_name == "purge":
-            # Requires Manage Messages ("manage chat / delete permission")
             has_native_perm = bool((chan_perms and chan_perms.manage_messages) or (perms and perms.manage_messages))
         elif cmd_name in ("lock", "unlock"):
-            # Requires Manage Channels
             has_native_perm = bool((chan_perms and chan_perms.manage_channels) or (perms and perms.manage_channels))
         elif cmd_name == "ban":
-            # Requires Ban Members
             has_native_perm = bool(perms and perms.ban_members)
-        elif cmd_name == "tm":
-            # Requires Moderate Members (Timeout)
+        elif cmd_name in ("tm", "untm", "untimeout"):
             has_native_perm = bool(perms and perms.moderate_members)
 
-        # If author is NOT server owner, bot owner, admin, dashboard whitelisted, or natively permitted -> SILENT IGNORE
         if not (is_owner or is_bot_owner or is_admin or is_user_whitelisted or has_role or has_native_perm):
             return
 
-        # 2. Check if specific command is enabled in whitelist configuration
-        cmd_toggles = wl.get("commands", {"purge": True, "lock": True, "unlock": True, "ban": True, "tm": True})
-        if not cmd_toggles.get(cmd_name, True):
+        cmd_toggles = wl.get("commands", {"purge": True, "lock": True, "unlock": True, "ban": True, "tm": True, "untm": True, "untimeout": True})
+        toggle_key = "tm" if cmd_name in ("untm", "untimeout") and cmd_name not in cmd_toggles else cmd_name
+        if not cmd_toggles.get(toggle_key, True):
             return
 
         args = parts[1:]
 
-        # ── 1. PURGE: !purge <count> or !purge @user <count> ──
+        # ── 1. PURGE: !purge [count] or !purge @user [count] (defaults to 1) ──
         if cmd_name == "purge":
             if not channel.permissions_for(guild.me).manage_messages:
                 m = await channel.send("❌ Friday lacks **Manage Messages** permission in this channel.")
                 await m.delete(delay=4)
                 return
 
-            count = 10
+            count = 1
             target_user = None
             if message.mentions:
                 target_user = message.mentions[0]
@@ -2126,11 +1990,18 @@ class Moderation(commands.Cog):
                 await channel.send(f"❌ Usage: `{prefix}ban @user [reason]`")
                 return
 
+            if target_member.id == author.id:
+                await channel.send("❌ You cannot ban yourself.")
+                return
+            if target_member.id == guild.owner_id:
+                await channel.send("❌ You cannot ban the server owner.")
+                return
+
             reason = " ".join(reason_words).strip() or "Banned by staff via prefix command."
             if not is_owner and author.top_role <= target_member.top_role:
                 await channel.send("❌ You cannot ban someone with a higher or equal role hierarchy.")
                 return
-            if target_member.top_role >= guild.me.top_role and target_member != guild.owner:
+            if target_member.top_role >= guild.me.top_role:
                 await channel.send("❌ Friday's role hierarchy is not high enough to ban this user.")
                 return
 
@@ -2147,7 +2018,7 @@ class Moderation(commands.Cog):
             except Exception as e:
                 await channel.send(f"❌ Error banning member: {e}")
 
-        # ── 5. TM: !tm @user <duration> [reason] ── (Specifically named tm!)
+        # ── 5. TM: !tm @user <duration> [reason] ──
         elif cmd_name == "tm":
             target_member = None
             reason_words = list(args)
@@ -2156,16 +2027,27 @@ class Moderation(commands.Cog):
                 reason_words = [w for w in reason_words if not (w.startswith("<@") and w.endswith(">"))]
             elif args and args[0].isdigit():
                 target_member = guild.get_member(int(args[0]))
+                if not target_member:
+                    try:
+                        target_member = await guild.fetch_member(int(args[0]))
+                    except Exception:
+                        pass
                 reason_words = args[1:]
 
             if not target_member or not reason_words:
                 await channel.send(f"❌ Usage: `{prefix}tm @user <duration> [reason]` (e.g. `{prefix}tm @user 10m` or `{prefix}tm @user 1h spamming`)")
                 return
 
+            if target_member.id == author.id:
+                await channel.send("❌ You cannot timeout yourself.")
+                return
+            if target_member.id == guild.owner_id:
+                await channel.send("❌ You cannot timeout the server owner.")
+                return
+
             raw_dur = reason_words[0].lower()
             dur_reason = " ".join(reason_words[1:]).strip() or "Timed out by staff via prefix command."
 
-            # Robust duration parsing supporting typos (e.g. 60minutr) and max 28-day Discord enforcement
             seconds, disp, err = parse_timeout_duration(raw_dur)
             if err:
                 await channel.send(f"❌ {err}")
@@ -2179,7 +2061,7 @@ class Moderation(commands.Cog):
             if target_member.guild_permissions.administrator:
                 await channel.send("❌ Cannot timeout a server Administrator.")
                 return
-            if target_member.top_role >= guild.me.top_role and target_member != guild.owner:
+            if target_member.top_role >= guild.me.top_role:
                 await channel.send("❌ Friday's role hierarchy is not high enough to timeout this user.")
                 return
 
@@ -2205,10 +2087,19 @@ class Moderation(commands.Cog):
                 reason_words = [w for w in reason_words if not (w.startswith("<@") and w.endswith(">"))]
             elif args and args[0].isdigit():
                 target_member = guild.get_member(int(args[0]))
+                if not target_member:
+                    try:
+                        target_member = await guild.fetch_member(int(args[0]))
+                    except Exception:
+                        pass
                 reason_words = args[1:]
 
             if not target_member:
                 await channel.send(f"❌ Usage: `{prefix}untm @user [reason]`")
+                return
+
+            if target_member.id == guild.owner_id:
+                await channel.send("❌ The server owner cannot be timed out.")
                 return
 
             untm_reason = " ".join(reason_words).strip() or "Timeout lifted by staff via prefix command."
@@ -2216,7 +2107,7 @@ class Moderation(commands.Cog):
             if not is_owner and author.top_role <= target_member.top_role:
                 await channel.send("❌ You cannot remove a timeout from someone with a higher or equal role hierarchy.")
                 return
-            if target_member.top_role >= guild.me.top_role and target_member != guild.owner:
+            if target_member.top_role >= guild.me.top_role:
                 await channel.send("❌ Friday's role hierarchy is not high enough to modify this user's timeout status.")
                 return
 
@@ -2236,6 +2127,7 @@ class Moderation(commands.Cog):
                 await channel.send("❌ Failed to untimeout: Friday lacks Moderate Members permission.")
             except Exception as e:
                 await channel.send(f"❌ Error lifting timeout: {e}")
+
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
