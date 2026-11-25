@@ -87,7 +87,7 @@ HELP_MODULES = [
             ("Earning & Grind", ["daily", "work", "crime", "rob"]),
             ("Shop & Items", ["shop", "buy", "use", "inventory"]),
             ("Casino", ["casino coinflip", "casino blackjack"]),
-            ("Staff Controls", ["economy setup", "economy give", "economy reset", "economy channels", "economy pause"])
+            ("Staff Controls", ["economy setup", "economy give", "economy take", "economy reset", "economy channels", "economy pause"])
         ]
     },
     {

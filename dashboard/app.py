@@ -5668,53 +5668,147 @@ def get_economy_stats(gid):
         return jsonify({"success": False, "error": str(e), "stats": {}})
 
 @app.route('/api/economy/admin/give', methods=['POST'])
+@app.route('/api/economy/admin/take', methods=['POST'])
 def economy_admin_give():
     data = flask_request.get_json(silent=True) or {}
-    gid = str(data.get("guild_id", ""))
-    uid = str(data.get("user_id", ""))
+    gid = str(data.get("guild_id", "")).strip()
+    uid = str(data.get("user_id", "")).strip()
     amount = data.get("amount", 0)
-    dest = data.get("destination", "wallet")
-    
+    dest = str(data.get("destination", "wallet")).strip().lower()
+    if dest not in ("wallet", "bank", "auto"):
+        dest = "wallet"
+
     if not gid or not uid:
         return jsonify({"success": False, "error": "Missing guild_id or user_id."}), 400
     try:
         amount = int(amount)
-    except ValueError:
+    except (ValueError, TypeError):
         return jsonify({"success": False, "error": "Invalid amount."}), 400
-        
+    if amount == 0:
+        return jsonify({"success": False, "error": "Amount cannot be zero."}), 400
+
+    # If endpoint was /take and a positive number was sent, treat as deduction
+    if flask_request.path.endswith('/take') and amount > 0:
+        amount = -amount
+
+    conn = None
     try:
         conn = get_economy_db()
         conn.execute("BEGIN IMMEDIATE")
-        
-        existing = conn.execute("SELECT * FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
+
+        existing = conn.execute("SELECT wallet, bank, bank_max FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()
         if not existing:
+            if amount < 0:
+                conn.rollback()
+                return jsonify({"success": False, "error": "This member does not have an economy profile or balance to deduct from."}), 400
             conn.execute("""
                 INSERT INTO economy_users (guild_id, user_id, wallet, bank, bank_max, created_at)
                 VALUES (?, ?, 0, 100, 2500, ?)
             """, (gid, uid, time.time()))
-            
-        if dest == "bank":
-            conn.execute("""
-                UPDATE economy_users 
-                SET bank = MAX(0, bank + ?),
-                    bank_max = MAX(bank_max, MAX(0, bank + ?))
-                WHERE guild_id=? AND user_id=?
-            """, (amount, amount, gid, uid))
-            cur_bal = conn.execute("SELECT bank FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()["bank"]
+            existing = {"wallet": 0, "bank": 100, "bank_max": 2500}
+
+        cur_wallet = int(existing["wallet"])
+        cur_bank = int(existing["bank"])
+        cur_bank_max = int(existing["bank_max"])
+
+        if dest == "auto":
+            if amount < 0:
+                req = abs(amount)
+                from_wallet = min(req, cur_wallet)
+                from_bank = min(req - from_wallet, cur_bank)
+                actual = from_wallet + from_bank
+                new_wallet = cur_wallet - from_wallet
+                new_bank = cur_bank - from_bank
+                conn.execute("""
+                    UPDATE economy_users
+                    SET wallet=?, bank=?, net_spent=net_spent+?
+                    WHERE guild_id=? AND user_id=?
+                """, (new_wallet, new_bank, actual, gid, uid))
+                tx_delta = -actual
+                cur_bal = new_wallet + new_bank
+            else:
+                new_wallet = cur_wallet + amount
+                new_bank = cur_bank
+                conn.execute("""
+                    UPDATE economy_users
+                    SET wallet=?, net_earned=net_earned+?
+                    WHERE guild_id=? AND user_id=?
+                """, (new_wallet, amount, gid, uid))
+                tx_delta = amount
+                cur_bal = new_wallet + new_bank
+            adjusted = abs(tx_delta)
+        elif dest == "bank":
+            if amount < 0:
+                actual = min(abs(amount), cur_bank)
+                new_bank = cur_bank - actual
+                conn.execute("""
+                    UPDATE economy_users
+                    SET bank=?, net_spent=net_spent+?
+                    WHERE guild_id=? AND user_id=?
+                """, (new_bank, actual, gid, uid))
+                tx_delta = -actual
+            else:
+                new_bank = cur_bank + amount
+                new_max = max(cur_bank_max, new_bank)
+                conn.execute("""
+                    UPDATE economy_users
+                    SET bank=?, bank_max=?, net_earned=net_earned+?
+                    WHERE guild_id=? AND user_id=?
+                """, (new_bank, new_max, amount, gid, uid))
+                tx_delta = amount
+            new_wallet = cur_wallet
+            cur_bal = new_bank
+            adjusted = abs(tx_delta)
         else:
-            conn.execute("UPDATE economy_users SET wallet = MAX(0, wallet + ?) WHERE guild_id=? AND user_id=?", (amount, gid, uid))
-            cur_bal = conn.execute("SELECT wallet FROM economy_users WHERE guild_id=? AND user_id=?", (gid, uid)).fetchone()["wallet"]
-            
+            if amount < 0:
+                actual = min(abs(amount), cur_wallet)
+                new_wallet = cur_wallet - actual
+                conn.execute("""
+                    UPDATE economy_users
+                    SET wallet=?, net_spent=net_spent+?
+                    WHERE guild_id=? AND user_id=?
+                """, (new_wallet, actual, gid, uid))
+                tx_delta = -actual
+            else:
+                new_wallet = cur_wallet + amount
+                conn.execute("""
+                    UPDATE economy_users
+                    SET wallet=?, net_earned=net_earned+?
+                    WHERE guild_id=? AND user_id=?
+                """, (new_wallet, amount, gid, uid))
+                tx_delta = amount
+            new_bank = cur_bank
+            cur_bal = new_wallet
+            adjusted = abs(tx_delta)
+
+        tx_type = "dashboard_admin_take" if amount < 0 else "dashboard_admin_give"
+        tx_note = f"Admin deducted from {dest}" if amount < 0 else f"Admin granted to {dest}"
         conn.execute("""
             INSERT INTO economy_transactions (guild_id, user_id, type, amount, balance_after, note, ts)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (gid, uid, "dashboard_admin_give", amount, cur_bal, f"Admin modified {dest}", time.time()))
-        
+        """, (gid, uid, tx_type, tx_delta, cur_bal, tx_note, time.time()))
+
         conn.execute("COMMIT")
-        conn.close()
-        return jsonify({"success": True, "new_balance": cur_bal})
+        return jsonify({
+            "success": True,
+            "new_balance": cur_bal,
+            "wallet": new_wallet,
+            "bank": new_bank,
+            "adjusted": adjusted
+        })
     except Exception as e:
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         return jsonify({"success": False, "error": str(e)}), 500
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route('/api/economy/admin/reset', methods=['POST'])
 def economy_admin_reset():

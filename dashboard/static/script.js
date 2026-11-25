@@ -72640,45 +72640,68 @@ function initEconomyModule() {
         });
     }
 
-    // Admin Give Button
+    // Admin Give / Take Buttons (shared handler)
+    async function submitEconomyAdjustment(mode) {
+        const gid = currentGuildId;
+        const uidInput = document.getElementById('eco_admin_user_id');
+        const amtInput = document.getElementById('eco_admin_amount');
+        const destSelect = document.getElementById('eco_admin_dest');
+
+        const uid = uidInput ? uidInput.value.trim() : '';
+        const parsed = amtInput ? parseInt(amtInput.value, 10) : 0;
+        const dest = destSelect ? destSelect.value : 'wallet';
+
+        if (!gid || !uid || !parsed || Number.isNaN(parsed)) {
+            if (typeof showToast === 'function') showToast("Please provide a valid Member ID and non-zero Amount.", "error");
+            return;
+        }
+
+        const amount = mode === 'take' ? -Math.abs(parsed) : parsed;
+        const endpoint = mode === 'take' ? '/api/economy/admin/take' : '/api/economy/admin/give';
+
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guild_id: gid, user_id: uid, amount, destination: dest })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const actionLabel = amount < 0
+                    ? `Removed ${(data.adjusted ?? Math.abs(amount)).toLocaleString()}`
+                    : `Granted ${(data.adjusted ?? amount).toLocaleString()}`;
+                const balLabel = dest === 'auto'
+                    ? `Total balance: ${data.new_balance.toLocaleString()} (Wallet: ${data.wallet.toLocaleString()} | Bank: ${data.bank.toLocaleString()})`
+                    : `New ${dest} balance: ${data.new_balance.toLocaleString()}`;
+                if (typeof showToast === 'function') showToast(`${actionLabel} coins! ${balLabel} 💸`, "success");
+                if (amtInput) amtInput.value = '';
+                loadEconomyStats();
+                loadEconomyLeaderboard();
+                loadEconomyTransactions();
+            } else {
+                if (typeof showToast === 'function') showToast(data.error || "Failed to adjust balance.", "error");
+            }
+        } catch (err) {
+            console.error(`Admin ${mode} error:`, err);
+            if (typeof showToast === 'function') showToast("Network error while adjusting balance.", "error");
+        }
+    }
+
     const adminGiveBtn = document.getElementById('ecoAdminGiveBtn');
     if (adminGiveBtn && !adminGiveBtn.dataset.bound) {
         adminGiveBtn.dataset.bound = "true";
-        adminGiveBtn.addEventListener('click', async (e) => {
+        adminGiveBtn.addEventListener('click', (e) => {
             e.preventDefault();
-            const gid = currentGuildId;
-            const uidInput = document.getElementById('eco_admin_user_id');
-            const amtInput = document.getElementById('eco_admin_amount');
-            const destSelect = document.getElementById('eco_admin_dest');
-            
-            const uid = uidInput ? uidInput.value.trim() : '';
-            const amount = amtInput ? parseInt(amtInput.value) : 0;
-            const dest = destSelect ? destSelect.value : 'wallet';
+            submitEconomyAdjustment('give');
+        });
+    }
 
-            if (!gid || !uid || !amount) {
-                if (typeof showToast === 'function') showToast("Please provide a valid Member ID and non-zero Amount.", "error");
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/economy/admin/give', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ guild_id: gid, user_id: uid, amount, destination: dest })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    if (typeof showToast === 'function') showToast(`Successfully adjusted balance! New balance: ${data.new_balance.toLocaleString()} 💸`, "success");
-                    if (amtInput) amtInput.value = '';
-                    loadEconomyStats();
-                    loadEconomyLeaderboard();
-                    loadEconomyTransactions();
-                } else {
-                    if (typeof showToast === 'function') showToast(data.error || "Failed to adjust balance.", "error");
-                }
-            } catch (err) {
-                console.error("Admin give error:", err);
-            }
+    const adminTakeBtn = document.getElementById('ecoAdminTakeBtn');
+    if (adminTakeBtn && !adminTakeBtn.dataset.bound) {
+        adminTakeBtn.dataset.bound = "true";
+        adminTakeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            submitEconomyAdjustment('take');
         });
     }
 

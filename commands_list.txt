@@ -21,6 +21,7 @@ Friday Bot - Complete Command List (100+ Commands)
 /leaderboard_economy - View the server's wealthiest members ranked by Net Worth
 /economy_setup - Configure master toggle, coin drop spawn channel, starter bank, and currency name (Admin)
 /economy_give @member <amount> <wallet/bank> - Grant or deduct coins directly on a member's profile (Admin)
+/economy_take @member <amount> [auto/wallet/bank] - Deduct a specific amount of coins from a member without resetting their profile (Admin)
 /economy_reset @member - Completely wipe all balances, items, and games for a member (Admin)
 /economy_channels <add/remove/list> - Manage channel whitelist for passive text chat drops (Admin)
 

@@ -3910,6 +3910,61 @@ class Economy(commands.Cog):
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @eco_admin.command(name="take", description="Deduct a specific amount of coins from a member without resetting their profile.")
+    @app_commands.describe(user="Target member.", amount="Positive amount of coins to deduct.", source="Where to deduct from (defaults to Auto: Wallet then Bank).")
+    @app_commands.choices(source=[
+        app_commands.Choice(name="Auto (Wallet then Bank)", value="auto"),
+        app_commands.Choice(name="Cash Wallet", value="wallet"),
+        app_commands.Choice(name="Bank Vault", value="bank")
+    ])
+    @app_commands.default_permissions(administrator=True)
+    async def economy_take(self, interaction: discord.Interaction, user: discord.Member, amount: int, source: Optional[app_commands.Choice[str]] = None):
+        if not await ensure_admin_or_owner(interaction):
+            return
+        if user.bot:
+            return await interaction.response.send_message("❌ Bots cannot hold an economy profile.", ephemeral=True)
+        if amount <= 0:
+            return await interaction.response.send_message("❌ Amount to deduct must be greater than zero.", ephemeral=True)
+
+        gid = str(interaction.guild.id)
+        uid = str(user.id)
+        cfg = self.get_config(gid)
+        cur_name = cfg.get("currency_name", "Coins")
+        src_val = source.value if source else "auto"
+
+        async with self._get_lock(gid, uid):
+            existing = self.db.get_user(gid, uid)
+            if not existing:
+                return await interaction.response.send_message(f"❌ {user.mention} has no economy profile or coins to deduct.", ephemeral=True)
+
+            if src_val == "wallet":
+                deducted = min(amount, existing["wallet"])
+                new_w = self.db.delta_wallet(gid, uid, -deducted)
+                new_b = existing["bank"]
+                self.db.log_tx(gid, uid, "admin_take_wallet", -deducted, new_w, related_uid=str(interaction.user.id), note="Admin take (wallet)")
+                src_label = "Cash Wallet"
+            elif src_val == "bank":
+                deducted = min(amount, existing["bank"])
+                new_b = self.db.delta_bank(gid, uid, -deducted)
+                new_w = existing["wallet"]
+                self.db.log_tx(gid, uid, "admin_take_bank", -deducted, new_b, related_uid=str(interaction.user.id), note="Admin take (bank)")
+                src_label = "Bank Vault"
+            else:
+                deducted, new_w, new_b = self.db.deduct_total(gid, uid, amount)
+                self.db.log_tx(gid, uid, "admin_take", -deducted, new_w + new_b, related_uid=str(interaction.user.id), note="Admin take (auto)")
+                src_label = "Wallet + Bank"
+
+            embed = discord.Embed(
+                title="💸 Admin Coin Deduction",
+                color=discord.Color.orange(),
+                description=(
+                    f"Deducted **{deducted:,} {cur_name}** from {user.mention} (**{src_label}**).\n\n"
+                    f"• **Wallet:** `{new_w:,} {cur_name}`\n"
+                    f"• **Bank Vault:** `{new_b:,} {cur_name}`"
+                )
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @eco_admin.command(name="reset", description="Wipe a user's economy balances, items, and stats.")
     @app_commands.describe(user="The member to reset.")
     @app_commands.default_permissions(administrator=True)

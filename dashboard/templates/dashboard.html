@@ -3548,7 +3548,7 @@
 
 <!-- Grant / Deduct Coins Form -->
 <div style="padding: 16px; border-radius: 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color);">
-    <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 12px;">💸 Grant or Deduct Member Coins</h4>
+    <h4 style="font-size: 13.5px; font-weight: 700; color: #ffffff; margin-bottom: 12px;">💸 Give or Take Member Coins</h4>
     <div class="form-group" style="margin-bottom: 12px;">
         <label class="form-label" style="font-size: 11.5px;">Member ID</label>
         <input class="text-input" id="eco_admin_user_id" placeholder="Discord User ID (e.g. 1234567890)" type="text"/>
@@ -3556,17 +3556,21 @@
     <div class="grid-2" style="gap: 12px; margin-bottom: 12px;">
         <div class="form-group">
             <label class="form-label" style="font-size: 11.5px;">Amount</label>
-            <input class="text-input" id="eco_admin_amount" placeholder="+5000 or -2000" type="number"/>
+            <input class="text-input" id="eco_admin_amount" placeholder="e.g. 2000" min="1" type="number"/>
         </div>
         <div class="form-group">
-            <label class="form-label" style="font-size: 11.5px;">Destination</label>
+            <label class="form-label" style="font-size: 11.5px;">Wallet / Bank</label>
             <select class="sec-select" id="eco_admin_dest">
                 <option value="wallet">Cash Wallet</option>
                 <option value="bank">Safe Bank Vault</option>
+                <option value="auto">Auto (Wallet, then Bank)</option>
             </select>
         </div>
     </div>
-    <button class="btn btn-action-primary" id="ecoAdminGiveBtn" type="button" style="width: 100%; padding: 8px; font-weight: 600;">Apply Coin Adjustment</button>
+    <div class="grid-2" style="gap: 10px;">
+        <button class="btn btn-action-primary" id="ecoAdminGiveBtn" type="button" style="width: 100%; padding: 8px; font-weight: 600;">➕ Give Coins</button>
+        <button class="btn btn-action-secondary" id="ecoAdminTakeBtn" type="button" style="width: 100%; padding: 8px; font-weight: 600; color: #f59e0b; border-color: rgba(245, 158, 11, 0.45);">➖ Take Coins</button>
+    </div>
 </div>
 
 <!-- Reset Profile Form -->
