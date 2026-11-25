@@ -229,6 +229,20 @@ class EconomyDB:
             except Exception:
                 pass
 
+            # Persistent Coin Drops table (survives restarts and guarantees 60s expiry)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS economy_coin_drops (
+                    message_id     TEXT    PRIMARY KEY,
+                    channel_id     TEXT    NOT NULL,
+                    guild_id       TEXT    NOT NULL,
+                    amount         INTEGER NOT NULL,
+                    currency_name  TEXT    NOT NULL,
+                    currency_emoji TEXT    NOT NULL,
+                    expires_at     REAL    NOT NULL,
+                    claimed        INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+
     def get_user(self, gid: str, uid: str) -> Optional[dict]:
         with self.get_conn() as conn:
             row = conn.execute(
@@ -528,6 +542,57 @@ class EconomyDB:
             row = conn.execute("SELECT SUM(wallet + bank) AS total FROM economy_users WHERE guild_id=?", (gid,)).fetchone()
             return int(row["total"]) if (row and row["total"] is not None) else 0
 
+    def save_coin_drop(self, message_id: str, channel_id: str, guild_id: str, amount: int, currency_name: str, currency_emoji: str, expires_at: float):
+        with self.get_conn() as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO economy_coin_drops
+                (message_id, channel_id, guild_id, amount, currency_name, currency_emoji, expires_at, claimed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """, (str(message_id), str(channel_id), str(guild_id), int(amount), str(currency_name), str(currency_emoji), float(expires_at)))
+
+    def get_coin_drop(self, message_id: str) -> Optional[dict]:
+        with self.get_conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM economy_coin_drops WHERE message_id=?", (str(message_id),)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def try_claim_coin_drop(self, message_id: str, now: Optional[float] = None) -> Optional[dict]:
+        """Atomically claims an unclaimed, unexpired coin drop. Returns drop dict or None."""
+        check_ts = time.time() if now is None else now
+        with self.get_conn() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT * FROM economy_coin_drops WHERE message_id=?", (str(message_id),)
+            ).fetchone()
+            if not row:
+                return None
+            if row["claimed"] != 0 or check_ts > row["expires_at"]:
+                return None
+            conn.execute(
+                "UPDATE economy_coin_drops SET claimed = 1 WHERE message_id=?", (str(message_id),)
+            )
+            return dict(row)
+
+    def mark_coin_drop_expired(self, message_id: str):
+        with self.get_conn() as conn:
+            conn.execute(
+                "UPDATE economy_coin_drops SET claimed = 1 WHERE message_id=?", (str(message_id),)
+            )
+
+    def get_expired_unclaimed_drops(self, now: Optional[float] = None) -> List[dict]:
+        check_ts = time.time() if now is None else now
+        with self.get_conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM economy_coin_drops WHERE claimed = 0 AND expires_at <= ?", (check_ts,)
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def prune_old_coin_drops(self, older_than_seconds: float = 86400.0):
+        cutoff = time.time() - older_than_seconds
+        with self.get_conn() as conn:
+            conn.execute("DELETE FROM economy_coin_drops WHERE claimed = 1 AND expires_at < ?", (cutoff,))
+
     def get_user_rank(self, gid: str, uid: str) -> int:
         with self.get_conn() as conn:
             row = conn.execute("""
@@ -651,69 +716,126 @@ def get_economy_db() -> EconomyDB:
 # Interactive UI Views
 
 class CoinDropView(discord.ui.View):
-    def __init__(self, cog, gid: str, amount: int, currency_name: str, currency_emoji: str):
-        super().__init__(timeout=60)
+    def __init__(
+        self,
+        cog,
+        gid: str = "",
+        amount: int = 0,
+        currency_name: str = "Coins",
+        currency_emoji: str = "🪙",
+        expires_at: float = 0.0,
+        persistent: bool = False
+    ):
+        super().__init__(timeout=None if persistent else 60)
         self.cog = cog
         self.gid = gid
         self.amount = amount
         self.currency_name = currency_name
         self.currency_emoji = currency_emoji
+        self.expires_at = expires_at
+        self.persistent = persistent
         self.claimed = False
         self._lock = asyncio.Lock()
         self.message: Optional[discord.Message] = None
 
-    async def on_timeout(self):
-        if not self.claimed:
-            self.claimed = True
-            for child in self.children:
-                child.disabled = True
-                if isinstance(child, discord.ui.Button):
-                    child.label = "⌛ Drop Expired"
-                    child.style = discord.ButtonStyle.secondary
-            if self.message:
-                try:
-                    embed = self.message.embeds[0] if self.message.embeds else discord.Embed(title="💰 Surprise Coin Drop Event!")
-                    embed.color = discord.Color.dark_gray()
-                    embed.description = f"⌛ **This supply crate expired!** Nobody claimed the **{self.amount:,}** {self.currency_emoji} {self.currency_name} in time."
-                    embed.set_footer(text="Expired • Be quicker on the next drop!")
-                    await self.message.edit(embed=embed, view=self)
-                except Exception:
-                    pass
+    @staticmethod
+    def build_result_view(label: str, emoji: str = None) -> discord.ui.View:
+        """Build a fresh disabled view so persistent view singletons are never mutated."""
+        v = discord.ui.View(timeout=None)
+        v.add_item(discord.ui.Button(
+            label=label[:80],
+            style=discord.ButtonStyle.secondary,
+            emoji=emoji,
+            disabled=True
+        ))
+        return v
 
-    @discord.ui.button(label="🪙 Grab Coin Drop!", style=discord.ButtonStyle.success)
+    async def on_timeout(self):
+        if self.persistent:
+            return
+        async with self._lock:
+            if not self.claimed:
+                self.claimed = True
+                self.stop()
+                if self.message:
+                    self.cog.db.mark_coin_drop_expired(str(self.message.id))
+                    await self.cog._expire_coin_drop_message(
+                        self.message,
+                        amount=self.amount,
+                        currency_name=self.currency_name,
+                        currency_emoji=self.currency_emoji
+                    )
+
+    @discord.ui.button(label="🪙 Grab Coin Drop!", style=discord.ButtonStyle.success, custom_id="eco_coin_drop_claim")
     async def claim_drop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.claimed:
+        if not self.persistent and self.claimed:
             return await interaction.response.send_message("❌ Someone already claimed this drop or it expired!", ephemeral=True)
 
-        async with self._lock:
-            if self.claimed:
-                return await interaction.response.send_message("❌ Someone already claimed this drop or it expired!", ephemeral=True)
+        msg_id = str(interaction.message.id) if interaction.message else ""
+        drop = self.cog.db.try_claim_coin_drop(msg_id) if msg_id else None
+
+        if not drop:
+            existing = self.cog.db.get_coin_drop(msg_id) if msg_id else None
+            if existing and existing.get("claimed") == 0 and time.time() > existing.get("expires_at", 0):
+                self.cog.db.mark_coin_drop_expired(msg_id)
+                if interaction.message:
+                    await self.cog._expire_coin_drop_message(
+                        interaction.message,
+                        amount=existing.get("amount", self.amount),
+                        currency_name=existing.get("currency_name", self.currency_name),
+                        currency_emoji=existing.get("currency_emoji", self.currency_emoji)
+                    )
+                if not self.persistent:
+                    self.claimed = True
+                    self.stop()
+                return await interaction.response.send_message("⌛ This coin drop has expired! Be quicker on the next drop.", ephemeral=True)
+
+            if existing is None and interaction.message:
+                # Legacy drop from before DB tracking or expired unknown drop — cleanly expire the button
+                await self.cog._expire_coin_drop_message(
+                    interaction.message,
+                    amount=self.amount,
+                    currency_name=self.currency_name,
+                    currency_emoji=self.currency_emoji
+                )
+                return await interaction.response.send_message("⌛ This coin drop has expired!", ephemeral=True)
+
+            return await interaction.response.send_message("❌ Someone already claimed this drop or it expired!", ephemeral=True)
+
+        if not self.persistent:
             self.claimed = True
+            self.stop()
 
+        gid = drop["guild_id"]
+        amt = drop["amount"]
+        cur_name = drop["currency_name"]
+        cur_emoji = drop["currency_emoji"]
         uid = str(interaction.user.id)
-        user = self.cog.db.get_or_init_user(self.gid, uid)
-        new_wallet = self.cog.db.delta_wallet(self.gid, uid, self.amount)
-        self.cog.db.log_tx(self.gid, uid, "coin_drop", self.amount, new_wallet, note="Chat coin drop claim")
 
-        button.disabled = True
-        button.label = f"Claimed by {clean_display_name(interaction.user.display_name)}!"
-        button.style = discord.ButtonStyle.secondary
+        self.cog.db.get_or_init_user(gid, uid)
+        new_wallet = self.cog.db.delta_wallet(gid, uid, amt)
+        self.cog.db.log_tx(gid, uid, "coin_drop", amt, new_wallet, note="Chat coin drop claim")
 
-        embed = interaction.message.embeds[0] if (interaction.message and interaction.message.embeds) else discord.Embed(title="🪙 Coin Drop!")
-        embed.color = discord.Color.green()
-        embed.description = f"🎉 **{interaction.user.mention}** grabbed the drop and pocketed **+{self.amount:,}** {self.currency_emoji} {self.currency_name}!"
-        embed.set_footer(text=f"Claimed by {clean_display_name(interaction.user.display_name)}")
+        display_name = clean_display_name(interaction.user.display_name)
+        claimed_view = self.build_result_view(f"Claimed by {display_name}!")
+
+        embed = discord.Embed(
+            title="💰 Surprise Coin Drop Event!",
+            color=discord.Color.green(),
+            description=f"🎉 **{interaction.user.mention}** grabbed the drop and pocketed **+{amt:,}** {cur_emoji} {cur_name}!"
+        )
+        embed.set_footer(text=f"Claimed by {display_name}")
 
         try:
-            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.response.edit_message(embed=embed, view=claimed_view)
         except Exception:
             try:
                 if interaction.message:
-                    await interaction.message.edit(embed=embed, view=self)
+                    await interaction.message.edit(embed=embed, view=claimed_view)
                 else:
-                    await interaction.edit_original_response(embed=embed, view=self)
-            except Exception:
-                pass
+                    await interaction.edit_original_response(embed=embed, view=claimed_view)
+            except Exception as e:
+                print(f"[CoinDropView] Failed to update claimed message: {e}")
 
 
 class PayConfirmView(discord.ui.View):
@@ -1216,9 +1338,15 @@ class Economy(commands.Cog):
         self._user_locks: Dict[str, asyncio.Lock] = {}
         self._msg_cooldowns: Dict[str, float] = {}
         self.vc_coin_tick.start()
+        self.coin_drop_reaper.start()
+
+    async def cog_load(self):
+        # Register persistent listener so coin drop buttons never fail with "Friday didn't respond in time"
+        self.bot.add_view(CoinDropView(self, persistent=True))
 
     def cog_unload(self):
         self.vc_coin_tick.cancel()
+        self.coin_drop_reaper.cancel()
 
     def _get_lock(self, gid: str, uid: str) -> asyncio.Lock:
         key = f"{gid}:{uid}"
@@ -1324,6 +1452,49 @@ class Economy(commands.Cog):
                     note = f"VC: {vc.name} (2x Booster Active)" if is_boosted else f"VC: {vc.name}"
                     self.db.log_tx(gid, uid, "vc_reward", user_reward, new_w, note=note)
 
+    async def _expire_coin_drop_message(self, message: discord.Message, amount: int = 0, currency_name: str = "Coins", currency_emoji: str = "🪙"):
+        """Update a coin drop message to show its expired state with a disabled button."""
+        try:
+            amt_text = f" the **{amount:,}** {currency_emoji} {currency_name}" if amount > 0 else " the supply crate"
+            embed = discord.Embed(
+                title="💰 Surprise Coin Drop Event!",
+                color=discord.Color.dark_gray(),
+                description=f"⌛ **This supply crate expired!** Nobody claimed{amt_text} in time."
+            )
+            embed.set_footer(text="Expired • Be quicker on the next drop!")
+            expired_view = CoinDropView.build_result_view("⌛ Drop Expired")
+            await message.edit(embed=embed, view=expired_view)
+        except Exception as e:
+            print(f"[CoinDrop] Failed to edit expired drop message {getattr(message, 'id', '?')}: {e}")
+
+    @tasks.loop(seconds=15)
+    async def coin_drop_reaper(self):
+        """Guarantees expired coin drops are marked expired in Discord even across restarts."""
+        await self.bot.wait_until_ready()
+        expired = self.db.get_expired_unclaimed_drops()
+        for row in expired:
+            msg_id = row["message_id"]
+            self.db.mark_coin_drop_expired(msg_id)
+            try:
+                guild = self.bot.get_guild(int(row["guild_id"]))
+                channel = guild.get_channel(int(row["channel_id"])) if guild else self.bot.get_channel(int(row["channel_id"]))
+                if not channel:
+                    channel = await self.bot.fetch_channel(int(row["channel_id"]))
+                if channel and hasattr(channel, "fetch_message"):
+                    msg = await channel.fetch_message(int(msg_id))
+                    await self._expire_coin_drop_message(
+                        msg,
+                        amount=row.get("amount", 0),
+                        currency_name=row.get("currency_name", "Coins"),
+                        currency_emoji=row.get("currency_emoji", "🪙")
+                    )
+            except Exception as e:
+                print(f"[CoinDrop Reaper] Cleanup note for drop {msg_id}: {e}")
+        try:
+            self.db.prune_old_coin_drops()
+        except Exception:
+            pass
+
     async def spawn_coin_drop(self, guild: discord.Guild, drop_amt: Optional[int] = None, channel: Optional[discord.TextChannel] = None) -> Optional[discord.Message]:
         gid = str(guild.id)
         if self.is_paused(gid):
@@ -1360,21 +1531,33 @@ class Economy(commands.Cog):
         if not target_ch:
             return None
             
-        view = CoinDropView(self, gid, drop_amt, cur_name, cur_emoji)
+        expires_at = time.time() + 60
+        view = CoinDropView(self, gid, drop_amt, cur_name, cur_emoji, expires_at=expires_at)
         embed = discord.Embed(
             title="💰 Surprise Coin Drop Event!",
             description=(
                 f"A supply crate loaded with **{drop_amt:,} {cur_emoji} {cur_name}** just dropped!\n"
-                f"First one to click the button claims the loot!"
+                f"First one to click the button claims the loot!\n\n"
+                f"⏳ Expires <t:{int(expires_at)}:R>"
             ),
             color=discord.Color.gold()
         )
-        embed.set_footer(text="Click fast before someone else claims it!")
+        embed.set_footer(text="Expires in 1 minute • Click fast before someone else claims it!")
         try:
             msg = await target_ch.send(embed=embed, view=view)
             view.message = msg
+            self.db.save_coin_drop(
+                message_id=str(msg.id),
+                channel_id=str(target_ch.id),
+                guild_id=gid,
+                amount=drop_amt,
+                currency_name=cur_name,
+                currency_emoji=cur_emoji,
+                expires_at=expires_at
+            )
             return msg
-        except Exception:
+        except Exception as e:
+            print(f"[CoinDrop] Failed to send drop message: {e}")
             return None
 
     @commands.Cog.listener()
