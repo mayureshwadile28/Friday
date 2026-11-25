@@ -63,6 +63,14 @@ class Leveling(commands.Cog):
         """
         return int(5 * (level ** 2) + 50 * level + 100)
 
+    def get_total_xp(self, level: int, xp: int = 0) -> int:
+        """Compute cumulative XP earned from level 0 up to (level, xp)."""
+        total = max(0, int(xp or 0))
+        lvl = max(0, int(level or 0))
+        for l in range(lvl):
+            total += self.get_xp_requirement(l)
+        return total
+
     @level_admin.command(name="setup", description="Activate leveling and set the channel for Level Up updates.")
     @app_commands.default_permissions(administrator=True)
     async def level_setup(self, interaction: discord.Interaction, channel: discord.TextChannel):
@@ -82,21 +90,25 @@ class Leveling(commands.Cog):
             return None, f"{clean_display_name(user.display_name)} has no XP recorded yet! Send some messages to start leveling up."
 
         user_stats = db.xp_data[gid][uid]
-        # Only rank current active members
+        # Only rank current active non-bot members
         active_users = []
         for u_id, s in db.xp_data[gid].items():
-            if guild.get_member(int(u_id)):
+            try:
+                mem = guild.get_member(int(u_id))
+            except (ValueError, TypeError):
+                continue
+            if mem and not getattr(mem, "bot", False):
                 active_users.append((u_id, s))
         sorted_users = sorted(active_users, key=lambda item: (item[1].get('level', 0), item[1].get('xp', 0)), reverse=True)
         try:
             rank_pos = [i[0] for i in sorted_users].index(uid) + 1
         except ValueError:
-            rank_pos = len(sorted_users)
+            rank_pos = max(1, len(sorted_users))
         
-        current_xp = user_stats["xp"]
-        current_level = user_stats["level"]
+        current_xp = user_stats.get("xp", 0)
+        current_level = user_stats.get("level", 0)
         next_xp = self.get_xp_requirement(current_level)
-        percentage = min(100.0, max(2.0, (current_xp / max(1, next_xp)) * 100.0))
+        percentage = min(100.0, max(0.0, (current_xp / max(1, next_xp)) * 100.0))
 
         # Check total messages from Activity cog DB if loaded
         total_messages = 0
@@ -309,7 +321,7 @@ class Leveling(commands.Cog):
 
         # Background track
         draw_rounded_rect(draw, (bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=10, fill=(10, 12, 18, 130) if custom_bg else (20, 23, 30, 200), outline=(tar, tag, tab, 120), width=1)
-        fill_w = int(bar_w * (percentage / 100.0))
+        fill_w = max(bar_h, int(bar_w * (percentage / 100.0))) if percentage > 0 else 0
         if fill_w > 0:
             draw_rounded_rect(draw, (bar_x, bar_y, bar_x + fill_w, bar_y + bar_h), radius=10, fill=(ar, ag, ab, 255))
 
@@ -753,8 +765,9 @@ class Leveling(commands.Cog):
             if current_rank in m_dict:
                 _, name_str, user_str, av_img, lvl_val, xp_val, req_val = m_dict[current_rank]
 
-                ratio = xp_val / max(1, max_xp)
-                fill_w = int(col_w * min(1.0, max(0.02, ratio)))
+                total_xp_val = self.get_total_xp(lvl_val, xp_val)
+                ratio = total_xp_val / max(1, max_xp)
+                fill_w = int(col_w * min(1.0, max(0.02, ratio))) if total_xp_val > 0 else 0
                 if fill_w > 0:
                     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
                     od = ImageDraw.Draw(overlay)
@@ -855,7 +868,7 @@ class Leveling(commands.Cog):
 
         tasks = [fetch_item(offset + i, uid, d, m) for i, (uid, d, m) in enumerate(page_users, start=1)]
         members_data = await asyncio.gather(*tasks) if tasks else []
-        max_xp = sorted_users[0][1].get("xp", 1) if sorted_users else 1
+        max_xp = self.get_total_xp(sorted_users[0][1].get("level", 0), sorted_users[0][1].get("xp", 0)) if sorted_users else 1
 
         guild_icon = await self.fetch_avatar(guild, size=60)
         buf = self.render_xp_leaderboard_card(
@@ -893,6 +906,9 @@ class Leveling(commands.Cog):
     async def admin_add_xp(self, interaction: discord.Interaction, member: discord.Member, amount: int):
         if not await ensure_admin_or_owner(interaction):
             return
+        if member.bot:
+            await interaction.response.send_message("❌ Bots cannot hold levels or XP.", ephemeral=True)
+            return
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
             return
@@ -900,9 +916,9 @@ class Leveling(commands.Cog):
         if gid not in db.xp_data: db.xp_data[gid] = {}
         if uid not in db.xp_data[gid]: db.xp_data[gid][uid] = {"xp": 0, "level": 0}
 
-        db.xp_data[gid][uid]["xp"] += amount
+        db.xp_data[gid][uid]["xp"] = db.xp_data[gid][uid].get("xp", 0) + amount
         current_xp = db.xp_data[gid][uid]["xp"]
-        current_level = db.xp_data[gid][uid]["level"]
+        current_level = db.xp_data[gid][uid].get("level", 0)
         leveled_up = False
 
         while True:
@@ -925,6 +941,9 @@ class Leveling(commands.Cog):
     @app_commands.default_permissions(administrator=True)
     async def admin_remove_xp(self, interaction: discord.Interaction, member: discord.Member, amount: int):
         if not await ensure_admin_or_owner(interaction):
+            return
+        if member.bot:
+            await interaction.response.send_message("❌ Bots cannot hold levels or XP.", ephemeral=True)
             return
         if amount <= 0:
             await interaction.response.send_message("❌ Amount must be positive.", ephemeral=True)
@@ -958,11 +977,73 @@ class Leveling(commands.Cog):
         db.save_data()
         await interaction.response.send_message(f"✅ Removed **{amount:,} XP** from {member.mention}. Current: Level **{current_level}** • **{current_xp:,} XP**")
 
+    @level_admin.command(name="add_level", description="Add levels to a member.")
+    @app_commands.describe(member="Target member", levels="Number of levels to add (1 or higher)")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_add_level(self, interaction: discord.Interaction, member: discord.Member, levels: int):
+        if not await ensure_admin_or_owner(interaction):
+            return
+        if member.bot:
+            await interaction.response.send_message("❌ Bots cannot hold levels or XP.", ephemeral=True)
+            return
+        if levels <= 0:
+            await interaction.response.send_message("❌ Levels to add must be positive.", ephemeral=True)
+            return
+        gid, uid = str(interaction.guild.id), str(member.id)
+        if gid not in db.xp_data: db.xp_data[gid] = {}
+        if uid not in db.xp_data[gid]: db.xp_data[gid][uid] = {"xp": 0, "level": 0}
+
+        old_level = db.xp_data[gid][uid].get("level", 0)
+        new_level = old_level + levels
+        current_xp = db.xp_data[gid][uid].get("xp", 0)
+        max_allowed_xp = max(0, self.get_xp_requirement(new_level) - 1)
+        current_xp = min(current_xp, max_allowed_xp)
+
+        db.xp_data[gid][uid]["level"] = new_level
+        db.xp_data[gid][uid]["xp"] = current_xp
+        db.save_data()
+        await interaction.response.send_message(
+            f"✅ Added **+{levels} level(s)** to {member.mention}. Level: **{old_level}** ➔ **{new_level}** • **{current_xp:,} XP**"
+        )
+
+    @level_admin.command(name="remove_level", description="Remove levels from a member.")
+    @app_commands.describe(member="Target member", levels="Number of levels to remove (1 or higher)")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_remove_level(self, interaction: discord.Interaction, member: discord.Member, levels: int):
+        if not await ensure_admin_or_owner(interaction):
+            return
+        if member.bot:
+            await interaction.response.send_message("❌ Bots cannot hold levels or XP.", ephemeral=True)
+            return
+        if levels <= 0:
+            await interaction.response.send_message("❌ Levels to remove must be positive.", ephemeral=True)
+            return
+        gid, uid = str(interaction.guild.id), str(member.id)
+        if gid not in db.xp_data or uid not in db.xp_data[gid]:
+            await interaction.response.send_message(f"❌ {member.mention} has no level or XP recorded.", ephemeral=True)
+            return
+
+        old_level = db.xp_data[gid][uid].get("level", 0)
+        new_level = max(0, old_level - levels)
+        current_xp = db.xp_data[gid][uid].get("xp", 0)
+        max_allowed_xp = max(0, self.get_xp_requirement(new_level) - 1)
+        current_xp = min(current_xp, max_allowed_xp)
+
+        db.xp_data[gid][uid]["level"] = new_level
+        db.xp_data[gid][uid]["xp"] = current_xp
+        db.save_data()
+        await interaction.response.send_message(
+            f"✅ Removed **-{levels} level(s)** from {member.mention}. Level: **{old_level}** ➔ **{new_level}** • **{current_xp:,} XP**"
+        )
+
     @level_admin.command(name="set_level", description="Directly set a member's level.")
     @app_commands.describe(member="Target member", level="New level number (0 or higher)")
     @app_commands.default_permissions(administrator=True)
     async def admin_set_level(self, interaction: discord.Interaction, member: discord.Member, level: int):
         if not await ensure_admin_or_owner(interaction):
+            return
+        if member.bot:
+            await interaction.response.send_message("❌ Bots cannot hold levels or XP.", ephemeral=True)
             return
         if level < 0:
             await interaction.response.send_message("❌ Level must be 0 or higher.", ephemeral=True)
@@ -1017,19 +1098,25 @@ class Leveling(commands.Cog):
             except Exception:
                 pass
 
-            db.xp_data[gid][uid]["xp"] += gained_xp
+            db.xp_data[gid][uid]["xp"] = db.xp_data[gid][uid].get("xp", 0) + gained_xp
             self.xp_cooldowns[uid] = now
             
             current_xp = db.xp_data[gid][uid]["xp"]
-            current_level = db.xp_data[gid][uid]["level"]
-            required_xp = self.get_xp_requirement(current_level)
+            current_level = db.xp_data[gid][uid].get("level", 0)
+            old_lvl = current_level
+            leveled_up = False
 
-            if current_xp >= required_xp:
-                old_lvl = current_level
-                db.xp_data[gid][uid]["level"] += 1
-                db.xp_data[gid][uid]["xp"] = current_xp - required_xp 
-                new_level = db.xp_data[gid][uid]["level"]
-                xp_after_levelup = db.xp_data[gid][uid]["xp"]  # XP carried over after level-up (usually ~0)
+            while current_xp >= self.get_xp_requirement(current_level):
+                required_xp = self.get_xp_requirement(current_level)
+                current_level += 1
+                current_xp -= required_xp
+                leveled_up = True
+
+            if leveled_up:
+                db.xp_data[gid][uid]["level"] = current_level
+                db.xp_data[gid][uid]["xp"] = current_xp
+                new_level = current_level
+                xp_after_levelup = current_xp  # XP carried over after level-up (usually ~0)
                 db.save_data()
 
                 # Economy Level-Up Bonus Reward hook

@@ -136,7 +136,7 @@ HELP_MODULES = [
         "emoji": "▲",
         "desc": "XP Progression, Ranks & Leaderboards",
         "sections": [
-            ("Rank & Progression", ["rank", "leaderboard xp", "level_admin setup", "level_admin mode", "level_admin add_xp", "level_admin remove_xp", "level_admin set_level", "level_admin reset"])
+            ("Rank & Progression", ["rank", "leaderboard xp", "level_admin setup", "level_admin mode", "level_admin add_xp", "level_admin remove_xp", "level_admin add_level", "level_admin remove_level", "level_admin set_level", "level_admin reset"])
         ]
     },
     {

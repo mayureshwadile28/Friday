@@ -732,6 +732,12 @@ class PayConfirmView(discord.ui.View):
         self._lock = asyncio.Lock()
         self.message: Optional[discord.Message] = None
 
+    def disable_all_items(self):
+        """Disable all interactive components on this view."""
+        for child in self.children:
+            if hasattr(child, "disabled"):
+                child.disabled = True
+
     async def _safe_update(self, interaction: discord.Interaction, *, content=None, embed=None, view=None) -> bool:
         """Safely and reliably update the prompt message or interaction response."""
         # 1. Primary: If interaction was deferred/responded, edit via interaction webhook
@@ -774,6 +780,7 @@ class PayConfirmView(discord.ui.View):
             if not self.processed:
                 self.processed = True
                 self.disable_all_items()
+                self.stop()
                 target_msg = self.message
                 if target_msg:
                     try:
@@ -800,26 +807,31 @@ class PayConfirmView(discord.ui.View):
         async with self._lock:
             if self.processed:
                 self.disable_all_items()
+                self.stop()
                 await self._safe_update(interaction, view=None)
                 return
             self.processed = True
 
-        # Re-check sender balance
-        sender_profile = self.cog.db.get_or_init_user(self.gid, str(self.sender.id))
-        if sender_profile["wallet"] < self.gross:
+            # Re-check sender balance & ensure recipient profile exists
+            sender_profile = self.cog.db.get_or_init_user(self.gid, str(self.sender.id))
+            if sender_profile["wallet"] < self.gross:
+                self.disable_all_items()
+                self.stop()
+                msg = f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet."
+                await self._safe_update(interaction, content=msg, embed=None, view=None)
+                return
+
+            self.cog.db.get_or_init_user(self.gid, str(self.target.id))
+
+            # Atomic deduction and credit
+            s_wallet = self.cog.db.delta_wallet(self.gid, str(self.sender.id), -self.gross)
+            t_wallet = self.cog.db.delta_wallet(self.gid, str(self.target.id), self.net)
+
+            self.cog.db.log_tx(self.gid, str(self.sender.id), "pay_send", -self.gross, s_wallet, related_uid=str(self.target.id), note=f"Tax: {self.tax}")
+            self.cog.db.log_tx(self.gid, str(self.target.id), "pay_receive", self.net, t_wallet, related_uid=str(self.sender.id), note=f"Gross: {self.gross}")
+
             self.disable_all_items()
-            msg = f"❌ Transfer cancelled: You no longer have **{self.gross:,} {self.currency_name}** in your wallet."
-            await self._safe_update(interaction, content=msg, embed=None, view=None)
-            return
-
-        # Atomic deduction and credit
-        s_wallet = self.cog.db.delta_wallet(self.gid, str(self.sender.id), -self.gross)
-        t_wallet = self.cog.db.delta_wallet(self.gid, str(self.target.id), self.net)
-
-        self.cog.db.log_tx(self.gid, str(self.sender.id), "pay_send", -self.gross, s_wallet, related_uid=str(self.target.id), note=f"Tax: {self.tax}")
-        self.cog.db.log_tx(self.gid, str(self.target.id), "pay_receive", self.net, t_wallet, related_uid=str(self.sender.id), note=f"Gross: {self.gross}")
-
-        self.disable_all_items()
+            self.stop()
 
         tax_rate_disp = f"{int((self.tax / self.gross) * 100)}%" if self.gross > 0 else "8%"
         embed = discord.Embed(
@@ -850,11 +862,13 @@ class PayConfirmView(discord.ui.View):
         async with self._lock:
             if self.processed:
                 self.disable_all_items()
+                self.stop()
                 await self._safe_update(interaction, view=None)
                 return
             self.processed = True
+            self.disable_all_items()
+            self.stop()
 
-        self.disable_all_items()
         embed = discord.Embed(
             title="❌ Transfer Cancelled",
             color=discord.Color.dark_gray(),
