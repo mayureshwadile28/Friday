@@ -39,6 +39,7 @@ class Database:
         self.media_announcements = self.data.get("media_announcements", {})
         self.liked_songs = self.data.get("liked_songs", {})
         self.playlists = self.data.get("playlists", {})
+        self.active_playlists = self.data.get("active_playlists", {})
         self.warnings = self.data.get("warnings", {})
         self.first_welcome = self.data.get("first_welcome", {})
         self.first_chat_welcomes = self.data.get("first_chat_welcomes", {})
@@ -146,6 +147,8 @@ class Database:
                 "media_whitelist": {},
                 "media_announcements": {},
                 "liked_songs": {},
+                "playlists": {},
+                "active_playlists": {},
                 "warnings": {},
                 "first_welcome": {},
                 "first_chat_welcomes": {},

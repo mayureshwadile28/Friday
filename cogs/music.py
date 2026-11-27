@@ -493,11 +493,47 @@ class Song:
         self.is_autoplay = is_autoplay
 
 
-class SaveToPlaylistModal(discord.ui.Modal, title="Save Track to Playlist"):
+def resolve_user_playlist_name(user_pls: dict, query: str) -> Optional[str]:
+    """Resolve a user's playlist name exactly or case-insensitively."""
+    if not user_pls or not query:
+        return None
+    q = query.strip()
+    if q in user_pls:
+        return q
+    q_low = q.lower()
+    for k in user_pls.keys():
+        if k.lower() == q_low:
+            return k
+    return None
+
+
+def add_song_to_playlist(uid: str, playlist_name: str, song: Song) -> tuple[str, int, str]:
+    """Save a track to the user's playlist and remember it as their active quick-save playlist."""
+    user_pls = db.playlists.setdefault(uid, {})
+    canonical = resolve_user_playlist_name(user_pls, playlist_name) or playlist_name.strip()[:40] or "Favorites"
+    pl_tracks = user_pls.setdefault(canonical, [])
+
+    db.active_playlists[uid] = canonical
+    if any(item.get("url") == song.webpage_url for item in pl_tracks):
+        db.save_data()
+        return ("duplicate", len(pl_tracks), canonical)
+    if len(pl_tracks) >= 150:
+        return ("full", len(pl_tracks), canonical)
+
+    pl_tracks.append({
+        "title": song.title,
+        "url": song.webpage_url,
+        "duration": song.duration
+    })
+    db.save_data()
+    return ("added", len(pl_tracks), canonical)
+
+
+class SaveToPlaylistModal(discord.ui.Modal, title="Name Your Playlist"):
     playlist_name = discord.ui.TextInput(
         label="Playlist Name",
-        placeholder="e.g. Chill, Gym, Favorites, Bollywood",
-        default="Favorites",
+        placeholder="e.g. Chill Vibes, Favorites, Gym, Late Night",
+        default="",
         min_length=1,
         max_length=40,
         required=True
@@ -510,33 +546,30 @@ class SaveToPlaylistModal(discord.ui.Modal, title="Save Track to Playlist"):
 
     async def on_submit(self, interaction: discord.Interaction):
         try:
-            name = self.playlist_name.value.strip()
+            name = self.playlist_name.value.strip()[:40]
+            if not name:
+                return await interaction.response.send_message("◈ Please provide a valid playlist name.", ephemeral=True)
             uid = str(interaction.user.id)
-            user_pls = db.playlists.setdefault(uid, {})
-            pl_tracks = user_pls.setdefault(name, [])
+            status, total, canonical = add_song_to_playlist(uid, name, self.song)
 
-            if any(item.get("url") == self.song.webpage_url for item in pl_tracks):
+            if status == "full":
                 return await interaction.response.send_message(
-                    f"ℹ️ **[{self.song.title}]({self.song.webpage_url})** is already inside playlist **{name}**.",
+                    f"◈ Playlist **{canonical}** is at maximum capacity (150 tracks).",
                     ephemeral=True
                 )
-
-            if len(pl_tracks) >= 150:
+            if status == "duplicate":
                 return await interaction.response.send_message(
-                    f"⚠️ Playlist **{name}** is at maximum capacity (150 tracks).",
+                    f"◈ **[{self.song.title}]({self.song.webpage_url})** is already in **{canonical}** (`{total}` tracks).",
                     ephemeral=True
                 )
-
-            pl_tracks.append({
-                "title": self.song.title,
-                "url": self.song.webpage_url,
-                "duration": self.song.duration
-            })
-            db.save_data()
 
             embed = make_box_embed(
-                title="Added to Playlist",
-                description=f"Saved **[{self.song.title}]({self.song.webpage_url})** into playlist **{name}**!\nTotal tracks in `{name}`: **{len(pl_tracks)}**\n*Play it anytime using `/playlist play name:{name}`.*",
+                title="Playlist Created & Track Saved",
+                description=(
+                    f"Saved **[{self.song.title}]({self.song.webpage_url})** into **{canonical}** (`{total}` tracks).\n"
+                    f"Next time you click **Save to Playlist**, songs will auto-save directly to **{canonical}**!\n"
+                    f"*Play it anytime using `/playlist play`.*"
+                ),
                 status="success"
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -544,9 +577,54 @@ class SaveToPlaylistModal(discord.ui.Modal, title="Save Track to Playlist"):
             print(f"[Playlist Modal Error] {e}")
             try:
                 if not interaction.response.is_done():
-                    await interaction.response.send_message("⚠️ An error occurred saving to playlist.", ephemeral=True)
+                    await interaction.response.send_message("◈ An error occurred saving to playlist.", ephemeral=True)
             except Exception:
                 pass
+
+
+class PlaylistSwitchView(discord.ui.View):
+    """Ephemeral helper shown on auto-save so the user can switch active playlists or create a new one."""
+    def __init__(self, cog, uid: str, user_pls: dict, active_name: str, song: Song):
+        super().__init__(timeout=180)
+        self.cog = cog
+        self.uid = uid
+        self.song = song
+
+        opts = []
+        for p_name, tracks in list(user_pls.items())[:25]:
+            prefix = "◈ " if p_name == active_name else ""
+            opts.append(discord.SelectOption(
+                label=f"{prefix}{p_name}"[:100],
+                value=p_name[:100],
+                description=f"{len(tracks)} tracks" + (" (Auto-save target)" if p_name == active_name else ""),
+                default=(p_name == active_name)
+            ))
+        if opts:
+            sel = discord.ui.Select(
+                placeholder="Switch auto-save playlist...",
+                options=opts,
+                row=0
+            )
+            sel.callback = self._on_switch
+            self.add_item(sel)
+
+    async def _on_switch(self, interaction: discord.Interaction):
+        chosen = interaction.data["values"][0]
+        status, total, canonical = add_song_to_playlist(self.uid, chosen, self.song)
+        if status == "full":
+            msg = f"◈ Switched active playlist to **{canonical}**, but it is full (150 tracks)."
+        elif status == "duplicate":
+            msg = f"◈ Active playlist switched to **{canonical}** (`{total}` tracks). **[{self.song.title}]({self.song.webpage_url})** is already in it."
+        else:
+            msg = f"◈ Switched active playlist to **{canonical}** and saved **[{self.song.title}]({self.song.webpage_url})** (`{total}` tracks)!"
+        await interaction.response.edit_message(
+            embed=make_box_embed(title="Active Playlist Updated", description=msg, status="success"),
+            view=PlaylistSwitchView(self.cog, self.uid, db.playlists.get(self.uid, {}), canonical, self.song)
+        )
+
+    @discord.ui.button(label="＋ New Playlist", style=discord.ButtonStyle.secondary, row=1)
+    async def new_pl_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SaveToPlaylistModal(self.cog, self.song))
 
 
 def resolve_music_card_background(bg_path: Optional[str]) -> Optional[str]:
@@ -591,6 +669,7 @@ class MusicControlView(discord.ui.View):
             "music_queue": ("m_queue", "Queue", "≡ Queue"),
             "music_like": ("m_like", "Like", "♡ Like"),
             "music_autoplay": ("m_autoplay", "Autoplay", "∞ Auto"),
+            "music_save_playlist": ("m_save", "Save to Playlist", "＋ Save to Playlist"),
         }
         is_paused = False
         is_loop = False
@@ -624,14 +703,6 @@ class MusicControlView(discord.ui.View):
                 app_em = cog.get_ui_emoji(app_name) if cog else None
                 child.emoji = app_em
                 child.label = clean_lbl if app_em else mono_lbl
-            elif cid == "music_eq_select" and cog:
-                save_em = cog.get_ui_emoji("m_save")
-                if save_em:
-                    for opt in child.options:
-                        if opt.value == "__save_playlist__":
-                            opt.emoji = save_em
-                            opt.label = "Save to Playlist"
-                            break
 
     def _get_context(self, interaction: discord.Interaction):
         gid = interaction.guild_id or self.guild_id
@@ -996,12 +1067,58 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: autoplay] {e}")
 
+    @discord.ui.button(label="＋ Save to Playlist", style=discord.ButtonStyle.secondary, custom_id="music_save_playlist", row=2)
+    async def save_playlist_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            gid, cog = self._get_context(interaction)
+            if not cog:
+                return
+            state = cog.get_state(gid)
+            current = state.get("current")
+            if not current:
+                return await interaction.response.send_message("◈ No track currently playing to save.", ephemeral=True)
+
+            uid = str(interaction.user.id)
+            user_pls = db.playlists.get(uid, {})
+            if not user_pls:
+                return await interaction.response.send_modal(SaveToPlaylistModal(cog, current))
+
+            active_name = resolve_user_playlist_name(user_pls, db.active_playlists.get(uid, "")) or list(user_pls.keys())[-1]
+            status, total, canonical = add_song_to_playlist(uid, active_name, current)
+            switch_view = PlaylistSwitchView(cog, uid, db.playlists.get(uid, {}), canonical, current)
+
+            if status == "full":
+                embed = make_box_embed(
+                    title="Playlist Full",
+                    description=f"Playlist **{canonical}** has reached the 150-track limit.\nSwitch or create a new playlist below.",
+                    status="warning"
+                )
+            elif status == "duplicate":
+                embed = make_box_embed(
+                    title="Already in Playlist",
+                    description=f"**[{current.title}]({current.webpage_url})** is already saved in **{canonical}** (`{total}` tracks).\nWant to save to a different playlist? Switch below.",
+                    status="info"
+                )
+            else:
+                embed = make_box_embed(
+                    title="Saved to Playlist",
+                    description=f"Auto-saved **[{current.title}]({current.webpage_url})** to **{canonical}** (`{total}` tracks).\n*Use `/playlist play` anytime to play your playlist!*",
+                    status="success"
+                )
+            await interaction.response.send_message(embed=embed, view=switch_view, ephemeral=True)
+        except Exception as e:
+            print(f"[Music Button Error: save_playlist] {e}")
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("◈ Could not save track to playlist.", ephemeral=True)
+            except Exception:
+                pass
+
     @discord.ui.select(
-        placeholder="Mastering EQ & Save to Playlist...",
+        placeholder="◈  Mastering EQ Profiles...",
         custom_id="music_eq_select",
-        row=2,
+        row=3,
         options=[
-            discord.SelectOption(label="＋  Save to Playlist", value="__save_playlist__", description="Save the currently playing track to a personal playlist"),
             discord.SelectOption(label="◈  EQ: Studio Master", value="studio", description="Crisp 48kHz highs, warm punch, anti-clipping"),
             discord.SelectOption(label="◈  EQ: Bass Boost", value="bassboost", description="Deep sub-bass punch for EDM, Phonk, Hip-Hop"),
             discord.SelectOption(label="◈  EQ: Vocal / Acoustic", value="vocal", description="Enhanced vocal presence and instrument clarity"),
@@ -1105,17 +1222,29 @@ class QueueItemView(discord.ui.View):
         self.guild_id = guild_id
         self.song = song
 
+        icon_map = {
+            "queue_play_now": ("m_play", "Play Now", "► Play Now"),
+            "queue_remove": ("m_remove", "Remove from Queue", "✕ Remove from Queue"),
+        }
+        for child in self.children:
+            cid = getattr(child, "custom_id", None)
+            if cid in icon_map:
+                app_name, clean_lbl, mono_lbl = icon_map[cid]
+                app_em = cog.get_ui_emoji(app_name) if cog else None
+                child.emoji = app_em
+                child.label = clean_lbl if app_em else mono_lbl
+
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
         print(f"[QueueItemView Error on {item}] {error}")
         try:
             if not interaction.response.is_done():
-                await interaction.response.send_message("⚠️ An error occurred updating the music queue.", ephemeral=True)
+                await interaction.response.send_message("◈ An error occurred updating the music queue.", ephemeral=True)
             else:
-                await interaction.followup.send("⚠️ An error occurred updating the music queue.", ephemeral=True)
+                await interaction.followup.send("◈ An error occurred updating the music queue.", ephemeral=True)
         except Exception:
             pass
 
-    @discord.ui.button(label="Play Now", style=discord.ButtonStyle.success, emoji="⚡")
+    @discord.ui.button(label="► Play Now", style=discord.ButtonStyle.secondary, custom_id="queue_play_now")
     async def play_now_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -1127,7 +1256,7 @@ class QueueItemView(discord.ui.View):
             state = self.cog.get_state(self.guild_id)
             vc = interaction.guild.voice_client if interaction.guild else None
             if not vc:
-                await interaction.followup.send("❌ Friday is not in a voice channel.", ephemeral=True)
+                await interaction.followup.send("◈ Friday is not in a voice channel.", ephemeral=True)
                 return
 
             if self.song in state["queue"]:
@@ -1144,11 +1273,11 @@ class QueueItemView(discord.ui.View):
                 await interaction.message.edit(view=self)
             except Exception:
                 pass
-            await interaction.followup.send(f"⚡ Now playing **{self.song.title}** immediately!", ephemeral=True)
+            await interaction.followup.send(f"► Now playing **{self.song.title}** immediately!", ephemeral=True)
         except Exception as e:
             print(f"[Music Queue Button Error] {e}")
 
-    @discord.ui.button(label="Remove from Queue", style=discord.ButtonStyle.danger, emoji="🗑️")
+    @discord.ui.button(label="✕ Remove from Queue", style=discord.ButtonStyle.secondary, custom_id="queue_remove")
     async def remove_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -1166,9 +1295,9 @@ class QueueItemView(discord.ui.View):
                     await interaction.message.edit(view=self)
                 except Exception:
                     pass
-                await interaction.followup.send(f"🗑️ Removed **{self.song.title}** from the queue.", ephemeral=True)
+                await interaction.followup.send(f"✕ Removed **{self.song.title}** from the queue.", ephemeral=True)
             else:
-                await interaction.followup.send("ℹ️ This track is already playing or no longer in the queue.", ephemeral=True)
+                await interaction.followup.send("◈ This track is already playing or no longer in the queue.", ephemeral=True)
         except Exception as e:
             print(f"[Music Queue Button Error] {e}")
 
@@ -1495,6 +1624,13 @@ class Music(commands.Cog):
 
         return None
 
+    @staticmethod
+    def enqueue_user_song(state: dict, song: Song) -> int:
+        """Prioritize human-requested tracks ahead of unplayed Autoplay suggestions and return 1-based queue position."""
+        state["queue"] = [s for s in state.get("queue", []) if not getattr(s, "is_autoplay", False)]
+        state["queue"].append(song)
+        return len(state["queue"])
+
     async def ensure_autoplay_queued(self, guild_id: int):
         """Pre-fetches the next matching autoplay track so the queue is never empty and playback never stalls."""
         state = self.get_state(guild_id)
@@ -1516,6 +1652,9 @@ class Music(commands.Cog):
             channel = state.get("channel")
             next_song = await self._find_autoplay_track(ref_song, guild_id)
             vc = guild.voice_client
+            # If a user queued a song (or stopped/disabled autoplay) while searching, yield to the user's queue!
+            if state.get("queue") or not state.get("autoplay") or state.get("_stopping") or not vc or not vc.is_connected():
+                return
             if next_song:
                 next_song.is_autoplay = True
                 state["queue"].append(next_song)
@@ -2432,6 +2571,18 @@ class Music(commands.Cog):
             self.play_next(guild_id)
 
         try:
+            # Lazily resolve saved playlist / deferred webpage URLs into live audio stream URLs
+            if not next_song.url or next_song.url == next_song.webpage_url:
+                target_query = next_song.webpage_url or next_song.title
+                info = await self.extract_audio_info(target_query)
+                if info and info.get("url"):
+                    next_song.url = info["url"]
+                    if not next_song.thumbnail:
+                        next_song.thumbnail = info.get("thumbnail")
+                    if not next_song.duration:
+                        next_song.duration = info.get("duration", 0)
+                    state["_card_cache"] = None
+
             vol = state.get("volume", 1.0)
             ffmpeg_opts = self.get_ffmpeg_options(guild_id)
             raw_source = discord.FFmpegPCMAudio(next_song.url, **ffmpeg_opts)
@@ -2694,12 +2845,11 @@ class Music(commands.Cog):
         )
 
         if vc.is_playing() or vc.is_paused():
-            state["queue"].append(song)
+            pos = self.enqueue_user_song(state, song)
             mins, secs = divmod(song.duration or 0, 60)
-            pos = len(state["queue"])
             embed = discord.Embed(
                 title="◈  ADDED TO QUEUE",
-                description=f"• **[{song.title}]({song.webpage_url})**\n• ◈ **Position:** `#{pos}`  •  ⏱ **Duration:** `{mins:02d}m {secs:02d}s`\n• ◈ **Requested by:** {interaction.user.mention}",
+                description=f"• **[{song.title}]({song.webpage_url})**\n• ◈ **Position:** `#{pos}`  •  ◷ **Duration:** `{mins:02d}m {secs:02d}s`\n• ◈ **Requested by:** {interaction.user.mention}",
                 color=discord.Color.from_rgb(139, 92, 246)
             )
             if song.thumbnail:
@@ -2792,7 +2942,7 @@ class Music(commands.Cog):
                         requester=requester,
                         thumbnail=info.get('thumbnail')
                     )
-                    state["queue"].append(song)
+                    self.enqueue_user_song(state, song)
                     print(f"[Music] Enqueued Spotify batch track: '{song.title}' (queue: {len(state['queue'])})")
             except Exception as e:
                 print(f"[Music] Spotify batch track error for '{t.get('title')}': {e}")
@@ -3062,10 +3212,12 @@ class Music(commands.Cog):
 
         uid = str(interaction.user.id)
         user_pls = db.playlists.setdefault(uid, {})
-        pl_tracks = user_pls.setdefault(clean_name, [])
+        existing_name = resolve_user_playlist_name(user_pls, clean_name)
+        target_name = existing_name or clean_name
+        pl_tracks = user_pls.setdefault(target_name, [])
 
         if len(pl_tracks) >= 150:
-            return await interaction.followup.send(f"⚠️ Playlist **{clean_name}** is at maximum capacity (150 tracks).", ephemeral=True)
+            return await interaction.followup.send(f"◈ Playlist **{target_name}** is at maximum capacity (150 tracks).", ephemeral=True)
 
         song_to_add = None
         if music:
@@ -3077,12 +3229,12 @@ class Music(commands.Cog):
                     "duration": info.get("duration", 0)
                 }
             except Exception as e:
-                return await interaction.followup.send(f"❌ Could not resolve audio for `{music}`: {e}", ephemeral=True)
+                return await interaction.followup.send(f"◈ Could not resolve audio for `{music}`: {e}", ephemeral=True)
         else:
             state = self.get_state(interaction.guild_id)
             current = state.get("current")
             if not current:
-                return await interaction.followup.send("❌ No track is currently playing in VC. Please specify a song name or URL: `/playlist add name:<name> music:<song>`.", ephemeral=True)
+                return await interaction.followup.send("◈ No track is currently playing in VC. Please specify a song name or URL: `/playlist add name:<name> music:<song>`.", ephemeral=True)
             song_to_add = {
                 "title": current.title,
                 "url": current.webpage_url,
@@ -3090,14 +3242,15 @@ class Music(commands.Cog):
             }
 
         if any(item.get("url") == song_to_add["url"] for item in pl_tracks):
-            return await interaction.followup.send(f"ℹ️ **[{song_to_add['title']}]({song_to_add['url']})** is already inside playlist **{clean_name}**.", ephemeral=True)
+            return await interaction.followup.send(f"◈ **[{song_to_add['title']}]({song_to_add['url']})** is already inside playlist **{target_name}**.", ephemeral=True)
 
         pl_tracks.append(song_to_add)
+        db.active_playlists[uid] = target_name
         db.save_data()
 
         embed = make_box_embed(
             title="Playlist Updated",
-            description=f"Saved **[{song_to_add['title']}]({song_to_add['url']})** into playlist **{clean_name}**!\nTotal tracks in `{clean_name}`: **{len(pl_tracks)}**\n*Play it anytime using `/playlist play name:{clean_name}`.*",
+            description=f"Saved **[{song_to_add['title']}]({song_to_add['url']})** into playlist **{target_name}**!\nTotal tracks in `{target_name}`: **{len(pl_tracks)}**\n*Play it anytime using `/playlist play`.*",
             status="success"
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -3111,11 +3264,11 @@ class Music(commands.Cog):
         await interaction.response.defer()
         uid = str(interaction.user.id)
         user_pls = db.playlists.get(uid, {})
-        clean_name = name.strip()
-        pl_tracks = user_pls.get(clean_name)
+        canonical = resolve_user_playlist_name(user_pls, name)
+        pl_tracks = user_pls.get(canonical) if canonical else None
 
         if not pl_tracks:
-            return await reply_box(interaction, f"Playlist **{clean_name}** not found or is empty. Use `/playlist list` to see your playlists.", title="PLAYLIST EMPTY", status="error", ephemeral=True)
+            return await reply_box(interaction, f"Playlist **{name.strip()}** not found or is empty. Use `/playlist list` to see your playlists.", title="PLAYLIST EMPTY", status="error", ephemeral=True)
 
         vc, warn = await self.ensure_voice_connection(interaction)
         if not vc:
@@ -3134,7 +3287,7 @@ class Music(commands.Cog):
                 duration=item.get("duration", 0),
                 requester=interaction.user
             )
-            state["queue"].append(song)
+            self.enqueue_user_song(state, song)
             added += 1
 
         if not vc.is_playing() and not vc.is_paused():
@@ -3142,7 +3295,7 @@ class Music(commands.Cog):
 
         embed = make_box_embed(
             title="Playlist Loaded",
-            description=f"Enqueued **{added} tracks** from playlist **{clean_name}** into the queue!\nUse `/queue` to view upcoming songs.",
+            description=f"Enqueued **{added} tracks** from playlist **{canonical}** into the queue!\nUse `/queue` to view upcoming songs.",
             status="audio"
         )
         await interaction.followup.send(embed=embed)
@@ -3157,10 +3310,10 @@ class Music(commands.Cog):
 
         lines = []
         for idx, (p_name, tracks) in enumerate(user_pls.items(), start=1):
-            lines.append(f"`{idx}.` 📑 **{p_name}** — `{len(tracks)} songs`")
+            lines.append(f"`{idx}.` ◈ **{p_name}** — `{len(tracks)} songs`")
 
         embed = discord.Embed(
-            title="📑 Your Personal Playlists",
+            title="◈  Your Personal Playlists",
             description="\n".join(lines),
             color=discord.Color.from_rgb(139, 92, 246)
         )
@@ -3172,11 +3325,11 @@ class Music(commands.Cog):
     async def playlist_view(self, interaction: discord.Interaction, name: str):
         uid = str(interaction.user.id)
         user_pls = db.playlists.get(uid, {})
-        clean_name = name.strip()
-        tracks = user_pls.get(clean_name)
+        canonical = resolve_user_playlist_name(user_pls, name)
+        tracks = user_pls.get(canonical) if canonical else None
 
         if not tracks:
-            return await reply_box(interaction, f"Playlist **{clean_name}** does not exist or is empty.", title="PLAYLIST EMPTY", status="error", ephemeral=True)
+            return await reply_box(interaction, f"Playlist **{name.strip()}** does not exist or is empty.", title="PLAYLIST EMPTY", status="error", ephemeral=True)
 
         lines = []
         for idx, t in enumerate(tracks[:20], start=1):
@@ -3189,11 +3342,11 @@ class Music(commands.Cog):
             lines.append(f"*... and {len(tracks) - 20} more tracks*")
 
         embed = discord.Embed(
-            title=f"📑 Playlist: {clean_name}",
+            title=f"◈  Playlist: {canonical}",
             description="\n".join(lines),
             color=discord.Color.from_rgb(16, 185, 129)
         )
-        embed.set_footer(text=f"Total: {len(tracks)} songs • Play with /playlist play name:{clean_name}")
+        embed.set_footer(text=f"Total: {len(tracks)} songs • Play with /playlist play")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @playlist_group.command(name="remove", description="Remove a track from a playlist by index.")
@@ -3201,32 +3354,60 @@ class Music(commands.Cog):
     async def playlist_remove(self, interaction: discord.Interaction, name: str, track_number: int):
         uid = str(interaction.user.id)
         user_pls = db.playlists.get(uid, {})
-        clean_name = name.strip()
-        tracks = user_pls.get(clean_name)
+        canonical = resolve_user_playlist_name(user_pls, name)
+        tracks = user_pls.get(canonical) if canonical else None
 
         if not tracks:
-            return await reply_box(interaction, f"Playlist **{clean_name}** does not exist.", title="PLAYLIST NOT FOUND", status="error", ephemeral=True)
+            return await reply_box(interaction, f"Playlist **{name.strip()}** does not exist.", title="PLAYLIST NOT FOUND", status="error", ephemeral=True)
 
         if track_number < 1 or track_number > len(tracks):
             return await reply_box(interaction, f"Invalid track number. Please enter a number between 1 and {len(tracks)}.", title="INVALID INDEX", status="warning", ephemeral=True)
 
         removed = tracks.pop(track_number - 1)
         db.save_data()
-        await reply_box(interaction, f"Removed **{removed['title']}** from playlist **{clean_name}**.\nRemaining tracks: **{len(tracks)}**", title="TRACK REMOVED", status="success", ephemeral=True)
+        await reply_box(interaction, f"Removed **{removed['title']}** from playlist **{canonical}**.\nRemaining tracks: **{len(tracks)}**", title="TRACK REMOVED", status="success", ephemeral=True)
 
     @playlist_group.command(name="delete", description="Delete an entire playlist.")
     @app_commands.describe(name="Playlist name to delete")
     async def playlist_delete(self, interaction: discord.Interaction, name: str):
         uid = str(interaction.user.id)
         user_pls = db.playlists.get(uid, {})
-        clean_name = name.strip()
+        canonical = resolve_user_playlist_name(user_pls, name)
 
-        if clean_name not in user_pls:
-            return await reply_box(interaction, f"Playlist **{clean_name}** not found.", title="PLAYLIST NOT FOUND", status="error", ephemeral=True)
+        if not canonical or canonical not in user_pls:
+            return await reply_box(interaction, f"Playlist **{name.strip()}** not found.", title="PLAYLIST NOT FOUND", status="error", ephemeral=True)
 
-        del user_pls[clean_name]
+        del user_pls[canonical]
+        if db.active_playlists.get(uid) == canonical:
+            if user_pls:
+                db.active_playlists[uid] = list(user_pls.keys())[-1]
+            else:
+                db.active_playlists.pop(uid, None)
         db.save_data()
-        await reply_box(interaction, f"Deleted playlist **{clean_name}** permanently.", title="PLAYLIST DELETED", status="success", ephemeral=True)
+        await reply_box(interaction, f"Deleted playlist **{canonical}** permanently.", title="PLAYLIST DELETED", status="success", ephemeral=True)
+
+    async def _playlist_name_autocomplete(self, interaction: discord.Interaction, current: str):
+        uid = str(interaction.user.id)
+        user_pls = db.playlists.get(uid, {})
+        q = (current or "").strip().lower()
+        choices = []
+        for p_name, tracks in user_pls.items():
+            if not q or q in p_name.lower():
+                choices.append(app_commands.Choice(
+                    name=f"{p_name} ({len(tracks)} tracks)"[:100],
+                    value=p_name[:100]
+                ))
+            if len(choices) >= 25:
+                break
+        return choices
+
+    @playlist_add.autocomplete('name')
+    @playlist_play.autocomplete('name')
+    @playlist_view.autocomplete('name')
+    @playlist_remove.autocomplete('name')
+    @playlist_delete.autocomplete('name')
+    async def playlist_name_ac(self, interaction: discord.Interaction, current: str):
+        return await self._playlist_name_autocomplete(interaction, current)
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         print(f"[Music AppCommandError] {error}")
