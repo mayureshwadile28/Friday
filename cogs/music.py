@@ -1855,6 +1855,7 @@ class Music(commands.Cog):
                     'quiet': True,
                     'no_warnings': True,
                     'http_headers': DEFAULT_HEADERS,
+                    'socket_timeout': 6,
                 }
                 with yt_dlp.YoutubeDL(sc_opts) as sc_ydl:
                     info = sc_ydl.extract_info(f"scsearch5:{search_text}", download=False)
@@ -2104,7 +2105,10 @@ class Music(commands.Cog):
 
             raise Exception("Could not find an audio stream for this track. Please check the song name or provide a direct audio link.")
 
-        return await loop.run_in_executor(None, _extract)
+        try:
+            return await asyncio.wait_for(loop.run_in_executor(None, _extract), timeout=25.0)
+        except asyncio.TimeoutError:
+            raise Exception("Audio lookup timed out after 25 seconds. Please retry or try another search query.")
 
     @staticmethod
     def _extract_accent_color(img_obj: Optional[Image.Image], fallback: Tuple[int, int, int] = (139, 92, 246)) -> Tuple[int, int, int]:
@@ -2674,20 +2678,32 @@ class Music(commands.Cog):
 
         if vc and not vc.is_connected():
             try:
-                await vc.disconnect(force=True)
+                await asyncio.wait_for(vc.disconnect(force=True), timeout=4.0)
             except Exception:
                 pass
             vc = None
 
         if not vc:
             try:
-                vc = await channel.connect(reconnect=True, self_deaf=False)
-                await asyncio.sleep(0.4)
-            except Exception as e:
-                return None, f"❌ Failed to connect to {channel.mention}: {e}"
+                vc = await asyncio.wait_for(
+                    channel.connect(timeout=12.0, reconnect=False, self_deaf=False),
+                    timeout=14.0
+                )
+                await asyncio.sleep(0.3)
+            except Exception as first_err:
+                try:
+                    await interaction.guild.change_voice_state(channel=None)
+                    await asyncio.sleep(0.5)
+                    vc = await asyncio.wait_for(
+                        channel.connect(timeout=12.0, reconnect=False, self_deaf=False),
+                        timeout=14.0
+                    )
+                    await asyncio.sleep(0.3)
+                except Exception as e:
+                    return None, f"❌ Failed to connect to {channel.mention}: {e or first_err}"
         elif vc.channel.id != channel.id:
             try:
-                await vc.move_to(channel)
+                await asyncio.wait_for(vc.move_to(channel), timeout=10.0)
                 await asyncio.sleep(0.3)
             except Exception as e:
                 return None, f"❌ Failed to move to {channel.mention}: {e}"
@@ -2763,7 +2779,11 @@ class Music(commands.Cog):
             return
 
         if warn:
-            await interaction.channel.send(warn)
+            try:
+                if interaction.channel:
+                    await interaction.channel.send(warn)
+            except Exception as warn_err:
+                print(f"[Music] Notice send warning: {warn_err}")
 
         chime_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "chime.mp3")
         if not os.path.exists(chime_path):
@@ -2801,7 +2821,11 @@ class Music(commands.Cog):
             return
 
         if warn:
-            await interaction.channel.send(warn)
+            try:
+                if interaction.channel:
+                    await interaction.channel.send(warn)
+            except Exception as warn_err:
+                print(f"[Music] Notice send warning: {warn_err}")
 
         state = self.get_state(interaction.guild.id)
         state["channel"] = interaction.channel
@@ -2882,7 +2906,7 @@ class Music(commands.Cog):
 
                 if vc.ws:
                     try:
-                        await vc.ws.speak(discord.SpeakingState.voice)
+                        await asyncio.wait_for(vc.ws.speak(discord.SpeakingState.voice), timeout=2.0)
                     except Exception:
                         pass
 
@@ -2906,12 +2930,12 @@ class Music(commands.Cog):
                 old_msg = state.get("np_message")
                 if old_msg:
                     try:
-                        await old_msg.delete()
+                        await asyncio.wait_for(old_msg.delete(), timeout=3.0)
                     except Exception:
                         pass
 
                 try:
-                    card_file = await self.generate_music_card(song, interaction.guild.id)
+                    card_file = await asyncio.wait_for(self.generate_music_card(song, interaction.guild.id), timeout=10.0)
                     msg = await interaction.followup.send(file=card_file, view=view)
                     state["np_message"] = msg
                 except Exception as card_err:
@@ -3410,14 +3434,16 @@ class Music(commands.Cog):
         return await self._playlist_name_autocomplete(interaction, current)
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        import traceback
         print(f"[Music AppCommandError] {error}")
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.send_message("⚠️ An error occurred while executing the music command.", ephemeral=True)
-            else:
-                await interaction.followup.send("⚠️ An error occurred while executing the music command.", ephemeral=True)
-        except Exception:
-            pass
+        traceback.print_exception(type(error), error, error.__traceback__)
+        await reply_box(
+            interaction,
+            f"An error occurred while executing the music command:\n`{error}`",
+            title="MUSIC COMMAND ERROR",
+            status="danger",
+            ephemeral=False if interaction.response.is_done() else True,
+        )
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
