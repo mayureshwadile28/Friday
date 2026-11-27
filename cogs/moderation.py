@@ -10,15 +10,33 @@ from database import db
 from response_utils import make_box_embed, reply_box
 
 
+TIMEOUT_UNITS = {
+    's', 'sec', 'secs', 'second', 'seconds',
+    'm', 'min', 'mins', 'minute', 'minutes', 'minutr', 'minuts', 'mintes', 'mn',
+    'h', 'hr', 'hrs', 'hour', 'hours',
+    'd', 'day', 'days',
+    'w', 'wk', 'wks', 'week', 'weeks',
+}
+
+
+def extract_prefix_timeout_args(tokens: List[str]) -> Tuple[str, str]:
+    """Extract duration (supporting both '10s' and '10 second') and remaining reason text."""
+    if not tokens:
+        return "", ""
+    if len(tokens) >= 2 and tokens[0].isdigit() and tokens[1].lower() in TIMEOUT_UNITS:
+        return f"{tokens[0]}{tokens[1]}", " ".join(tokens[2:]).strip()
+    return tokens[0], " ".join(tokens[1:]).strip()
+
+
 def parse_timeout_duration(raw_dur: str) -> Tuple[Optional[int], Optional[str], Optional[str]]:
     """
     Parses user input into duration seconds, human-readable display string, or error message.
     Max Discord timeout is 28 days (2,419,200 seconds / 40,320 minutes).
-    Min timeout is 10 seconds.
+    Min timeout is 1 second.
     """
     clean = raw_dur.strip().lower()
     if not clean:
-        return None, None, "Please specify a duration (e.g. `10m`, `1h`, `1d`)."
+        return None, None, "Please specify a duration (e.g. `10s`, `10m`, `1h`, `1d`)."
 
     # 1. Plain integer check -> defaults to minutes
     if clean.isdigit():
@@ -26,15 +44,15 @@ def parse_timeout_duration(raw_dur: str) -> Tuple[Optional[int], Optional[str], 
         secs = mins * 60
         if secs > 2419200:
             return None, None, "Maximum timeout duration allowed by Discord is **28 days** (40,320 minutes / 672 hours)."
-        if secs < 10:
-            return None, None, "Minimum timeout duration is **10 seconds**."
+        if secs < 1:
+            return None, None, "Minimum timeout duration is **1 second**."
         return secs, f"{mins} minute{'s' if mins != 1 else ''}", None
 
     # 2. Regex matching number + unit (including typos like minutr, mins, hrs, etc.)
     pattern = r'^(\d+)\s*([a-z]+)$'
     match = re.match(pattern, clean)
     if not match:
-        return None, None, f"Invalid duration format: `{raw_dur}`. Use formats like `10m`, `1h`, `1d`, `7d` (max 28 days)."
+        return None, None, f"Invalid duration format: `{raw_dur}`. Use formats like `10s`, `10m`, `1h`, `1d` (max 28 days)."
 
     val = int(match.group(1))
     unit_str = match.group(2)
@@ -55,12 +73,12 @@ def parse_timeout_duration(raw_dur: str) -> Tuple[Optional[int], Optional[str], 
         secs = val * 604800
         disp = f"{val} week{'s' if val != 1 else ''}"
     else:
-        return None, None, f"Unrecognized time unit in `{raw_dur}`. Use `m` (minutes), `h` (hours), or `d` (days)."
+        return None, None, f"Unrecognized time unit in `{raw_dur}`. Use `s` (seconds), `m` (minutes), `h` (hours), or `d` (days)."
 
     if secs > 2419200:
         return None, None, f"Duration `{raw_dur}` ({disp}) exceeds Discord's maximum limit of **28 days** (672 hours)."
-    if secs < 10:
-        return None, None, "Minimum timeout duration is **10 seconds**."
+    if secs < 1:
+        return None, None, "Minimum timeout duration is **1 second**."
 
     return secs, disp, None
 
@@ -117,7 +135,7 @@ class Moderation(commands.Cog):
             await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
             return
         try:
-            await member.ban(reason=reason)
+            await member.ban(reason=f"[Staff: {interaction.user.name} ({interaction.user.id})] {reason}")
             msg_fmt = db.custom_responses.get(gid, {}).get("ban_success", "Successfully banned {member}.\nReason: {reason}")
             formatted = msg_fmt.replace("{member}", member.mention).replace("{reason}", reason)
             await reply_box(interaction, formatted, title="BAN EXECUTED", status="danger")
@@ -178,22 +196,23 @@ class Moderation(commands.Cog):
             return
 
         try:
-            await guild.unban(target_user, reason=reason)
+            await guild.unban(target_user, reason=f"[Staff: {interaction.user.name} ({interaction.user.id})] {reason}")
             display_name = target_user.name if hasattr(target_user, 'name') else f"ID {user}"
             msg_fmt = db.custom_responses.get(gid, {}).get("unban_success", "Successfully pardoned and unbanned **{member}**.")
             formatted = msg_fmt.replace("{member}", display_name)
             await reply_box(interaction, formatted, title="UNBAN EXECUTED", status="success")
 
-            log_id = db.server_logs.get(gid, {}).get("audit-banned")
-            if log_id:
-                log_channel = self.bot.get_channel(log_id)
-                if log_channel:
-                    audit_embed = make_box_embed(
-                        title="AUDIT: USER UNBANNED",
-                        description=f"• Target: **{display_name}**\n• Staff: {interaction.user.mention}\n• Reason: {reason}",
-                        status="info"
-                    )
-                    await log_channel.send(embed=audit_embed)
+            if not self.bot.get_cog("Security"):
+                log_id = db.server_logs.get(gid, {}).get("audit-banned")
+                if log_id:
+                    log_channel = self.bot.get_channel(int(log_id))
+                    if log_channel:
+                        audit_embed = make_box_embed(
+                            title="AUDIT: USER UNBANNED",
+                            description=f"• Target: **{display_name}**\n• Staff: {interaction.user.mention}\n• Reason: {reason}",
+                            status="info"
+                        )
+                        await log_channel.send(embed=audit_embed)
         except discord.NotFound:
             await reply_box(interaction, "That user is not currently recorded on the server ban list.", title="NOT BANNED", status="warning", ephemeral=True)
         except discord.Forbidden:
@@ -232,21 +251,22 @@ class Moderation(commands.Cog):
 
             try:
                 duration = datetime.timedelta(minutes=minutes)
-                await member.timeout(duration, reason=reason)
+                await member.timeout(duration, reason=f"[Staff: {interaction.user.name} ({interaction.user.id})] {reason}")
                 resp_tpl = db.custom_responses.get(gid, {}).get("timeout_success", "{member} timed out for **{minutes}** minutes.\nReason: {reason}")
                 formatted = resp_tpl.replace("{member}", member.mention).replace("{minutes}", str(minutes)).replace("{reason}", reason)
                 await reply_box(interaction, formatted, title="TIMEOUT APPLIED", status="warning")
 
-                log_id = db.server_logs.get(gid, {}).get("audit-timeouts")
-                if log_id:
-                    log_channel = self.bot.get_channel(log_id)
-                    if log_channel:
-                        audit_embed = make_box_embed(
-                            title="AUDIT: TIMEOUT ENFORCED",
-                            description=f"• Target: {member.mention}\n• Duration: `{minutes}m`\n• Staff: {interaction.user.mention}\n• Reason: {reason}",
-                            status="warning"
-                        )
-                        await log_channel.send(embed=audit_embed)
+                if not self.bot.get_cog("Security"):
+                    log_id = db.server_logs.get(gid, {}).get("audit-timeouts")
+                    if log_id:
+                        log_channel = self.bot.get_channel(int(log_id))
+                        if log_channel:
+                            audit_embed = make_box_embed(
+                                title="AUDIT: TIMEOUT ENFORCED",
+                                description=f"• Target: {member.mention}\n• Duration: `{minutes}m`\n• Staff: {interaction.user.mention}\n• Reason: {reason}",
+                                status="warning"
+                            )
+                            await log_channel.send(embed=audit_embed)
             except discord.Forbidden:
                 err_tpl = db.custom_responses.get(gid, {}).get("perm_err_timeout", "Friday lacks permission to modify this user's timeout status.")
                 await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
@@ -281,7 +301,7 @@ class Moderation(commands.Cog):
                 return await reply_box(interaction, err_tpl.replace("{member}", member.mention), title="PERMISSION FAULT", status="danger", ephemeral=True)
 
             try:
-                await member.timeout(None, reason=reason)
+                await member.timeout(None, reason=f"[Staff: {interaction.user.name} ({interaction.user.id})] {reason}")
                 resp_tpl = db.custom_responses.get(gid, {}).get("untimeout_success", "Timeout lifted for {member}.\nReason: {reason}")
                 formatted = resp_tpl.replace("{member}", member.mention).replace("{reason}", reason)
                 await reply_box(interaction, formatted, title="TIMEOUT RESCINDED", status="success")
@@ -615,7 +635,7 @@ class Moderation(commands.Cog):
             except Exception:
                 pass
 
-            await member.kick(reason=f"Kicked by {interaction.user}: {reason}")
+            await member.kick(reason=f"[Staff: {interaction.user.name} ({interaction.user.id})] {reason}")
             await reply_box(interaction, f"👢 **{member}** has been kicked from the server.\n**Reason:** {reason}", title="MEMBER KICKED", status="error")
         except discord.Forbidden:
             await reply_box(interaction, "Friday lacks permission to kick this member.", title="PERMISSION FAULT", status="error", ephemeral=True)
@@ -737,20 +757,23 @@ class Moderation(commands.Cog):
 
         log_id = db.server_logs.get(gid, {}).get("audit-warns") or db.server_logs.get(gid, {}).get("audit-abuse")
         if log_id:
-            log_channel = self.bot.get_channel(log_id)
-            if log_channel:
-                audit_embed = make_box_embed(
-                    title="AUDIT: MEMBER WARNED",
-                    description=(
-                        f"• Target: {member.mention} (`{member.id}`)\n"
-                        f"• Staff: {interaction.user.mention}\n"
-                        f"• Reason: {reason}\n"
-                        f"• Mode: `{delivery.upper()}`\n"
-                        f"• Total Warnings: `{total_warns}`"
-                    ),
-                    status="warning"
-                )
-                await log_channel.send(embed=audit_embed)
+            try:
+                log_channel = self.bot.get_channel(int(log_id))
+                if log_channel:
+                    audit_embed = make_box_embed(
+                        title="AUDIT: MEMBER WARNED",
+                        description=(
+                            f"• Target: {member.mention} (`{member.id}`)\n"
+                            f"• Staff: {interaction.user.mention}\n"
+                            f"• Reason: {reason}\n"
+                            f"• Mode: `{delivery.upper()}`\n"
+                            f"• Total Warnings: `{total_warns}`"
+                        ),
+                        status="warning"
+                    )
+                    await log_channel.send(embed=audit_embed)
+            except Exception:
+                pass
 
     @warn_group.command(name="list", description="View all recorded warnings for a member.")
     @app_commands.describe(member="The member whose warnings you want to review")
@@ -2006,7 +2029,7 @@ class Moderation(commands.Cog):
                 return
 
             try:
-                await target_member.ban(reason=f"{author} via prefix: {reason}")
+                await target_member.ban(reason=f"[Staff: {author.name} ({author.id})] via prefix: {reason}")
                 ban_embed = make_box_embed(
                     title="BAN EXECUTED",
                     description=f"🔨 Successfully banned {target_member.mention} (`{target_member.name}`).\n\n**Staff:** {author.mention}\n**Reason:** {reason}",
@@ -2018,24 +2041,39 @@ class Moderation(commands.Cog):
             except Exception as e:
                 await channel.send(f"❌ Error banning member: {e}")
 
-        # ── 5. TM: !tm @user <duration> [reason] ──
+        # ── 5. TM: !tm @user <duration> [reason] (supports '10s', '2 second', '10m', reply) ──
         elif cmd_name == "tm":
             target_member = None
             reason_words = list(args)
             if message.mentions:
                 target_member = message.mentions[0]
-                reason_words = [w for w in reason_words if not (w.startswith("<@") and w.endswith(">"))]
+                mention_tokens = {f"<@{target_member.id}>", f"<@!{target_member.id}>"}
+                removed_mention = False
+                filtered_words = []
+                for w in reason_words:
+                    if not removed_mention and w in mention_tokens:
+                        removed_mention = True
+                        continue
+                    filtered_words.append(w)
+                reason_words = filtered_words
             elif args and args[0].isdigit():
-                target_member = guild.get_member(int(args[0]))
-                if not target_member:
-                    try:
-                        target_member = await guild.fetch_member(int(args[0]))
-                    except Exception:
-                        pass
-                reason_words = args[1:]
+                uid_cand = int(args[0])
+                if uid_cand > 10000000000000:  # Discord snowflake ID, not a duration
+                    target_member = guild.get_member(uid_cand)
+                    if not target_member:
+                        try:
+                            target_member = await guild.fetch_member(uid_cand)
+                        except Exception:
+                            pass
+                    if target_member:
+                        reason_words = args[1:]
+            if not target_member and message.reference and message.reference.resolved:
+                ref_author = getattr(message.reference.resolved, "author", None)
+                if isinstance(ref_author, discord.Member):
+                    target_member = ref_author
 
             if not target_member or not reason_words:
-                await channel.send(f"❌ Usage: `{prefix}tm @user <duration> [reason]` (e.g. `{prefix}tm @user 10m` or `{prefix}tm @user 1h spamming`)")
+                await channel.send(f"❌ Usage: `{prefix}tm @user <duration> [reason]` (e.g. `{prefix}tm @user 10s`, `{prefix}tm @user 2 second`, or `{prefix}tm @user 10m spamming`)")
                 return
 
             if target_member.id == author.id:
@@ -2045,8 +2083,8 @@ class Moderation(commands.Cog):
                 await channel.send("❌ You cannot timeout the server owner.")
                 return
 
-            raw_dur = reason_words[0].lower()
-            dur_reason = " ".join(reason_words[1:]).strip() or "Timed out by staff via prefix command."
+            raw_dur, dur_reason_text = extract_prefix_timeout_args(reason_words)
+            dur_reason = dur_reason_text or "Timed out by staff via prefix command."
 
             seconds, disp, err = parse_timeout_duration(raw_dur)
             if err:
@@ -2066,7 +2104,7 @@ class Moderation(commands.Cog):
                 return
 
             try:
-                await target_member.timeout(duration, reason=f"{author} via prefix: {dur_reason}")
+                await target_member.timeout(duration, reason=f"[Staff: {author.name} ({author.id})] via prefix: {dur_reason}")
                 tm_embed = make_box_embed(
                     title="TIMEOUT APPLIED",
                     description=f"⏳ Successfully timed out {target_member.mention}.\n\n**Duration:** `{disp}`\n**Staff:** {author.mention}\n**Reason:** {dur_reason}",
@@ -2084,7 +2122,15 @@ class Moderation(commands.Cog):
             reason_words = list(args)
             if message.mentions:
                 target_member = message.mentions[0]
-                reason_words = [w for w in reason_words if not (w.startswith("<@") and w.endswith(">"))]
+                mention_tokens = {f"<@{target_member.id}>", f"<@!{target_member.id}>"}
+                removed_mention = False
+                filtered_words = []
+                for w in reason_words:
+                    if not removed_mention and w in mention_tokens:
+                        removed_mention = True
+                        continue
+                    filtered_words.append(w)
+                reason_words = filtered_words
             elif args and args[0].isdigit():
                 target_member = guild.get_member(int(args[0]))
                 if not target_member:
@@ -2093,6 +2139,10 @@ class Moderation(commands.Cog):
                     except Exception:
                         pass
                 reason_words = args[1:]
+            elif message.reference and message.reference.resolved:
+                ref_author = getattr(message.reference.resolved, "author", None)
+                if isinstance(ref_author, discord.Member):
+                    target_member = ref_author
 
             if not target_member:
                 await channel.send(f"❌ Usage: `{prefix}untm @user [reason]`")
@@ -2116,7 +2166,7 @@ class Moderation(commands.Cog):
                 return
 
             try:
-                await target_member.timeout(None, reason=f"{author} via prefix: {untm_reason}")
+                await target_member.timeout(None, reason=f"[Staff: {author.name} ({author.id})] via prefix: {untm_reason}")
                 untm_embed = make_box_embed(
                     title="TIMEOUT RESCINDED",
                     description=f"✅ Successfully removed timeout from {target_member.mention}.\n\n**Staff:** {author.mention}\n**Reason:** {untm_reason}",

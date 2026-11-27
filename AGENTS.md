@@ -12,3 +12,15 @@
    - Raw emoji syntax must only be stored behind the scenes in `dataset.rawEmoji` and the underlying input value for backend synchronization.
 4. **Button & Aesthetics:**
    - All buttons must use polished, modern dark-mode styling (`.btn-action-primary`, `.btn-action-secondary`). Never leave secondary buttons (like "Send Test Card" or "Refresh List") unstyled.
+
+## Deployment & VM Git Workflow
+1. **Always Commit & Push Code Changes Automatically:**
+   - Whenever you finish modifying and verifying project code files, immediately commit **only the modified files** and push to `origin/main` (`git push origin main`) without waiting for the user to ask.
+2. **Always Provide the 3 VM Update Commands:**
+   - The bot runs live on a Linux VM with constantly updating runtime files (`friday_memory.json`, `data/`, etc.), so **never** tell the user to `git pull` or overwrite all files.
+   - Always end your response after pushing with these exact 3 commands using the exact list of files you updated:
+     ```bash
+     git fetch origin main
+     git checkout origin/main -- <space-separated updated file paths>
+     sudo systemctl restart friday
+     ```
