@@ -579,18 +579,18 @@ class MusicControlView(discord.ui.View):
         self.cog = cog
         self.guild_id = guild_id
 
-        # Apply Application Emojis (m_*) if fetched, and sync live toggle states
+        # Apply Application Emojis (m_*) if fetched, otherwise use monochrome glyph labels (no emoji slot)
         icon_map = {
-            "music_shuffle": ("m_shuffle", "⇄"),
-            "music_pause_resume": ("m_pause", "⏸"),
-            "music_skip": ("m_skip", "⏭"),
-            "music_loop": ("m_loop", "↻"),
-            "music_stop": ("m_stop", "⏹"),
-            "music_vol_down": ("m_voldown", "−"),
-            "music_vol_up": ("m_volup", "+"),
-            "music_queue": ("m_queue", "☰"),
-            "music_like": ("m_like", "♡"),
-            "music_autoplay": ("m_autoplay", "∞"),
+            "music_shuffle": ("m_shuffle", "Shuffle", "⇄ Shuffle"),
+            "music_pause_resume": ("m_pause", "Pause", "❚❚ Pause"),
+            "music_skip": ("m_skip", "Skip", "» Skip"),
+            "music_loop": ("m_loop", "Loop", "↻ Loop"),
+            "music_stop": ("m_stop", "Stop", "■ Stop"),
+            "music_vol_down": ("m_voldown", "Vol -", "− Vol"),
+            "music_vol_up": ("m_volup", "Vol +", "+ Vol"),
+            "music_queue": ("m_queue", "Queue", "≡ Queue"),
+            "music_like": ("m_like", "Like", "♡ Like"),
+            "music_autoplay": ("m_autoplay", "Autoplay", "∞ Auto"),
         }
         is_paused = False
         is_loop = False
@@ -611,24 +611,27 @@ class MusicControlView(discord.ui.View):
         for child in self.children:
             cid = getattr(child, "custom_id", None)
             if cid in icon_map:
-                app_name, fallback = icon_map[cid]
+                app_name, clean_lbl, mono_lbl = icon_map[cid]
                 if cid == "music_pause_resume" and is_paused:
-                    app_name, fallback = ("m_play", "▶")
-                    child.label = "Resume"
+                    app_name, clean_lbl, mono_lbl = ("m_play", "Resume", "► Resume")
                     child.style = discord.ButtonStyle.success
                 elif cid == "music_loop" and is_loop:
-                    child.label = "Looping"
+                    clean_lbl, mono_lbl = ("Looping", "↻ Looping")
                     child.style = discord.ButtonStyle.primary
                 elif cid == "music_autoplay" and is_autoplay:
-                    child.label = "Auto: ON"
+                    clean_lbl, mono_lbl = ("Auto: ON", "∞ Auto: ON")
                     child.style = discord.ButtonStyle.primary
-                child.emoji = cog.get_ui_emoji(app_name, fallback) if cog else fallback
+                app_em = cog.get_ui_emoji(app_name) if cog else None
+                child.emoji = app_em
+                child.label = clean_lbl if app_em else mono_lbl
             elif cid == "music_eq_select" and cog:
-                save_em = cog.get_ui_emoji("m_save", "＋")
-                for opt in child.options:
-                    if opt.value == "__save_playlist__":
-                        opt.emoji = save_em
-                        break
+                save_em = cog.get_ui_emoji("m_save")
+                if save_em:
+                    for opt in child.options:
+                        if opt.value == "__save_playlist__":
+                            opt.emoji = save_em
+                            opt.label = "Save to Playlist"
+                            break
 
     def _get_context(self, interaction: discord.Interaction):
         gid = interaction.guild_id or self.guild_id
@@ -645,7 +648,7 @@ class MusicControlView(discord.ui.View):
         except Exception:
             pass
 
-    @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.secondary, emoji="⇄", custom_id="music_shuffle", row=0)
+    @discord.ui.button(label="⇄ Shuffle", style=discord.ButtonStyle.secondary, custom_id="music_shuffle", row=0)
     async def shuffle_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -673,7 +676,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: shuffle] {e}")
 
-    @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏸", custom_id="music_pause_resume", row=0)
+    @discord.ui.button(label="❚❚ Pause", style=discord.ButtonStyle.secondary, custom_id="music_pause_resume", row=0)
     async def pause_resume_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -691,16 +694,18 @@ class MusicControlView(discord.ui.View):
                 vc.resume()
                 if cog and state:
                     cog.mark_resumed(state)
-                button.label = "Pause"
+                app_em = cog.get_ui_emoji("m_pause") if cog else None
+                button.emoji = app_em
+                button.label = "Pause" if app_em else "❚❚ Pause"
                 button.style = discord.ButtonStyle.secondary
-                button.emoji = cog.get_ui_emoji("m_pause", "⏸") if cog else "⏸"
             else:
                 vc.pause()
                 if cog and state:
                     cog.mark_paused(state)
-                button.label = "Resume"
+                app_em = cog.get_ui_emoji("m_play") if cog else None
+                button.emoji = app_em
+                button.label = "Resume" if app_em else "► Resume"
                 button.style = discord.ButtonStyle.success
-                button.emoji = cog.get_ui_emoji("m_play", "▶") if cog else "▶"
 
             if cog:
                 await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
@@ -712,7 +717,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: pause] {e}")
 
-    @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭", custom_id="music_skip", row=0)
+    @discord.ui.button(label="» Skip", style=discord.ButtonStyle.secondary, custom_id="music_skip", row=0)
     async def skip_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -743,7 +748,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: skip] {e}")
 
-    @discord.ui.button(label="Loop", style=discord.ButtonStyle.secondary, emoji="↻", custom_id="music_loop", row=0)
+    @discord.ui.button(label="↻ Loop", style=discord.ButtonStyle.secondary, custom_id="music_loop", row=0)
     async def loop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -754,13 +759,14 @@ class MusicControlView(discord.ui.View):
             state = cog.get_state(gid)
             is_loop = not state.get("loop", False)
             state["loop"] = is_loop
-            button.label = "Looping" if is_loop else "Loop"
+            has_em = button.emoji is not None
+            button.label = ("Looping" if has_em else "↻ Looping") if is_loop else ("Loop" if has_em else "↻ Loop")
             button.style = discord.ButtonStyle.primary if is_loop else discord.ButtonStyle.secondary
             await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
         except Exception as e:
             print(f"[Music Button Error: loop] {e}")
 
-    @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹", custom_id="music_stop", row=0)
+    @discord.ui.button(label="■ Stop", style=discord.ButtonStyle.danger, custom_id="music_stop", row=0)
     async def stop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -798,7 +804,7 @@ class MusicControlView(discord.ui.View):
             except Exception:
                 pass
 
-    @discord.ui.button(label="Vol -", style=discord.ButtonStyle.secondary, emoji="−", custom_id="music_vol_down", row=1)
+    @discord.ui.button(label="− Vol", style=discord.ButtonStyle.secondary, custom_id="music_vol_down", row=1)
     async def vol_down_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -825,7 +831,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: vol_down] {e}")
 
-    @discord.ui.button(label="Vol +", style=discord.ButtonStyle.secondary, emoji="+", custom_id="music_vol_up", row=1)
+    @discord.ui.button(label="+ Vol", style=discord.ButtonStyle.secondary, custom_id="music_vol_up", row=1)
     async def vol_up_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -852,7 +858,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: vol_up] {e}")
 
-    @discord.ui.button(label="Queue", style=discord.ButtonStyle.secondary, emoji="☰", custom_id="music_queue", row=1)
+    @discord.ui.button(label="≡ Queue", style=discord.ButtonStyle.secondary, custom_id="music_queue", row=1)
     async def queue_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -913,7 +919,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: queue] {e}")
 
-    @discord.ui.button(label="Like", style=discord.ButtonStyle.secondary, emoji="♡", custom_id="music_like", row=1)
+    @discord.ui.button(label="♡ Like", style=discord.ButtonStyle.secondary, custom_id="music_like", row=1)
     async def like_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -956,7 +962,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: like] {e}")
 
-    @discord.ui.button(label="Autoplay", style=discord.ButtonStyle.secondary, emoji="∞", custom_id="music_autoplay", row=1)
+    @discord.ui.button(label="∞ Auto", style=discord.ButtonStyle.secondary, custom_id="music_autoplay", row=1)
     async def autoplay_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -968,7 +974,8 @@ class MusicControlView(discord.ui.View):
             new_auto = not state.get("autoplay", False)
             state["autoplay"] = new_auto
 
-            button.label = "Auto: ON" if new_auto else "Autoplay"
+            has_em = button.emoji is not None
+            button.label = ("Auto: ON" if has_em else "∞ Auto: ON") if new_auto else ("Autoplay" if has_em else "∞ Auto")
             button.style = discord.ButtonStyle.primary if new_auto else discord.ButtonStyle.secondary
 
             await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
@@ -994,15 +1001,15 @@ class MusicControlView(discord.ui.View):
         custom_id="music_eq_select",
         row=2,
         options=[
-            discord.SelectOption(label="Save to Playlist", value="__save_playlist__", description="Save the currently playing track to a personal playlist", emoji="＋"),
-            discord.SelectOption(label="EQ: Studio Master", value="studio", description="Crisp 48kHz highs, warm punch, anti-clipping", emoji="◈"),
-            discord.SelectOption(label="EQ: Bass Boost", value="bassboost", description="Deep sub-bass punch for EDM, Phonk, Hip-Hop", emoji="◈"),
-            discord.SelectOption(label="EQ: Vocal / Acoustic", value="vocal", description="Enhanced vocal presence and instrument clarity", emoji="◈"),
-            discord.SelectOption(label="EQ: Nightcore", value="nightcore", description="High-energy speedup (1.25x tempo + higher pitch)", emoji="◈"),
-            discord.SelectOption(label="EQ: Lo-Fi / Warm Chill", value="lofi", description="Warm vintage analog low-pass filter", emoji="◈"),
-            discord.SelectOption(label="EQ: Treble Boost", value="treble", description="Crisp high-frequency clarity and vocal sparkle", emoji="◈"),
-            discord.SelectOption(label="EQ: 8D Surround", value="8d", description="Rotating spatial binaural surround sound", emoji="◈"),
-            discord.SelectOption(label="EQ: Flat / Pure Raw", value="flat", description="Untouched original audio stream", emoji="◈"),
+            discord.SelectOption(label="＋  Save to Playlist", value="__save_playlist__", description="Save the currently playing track to a personal playlist"),
+            discord.SelectOption(label="◈  EQ: Studio Master", value="studio", description="Crisp 48kHz highs, warm punch, anti-clipping"),
+            discord.SelectOption(label="◈  EQ: Bass Boost", value="bassboost", description="Deep sub-bass punch for EDM, Phonk, Hip-Hop"),
+            discord.SelectOption(label="◈  EQ: Vocal / Acoustic", value="vocal", description="Enhanced vocal presence and instrument clarity"),
+            discord.SelectOption(label="◈  EQ: Nightcore", value="nightcore", description="High-energy speedup (1.25x tempo + higher pitch)"),
+            discord.SelectOption(label="◈  EQ: Lo-Fi / Warm Chill", value="lofi", description="Warm vintage analog low-pass filter"),
+            discord.SelectOption(label="◈  EQ: Treble Boost", value="treble", description="Crisp high-frequency clarity and vocal sparkle"),
+            discord.SelectOption(label="◈  EQ: 8D Surround", value="8d", description="Rotating spatial binaural surround sound"),
+            discord.SelectOption(label="◈  EQ: Flat / Pure Raw", value="flat", description="Untouched original audio stream"),
         ]
     )
     async def eq_dropdown(self, interaction: discord.Interaction, select: discord.ui.Select):
@@ -1201,7 +1208,7 @@ class Music(commands.Cog):
         except Exception as e:
             print(f"[Music] Application Emoji fetch note: {e}")
 
-    def get_ui_emoji(self, app_emoji_name: str, fallback: str):
+    def get_ui_emoji(self, app_emoji_name: str, fallback=None):
         return self._app_emojis.get(app_emoji_name.lower(), fallback)
 
     def get_state(self, guild_id: int):
