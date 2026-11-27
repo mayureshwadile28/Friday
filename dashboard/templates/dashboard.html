@@ -2921,6 +2921,27 @@
     </div>
 </div>
 
+<!-- Music Player Card Wallpaper Customization in Leveling Module -->
+<div class="card" style="margin-top: 20px;">
+    <h3 style="font-size: 16px; font-weight: 700; color: #ffffff; margin-bottom: 4px;">Music Player Card Wallpaper (/play)</h3>
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 14px;">
+        Customize the 860×260 frosted-glass Now Playing music card with album art, live 10s progress bar, auto-dimmed backdrop, and adaptive text glow.
+    </p>
+    <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+        <input type="file" id="musicBgFileInput" accept="image/png, image/jpeg, image/webp" style="display: none;" onchange="uploadCardBackground(this, 'music')">
+        <button class="btn btn-secondary btn-action-secondary" type="button" onclick="document.getElementById('musicBgFileInput').click()">
+            📁 Select Music Wallpaper
+        </button>
+        <button class="btn btn-secondary btn-action-secondary" type="button" id="musicBgResetBtn" onclick="resetCardBackground('music')">
+            ↺ Restore Default Theme
+        </button>
+        <span id="musicBgStatus" style="font-size: 13px; color: var(--text-muted);">Default Theme Active</span>
+    </div>
+    <div id="musicBgPreviewWrap" style="margin-top: 14px; max-width: 440px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-card); display: none;">
+        <img id="musicBgPreviewImg" src="" style="width: 100%; height: 140px; object-fit: cover; display: block;" alt="Music Card Wallpaper Preview">
+    </div>
+</div>
+
 <div style="text-align: right; margin-top: 20px;">
 
 <button class="btn btn-primary" id="saveLevelingBtn">

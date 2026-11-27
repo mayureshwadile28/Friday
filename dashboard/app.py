@@ -766,7 +766,7 @@ def upload_rank_background(gid):
     import re
     gid_str = re.sub(r'[^0-9]', '', str(gid))
     card_type = str(flask_request.form.get("card_type", "rank")).strip().lower()
-    if card_type not in ("rank", "levelup", "invite", "activity", "leaderboard", "booster"):
+    if card_type not in ("rank", "levelup", "invite", "activity", "leaderboard", "booster", "vc", "music"):
         card_type = "rank"
     try:
         os.makedirs(RANK_BG_DIR, exist_ok=True)
@@ -791,6 +791,8 @@ def upload_rank_background(gid):
             db.leaderboard_card_backgrounds[gid_str] = save_path
         elif card_type == "vc":
             db.vc_card_backgrounds[gid_str] = save_path
+        elif card_type == "music":
+            db.music_card_backgrounds[gid_str] = save_path
         elif card_type == "booster":
             db.booster_backgrounds[gid_str] = save_path
         else:
@@ -816,6 +818,8 @@ def reset_rank_background(gid):
         del db.leaderboard_card_backgrounds[gid_str]
     elif card_type == "vc" and gid_str in db.vc_card_backgrounds:
         del db.vc_card_backgrounds[gid_str]
+    elif card_type == "music" and gid_str in db.music_card_backgrounds:
+        del db.music_card_backgrounds[gid_str]
     elif card_type == "booster" and gid_str in db.booster_backgrounds:
         del db.booster_backgrounds[gid_str]
     elif gid_str in db.rank_card_backgrounds:
@@ -1060,12 +1064,14 @@ def get_activity_cards(gid):
     lb_bg = db.leaderboard_card_backgrounds.get(gid_str)
     vc_bg = db.vc_card_backgrounds.get(gid_str)
     inv_bg = db.invite_card_backgrounds.get(gid_str)
+    music_bg = db.music_card_backgrounds.get(gid_str)
     return jsonify({
         "success": True,
         "activity_card_background": resolve_card_bg_url(act_bg),
         "leaderboard_card_background": resolve_card_bg_url(lb_bg),
         "vc_card_background": resolve_card_bg_url(vc_bg),
-        "invite_card_background": resolve_card_bg_url(inv_bg)
+        "invite_card_background": resolve_card_bg_url(inv_bg),
+        "music_card_background": resolve_card_bg_url(music_bg)
     })
 
 @app.route('/api/guild/<gid>/invite-tracker/save', methods=['POST'])
@@ -5684,6 +5690,7 @@ def economy_admin_give():
         amount = int(amount)
     except (ValueError, TypeError):
         return jsonify({"success": False, "error": "Invalid amount."}), 400
+        
     if amount == 0:
         return jsonify({"success": False, "error": "Amount cannot be zero."}), 400
 
@@ -5789,6 +5796,7 @@ def economy_admin_give():
         """, (gid, uid, tx_type, tx_delta, cur_bal, tx_note, time.time()))
 
         conn.execute("COMMIT")
+        conn.close()
         return jsonify({
             "success": True,
             "new_balance": cur_bal,

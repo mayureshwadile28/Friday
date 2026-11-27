@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 import asyncio
 import yt_dlp
@@ -7,14 +7,19 @@ import urllib.request
 import urllib.parse
 import json
 import os
+import io
 import time
 import random
 import re
 import html
 import base64
+import colorsys
 import warnings
+import aiohttp
 from typing import Optional, Tuple, List, Dict, Any
+from PIL import Image, ImageDraw, ImageFilter, ImageEnhance, ImageStat
 from database import db
+from font_utils import get_unicode_font, clean_display_name
 from response_utils import make_box_embed, reply_box
 
 # ─────────────────────────────────────────────────────────────
@@ -544,33 +549,86 @@ class SaveToPlaylistModal(discord.ui.Modal, title="Save Track to Playlist"):
                 pass
 
 
+def resolve_music_card_background(bg_path: Optional[str]) -> Optional[str]:
+    """Robustly resolve custom music wallpaper path across local machine and Linux VM."""
+    if not bg_path or not isinstance(bg_path, str):
+        return None
+    if os.path.exists(bg_path):
+        return bg_path
+    base = os.path.basename(bg_path)
+    cand1 = os.path.join(os.getcwd(), "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand1):
+        return cand1
+    cand2 = os.path.join(os.path.dirname(__file__), "..", "dashboard", "static", "uploads", "rank_backgrounds", base)
+    if os.path.exists(cand2):
+        return os.path.abspath(cand2)
+    return None
+
+
 class MusicControlView(discord.ui.View):
     """
-    Studio High-Fidelity Music Controller View.
-    Row 0: Pause/Resume, Skip, Loop, Stop (4 buttons - Core Playback)
-    Row 1: Shuffle, Queue, Vol -, Vol + (4 buttons - Queue & Audio Level)
-    Row 2: Like, Autoplay, Save to Playlist (3 buttons - Library & Discovery)
-    Row 3: Equalizer / DSP Mastering Filter Dropdown (Real-time live switch)
+    Compact 3-Row Studio Music Controller View.
+    Row 0: Shuffle, Pause/Resume, Skip, Loop, Stop (5 core playback controls)
+    Row 1: Vol -, Vol +, Queue, Like, Autoplay (5 audio & library controls)
+    Row 2: Mastering EQ & Save to Playlist Select Menu
+    Automatically binds uploaded SVG-style Application Emojis (m_*) if present,
+    falling back to crisp monochrome symbols.
     """
     def __init__(self, cog=None, guild_id: int = None):
         super().__init__(timeout=None)
         self.cog = cog
         self.guild_id = guild_id
+
+        # Apply Application Emojis (m_*) if fetched, and sync live toggle states
+        icon_map = {
+            "music_shuffle": ("m_shuffle", "⇄"),
+            "music_pause_resume": ("m_pause", "⏸"),
+            "music_skip": ("m_skip", "⏭"),
+            "music_loop": ("m_loop", "↻"),
+            "music_stop": ("m_stop", "⏹"),
+            "music_vol_down": ("m_voldown", "−"),
+            "music_vol_up": ("m_volup", "+"),
+            "music_queue": ("m_queue", "☰"),
+            "music_like": ("m_like", "♡"),
+            "music_autoplay": ("m_autoplay", "∞"),
+        }
+        is_paused = False
+        is_loop = False
+        is_autoplay = False
         if cog and guild_id:
             try:
                 state = cog.get_state(guild_id)
-                if state.get("loop"):
-                    for child in self.children:
-                        if getattr(child, "custom_id", None) == "music_loop":
-                            child.label = "Looping"
-                            child.style = discord.ButtonStyle.primary
-                if state.get("autoplay"):
-                    for child in self.children:
-                        if getattr(child, "custom_id", None) == "music_autoplay":
-                            child.label = "Autoplay: ON"
-                            child.style = discord.ButtonStyle.primary
+                is_loop = bool(state.get("loop", False))
+                is_autoplay = bool(state.get("autoplay", False))
+                is_paused = state.get("paused_at") is not None
+                guild_obj = cog.bot.get_guild(guild_id) if cog.bot else None
+                vc = guild_obj.voice_client if guild_obj else None
+                if vc and vc.is_paused():
+                    is_paused = True
             except Exception:
                 pass
+
+        for child in self.children:
+            cid = getattr(child, "custom_id", None)
+            if cid in icon_map:
+                app_name, fallback = icon_map[cid]
+                if cid == "music_pause_resume" and is_paused:
+                    app_name, fallback = ("m_play", "▶")
+                    child.label = "Resume"
+                    child.style = discord.ButtonStyle.success
+                elif cid == "music_loop" and is_loop:
+                    child.label = "Looping"
+                    child.style = discord.ButtonStyle.primary
+                elif cid == "music_autoplay" and is_autoplay:
+                    child.label = "Auto: ON"
+                    child.style = discord.ButtonStyle.primary
+                child.emoji = cog.get_ui_emoji(app_name, fallback) if cog else fallback
+            elif cid == "music_eq_select" and cog:
+                save_em = cog.get_ui_emoji("m_save", "＋")
+                for opt in child.options:
+                    if opt.value == "__save_playlist__":
+                        opt.emoji = save_em
+                        break
 
     def _get_context(self, interaction: discord.Interaction):
         gid = interaction.guild_id or self.guild_id
@@ -587,7 +645,35 @@ class MusicControlView(discord.ui.View):
         except Exception:
             pass
 
-    @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏯️", custom_id="music_pause_resume", row=0)
+    @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.secondary, emoji="⇄", custom_id="music_shuffle", row=0)
+    async def shuffle_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
+            gid, cog = self._get_context(interaction)
+            if not cog:
+                return
+            state = cog.get_state(gid)
+            if len(state["queue"]) < 2:
+                try:
+                    await interaction.followup.send(embed=make_box_embed(title="Queue Notice", description="Add at least 2 songs to the queue to shuffle.", status="info"), ephemeral=True)
+                except Exception:
+                    pass
+                return
+
+            random.shuffle(state["queue"])
+            try:
+                await interaction.followup.send(embed=make_box_embed(title="Queue Shuffled", description=f"Reordered **{len(state['queue'])}** upcoming tracks in queue.", status="success"), ephemeral=True)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[Music Button Error: shuffle] {e}")
+
+    @discord.ui.button(label="Pause", style=discord.ButtonStyle.secondary, emoji="⏸", custom_id="music_pause_resume", row=0)
     async def pause_resume_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -600,23 +686,33 @@ class MusicControlView(discord.ui.View):
                     ephemeral=True
                 )
 
+            state = cog.get_state(gid) if cog else None
             if vc.is_paused():
                 vc.resume()
+                if cog and state:
+                    cog.mark_resumed(state)
                 button.label = "Pause"
                 button.style = discord.ButtonStyle.secondary
+                button.emoji = cog.get_ui_emoji("m_pause", "⏸") if cog else "⏸"
             else:
                 vc.pause()
+                if cog and state:
+                    cog.mark_paused(state)
                 button.label = "Resume"
                 button.style = discord.ButtonStyle.success
+                button.emoji = cog.get_ui_emoji("m_play", "▶") if cog else "▶"
 
-            try:
-                await interaction.message.edit(view=self)
-            except Exception:
-                pass
+            if cog:
+                await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
+            else:
+                try:
+                    await interaction.message.edit(view=self)
+                except Exception:
+                    pass
         except Exception as e:
             print(f"[Music Button Error: pause] {e}")
 
-    @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭️", custom_id="music_skip", row=0)
+    @discord.ui.button(label="Skip", style=discord.ButtonStyle.secondary, emoji="⏭", custom_id="music_skip", row=0)
     async def skip_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -647,7 +743,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: skip] {e}")
 
-    @discord.ui.button(label="Loop", style=discord.ButtonStyle.secondary, emoji="🔁", custom_id="music_loop", row=0)
+    @discord.ui.button(label="Loop", style=discord.ButtonStyle.secondary, emoji="↻", custom_id="music_loop", row=0)
     async def loop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -660,14 +756,11 @@ class MusicControlView(discord.ui.View):
             state["loop"] = is_loop
             button.label = "Looping" if is_loop else "Loop"
             button.style = discord.ButtonStyle.primary if is_loop else discord.ButtonStyle.secondary
-            try:
-                await interaction.message.edit(view=self)
-            except Exception:
-                pass
+            await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
         except Exception as e:
             print(f"[Music Button Error: loop] {e}")
 
-    @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹️", custom_id="music_stop", row=0)
+    @discord.ui.button(label="Stop", style=discord.ButtonStyle.danger, emoji="⏹", custom_id="music_stop", row=0)
     async def stop_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -682,6 +775,7 @@ class MusicControlView(discord.ui.View):
                 state["queue"].clear()
                 state["current"] = None
                 state["transformer"] = None
+                cog.reset_track_timer(state)
 
             for child in self.children:
                 child.disabled = True
@@ -704,8 +798,8 @@ class MusicControlView(discord.ui.View):
             except Exception:
                 pass
 
-    @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.secondary, emoji="🔀", custom_id="music_shuffle", row=1)
-    async def shuffle_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+    @discord.ui.button(label="Vol -", style=discord.ButtonStyle.secondary, emoji="−", custom_id="music_vol_down", row=1)
+    async def vol_down_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
                 if not interaction.response.is_done():
@@ -717,22 +811,48 @@ class MusicControlView(discord.ui.View):
             if not cog:
                 return
             state = cog.get_state(gid)
-            if len(state["queue"]) < 2:
-                try:
-                    await interaction.followup.send(embed=make_box_embed(title="Queue Notice", description="Add at least 2 songs to the queue to shuffle.", status="info"), ephemeral=True)
-                except Exception:
-                    pass
-                return
-
-            random.shuffle(state["queue"])
+            current_vol = state.get("volume", 1.0)
+            new_vol = max(0.2, round(current_vol - 0.15, 2))
+            state["volume"] = new_vol
+            transformer = state.get("transformer")
+            if transformer:
+                transformer.volume = new_vol
+            await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
             try:
-                await interaction.followup.send(embed=make_box_embed(title="Queue Shuffled", description=f"Reordered **{len(state['queue'])}** upcoming tracks in queue.", status="success"), ephemeral=True)
+                await interaction.followup.send(embed=make_box_embed(title="Volume Lowered", description=f"Master volume adjusted to **{int(new_vol * 100)}%**.", status="audio"), ephemeral=True)
             except Exception:
                 pass
         except Exception as e:
-            print(f"[Music Button Error: shuffle] {e}")
+            print(f"[Music Button Error: vol_down] {e}")
 
-    @discord.ui.button(label="Queue", style=discord.ButtonStyle.secondary, emoji="📜", custom_id="music_queue", row=1)
+    @discord.ui.button(label="Vol +", style=discord.ButtonStyle.secondary, emoji="+", custom_id="music_vol_up", row=1)
+    async def vol_up_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        try:
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.defer(ephemeral=True)
+            except Exception:
+                pass
+
+            gid, cog = self._get_context(interaction)
+            if not cog:
+                return
+            state = cog.get_state(gid)
+            current_vol = state.get("volume", 1.0)
+            new_vol = min(2.0, round(current_vol + 0.15, 2))
+            state["volume"] = new_vol
+            transformer = state.get("transformer")
+            if transformer:
+                transformer.volume = new_vol
+            await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
+            try:
+                await interaction.followup.send(embed=make_box_embed(title="Volume Raised", description=f"Master volume adjusted to **{int(new_vol * 100)}%**.", status="audio"), ephemeral=True)
+            except Exception:
+                pass
+        except Exception as e:
+            print(f"[Music Button Error: vol_up] {e}")
+
+    @discord.ui.button(label="Queue", style=discord.ButtonStyle.secondary, emoji="☰", custom_id="music_queue", row=1)
     async def queue_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -762,7 +882,7 @@ class MusicControlView(discord.ui.View):
             if current:
                 mins, secs = divmod(current.duration or 0, 60)
                 if getattr(current, "is_autoplay", False):
-                    req_mention = "📻 Autoplay Discovery"
+                    req_mention = "Autoplay Discovery"
                 else:
                     req_mention = current.requester.mention if (getattr(current, 'requester', None) and hasattr(current.requester, 'mention')) else "DJ"
                 embed.add_field(
@@ -775,7 +895,7 @@ class MusicControlView(discord.ui.View):
                 for idx, s in enumerate(queue[:10], start=1):
                     mins, secs = divmod(s.duration or 0, 60)
                     if getattr(s, "is_autoplay", False):
-                        s_req = "📻 Autoplay"
+                        s_req = "Autoplay"
                     else:
                         s_req = s.requester.mention if (getattr(s, 'requester', None) and hasattr(s.requester, 'mention')) else "DJ"
                     lines.append(f"`{idx}.` **[{s.title}]({s.webpage_url})** (`{mins:02d}:{secs:02d}`) — {s_req}")
@@ -793,59 +913,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: queue] {e}")
 
-    @discord.ui.button(label="Vol -", style=discord.ButtonStyle.secondary, emoji="🔉", custom_id="music_vol_down", row=1)
-    async def vol_down_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer(ephemeral=True)
-            except Exception:
-                pass
-
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            current_vol = state.get("volume", 1.0)
-            new_vol = max(0.2, round(current_vol - 0.15, 2))
-            state["volume"] = new_vol
-            transformer = state.get("transformer")
-            if transformer:
-                transformer.volume = new_vol
-            try:
-                await interaction.followup.send(embed=make_box_embed(title="Volume Lowered", description=f"Master volume adjusted to **{int(new_vol * 100)}%**.", status="audio"), ephemeral=True)
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"[Music Button Error: vol_down] {e}")
-
-    @discord.ui.button(label="Vol +", style=discord.ButtonStyle.secondary, emoji="🔊", custom_id="music_vol_up", row=1)
-    async def vol_up_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.defer(ephemeral=True)
-            except Exception:
-                pass
-
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            current_vol = state.get("volume", 1.0)
-            new_vol = min(2.0, round(current_vol + 0.15, 2))
-            state["volume"] = new_vol
-            transformer = state.get("transformer")
-            if transformer:
-                transformer.volume = new_vol
-            try:
-                await interaction.followup.send(embed=make_box_embed(title="Volume Raised", description=f"Master volume adjusted to **{int(new_vol * 100)}%**.", status="audio"), ephemeral=True)
-            except Exception:
-                pass
-        except Exception as e:
-            print(f"[Music Button Error: vol_up] {e}")
-
-    @discord.ui.button(label="Like", style=discord.ButtonStyle.secondary, emoji="💚", custom_id="music_like", row=2)
+    @discord.ui.button(label="Like", style=discord.ButtonStyle.secondary, emoji="♡", custom_id="music_like", row=1)
     async def like_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             try:
@@ -888,7 +956,7 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: like] {e}")
 
-    @discord.ui.button(label="Autoplay: OFF", style=discord.ButtonStyle.secondary, emoji="📻", custom_id="music_autoplay", row=2)
+    @discord.ui.button(label="Autoplay", style=discord.ButtonStyle.secondary, emoji="∞", custom_id="music_autoplay", row=1)
     async def autoplay_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         try:
             if not interaction.response.is_done():
@@ -900,17 +968,14 @@ class MusicControlView(discord.ui.View):
             new_auto = not state.get("autoplay", False)
             state["autoplay"] = new_auto
 
-            button.label = "Autoplay: ON" if new_auto else "Autoplay: OFF"
+            button.label = "Auto: ON" if new_auto else "Autoplay"
             button.style = discord.ButtonStyle.primary if new_auto else discord.ButtonStyle.secondary
 
-            try:
-                await interaction.message.edit(view=self)
-            except Exception:
-                pass
+            await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
 
             if new_auto:
                 asyncio.create_task(cog.ensure_autoplay_queued(gid))
-                msg = "Friday will intelligently pre-fetch and stream similar tracks with matching mood and artist! 📻"
+                msg = "Friday will intelligently pre-fetch and stream similar tracks with matching mood and artist!"
             else:
                 state["queue"] = [s for s in state.get("queue", []) if not getattr(s, "is_autoplay", False)]
                 msg = "Autoplay has been turned off. Any upcoming autoplay recommendations have been removed from the queue."
@@ -924,63 +989,51 @@ class MusicControlView(discord.ui.View):
         except Exception as e:
             print(f"[Music Button Error: autoplay] {e}")
 
-    @discord.ui.button(label="Save to Playlist", style=discord.ButtonStyle.secondary, emoji="📑", custom_id="music_add_playlist", row=2)
-    async def add_playlist_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            state = cog.get_state(gid)
-            current = state.get("current")
-            if not current:
-                return await interaction.response.send_message("❌ No track currently playing to save.", ephemeral=True)
-
-            await interaction.response.send_modal(SaveToPlaylistModal(cog, current))
-        except Exception as e:
-            print(f"[Music Button Error: add_playlist] {e}")
-            try:
-                if not interaction.response.is_done():
-                    await interaction.response.send_message("⚠️ Failed to open playlist dialog.", ephemeral=True)
-            except Exception:
-                pass
-
     @discord.ui.select(
-        placeholder="🎛️ Equalizer & DSP Audio Filters...",
+        placeholder="Mastering EQ & Save to Playlist...",
         custom_id="music_eq_select",
-        row=3,
+        row=2,
         options=[
-            discord.SelectOption(label="Studio Master (Spotify Premium)", value="studio", description="Crisp 48kHz highs, warm punch, anti-clipping", emoji="🎧"),
-            discord.SelectOption(label="Bass Boost", value="bassboost", description="Deep sub-bass punch for EDM, Phonk, Hip-Hop", emoji="🔊"),
-            discord.SelectOption(label="Vocal / Acoustic", value="vocal", description="Enhanced vocal presence and instrument clarity", emoji="🎙️"),
-            discord.SelectOption(label="Nightcore", value="nightcore", description="High-energy speedup (1.25x tempo + higher pitch)", emoji="🌙"),
-            discord.SelectOption(label="Lo-Fi / Warm Chill", value="lofi", description="Warm vintage analog low-pass filter", emoji="☕"),
-            discord.SelectOption(label="Treble Boost", value="treble", description="Crisp high-frequency clarity and vocal sparkle", emoji="⚡"),
-            discord.SelectOption(label="8D Surround", value="8d", description="Rotating spatial binaural surround sound", emoji="🌐"),
-            discord.SelectOption(label="Flat / Pure Raw", value="flat", description="Untouched original audio stream", emoji="🎚️"),
+            discord.SelectOption(label="Save to Playlist", value="__save_playlist__", description="Save the currently playing track to a personal playlist", emoji="＋"),
+            discord.SelectOption(label="EQ: Studio Master", value="studio", description="Crisp 48kHz highs, warm punch, anti-clipping", emoji="◈"),
+            discord.SelectOption(label="EQ: Bass Boost", value="bassboost", description="Deep sub-bass punch for EDM, Phonk, Hip-Hop", emoji="◈"),
+            discord.SelectOption(label="EQ: Vocal / Acoustic", value="vocal", description="Enhanced vocal presence and instrument clarity", emoji="◈"),
+            discord.SelectOption(label="EQ: Nightcore", value="nightcore", description="High-energy speedup (1.25x tempo + higher pitch)", emoji="◈"),
+            discord.SelectOption(label="EQ: Lo-Fi / Warm Chill", value="lofi", description="Warm vintage analog low-pass filter", emoji="◈"),
+            discord.SelectOption(label="EQ: Treble Boost", value="treble", description="Crisp high-frequency clarity and vocal sparkle", emoji="◈"),
+            discord.SelectOption(label="EQ: 8D Surround", value="8d", description="Rotating spatial binaural surround sound", emoji="◈"),
+            discord.SelectOption(label="EQ: Flat / Pure Raw", value="flat", description="Untouched original audio stream", emoji="◈"),
         ]
     )
     async def eq_dropdown(self, interaction: discord.Interaction, select: discord.ui.Select):
         try:
+            gid, cog = self._get_context(interaction)
+            if not cog:
+                return
+            chosen = select.values[0]
+            state = cog.get_state(gid)
+            current = state.get("current")
+
+            if chosen == "__save_playlist__":
+                if not current:
+                    return await interaction.response.send_message("❌ No track currently playing to save.", ephemeral=True)
+                return await interaction.response.send_modal(SaveToPlaylistModal(cog, current))
+
             try:
                 if not interaction.response.is_done():
                     await interaction.response.defer(ephemeral=True)
             except Exception:
                 pass
 
-            gid, cog = self._get_context(interaction)
-            if not cog:
-                return
-            new_eq = select.values[0]
-            state = cog.get_state(gid)
+            new_eq = chosen
             state["filter"] = new_eq
             profile = AUDIO_FILTERS.get(new_eq, AUDIO_FILTERS["studio"])
 
             vc = interaction.guild.voice_client if interaction.guild else None
-            current = state.get("current")
 
             if vc and (vc.is_playing() or vc.is_paused()) and current:
                 vol = state.get("volume", 1.0)
-                elapsed = int(time.time() - state.get("start_time", time.time()))
+                elapsed = int(cog.get_elapsed_seconds(state, current.duration or 0))
                 dur = current.duration or 3600
                 ss_pos = max(0, min(elapsed, dur - 2))
 
@@ -997,7 +1050,7 @@ class MusicControlView(discord.ui.View):
                         raw_source = discord.FFmpegPCMAudio(current.url, **ffmpeg_opts)
                         source = discord.PCMVolumeTransformer(raw_source, volume=vol)
                         state["transformer"] = source
-                        state["start_time"] = time.time() - ss_pos
+                        cog.reset_track_timer(state, seek_seconds=ss_pos)
 
                         if vc.ws:
                             try:
@@ -1014,9 +1067,7 @@ class MusicControlView(discord.ui.View):
                         vc.play(source, after=after_play)
 
                         np_msg = interaction.message or state.get("np_message")
-                        if np_msg:
-                            updated_embed = cog.create_now_playing_embed(current, vol, gid)
-                            await np_msg.edit(embed=updated_embed, view=self)
+                        await cog.refresh_now_playing_card(gid, message=np_msg, view=self)
                     except Exception as err:
                         print(f"[Music EQ Switch Error] {err}")
                     finally:
@@ -1028,7 +1079,7 @@ class MusicControlView(discord.ui.View):
                 await interaction.followup.send(
                     embed=make_box_embed(
                         title="Equalizer Updated",
-                        description=f"Equalizer Profile: **{profile['emoji']} {profile['name']}**\n{profile['description']}\n*Seamless real-time mastering engaged without restarting track.*",
+                        description=f"Equalizer Profile: **{profile['name']}**\n{profile['description']}\n*Seamless real-time mastering engaged without restarting track.*",
                         status="audio"
                     ),
                     ephemeral=True
@@ -1119,6 +1170,8 @@ class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.states = {}
+        self._app_emojis: Dict[str, Any] = {}
+        self._app_emojis_loaded = False
 
     async def cog_load(self):
         try:
@@ -1126,6 +1179,30 @@ class Music(commands.Cog):
             print("[Music] ✅ Persistent MusicControlView registered via cog_load.")
         except Exception as e:
             print(f"[Music] Note: Persistent view registration in cog_load: {e}")
+        if not self.music_card_updater.is_running():
+            self.music_card_updater.start()
+        asyncio.create_task(self.load_app_emojis())
+
+    def cog_unload(self):
+        if self.music_card_updater.is_running():
+            self.music_card_updater.cancel()
+
+    async def load_app_emojis(self):
+        """Fetch Application Emojis (m_play, m_pause, etc.) once connected so buttons render crisp vector icons."""
+        if self._app_emojis_loaded:
+            return
+        try:
+            await self.bot.wait_until_ready()
+            emojis = await self.bot.fetch_application_emojis()
+            self._app_emojis = {e.name.lower(): discord.PartialEmoji(name=e.name, id=e.id, animated=e.animated) for e in emojis}
+            self._app_emojis_loaded = True
+            if self._app_emojis:
+                print(f"[Music] 🎨 Loaded {len(self._app_emojis)} Application Emojis for player controls.")
+        except Exception as e:
+            print(f"[Music] Application Emoji fetch note: {e}")
+
+    def get_ui_emoji(self, app_emoji_name: str, fallback: str):
+        return self._app_emojis.get(app_emoji_name.lower(), fallback)
 
     def get_state(self, guild_id: int):
         if guild_id not in self.states:
@@ -1141,11 +1218,44 @@ class Music(commands.Cog):
                 "transformer": None,
                 "filter": "studio",
                 "start_time": 0.0,
+                "paused_at": None,
+                "paused_total": 0.0,
                 "np_message": None,
                 "_stopping": False,
-                "_switching_filter": False
+                "_switching_filter": False,
+                "_updating_card": False,
+                "_card_cache": None,
             }
         return self.states[guild_id]
+
+    @staticmethod
+    def reset_track_timer(state: dict, seek_seconds: float = 0.0):
+        state["start_time"] = time.time() - max(0.0, float(seek_seconds or 0.0))
+        state["paused_at"] = None
+        state["paused_total"] = 0.0
+
+    @staticmethod
+    def mark_paused(state: dict):
+        if state.get("paused_at") is None:
+            state["paused_at"] = time.time()
+
+    @staticmethod
+    def mark_resumed(state: dict):
+        pa = state.get("paused_at")
+        if pa is not None:
+            state["paused_total"] = state.get("paused_total", 0.0) + max(0.0, time.time() - pa)
+            state["paused_at"] = None
+
+    @staticmethod
+    def get_elapsed_seconds(state: dict, duration: int = 0) -> float:
+        st = state.get("start_time", 0.0)
+        if not st:
+            return 0.0
+        ref = state["paused_at"] if state.get("paused_at") is not None else time.time()
+        elapsed = max(0.0, ref - st - state.get("paused_total", 0.0))
+        if duration and duration > 0:
+            elapsed = min(float(duration), elapsed)
+        return elapsed
 
     async def set_voice_channel_status(self, channel: Optional[discord.VoiceChannel], status: str):
         if not channel or not isinstance(channel, discord.VoiceChannel):
@@ -1850,6 +1960,393 @@ class Music(commands.Cog):
 
         return await loop.run_in_executor(None, _extract)
 
+    @staticmethod
+    def _extract_accent_color(img_obj: Optional[Image.Image], fallback: Tuple[int, int, int] = (139, 92, 246)) -> Tuple[int, int, int]:
+        """Extract vibrant non-muddy RGB accent from wallpaper or album art."""
+        if not img_obj:
+            return fallback
+        try:
+            small = img_obj.convert("RGB").resize((60, 40), Image.Resampling.LANCZOS)
+            quantized = small.quantize(colors=12).convert("RGB")
+            counts: Dict[Tuple[int, int, int], int] = {}
+            for px in quantized.getdata():
+                counts[px] = counts.get(px, 0) + 1
+            best_color = None
+            best_score = -1.0
+            for color, count in counts.items():
+                r, g, b = color
+                h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+                if v < 0.25 or (s < 0.15 and v > 0.85):
+                    continue
+                score = s * (0.5 + v * 0.5) * (count ** 0.5)
+                if score > best_score:
+                    best_score = score
+                    best_color = color
+            if best_color:
+                r, g, b = best_color
+                h, s, v = colorsys.rgb_to_hsv(r / 255.0, g / 255.0, b / 255.0)
+                v = max(v, 0.78)
+                s = max(s, 0.50)
+                rr, gg, bb = colorsys.hsv_to_rgb(h, s, v)
+                return (int(rr * 255), int(gg * 255), int(bb * 255))
+        except Exception:
+            pass
+        return fallback
+
+    async def _fetch_song_thumbnail(self, thumb_url: Optional[str], size: int = 204) -> Image.Image:
+        """Fetch, center-crop, and round-mask the track thumbnail; fallback to vinyl emblem."""
+        if thumb_url and isinstance(thumb_url, str) and thumb_url.startswith(("http://", "https://")):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(thumb_url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                        if resp.status == 200:
+                            data = await resp.read()
+                            raw = Image.open(io.BytesIO(data)).convert("RGBA")
+                            # Center-crop square (removes YouTube 16:9 black letterbox bars nicely)
+                            w, h = raw.size
+                            side = min(w, h)
+                            left = (w - side) // 2
+                            top = (h - side) // 2
+                            cropped = raw.crop((left, top, left + side, top + side))
+                            resized = cropped.resize((size, size), Image.Resampling.LANCZOS)
+                            mask = Image.new("L", (size, size), 0)
+                            ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius=20, fill=255)
+                            out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+                            out.paste(resized, (0, 0), mask)
+                            return out
+            except Exception:
+                pass
+
+        fallback = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+        fd = ImageDraw.Draw(fallback)
+        fd.rounded_rectangle((0, 0, size - 1, size - 1), radius=20, fill=(30, 34, 46, 255), outline=(139, 92, 246, 200), width=3)
+        fd.ellipse((34, 34, size - 34, size - 34), fill=(18, 20, 28, 255), outline=(139, 92, 246, 160), width=2)
+        fd.ellipse((size // 2 - 22, size // 2 - 22, size // 2 + 22, size // 2 + 22), fill=(139, 92, 246, 230))
+        fd.ellipse((size // 2 - 7, size // 2 - 7, size // 2 + 7, size // 2 + 7), fill=(18, 20, 28, 255))
+        return fallback
+
+    async def _get_music_card_base(self, song: Song, guild_id: Optional[int]) -> Tuple[Image.Image, Tuple[int, int, int], Tuple[int, int, int], float, float, float, bool]:
+        """Build or reuse cached blurred/dimmed background + album art so 10s ticks stay <10ms."""
+        W, H = 860, 260
+        gid_str = str(guild_id) if guild_id else ""
+        bg_raw_path = getattr(db, "music_card_backgrounds", {}).get(gid_str) if gid_str else None
+        bg_path = resolve_music_card_background(bg_raw_path)
+        bg_mtime = os.path.getmtime(bg_path) if bg_path and os.path.exists(bg_path) else 0
+        thumb_url = getattr(song, "thumbnail", None) or ""
+        cache_key = (gid_str, bg_path or "", bg_mtime, thumb_url)
+
+        state = self.get_state(guild_id) if guild_id else None
+        cached = state.get("_card_cache") if state else None
+        if cached and cached.get("key") == cache_key:
+            return (
+                cached["base_img"],
+                cached["accent_rgb"],
+                cached["text_rgb"],
+                cached["h"],
+                cached["s"],
+                cached["v"],
+                cached["has_custom_bg"],
+            )
+
+        thumb_size = 204
+        thumb_img = await self._fetch_song_thumbnail(thumb_url, size=thumb_size)
+
+        raw_bg = None
+        bg_img = None
+        container_alpha = 160
+        if bg_path:
+            try:
+                loaded = Image.open(bg_path).convert("RGBA")
+                ratio = max(W / loaded.width, H / loaded.height)
+                nw, nh = int(loaded.width * ratio), int(loaded.height * ratio)
+                resized = loaded.resize((nw, nh), Image.Resampling.LANCZOS)
+                cx, cy = (nw - W) // 2, (nh - H) // 2
+                raw_bg = resized.crop((cx, cy, cx + W, cy + H))
+                blurred = raw_bg.filter(ImageFilter.GaussianBlur(radius=4))
+
+                # Auto-dim bright backgrounds so text & progress bar always stay legible
+                mean_lum = ImageStat.Stat(raw_bg.convert("L")).mean[0]
+                if mean_lum > 140:
+                    dim_factor = max(0.55, 0.85 - ((mean_lum - 140) / 180.0))
+                    container_alpha = 62
+                elif mean_lum > 95:
+                    dim_factor = 0.72
+                    container_alpha = 48
+                else:
+                    dim_factor = 0.86
+                    container_alpha = 36
+                bg_img = ImageEnhance.Brightness(blurred).enhance(dim_factor)
+            except Exception:
+                raw_bg = bg_img = None
+
+        has_custom_bg = bg_img is not None
+        accent_rgb = self._extract_accent_color(raw_bg if raw_bg else thumb_img)
+        ar, ag, ab = accent_rgb
+        h_a, s_a, v_a = colorsys.rgb_to_hsv(ar / 255.0, ag / 255.0, ab / 255.0)
+        tr, tg, tb = colorsys.hsv_to_rgb(h_a, min(s_a, 0.60), max(v_a, 0.96))
+        text_rgb = (int(tr * 255), int(tg * 255), int(tb * 255))
+
+        if not bg_img:
+            bg_img = Image.new("RGBA", (W, H), (16, 18, 26, 255))
+            d_bg = ImageDraw.Draw(bg_img)
+            d_bg.ellipse((-70, -70, 260, 260), fill=(ar, ag, ab, 45))
+            d_bg.ellipse((W - 220, H - 200, W + 90, H + 90), fill=(ar // 2, ag // 2, ab, 35))
+
+        # Frosted glass outer frame
+        overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        od = ImageDraw.Draw(overlay)
+        container_fill = (10, 12, 18, container_alpha) if has_custom_bg else (20, 22, 30, 215)
+        od.rounded_rectangle(
+            (8, 8, W - 8, H - 8),
+            radius=22,
+            fill=container_fill,
+            outline=(text_rgb[0], text_rgb[1], text_rgb[2], 145) if has_custom_bg else (255, 255, 255, 42),
+            width=1
+        )
+        base_img = Image.alpha_composite(bg_img, overlay)
+
+        # Album art glow ring + paste on left
+        ax, ay = 28, 28
+        glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        gd = ImageDraw.Draw(glow_layer)
+        gd.rounded_rectangle((ax - 4, ay - 4, ax + thumb_size + 4, ay + thumb_size + 4), radius=24, outline=(ar, ag, ab, 95), width=6)
+        glow_blurred = glow_layer.filter(ImageFilter.GaussianBlur(radius=4))
+        base_img = Image.alpha_composite(base_img, glow_blurred)
+        base_img.paste(thumb_img, (ax, ay), thumb_img)
+        bd = ImageDraw.Draw(base_img)
+        bd.rounded_rectangle((ax, ay, ax + thumb_size - 1, ay + thumb_size - 1), radius=20, outline=(text_rgb[0], text_rgb[1], text_rgb[2], 220), width=2)
+
+        if state is not None:
+            state["_card_cache"] = {
+                "key": cache_key,
+                "base_img": base_img,
+                "accent_rgb": accent_rgb,
+                "text_rgb": text_rgb,
+                "h": h_a,
+                "s": s_a,
+                "v": v_a,
+                "has_custom_bg": has_custom_bg,
+            }
+
+        return base_img, accent_rgb, text_rgb, h_a, s_a, v_a, has_custom_bg
+
+    @staticmethod
+    def _draw_shadow_text(draw: ImageDraw.ImageDraw, pos: Tuple[int, int], text: str, font, fill: Tuple[int, int, int, int], glow_color: Optional[Tuple[int, int, int, int]] = None):
+        x, y = pos
+        if glow_color:
+            draw.text((x, y), text, font=font, fill=glow_color, stroke_width=2, stroke_fill=glow_color)
+        draw.text((x + 2, y + 2), text, font=font, fill=(0, 0, 0, 210))
+        draw.text((x, y), text, font=font, fill=fill)
+
+    @staticmethod
+    def _truncate_text_to_width(text: str, font, max_width: int) -> str:
+        if not text:
+            return "Unknown Track"
+        if font.getbbox(text)[2] - font.getbbox(text)[0] <= max_width:
+            return text
+        lo, hi = 1, len(text)
+        best = text[:1]
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            cand = text[:mid].rstrip() + "…"
+            w = font.getbbox(cand)[2] - font.getbbox(cand)[0]
+            if w <= max_width:
+                best = cand
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        return best
+
+    async def generate_music_card(self, song: Song, guild_id: Optional[int] = None) -> discord.File:
+        """Render the 860x260 frosted-glass Now Playing card with live progress bar and adaptive colors."""
+        W, H = 860, 260
+        base_img, accent_rgb, text_rgb, h_a, s_a, v_a, has_custom_bg = await self._get_music_card_base(song, guild_id)
+        ar, ag, ab = accent_rgb
+        tar, tag, tab = text_rgb
+
+        state = self.get_state(guild_id) if guild_id else {}
+        vol = state.get("volume", 1.0)
+        f_key = state.get("filter", "studio")
+        profile = AUDIO_FILTERS.get(f_key, AUDIO_FILTERS["studio"])
+        eq_short = profile["name"].split("(")[0].strip()[:18]
+        is_loop = bool(state.get("loop", False))
+        is_auto = bool(state.get("autoplay", False))
+        is_paused = state.get("paused_at") is not None
+        if guild_id and self.bot:
+            g_obj = self.bot.get_guild(guild_id)
+            vc = g_obj.voice_client if g_obj else None
+            if vc and vc.is_paused():
+                is_paused = True
+
+        duration = int(getattr(song, "duration", 0) or 0)
+        elapsed = int(self.get_elapsed_seconds(state, duration)) if state else 0
+
+        img = base_img.copy()
+        draw = ImageDraw.Draw(img)
+
+        font_badge = get_unicode_font(12, bold=True)
+        font_title = get_unicode_font(25, bold=True)
+        font_sub = get_unicode_font(15, bold=False)
+        font_meta = get_unicode_font(13, bold=True)
+        font_time = get_unicode_font(14, bold=True)
+
+        tx = 256
+        right_edge = W - 28
+        content_w = right_edge - tx
+
+        # ── Top Pills (Status + Loop/Autoplay on left, Volume + EQ on right) ──
+        status_label = "PAUSED" if is_paused else "NOW PLAYING"
+        status_rgb = (245, 158, 11) if is_paused else (tar, tag, tab)
+        left_pills = [(status_label, status_rgb)]
+        if is_loop:
+            left_pills.append(("LOOP", (56, 189, 248)))
+        if is_auto:
+            left_pills.append(("AUTOPLAY", (168, 85, 247)))
+
+        px = tx
+        py = 30
+        for p_txt, p_col in left_pills:
+            bb = font_badge.getbbox(p_txt)
+            pw = (bb[2] - bb[0]) + 20
+            cr, cg, cb = p_col
+            draw.rounded_rectangle((px, py, px + pw, py + 26), radius=13, fill=(cr, cg, cb, 55), outline=(cr, cg, cb, 215), width=1)
+            self._draw_shadow_text(draw, (px + 10, py + 6), p_txt, font_badge, (cr, cg, cb, 255))
+            px += pw + 8
+
+        right_pills = [
+            (f"VOL {int(vol * 100)}%", (253, 224, 71)),
+            (f"EQ: {eq_short.upper()}", (186, 230, 253)),
+        ]
+        rx = right_edge
+        for p_txt, p_col in reversed(right_pills):
+            bb = font_badge.getbbox(p_txt)
+            pw = (bb[2] - bb[0]) + 20
+            rpx = rx - pw
+            cr, cg, cb = p_col
+            draw.rounded_rectangle((rpx, py, rpx + pw, py + 26), radius=13, fill=(cr, cg, cb, 45), outline=(cr, cg, cb, 190), width=1)
+            self._draw_shadow_text(draw, (rpx + 10, py + 6), p_txt, font_badge, (cr, cg, cb, 255))
+            rx = rpx - 8
+
+        # ── Track Title & Requester Subtitle ──
+        raw_title = clean_display_name(getattr(song, "title", "Unknown Track"), max_len=80)
+        title_str = self._truncate_text_to_width(raw_title, font_title, content_w)
+        # Adaptive title color: bright crisp white with subtle accent glow
+        title_fill = (255, 255, 255, 255)
+        self._draw_shadow_text(draw, (tx, 76), title_str, font_title, title_fill, glow_color=(ar, ag, ab, 90))
+
+        if getattr(song, "is_autoplay", False):
+            req_name = "Autoplay Discovery"
+        else:
+            req_obj = getattr(song, "requester", None)
+            req_name = f"@{clean_display_name(req_obj.display_name, max_len=20)}" if req_obj and hasattr(req_obj, "display_name") else "DJ"
+
+        sub_str = self._truncate_text_to_width(f"Requested by {req_name}  •  48kHz Studio Master", font_sub, content_w)
+        sub_col = (210, 232, 255, 245) if has_custom_bg else (175, 185, 202, 255)
+        self._draw_shadow_text(draw, (tx, 116), sub_str, font_sub, sub_col)
+
+        # Queue count hint
+        q_len = len(state.get("queue", [])) if state else 0
+        q_hint = f"{q_len} track{'s' if q_len != 1 else ''} up next in queue" if q_len > 0 else "No tracks queued after this"
+        self._draw_shadow_text(draw, (tx, 144), q_hint, font_meta, (tar, tag, tab, 240))
+
+        # ── Live Progress Bar ──
+        bar_x = tx
+        bar_y = 182
+        bar_w = content_w
+        bar_h = 16
+        bar_r = bar_h // 2
+
+        track_fill = (10, 14, 24, 175) if has_custom_bg else (30, 34, 46, 230)
+        draw.rounded_rectangle((bar_x, bar_y, bar_x + bar_w, bar_y + bar_h), radius=bar_r, fill=track_fill, outline=(tar, tag, tab, 110), width=1)
+
+        if duration > 0:
+            ratio = max(0.0, min(1.0, elapsed / duration))
+        else:
+            ratio = 1.0
+
+        fill_px = max(bar_h, int(bar_w * ratio)) if ratio > 0 else 0
+        if fill_px > 0:
+            grad = Image.new("RGBA", (fill_px, bar_h), (0, 0, 0, 0))
+            gd = ImageDraw.Draw(grad)
+            for i in range(fill_px):
+                t = i / max(1, fill_px - 1)
+                v_g = min(1.0, v_a + (1.0 - v_a) * t * 0.55)
+                s_g = s_a * (1.0 - t * 0.25)
+                rr, gg, bb = colorsys.hsv_to_rgb(h_a, s_g, v_g)
+                gd.line([(i, 0), (i, bar_h - 1)], fill=(int(rr * 255), int(gg * 255), int(bb * 255), 255))
+            mask = Image.new("L", (fill_px, bar_h), 0)
+            ImageDraw.Draw(mask).rounded_rectangle((0, 0, fill_px - 1, bar_h - 1), radius=bar_r, fill=255)
+            grad.putalpha(mask)
+            img.paste(grad, (bar_x, bar_y), grad)
+            draw = ImageDraw.Draw(img)
+
+            # Luminous playhead dot
+            kx = min(bar_x + bar_w - bar_r, bar_x + fill_px)
+            ky = bar_y + bar_h // 2
+            kr = bar_r + 3
+            draw.ellipse((kx - kr, ky - kr, kx + kr, ky + kr), fill=(tar, tag, tab, 235))
+            draw.ellipse((kx - bar_r + 1, ky - bar_r + 1, kx + bar_r - 1, ky + bar_r - 1), fill=(255, 255, 255, 255))
+
+        # ── Timestamps ──
+        e_m, e_s = divmod(elapsed, 60)
+        elapsed_str = f"{e_m:02d}:{e_s:02d}"
+        if duration > 0:
+            d_m, d_s = divmod(duration, 60)
+            dur_str = f"{d_m:02d}:{d_s:02d}"
+        else:
+            dur_str = "LIVE"
+
+        self._draw_shadow_text(draw, (bar_x, 208), elapsed_str, font_time, (255, 255, 255, 255))
+        db_box = font_time.getbbox(dur_str)
+        self._draw_shadow_text(draw, (bar_x + bar_w - (db_box[2] - db_box[0]), 208), dur_str, font_time, (tar, tag, tab, 255))
+
+        buf = io.BytesIO()
+        img.save(buf, format="PNG", optimize=False, compress_level=1)
+        buf.seek(0)
+        return discord.File(fp=buf, filename="now_playing.png")
+
+    async def refresh_now_playing_card(self, guild_id: int, message: Optional[discord.Message] = None, view: Optional[discord.ui.View] = None):
+        """Re-render and edit the Now Playing card in-place without overlapping uploads."""
+        state = self.get_state(guild_id)
+        current = state.get("current")
+        target_msg = message or state.get("np_message")
+        if not current or not target_msg or state.get("_updating_card"):
+            return
+        state["_updating_card"] = True
+        try:
+            card_file = await self.generate_music_card(current, guild_id)
+            kwargs: Dict[str, Any] = {"attachments": [card_file], "embed": None, "content": None}
+            if view is not None:
+                kwargs["view"] = view
+            await target_msg.edit(**kwargs)
+        except discord.NotFound:
+            if state.get("np_message") == target_msg:
+                state["np_message"] = None
+        except Exception as e:
+            print(f"[Music Card Refresh] Note for guild {guild_id}: {e}")
+        finally:
+            state["_updating_card"] = False
+
+    @tasks.loop(seconds=10)
+    async def music_card_updater(self):
+        """Update active music progress bars every 10 seconds while playing."""
+        await self.bot.wait_until_ready()
+        for gid, state in list(self.states.items()):
+            try:
+                if state.get("_stopping") or state.get("_switching_filter") or state.get("_updating_card"):
+                    continue
+                current = state.get("current")
+                np_msg = state.get("np_message")
+                if not current or not np_msg:
+                    continue
+                guild = self.bot.get_guild(gid)
+                vc = guild.voice_client if guild else None
+                if not vc or not vc.is_connected() or not vc.is_playing() or vc.is_paused():
+                    continue
+                await self.refresh_now_playing_card(gid, message=np_msg)
+            except Exception as e:
+                print(f"[Music Updater Loop] Guild {gid} note: {e}")
+
     def create_now_playing_embed(self, song: Song, volume: float = 1.0, guild_id: int = None) -> discord.Embed:
         mins, secs = divmod(song.duration or 0, 60)
         embed = discord.Embed(
@@ -1946,7 +2443,7 @@ class Music(commands.Cog):
                 except Exception:
                     pass
 
-            state["start_time"] = time.time()
+            self.reset_track_timer(state)
             state["last_played"] = next_song
             history = state.setdefault("autoplay_history", [])
             if next_song.title not in history:
@@ -1963,7 +2460,6 @@ class Music(commands.Cog):
                 asyncio.create_task(self.ensure_autoplay_queued(guild_id))
 
             if state["channel"]:
-                embed = self.create_now_playing_embed(next_song, vol, guild_id)
                 view = MusicControlView(self, guild_id)
 
                 old_msg = state.get("np_message")
@@ -1974,12 +2470,13 @@ class Music(commands.Cog):
                         pass
 
                 try:
-                    msg = await state["channel"].send(embed=embed, view=view)
+                    card_file = await self.generate_music_card(next_song, guild_id)
+                    msg = await state["channel"].send(file=card_file, view=view)
                     state["np_message"] = msg
                 except Exception as e:
-                    print(f"[Music] Error sending Now Playing card: {e}")
+                    print(f"[Music] Card render note, using embed fallback: {e}")
                     try:
-                        embed.set_thumbnail(url=None)
+                        embed = self.create_now_playing_embed(next_song, vol, guild_id)
                         msg = await state["channel"].send(embed=embed, view=view)
                         state["np_message"] = msg
                     except Exception as e2:
@@ -2238,7 +2735,7 @@ class Music(commands.Cog):
                     except Exception:
                         pass
 
-                state["start_time"] = time.time()
+                self.reset_track_timer(state)
                 state["last_played"] = song
                 vc.play(source, after=after_play)
                 if state.get("autoplay") and not state.get("queue"):
@@ -2248,7 +2745,6 @@ class Music(commands.Cog):
                     status_title = f"♪ {song.title}"[:48]
                     asyncio.create_task(self.set_voice_channel_status(vc.channel, status_title))
 
-                embed = self.create_now_playing_embed(song, vol, interaction.guild.id)
                 view = MusicControlView(self, interaction.guild.id)
                 old_msg = state.get("np_message")
                 if old_msg:
@@ -2258,10 +2754,12 @@ class Music(commands.Cog):
                         pass
 
                 try:
-                    msg = await interaction.followup.send(embed=embed, view=view)
+                    card_file = await self.generate_music_card(song, interaction.guild.id)
+                    msg = await interaction.followup.send(file=card_file, view=view)
                     state["np_message"] = msg
-                except Exception:
-                    embed.set_thumbnail(url=None)
+                except Exception as card_err:
+                    print(f"[Music] Card render fallback in /play: {card_err}")
+                    embed = self.create_now_playing_embed(song, vol, interaction.guild.id)
                     msg = await interaction.followup.send(embed=embed, view=view)
                     state["np_message"] = msg
             except Exception as e:
@@ -2324,6 +2822,9 @@ class Music(commands.Cog):
         vc = interaction.guild.voice_client
         if vc and vc.is_playing():
             vc.pause()
+            state = self.get_state(interaction.guild.id)
+            self.mark_paused(state)
+            await self.refresh_now_playing_card(interaction.guild.id, view=MusicControlView(self, interaction.guild.id))
             msg = self.get_resp(interaction.guild_id, "music_paused", "Music playback paused.")
             await reply_box(interaction, msg, title="PLAYBACK PAUSED", status="info")
         else:
@@ -2335,6 +2836,9 @@ class Music(commands.Cog):
         vc = interaction.guild.voice_client
         if vc and vc.is_paused():
             vc.resume()
+            state = self.get_state(interaction.guild.id)
+            self.mark_resumed(state)
+            await self.refresh_now_playing_card(interaction.guild.id, view=MusicControlView(self, interaction.guild.id))
             msg = self.get_resp(interaction.guild_id, "music_resumed", "Music playback resumed.")
             await reply_box(interaction, msg, title="PLAYBACK RESUMED", status="success")
         else:
@@ -2353,6 +2857,7 @@ class Music(commands.Cog):
         transformer = state.get("transformer")
         if transformer:
             transformer.volume = new_vol
+        await self.refresh_now_playing_card(interaction.guild.id)
 
         await reply_box(interaction, f"Master volume adjusted to **{percent}%**.", title="VOLUME ADJUSTED", status="info")
 
@@ -2472,10 +2977,7 @@ class Music(commands.Cog):
             current = state["current"]
             vol = state.get("volume", 1.0)
 
-            start_t = state.get("start_time", 0)
-            elapsed = int(time.time() - start_t) if start_t else 0
-            if elapsed < 0:
-                elapsed = 0
+            elapsed = int(self.get_elapsed_seconds(state, current.duration or 0))
             ss_pos = max(0, elapsed - 1)
 
             state["_switching_filter"] = True
@@ -2499,16 +3001,10 @@ class Music(commands.Cog):
                     return
                 self.play_next(interaction.guild.id)
 
-            state["start_time"] = time.time() - ss_pos
+            self.reset_track_timer(state, seek_seconds=ss_pos)
             vc.play(source, after=after_play)
 
-            np_msg = state.get("np_message")
-            if np_msg:
-                try:
-                    new_embed = self.create_now_playing_embed(current, vol, interaction.guild.id)
-                    await np_msg.edit(embed=new_embed)
-                except Exception:
-                    pass
+            await self.refresh_now_playing_card(interaction.guild.id)
 
             mins, secs = divmod(ss_pos, 60)
             await reply_box(

@@ -19236,6 +19236,22 @@ async function loadLevelingSettings() {
                     if (invLvlStatus) invLvlStatus.textContent = "Default Theme Active";
                     if (invLvlWrap) invLvlWrap.style.display = 'none';
                 }
+
+                // Music Player Card Wallpaper in Leveling Module
+                const musicStatus = document.getElementById('musicBgStatus');
+                const musicWrap = document.getElementById('musicBgPreviewWrap');
+                const musicImg = document.getElementById('musicBgPreviewImg');
+                const musicBg = actData.music_card_background || "";
+                if (musicBg) {
+                    if (musicStatus) musicStatus.textContent = "Custom Wallpaper Active";
+                    if (musicWrap && musicImg) {
+                        musicWrap.style.display = 'block';
+                        musicImg.src = musicBg;
+                    }
+                } else {
+                    if (musicStatus) musicStatus.textContent = "Default Theme Active";
+                    if (musicWrap) musicWrap.style.display = 'none';
+                }
             }
         } catch (ae) {
             console.warn("Could not load activity card wallpapers:", ae);
