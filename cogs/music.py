@@ -14,6 +14,7 @@ import re
 import html
 import base64
 import colorsys
+import math
 import warnings
 import aiohttp
 from typing import Optional, Tuple, List, Dict, Any
@@ -40,6 +41,8 @@ HINDI_SCRIPT_RE = re.compile(r'[\u0900-\u097F]')
 PUNJABI_SCRIPT_RE = re.compile(r'[\u0A00-\u0A7F]')
 KOREAN_SCRIPT_RE = re.compile(r'[\uAC00-\uD7AF]')
 JAPANESE_SCRIPT_RE = re.compile(r'[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]')
+CYRILLIC_SCRIPT_RE = re.compile(r'[\u0400-\u04FF]')
+ARABIC_SCRIPT_RE = re.compile(r'[\u0600-\u06FF]')
 
 KPOP_ARTISTS_RE = re.compile(
     r'\b(bts|blackpink|twice|stray kids|newjeans|txt|enhypen|seventeen|aespa|le sserafim|exo|red velvet|itzy|ateez|kpop|k-pop)\b',
@@ -483,7 +486,7 @@ FFMPEG_OPTIONS = get_ffmpeg_options("studio")
 
 
 class Song:
-    def __init__(self, title, url, duration, requester, thumbnail=None, webpage_url=None, is_autoplay=False):
+    def __init__(self, title, url, duration, requester, thumbnail=None, webpage_url=None, is_autoplay=False, uploader=""):
         self.title = title
         self.url = url
         self.webpage_url = webpage_url or url
@@ -491,6 +494,7 @@ class Song:
         self.requester = requester
         self.thumbnail = thumbnail
         self.is_autoplay = is_autoplay
+        self.uploader = uploader or ""
 
 
 def resolve_user_playlist_name(user_pls: dict, query: str) -> Optional[str]:
@@ -1052,8 +1056,12 @@ class MusicControlView(discord.ui.View):
             await cog.refresh_now_playing_card(gid, message=interaction.message, view=self)
 
             if new_auto:
-                asyncio.create_task(cog.ensure_autoplay_queued(gid))
-                msg = "Friday will intelligently pre-fetch and stream similar tracks with matching mood and artist!"
+                cur = state.get("current")
+                dur = int(getattr(cur, "duration", 0) or 0) if cur else 0
+                el = cog.get_elapsed_seconds(state, dur) if cur else 0
+                if not cur or dur <= 0 or (dur - el) <= 18:
+                    asyncio.create_task(cog.ensure_autoplay_queued(gid))
+                msg = "Autoplay enabled! Next matching song will be queued ~10s before each track ends."
             else:
                 state["queue"] = [s for s in state.get("queue", []) if not getattr(s, "is_autoplay", False)]
                 msg = "Autoplay has been turned off. Any upcoming autoplay recommendations have been removed from the queue."
@@ -1438,8 +1446,14 @@ class Music(commands.Cog):
             return "hindi"
         return "english"
 
-    def _extract_artist_and_title(self, raw_title: str) -> Tuple[Optional[str], str]:
+    def _extract_artist_and_title(self, raw_title: str, uploader: str = "") -> Tuple[Optional[str], str]:
         junk = r'(?i)\b(official|music|video|audio|lyrics|lyric|hd|4k|remastered|song|track|full\s+song|visualizer|feat\.?|ft\.?)\b'
+
+        def _pick_known_artist(text: str) -> Optional[str]:
+            if not text:
+                return None
+            m = PUNJABI_ARTISTS_RE.search(text) or INDIAN_ARTISTS_RE.search(text)
+            return m.group(0).title() if m else None
 
         if "|" in raw_title:
             parts = [p.strip() for p in raw_title.split("|") if p.strip()]
@@ -1449,10 +1463,11 @@ class Music(commands.Cog):
 
             artist_part = None
             for p in parts[1:]:
-                m = PUNJABI_ARTISTS_RE.search(p) or INDIAN_ARTISTS_RE.search(p)
-                if m:
-                    artist_part = m.group(0).title()
+                artist_part = _pick_known_artist(p)
+                if artist_part:
                     break
+            if not artist_part and uploader and uploader.lower() not in ("jiosaavn", "youtube", "soundcloud", "various artists"):
+                artist_part = uploader.split(",")[0].strip()
             if not artist_part and len(parts) > 1:
                 artist_part = re.sub(junk, '', re.sub(r'[\(\[\{].*?[\)\]\}]', '', parts[-1])).strip()
             return artist_part, title_part
@@ -1461,21 +1476,49 @@ class Music(commands.Cog):
         cleaned = re.sub(junk, '', cleaned).strip()
 
         if " - " in cleaned:
-            parts = cleaned.split(" - ", 1)
-            return parts[0].strip(), parts[1].strip()
+            parts = [p.strip() for p in cleaned.split(" - ") if p.strip()]
+            # Format from JioSaavn: "Song Title - Artist 1, Artist 2 - Album"
+            if uploader.lower() == "jiosaavn" or len(parts) >= 3:
+                title_cand = parts[0]
+                artist_cand = _pick_known_artist(parts[1]) or parts[1].split(",")[0].strip()
+                return artist_cand, title_cand
+            # Format: "Artist - Title" or "Title - Artist"
+            p0_known = _pick_known_artist(parts[0])
+            p1_known = _pick_known_artist(parts[1])
+            if p1_known and not p0_known:
+                return p1_known, parts[0]
+            return p0_known or parts[0], parts[1]
 
+        if uploader and uploader.lower() not in ("jiosaavn", "youtube", "soundcloud", "various artists"):
+            return uploader.split(",")[0].strip(), cleaned
         return None, cleaned
 
-    def _detect_song_features(self, title: str) -> Tuple[Optional[str], str, Optional[str]]:
-        t = title.lower()
+    def _detect_song_features(self, title: str, uploader: str = "") -> Tuple[Optional[str], str, Optional[str]]:
+        t = f"{title} {uploader}".lower()
         detected_mood = None
         for mood, pattern in AUTOPLAY_MOOD_PATTERNS.items():
             if pattern.search(t):
                 detected_mood = mood
                 break
-        detected_lang = self._detect_language(title)
-        artist, _ = self._extract_artist_and_title(title)
+        detected_lang = self._detect_language(f"{title} {uploader}")
+        artist, _ = self._extract_artist_and_title(title, uploader=uploader)
         return detected_mood, detected_lang, artist
+
+    @staticmethod
+    def _is_script_mismatch(seed_title: str, seed_lang: str, cand_title: str, cand_lang: str) -> bool:
+        """Reject candidates in unrelated scripts (e.g. Cyrillic/Russian spam during Hindi/English playback)."""
+        if CYRILLIC_SCRIPT_RE.search(cand_title) and not CYRILLIC_SCRIPT_RE.search(seed_title):
+            return True
+        if ARABIC_SCRIPT_RE.search(cand_title) and not ARABIC_SCRIPT_RE.search(seed_title):
+            return True
+        if KOREAN_SCRIPT_RE.search(cand_title) and seed_lang != "kpop":
+            return True
+        if JAPANESE_SCRIPT_RE.search(cand_title) and seed_lang != "japanese":
+            return True
+        if seed_lang in ("hindi", "punjabi") and cand_lang not in ("hindi", "punjabi"):
+            # Allow unlabeled tracks only if they match known Indian/Punjabi cues, block unrelated foreign tracks
+            return True
+        return False
 
     def _flat_search_sync(self, query: str, playlist_end: int = 12) -> list:
         opts = {
@@ -1501,11 +1544,67 @@ class Music(commands.Cog):
             print(f"[Music Autoplay Flat Search Error] {e}")
             return []
 
+    def _saavn_autoplay_search_sync(self, queries: list, clean_norm: str, history: set, banned_terms: list) -> list:
+        """Fast native JioSaavn search returning verified 320kbps candidates matching mood/artist/language."""
+        out = []
+        seen_ids = set()
+        for q in queries:
+            if not q:
+                continue
+            try:
+                url = f"https://www.jiosaavn.com/api.php?__call=search.getResults&_format=json&_marker=0&api_version=4&ctx=web6dot0&q={urllib.parse.quote(q)}&n=10&p=1"
+                req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    results = json.loads(resp.read().decode('utf-8')).get('results', [])
+                for item in results:
+                    sid = item.get('id')
+                    if not sid or sid in seen_ids:
+                        continue
+                    seen_ids.add(sid)
+                    raw_t = item.get('title', '')
+                    clean_t = raw_t.replace('&quot;', '"').replace('&#039;', "'").replace('&amp;', '&').strip()
+                    artists = (item.get('subtitle') or '').strip()
+                    full_title = f"{clean_t} - {artists}" if artists else clean_t
+                    if not clean_t or full_title in history or clean_t in history:
+                        continue
+                    more = item.get('more_info', {})
+                    enc_url = more.get('encrypted_media_url')
+                    if not enc_url:
+                        continue
+                    dur = int(more.get('duration', 0) or 0)
+                    if dur and (dur < 90 or dur > 480):
+                        continue
+                    low = full_title.lower()
+                    if any(bt in low for bt in banned_terms):
+                        continue
+                    cand_norm = re.sub(r'[^a-z0-9]', '', clean_t.lower())
+                    if len(clean_norm) >= 4 and clean_norm in cand_norm:
+                        continue
+                    stream_url = decrypt_saavn_url(enc_url)
+                    if not stream_url:
+                        continue
+                    plays = int(item.get('play_count') or 0)
+                    out.append({
+                        'title': full_title,
+                        'url': stream_url,
+                        'webpage_url': item.get('perma_url') or stream_url,
+                        'duration': dur,
+                        'thumbnail': (item.get('image') or '').replace('150x150', '500x500'),
+                        'uploader': artists,
+                        'plays': plays,
+                        'language': (item.get('language') or '').lower(),
+                    })
+            except Exception as ex:
+                print(f"[Autoplay Saavn Note] {ex}")
+        out.sort(key=lambda x: x.get('plays', 0), reverse=True)
+        return out
+
     async def _find_autoplay_track(self, last_song: Song, guild_id: int) -> Optional[Song]:
-        """Uses YouTube Mix Radio (RD playlist) first, then strict Music-only fallback, blocking 18+ & non-music."""
+        """Picks matching tracks strictly locked to seed song language/mood/artist, blocking foreign/spam tracks."""
         state = self.get_state(guild_id)
-        mood, lang, artist = self._detect_song_features(last_song.title)
-        extracted_artist, core_title = self._extract_artist_and_title(last_song.title)
+        last_up = getattr(last_song, "uploader", "") or ""
+        mood, lang, artist = self._detect_song_features(last_song.title, uploader=last_up)
+        extracted_artist, core_title = self._extract_artist_and_title(last_song.title, uploader=last_up)
         if not artist and extracted_artist:
             artist = extracted_artist
         if not core_title or len(core_title) < 2:
@@ -1522,7 +1621,7 @@ class Music(commands.Cog):
             'prank', 'challenge', 'roast', 'drama', 'gaming', 'gameplay',
             'tiktok', 'reels', 'highlight', 'twitch', 'stream', 'compilation', 'jukebox',
             'lyrics', 'lyric', 'lyrical', 'animated', 'animation', 'mashup', 'cover',
-            'status', 'shorts', 'ringtone', 'karaoke', 'instrumental',
+            'status', 'shorts', 'ringtone', 'karaoke', 'instrumental', 'slowed', 'reverb', 'sped up',
             '18+', 'nsfw', 'explicit', 'uncensored', 'hot video', 'sexy', 'vulgar',
             'leaked', 'bhabhi', 'erotic', 'onlyfans', 'porn', 'xxx', 'adult', 'nude',
             'naked', 'bikini', 'kiss scene', 'bed scene', 'hot scene', 'sensual',
@@ -1534,7 +1633,6 @@ class Music(commands.Cog):
             if not t_name or t_name in history:
                 return False
             dur = entry.get("duration") or 0
-            # Strict music length: 90s to 8 mins (blocks Shorts, trailers, 1-hour mixes)
             if dur and (dur < 90 or dur > 480):
                 return False
             uploader = (entry.get("uploader") or entry.get("channel") or "").lower()
@@ -1544,9 +1642,14 @@ class Music(commands.Cog):
             cand_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
             if len(clean_norm) >= 4 and clean_norm in cand_norm:
                 return False
+            cand_lang = self._detect_language(combined)
+            if self._is_script_mismatch(last_song.title, lang, t_name, cand_lang):
+                return False
             return True
 
-        # 1. Primary: YouTube Native Music Mix Radio (RD<video_id>)
+        is_desi = lang in ("hindi", "punjabi")
+
+        # 1. Primary: YouTube Native Music Mix Radio (RD<video_id>) when seed came from YouTube
         yt_id_match = re.search(r'(?:v=|youtu\.be/)([a-zA-Z0-9_-]{11})', last_song.webpage_url or "")
         if yt_id_match:
             vid_id = yt_id_match.group(1)
@@ -1561,14 +1664,36 @@ class Music(commands.Cog):
             except Exception as mix_err:
                 print(f"[Autoplay Mix Error] {mix_err}")
 
-        # 2. Fallback: Targeted Official Audio / Topic Search
+        # 2. For Desi tracks (or when YouTube Mix had few/no valid matches), try JioSaavn direct mood/artist first
+        if is_desi and len(candidates) < 2:
+            saavn_queries = []
+            if artist:
+                saavn_queries.append(artist)
+            saavn_queries.append(f"{mood or 'sad'} {lang} songs" if lang == "hindi" else f"{artist or 'top'} punjabi songs")
+            if mood == "sad" or not mood:
+                saavn_queries.append("arijit singh atif aslam sad hindi")
+            saavn_hits = await asyncio.to_thread(self._saavn_autoplay_search_sync, saavn_queries, clean_norm, history, banned_terms)
+            saavn_hits = [h for h in saavn_hits if not self._is_script_mismatch(last_song.title, lang, h['title'], self._detect_language(h['title']))]
+            if saavn_hits:
+                pick = random.choice(saavn_hits[:min(6, len(saavn_hits))])
+                return Song(
+                    title=pick['title'],
+                    url=pick['url'],
+                    webpage_url=pick['webpage_url'],
+                    duration=pick['duration'],
+                    requester=self.bot.user,
+                    thumbnail=pick['thumbnail'],
+                    is_autoplay=True,
+                    uploader=pick.get('uploader', '')
+                )
+
+        # 3. Fallback: Targeted Official Audio / Topic YouTube Search
         if len(candidates) < 3:
-            is_desi = lang in ("hindi", "punjabi")
             queries = []
             if artist:
                 queries.append(f"{artist} official audio topic")
             if is_desi:
-                queries.append(f"top {lang} {mood or 'hit'} songs official audio")
+                queries.append(f"top {lang} {mood or 'sad'} songs official audio")
             else:
                 queries.append(f"top {mood or 'pop'} songs official audio topic")
 
@@ -1583,17 +1708,15 @@ class Music(commands.Cog):
                 except Exception as search_ex:
                     print(f"[Autoplay Search Error for '{q}'] {search_ex}")
 
-        if not candidates:
-            return None
-
-        # 3. Extract & Verify: Must be Music category + Not age-restricted
+        # 4. Extract & verify matching candidates (never pass URL without title_hint)
         candidate_pool = list(candidates[:8])
         random.shuffle(candidate_pool)
         for chosen_entry in candidate_pool:
             vid_id = chosen_entry.get("id")
             track_target = f"https://www.youtube.com/watch?v={vid_id}" if vid_id else (chosen_entry.get("url") or chosen_entry.get("title"))
+            title_hint = chosen_entry.get("title") or ""
             try:
-                info = await self.extract_audio_info(track_target)
+                info = await self.extract_audio_info(track_target, title_hint=title_hint)
                 if not info or not info.get("url"):
                     continue
 
@@ -1604,19 +1727,23 @@ class Music(commands.Cog):
                 if categories and "music" not in categories:
                     continue
 
-                info_title = (info.get("title") or "").lower()
-                info_uploader = (info.get("uploader") or info.get("channel") or "").lower()
-                if any(bt in f"{info_title} {info_uploader}" for bt in banned_terms):
+                info_title = info.get("title") or ""
+                info_uploader = info.get("uploader") or info.get("channel") or ""
+                if any(bt in f"{info_title.lower()} {info_uploader.lower()}" for bt in banned_terms):
+                    continue
+                cand_lang = self._detect_language(f"{info_title} {info_uploader}")
+                if self._is_script_mismatch(last_song.title, lang, info_title, cand_lang):
                     continue
 
                 return Song(
-                    title=info["title"],
+                    title=info_title,
                     url=info["url"],
                     webpage_url=info.get("webpage_url", track_target),
                     duration=info.get("duration", 0),
                     requester=self.bot.user,
                     thumbnail=info.get("thumbnail") or chosen_entry.get("thumbnail"),
-                    is_autoplay=True
+                    is_autoplay=True,
+                    uploader=info_uploader
                 )
             except Exception as ex:
                 print(f"[Autoplay Extract Note] {ex}")
@@ -1632,7 +1759,7 @@ class Music(commands.Cog):
         return len(state["queue"])
 
     async def ensure_autoplay_queued(self, guild_id: int):
-        """Pre-fetches the next matching autoplay track so the queue is never empty and playback never stalls."""
+        """Quietly pre-fetches the next matching autoplay track right before current playback ends."""
         state = self.get_state(guild_id)
         guild = self.bot.get_guild(guild_id)
         if not guild or not guild.voice_client or not guild.voice_client.is_connected():
@@ -1649,43 +1776,21 @@ class Music(commands.Cog):
         state["_fetching_autoplay"] = True
         try:
             print(f"[Music Autoplay] Pre-fetching next recommendation for guild {guild_id} based on '{ref_song.title}'...")
-            channel = state.get("channel")
             next_song = await self._find_autoplay_track(ref_song, guild_id)
             vc = guild.voice_client
-            # If a user queued a song (or stopped/disabled autoplay) while searching, yield to the user's queue!
             if state.get("queue") or not state.get("autoplay") or state.get("_stopping") or not vc or not vc.is_connected():
                 return
             if next_song:
                 next_song.is_autoplay = True
                 state["queue"].append(next_song)
-                print(f"[Music Autoplay] Queued next song: '{next_song.title}' (queue length: {len(state['queue'])})")
-
-                if channel:
-                    try:
-                        n_mood, n_lang, _ = self._detect_song_features(next_song.title)
-                        r_mood, _, _ = self._detect_song_features(ref_song.title)
-                        disp_mood = n_mood or r_mood
-                        disp_lang = n_lang if n_lang != "english" else None
-                        desc_parts = []
-                        if disp_mood: desc_parts.append(f"mood: **{disp_mood.capitalize()}**")
-                        if disp_lang: desc_parts.append(f"lang: **{disp_lang.capitalize()}**")
-                        tag = f" ({' • '.join(desc_parts)})" if desc_parts else ""
-                        await channel.send(
-                            f"📻 **Autoplay:** Up next: **[{next_song.title}](<{next_song.webpage_url}>)**{tag}",
-                            suppress_embeds=True
-                        )
-                    except Exception as ch_err:
-                        print(f"[Music Autoplay] Notice send note: {ch_err}")
+                print(f"[Music Autoplay] Silently queued next song: '{next_song.title}' (queue length: {len(state['queue'])})")
 
                 if state.get("current") is None or not (vc.is_playing() or vc.is_paused()):
                     self.play_next(guild_id)
+                else:
+                    asyncio.create_task(self.refresh_now_playing_card(guild_id))
             else:
                 print(f"[Music Autoplay] No similar tracks found for '{ref_song.title}'.")
-                if channel and (state.get("current") is None and vc and not vc.is_playing()):
-                    try:
-                        await channel.send("📻 **Autoplay:** Reached the end of matching recommendations for this mood.", delete_after=10)
-                    except Exception:
-                        pass
                 if vc and vc.channel and (state.get("current") is None and not vc.is_playing()):
                     await self.clear_voice_channel_status(vc.channel)
         except Exception as e:
@@ -1734,12 +1839,13 @@ class Music(commands.Cog):
         except Exception:
             return []
 
-    async def extract_audio_info(self, query: str):
+    async def extract_audio_info(self, query: str, title_hint: Optional[str] = None):
         """Extract high-fidelity stream URL and rich metadata with multi-source cloud fallback."""
         loop = asyncio.get_event_loop()
 
         def _extract():
             is_url = query.startswith("http://") or query.startswith("https://")
+            is_yt_url = is_url and ("youtube.com" in query.lower() or "youtu.be" in query.lower())
             cookie_path = get_cookie_file()
             format_chain = 'bestaudio[acodec=opus]/bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best'
             active_cookie_path = cookie_path if (cookie_path and os.path.isfile(cookie_path) and os.path.getsize(cookie_path) > 0) else None
@@ -1797,7 +1903,14 @@ class Music(commands.Cog):
                                 continue
 
                             score = len(matched_words) * 20
-                            penalty_terms = ['different version', 'sad version', 'slowed', 'reverb', 'remix', 'instrumental', 'cover', 'acoustic', 'mashup', 'slap', 'harddope', 'lexmorris']
+                            plays = 0
+                            try:
+                                plays = int(item.get('play_count') or 0)
+                            except Exception:
+                                plays = 0
+                            if plays > 0:
+                                score += min(32, int(math.log10(plays) * 5))
+                            penalty_terms = ['different version', 'sad version', 'slowed', 'reverb', 'sped up', 'nightcore', 'remix', 'instrumental', 'cover', 'acoustic', 'mashup', 'slap', 'harddope', 'lexmorris']
                             for pt in penalty_terms:
                                 if pt in full_text and pt not in search_text.lower():
                                     score -= 45
@@ -1854,8 +1967,9 @@ class Music(commands.Cog):
                     'noplaylist': True,
                     'quiet': True,
                     'no_warnings': True,
+                    'ignoreerrors': True,
                     'http_headers': DEFAULT_HEADERS,
-                    'socket_timeout': 6,
+                    'socket_timeout': 5,
                 }
                 with yt_dlp.YoutubeDL(sc_opts) as sc_ydl:
                     info = sc_ydl.extract_info(f"scsearch5:{search_text}", download=False)
@@ -2067,36 +2181,53 @@ class Music(commands.Cog):
             except Exception as e1:
                 print(f"[Music] YouTube extraction note: {e1}")
 
+            # CRITICAL: Never pass raw YouTube URLs into SoundCloud / JioSaavn keyword search
+            fallback_text = title_hint.strip() if title_hint else search_title
+            if is_yt_url and fallback_text.startswith(("http://", "https://")):
+                try:
+                    oe_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(query)}&format=json"
+                    req_oe = urllib.request.Request(oe_url, headers=DEFAULT_HEADERS)
+                    with urllib.request.urlopen(req_oe, timeout=4) as r_oe:
+                        oe_data = json.loads(r_oe.read().decode('utf-8'))
+                        if oe_data.get('title'):
+                            fallback_text = oe_data['title'].strip()
+                except Exception:
+                    fallback_text = ""
+
+            if not fallback_text or fallback_text.startswith(("http://", "https://")):
+                raise Exception("YouTube stream unavailable right now and no fallback title could be resolved.")
+
             indian_keywords = {
                 'arijit', 'shreya', 'kumar', 'singh', 'sonu', 'atif', 'badshah', 'neha', 'kakkar',
                 'jubin', 'nautiyal', 'diljit', 'dosanjh', 'sidhu', 'moosewala', 'ap dhillon',
                 'bollywood', 'hindi', 'punjabi', 'bhojpuri', 'tamil', 'telugu', 'malayalam',
                 'b praak', 'anuv jain', 'prateek kuhad', 'darshan raval', 'armaan malik', 'yo yo honey singh'
             }
-            q_lower = search_title.lower()
-            is_indian = any(k in q_lower for k in indian_keywords)
+            q_lower = fallback_text.lower()
+            is_indian = any(k in q_lower for k in indian_keywords) or self._detect_language(fallback_text) in ("hindi", "punjabi")
 
             if is_spotify or not is_indian:
+                # For clean official English/Pop tracks, check JioSaavn first if popular, else SoundCloud
+                saavn_res = _extract_saavn(fallback_text)
+                if saavn_res:
+                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
+                    return saavn_res
+
                 try:
-                    sc_res = _extract_sc(search_title)
+                    sc_res = _extract_sc(fallback_text)
                     if sc_res:
                         print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
                         return sc_res
                 except Exception as e2:
                     print(f"[Music] SoundCloud extraction note: {e2}")
-
-                saavn_res = _extract_saavn(search_title)
-                if saavn_res:
-                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
-                    return saavn_res
             else:
-                saavn_res = _extract_saavn(search_title)
+                saavn_res = _extract_saavn(fallback_text)
                 if saavn_res:
                     print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
                     return saavn_res
 
                 try:
-                    sc_res = _extract_sc(search_title)
+                    sc_res = _extract_sc(fallback_text)
                     if sc_res:
                         print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
                         return sc_res
@@ -2494,6 +2625,13 @@ class Music(commands.Cog):
                 if not vc or not vc.is_connected() or not vc.is_playing() or vc.is_paused():
                     continue
                 await self.refresh_now_playing_card(gid, message=np_msg)
+
+                # Trigger Autoplay pre-fetch only in the last ~10-18s before the track ends
+                if state.get("autoplay") and not state.get("queue") and not state.get("_fetching_autoplay"):
+                    dur = int(getattr(current, "duration", 0) or 0)
+                    elapsed = self.get_elapsed_seconds(state, dur)
+                    if dur > 0 and (dur - elapsed) <= 18:
+                        asyncio.create_task(self.ensure_autoplay_queued(gid))
             except Exception as e:
                 print(f"[Music Updater Loop] Guild {gid} note: {e}")
 
@@ -2585,6 +2723,8 @@ class Music(commands.Cog):
                         next_song.thumbnail = info.get("thumbnail")
                     if not next_song.duration:
                         next_song.duration = info.get("duration", 0)
+                    if not getattr(next_song, "uploader", ""):
+                        next_song.uploader = info.get("uploader", "")
                     state["_card_cache"] = None
 
             vol = state.get("volume", 1.0)
@@ -2618,7 +2758,9 @@ class Music(commands.Cog):
                 asyncio.create_task(self.set_voice_channel_status(vc.channel, status_title))
 
             vc.play(source, after=after_play)
-            if state.get("autoplay") and not state.get("queue"):
+            # Only fetch immediately if track has no known duration and queue is empty;
+            # normal tracks pre-fetch ~10-18s before ending inside music_card_updater.
+            if state.get("autoplay") and not state.get("queue") and not int(getattr(next_song, "duration", 0) or 0):
                 asyncio.create_task(self.ensure_autoplay_queued(guild_id))
 
             if state["channel"]:
@@ -2865,7 +3007,8 @@ class Music(commands.Cog):
             webpage_url=song_info['webpage_url'],
             duration=song_info['duration'],
             requester=interaction.user,
-            thumbnail=song_info.get('thumbnail')
+            thumbnail=song_info.get('thumbnail'),
+            uploader=song_info.get('uploader', '')
         )
 
         if vc.is_playing() or vc.is_paused():
@@ -2919,7 +3062,7 @@ class Music(commands.Cog):
                 self.reset_track_timer(state)
                 state["last_played"] = song
                 vc.play(source, after=after_play)
-                if state.get("autoplay") and not state.get("queue"):
+                if state.get("autoplay") and not state.get("queue") and not int(getattr(song, "duration", 0) or 0):
                     asyncio.create_task(self.ensure_autoplay_queued(interaction.guild.id))
 
                 if vc and vc.channel:
@@ -2964,7 +3107,8 @@ class Music(commands.Cog):
                         webpage_url=info['webpage_url'],
                         duration=info['duration'],
                         requester=requester,
-                        thumbnail=info.get('thumbnail')
+                        thumbnail=info.get('thumbnail'),
+                        uploader=info.get('uploader', '')
                     )
                     self.enqueue_user_song(state, song)
                     print(f"[Music] Enqueued Spotify batch track: '{song.title}' (queue: {len(state['queue'])})")
@@ -3209,8 +3353,12 @@ class Music(commands.Cog):
         state["autoplay"] = new_status
 
         if new_status:
-            asyncio.create_task(self.ensure_autoplay_queued(interaction.guild_id))
-            desc = "Friday will intelligently analyze each track's mood, language, and artist to seamlessly pre-fetch and stream matching songs! 🌸"
+            cur = state.get("current")
+            dur = int(getattr(cur, "duration", 0) or 0) if cur else 0
+            el = self.get_elapsed_seconds(state, dur) if cur else 0
+            if not state.get("queue") and (not cur or dur <= 0 or (dur - el) <= 18):
+                asyncio.create_task(self.ensure_autoplay_queued(interaction.guild_id))
+            desc = "Autoplay enabled! Matching songs will be fetched cleanly ~10 seconds before the current track finishes."
         else:
             state["queue"] = [s for s in state.get("queue", []) if not getattr(s, "is_autoplay", False)]
             desc = "Autoplay disabled. Playback will stop once the current queue finishes."
