@@ -1482,13 +1482,6 @@ class Music(commands.Cog):
                 title_cand = parts[0]
                 artist_cand = _pick_known_artist(parts[1]) or parts[1].split(",")[0].strip()
                 return artist_cand, title_cand
-            # If uploader matches one side ("Artist - Title" vs "Title - Artist"), disambiguate accurately
-            up_low = uploader.lower().strip()
-            if up_low and up_low not in ("jiosaavn", "youtube", "soundcloud", "various artists"):
-                if up_low in parts[1].lower() or parts[1].lower() in up_low:
-                    return parts[1], parts[0]
-                if up_low in parts[0].lower() or parts[0].lower() in up_low:
-                    return parts[0], parts[1]
             # Format: "Artist - Title" or "Title - Artist"
             p0_known = _pick_known_artist(parts[0])
             p1_known = _pick_known_artist(parts[1])
@@ -1963,7 +1956,7 @@ class Music(commands.Cog):
                     'categories': ['Music']
                 }
 
-            def _extract_saavn(search_text, required_artist: Optional[str] = None):
+            def _extract_saavn(search_text, required_artist: Optional[str] = None, min_plays: int = 0):
                 try:
                     clean_query = re.sub(r'\b(song|songs|video|audio|mp3|official track|track)\b', '', search_text, flags=re.IGNORECASE).strip()
                     clean_query = re.sub(r'\bjho\b', 'jo', clean_query, flags=re.IGNORECASE)
@@ -1999,6 +1992,13 @@ class Music(commands.Cog):
                             dur_i = int(more_i.get('duration', 0) or 0)
                             if dur_i and dur_i < 45:
                                 continue
+                            plays = 0
+                            try:
+                                plays = int(item.get('play_count') or 0)
+                            except Exception:
+                                plays = 0
+                            if min_plays > 0 and plays < min_plays:
+                                continue
                             sub = item.get('subtitle', '')
                             album = more_i.get('album', '')
                             full_text = f"{clean_t} {sub} {album}".lower()
@@ -2013,11 +2013,6 @@ class Music(commands.Cog):
                                 continue
 
                             score = len(matched_words) * 20
-                            plays = 0
-                            try:
-                                plays = int(item.get('play_count') or 0)
-                            except Exception:
-                                plays = 0
                             if plays > 0:
                                 score += min(32, int(math.log10(plays) * 5))
                             penalty_terms = ['different version', 'sad version', 'slowed', 'reverb', 'sped up', 'nightcore', 'remix', 'instrumental', 'cover', 'acoustic', 'mashup', 'slap', 'harddope', 'lexmorris']
@@ -2131,7 +2126,12 @@ class Music(commands.Cog):
                     matched = [w for w in q_words if w in combined]
                     if not matched:
                         continue
-                    score = len(matched) * 22
+                    if len(q_words) >= 2 and len(matched) < min(2, len(q_words)):
+                        continue
+                    score = len(matched) * 25
+                    clean_q_text = " ".join(q_words)
+                    if clean_q_text and clean_q_text in t_low:
+                        score += 25
                     if any(w in u_low for w in q_words):
                         score += 20
                     if expected_dur > 45 and dur_sec > 45 and abs(dur_sec - expected_dur) <= 25:
@@ -2139,7 +2139,7 @@ class Music(commands.Cog):
                     for pt in ['cover', 'remix', 'drill', 'mashup', 'slowed', 'reverb', 'sped up', 'nightcore', 'bass boosted', '1 hour', 'edit']:
                         if pt in combined and pt not in q_lower:
                             score -= 40
-                    if score >= 45:
+                    if score > 0:
                         scored.append((score, entry))
 
                 scored.sort(key=lambda x: x[0], reverse=True)
@@ -2171,7 +2171,7 @@ class Music(commands.Cog):
                         continue
                 return None
 
-            def _extract_yt(target, use_cookies=False, player_clients=None):
+            def _extract_yt(target, use_cookies=False, player_clients=None, ipv4_only=False):
                 is_search = not (target.startswith("http://") or target.startswith("https://"))
                 base_opts = {
                     'format': format_chain,
@@ -2182,6 +2182,8 @@ class Music(commands.Cog):
                     'nocheckcertificate': True,
                     'socket_timeout': 6
                 }
+                if ipv4_only:
+                    base_opts['source_address'] = '0.0.0.0'
                 if player_clients:
                     base_opts['extractor_args'] = {'youtube': {'player_client': player_clients}}
                 if use_cookies and active_cookie_path:
@@ -2214,6 +2216,8 @@ class Music(commands.Cog):
                     'noplaylist': True,
                     'socket_timeout': 6
                 }
+                if ipv4_only:
+                    flat_opts['source_address'] = '0.0.0.0'
                 if use_cookies and active_cookie_path:
                     flat_opts['cookiefile'] = active_cookie_path
 
@@ -2324,14 +2328,20 @@ class Music(commands.Cog):
             except Exception as e1:
                 print(f"[Music] YouTube extraction note: {e1}")
 
-            # Try mobile/TV player clients without cookies when default client is blocked
-            try:
-                yt_alt = _extract_yt(search_target, use_cookies=False, player_clients=['android_vr', 'tv', 'ios', 'mweb'])
-                if yt_alt:
-                    print(f"[Music] Resolved via YouTube (alt client): {yt_alt.get('title')}")
-                    return yt_alt
-            except Exception as e_alt:
-                print(f"[Music] YouTube alt client note: {e_alt}")
+            # Try cookie-less Android VR / SDKless clients over IPv4 first (works without Deno/JS runtime or cookies)
+            for use_v4 in (True, False):
+                try:
+                    yt_alt = _extract_yt(
+                        search_target,
+                        use_cookies=False,
+                        player_clients=['android_sdkless', 'android_vr'],
+                        ipv4_only=use_v4
+                    )
+                    if yt_alt:
+                        print(f"[Music] Resolved via YouTube (android client): {yt_alt.get('title')}")
+                        return yt_alt
+                except Exception as e_alt:
+                    print(f"[Music] YouTube alt client note (ipv4={use_v4}): {e_alt}")
 
             # CRITICAL: Never pass raw YouTube URLs into SoundCloud / JioSaavn keyword search
             fallback_text = title_hint.strip() if title_hint else search_title
@@ -2349,30 +2359,41 @@ class Music(commands.Cog):
             if not fallback_text or fallback_text.startswith(("http://", "https://")):
                 raise Exception("YouTube stream unavailable right now and no fallback title could be resolved.")
 
-            # Canonical global artist/track guard (stops 'snowman' from playing obscure Punjabi covers on VM fallback)
-            canonical = self._itunes_canonical_lookup(fallback_text)
-            req_artist = canonical[0] if canonical else None
-            exp_dur = canonical[2] if canonical else 0
-            canon_query = f"{canonical[0]} {canonical[1]}" if canonical else fallback_text
+            indian_keywords = {
+                'arijit', 'shreya', 'kumar', 'singh', 'sonu', 'atif', 'badshah', 'neha', 'kakkar',
+                'jubin', 'nautiyal', 'diljit', 'dosanjh', 'sidhu', 'moosewala', 'ap dhillon',
+                'bollywood', 'hindi', 'punjabi', 'bhojpuri', 'tamil', 'telugu', 'malayalam',
+                'b praak', 'anuv jain', 'prateek kuhad', 'darshan raval', 'armaan malik', 'yo yo honey singh'
+            }
+            q_lower = fallback_text.lower()
+            is_indian = any(k in q_lower for k in indian_keywords) or self._detect_language(fallback_text) in ("hindi", "punjabi")
 
-            saavn_res = _extract_saavn(canon_query, required_artist=req_artist)
-            if saavn_res:
-                print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
-                return saavn_res
+            if is_indian:
+                saavn_res = _extract_saavn(fallback_text)
+                if saavn_res:
+                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
+                    return saavn_res
+                try:
+                    sc_res = _extract_sc(fallback_text)
+                    if sc_res:
+                        print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
+                        return sc_res
+                except Exception as e2:
+                    print(f"[Music] SoundCloud extraction note: {e2}")
+            else:
+                # Non-Indian queries prefer SoundCloud cleanly first, then popular (>=50k plays) JioSaavn
+                try:
+                    sc_res = _extract_sc(fallback_text)
+                    if sc_res:
+                        print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
+                        return sc_res
+                except Exception as e2:
+                    print(f"[Music] SoundCloud extraction note: {e2}")
 
-            try:
-                sc_res = _extract_sc(canon_query, required_artist=req_artist, expected_dur=exp_dur)
-                if sc_res:
-                    print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
-                    return sc_res
-            except Exception as e2:
-                print(f"[Music] SoundCloud extraction note: {e2}")
-
-            # Only retry JioSaavn without artist lock if the user's query looks Indian/Desi (since US iTunes can differ on Hinglish titles)
-            if req_artist and self._detect_language(fallback_text) in ("hindi", "punjabi"):
-                saavn_fallback = _extract_saavn(fallback_text)
-                if saavn_fallback:
-                    return saavn_fallback
+                saavn_res = _extract_saavn(fallback_text, min_plays=50000)
+                if saavn_res:
+                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
+                    return saavn_res
 
             raise Exception("Could not find an audio stream for this track. Please check the song name or provide a direct audio link.")
 
