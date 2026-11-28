@@ -1482,6 +1482,13 @@ class Music(commands.Cog):
                 title_cand = parts[0]
                 artist_cand = _pick_known_artist(parts[1]) or parts[1].split(",")[0].strip()
                 return artist_cand, title_cand
+            # If uploader matches one side ("Artist - Title" vs "Title - Artist"), disambiguate accurately
+            up_low = uploader.lower().strip()
+            if up_low and up_low not in ("jiosaavn", "youtube", "soundcloud", "various artists"):
+                if up_low in parts[1].lower() or parts[1].lower() in up_low:
+                    return parts[1], parts[0]
+                if up_low in parts[0].lower() or parts[0].lower() in up_low:
+                    return parts[0], parts[1]
             # Format: "Artist - Title" or "Title - Artist"
             p0_known = _pick_known_artist(parts[0])
             p1_known = _pick_known_artist(parts[1])
@@ -1503,6 +1510,72 @@ class Music(commands.Cog):
         detected_lang = self._detect_language(f"{title} {uploader}")
         artist, _ = self._extract_artist_and_title(title, uploader=uploader)
         return detected_mood, detected_lang, artist
+
+    @staticmethod
+    def _contains_url_spam(text: str) -> bool:
+        """Detect spammy upload titles/channels containing raw URLs (e.g. youtube.com links pasted as track names)."""
+        low = (text or "").lower()
+        return any(tok in low for tok in ("http://", "https://", "youtube.com", "youtu.be", "www.", "watch?v="))
+
+    @staticmethod
+    def _itunes_canonical_lookup(query: str) -> Optional[Tuple[str, str, int]]:
+        """Resolve canonical (artist, track, duration_sec) from global iTunes catalog for ambiguous searches."""
+        try:
+            q_clean = re.sub(r'\b(song|songs|official|video|audio|lyrics|mp3|full)\b', '', query, flags=re.IGNORECASE).strip() or query.strip()
+            q_low = query.lower()
+            bad_edits = ('remix', 'slowed', 'reverb', 'sped up', 'nightcore', 'karaoke', 'instrumental', 'kidz bop', 'tribute', 'lullaby', 'cover', 'ringtone')
+            for country in ("US", "IN"):
+                url = f"https://itunes.apple.com/search?term={urllib.parse.quote(q_clean)}&country={country}&media=music&entity=song&limit=8"
+                req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                with urllib.request.urlopen(req, timeout=3.5) as resp:
+                    results = json.loads(resp.read().decode('utf-8')).get('results', [])
+                for item in results:
+                    t_name = (item.get('trackName') or '').strip()
+                    a_name = (item.get('artistName') or '').strip()
+                    dur_s = int((item.get('trackTimeMillis') or 0) / 1000)
+                    if not t_name or not a_name or dur_s < 45:
+                        continue
+                    t_low = t_name.lower()
+                    if any(b in t_low and b not in q_low for b in bad_edits):
+                        continue
+                    if any(b in a_name.lower() for b in ('kidz bop', 'karaoke', 'lullaby', 'tribute')):
+                        continue
+                    return (a_name, t_name, dur_s)
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _itunes_artist_hits(artist: str, clean_norm: str, history: set) -> list:
+        """Fetch popular global tracks by an artist for clean Western/Pop Autoplay fallback."""
+        hits = []
+        if not artist:
+            return hits
+        try:
+            url = f"https://itunes.apple.com/search?term={urllib.parse.quote(artist)}&media=music&entity=song&limit=15"
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                results = json.loads(resp.read().decode('utf-8')).get('results', [])
+            seen = set()
+            for item in results:
+                t_name = (item.get('trackName') or '').strip()
+                a_name = (item.get('artistName') or '').strip()
+                dur_s = int((item.get('trackTimeMillis') or 0) / 1000)
+                if not t_name or not a_name or dur_s < 90 or dur_s > 480:
+                    continue
+                if any(b in t_name.lower() for b in ('remix', 'slowed', 'sped up', 'nightcore', 'instrumental', 'karaoke', 'acoustic', 'live')):
+                    continue
+                t_norm = re.sub(r'[^a-z0-9]', '', t_name.lower())
+                if not t_norm or t_norm in seen or (len(clean_norm) >= 4 and clean_norm in t_norm):
+                    continue
+                combo = f"{a_name} - {t_name}"
+                if combo in history or t_name in history:
+                    continue
+                seen.add(t_norm)
+                hits.append({'title': combo, 'artist': a_name, 'track': t_name, 'duration': dur_s})
+        except Exception:
+            pass
+        return hits
 
     @staticmethod
     def _is_script_mismatch(seed_title: str, seed_lang: str, cand_title: str, cand_lang: str) -> bool:
@@ -1630,12 +1703,14 @@ class Music(commands.Cog):
 
         def _is_valid_entry(entry: dict) -> bool:
             t_name = entry.get("title") or ""
-            if not t_name or t_name in history:
+            if not t_name or t_name in history or self._contains_url_spam(t_name):
                 return False
             dur = entry.get("duration") or 0
             if dur and (dur < 90 or dur > 480):
                 return False
             uploader = (entry.get("uploader") or entry.get("channel") or "").lower()
+            if self._contains_url_spam(uploader):
+                return False
             combined = f"{t_name.lower()} {uploader}"
             if any(bt in combined for bt in banned_terms):
                 return False
@@ -1729,6 +1804,8 @@ class Music(commands.Cog):
 
                 info_title = info.get("title") or ""
                 info_uploader = info.get("uploader") or info.get("channel") or ""
+                if self._contains_url_spam(info_title) or self._contains_url_spam(info_uploader):
+                    continue
                 if any(bt in f"{info_title.lower()} {info_uploader.lower()}" for bt in banned_terms):
                     continue
                 cand_lang = self._detect_language(f"{info_title} {info_uploader}")
@@ -1748,6 +1825,27 @@ class Music(commands.Cog):
             except Exception as ex:
                 print(f"[Autoplay Extract Note] {ex}")
                 continue
+
+        # 5. Clean Western/Pop Artist Hit Fallback (prevents YouTube-less VMs from stalling or picking random spam)
+        if not is_desi and artist:
+            it_hits = await asyncio.to_thread(self._itunes_artist_hits, artist, clean_norm, history)
+            random.shuffle(it_hits)
+            for hit in it_hits[:4]:
+                try:
+                    info = await self.extract_audio_info(f"{hit['artist']} {hit['track']}")
+                    if info and info.get("url") and not self._contains_url_spam(info.get("title", "")):
+                        return Song(
+                            title=info["title"],
+                            url=info["url"],
+                            webpage_url=info.get("webpage_url", info["url"]),
+                            duration=info.get("duration", hit["duration"]),
+                            requester=self.bot.user,
+                            thumbnail=info.get("thumbnail"),
+                            is_autoplay=True,
+                            uploader=info.get("uploader", hit["artist"])
+                        )
+                except Exception:
+                    continue
 
         return None
 
@@ -1865,7 +1963,7 @@ class Music(commands.Cog):
                     'categories': ['Music']
                 }
 
-            def _extract_saavn(search_text):
+            def _extract_saavn(search_text, required_artist: Optional[str] = None):
                 try:
                     clean_query = re.sub(r'\b(song|songs|video|audio|mp3|official track|track)\b', '', search_text, flags=re.IGNORECASE).strip()
                     clean_query = re.sub(r'\bjho\b', 'jo', clean_query, flags=re.IGNORECASE)
@@ -1885,6 +1983,7 @@ class Music(commands.Cog):
                         q_words = [w.lower() for w in re.findall(r'\w+', search_text) if w.lower() not in stop_words]
                         if not q_words:
                             q_words = [w.lower() for w in re.findall(r'\w+', search_text)]
+                        req_art_words = [w.lower() for w in re.findall(r'\w+', required_artist or "") if len(w) >= 2]
 
                         best_candidate = None
                         best_score = -999
@@ -1892,9 +1991,20 @@ class Music(commands.Cog):
                         for item in results:
                             raw_t = item.get('title', '')
                             clean_t = raw_t.replace('&quot;', '"').replace('&#039;', "'").replace('&amp;', '&')
+                            if self._contains_url_spam(clean_t):
+                                continue
+                            more_i = item.get('more_info', {})
+                            if not more_i.get('encrypted_media_url'):
+                                continue
+                            dur_i = int(more_i.get('duration', 0) or 0)
+                            if dur_i and dur_i < 45:
+                                continue
                             sub = item.get('subtitle', '')
-                            album = item.get('more_info', {}).get('album', '')
+                            album = more_i.get('album', '')
                             full_text = f"{clean_t} {sub} {album}".lower()
+
+                            if req_art_words and not any(aw in full_text for aw in req_art_words):
+                                continue
 
                             matched_words = [w for w in q_words if w in full_text]
                             if not matched_words:
@@ -1961,69 +2071,107 @@ class Music(commands.Cog):
                     print(f"[Music] Saavn extraction error: {saavn_err}")
                     return None
 
-            def _extract_sc(search_text):
-                sc_opts = {
+            def _extract_sc(search_text, required_artist: Optional[str] = None, expected_dur: int = 0):
+                sc_flat_opts = {
+                    'extract_flat': 'in_playlist',
+                    'quiet': True,
+                    'no_warnings': True,
+                    'ignoreerrors': True,
+                    'socket_timeout': 5,
+                }
+                sc_stream_opts = {
                     'format': 'bestaudio/best',
                     'noplaylist': True,
                     'quiet': True,
                     'no_warnings': True,
                     'ignoreerrors': True,
-                    'http_headers': DEFAULT_HEADERS,
                     'socket_timeout': 5,
                 }
-                with yt_dlp.YoutubeDL(sc_opts) as sc_ydl:
-                    info = sc_ydl.extract_info(f"scsearch5:{search_text}", download=False)
+                q_lower = search_text.lower()
+                stop_words = {'song', 'songs', 'video', 'audio', 'mp3', 'track', 'full', 'official'}
+                q_words = [w.lower() for w in re.findall(r'\w+', search_text) if w.lower() not in stop_words]
+                if not q_words:
+                    q_words = [w.lower() for w in re.findall(r'\w+', search_text)]
+                req_art_words = [w.lower() for w in re.findall(r'\w+', required_artist or "") if len(w) >= 2]
+                allow_cyr = bool(CYRILLIC_SCRIPT_RE.search(search_text))
+                allow_arab = bool(ARABIC_SCRIPT_RE.search(search_text))
+
+                with yt_dlp.YoutubeDL(sc_flat_opts) as sc_ydl:
+                    info = sc_ydl.extract_info(f"scsearch10:{search_text}", download=False)
                     entries = info.get('entries', []) if info and 'entries' in info else ([info] if info else [])
-                    if not entries:
-                        return None
+                if not entries:
+                    return None
 
-                    best_entry = None
-                    best_score = -999
-                    q_lower = search_text.lower()
-                    stop_words = {'song', 'songs', 'video', 'audio', 'mp3', 'track', 'full', 'official'}
-                    q_words = [w.lower() for w in re.findall(r'\w+', search_text) if w.lower() not in stop_words]
-                    if not q_words:
-                        q_words = [w.lower() for w in re.findall(r'\w+', search_text)]
+                scored = []
+                for entry in entries:
+                    if not entry:
+                        continue
+                    raw_title = entry.get('title') or ''
+                    raw_up = entry.get('uploader') or ''
+                    if not raw_title or self._contains_url_spam(raw_title) or self._contains_url_spam(raw_up):
+                        continue
+                    if not allow_cyr and CYRILLIC_SCRIPT_RE.search(raw_title):
+                        continue
+                    if not allow_arab and ARABIC_SCRIPT_RE.search(raw_title):
+                        continue
+                    dur = entry.get('duration') or 0
+                    dur_sec = int(dur / 1000) if dur > 10000 else int(dur)
+                    # Reject SoundCloud 30s Go+ previews and ultra-long mixes
+                    if dur_sec and dur_sec < 55:
+                        continue
+                    if dur_sec > 600 and "hour" not in q_lower:
+                        continue
 
-                    for entry in entries:
-                        if not entry or not entry.get('url'):
-                            continue
-                        t = entry.get('title', '').lower()
-                        uploader = (entry.get('uploader') or '').lower()
-                        dur = entry.get('duration', 0)
-                        dur_sec = int(dur / 1000) if dur > 10000 else int(dur)
+                    t_low = raw_title.lower()
+                    u_low = raw_up.lower()
+                    combined = f"{t_low} {u_low}"
+                    if req_art_words and not any(aw in combined for aw in req_art_words):
+                        continue
 
-                        if 0 < dur_sec <= 35:
-                            continue
-                        score_pen = 50 if (dur_sec > 600 and "hour" not in q_lower) else 0
-                        score = sum(20 for w in q_words if w in t) - score_pen
-                        if any(w in uploader for w in q_words):
-                            score += 25
-                        for pt in ['cover', 'remix', 'drill', 'mashup', 'slowed', 'reverb', 'bass boosted']:
-                            if pt in t and pt not in q_lower:
-                                score -= 30
-                        if score > best_score:
-                            best_score = score
-                            best_entry = entry
+                    matched = [w for w in q_words if w in combined]
+                    if not matched:
+                        continue
+                    score = len(matched) * 22
+                    if any(w in u_low for w in q_words):
+                        score += 20
+                    if expected_dur > 45 and dur_sec > 45 and abs(dur_sec - expected_dur) <= 25:
+                        score += 20
+                    for pt in ['cover', 'remix', 'drill', 'mashup', 'slowed', 'reverb', 'sped up', 'nightcore', 'bass boosted', '1 hour', 'edit']:
+                        if pt in combined and pt not in q_lower:
+                            score -= 40
+                    if score >= 45:
+                        scored.append((score, entry))
 
-                    if best_entry and best_entry.get('url'):
-                        dur = best_entry.get('duration', 0)
-                        dur_sec = int(dur / 1000) if dur > 10000 else int(dur)
-                        print(f"[Music] SoundCloud resolved match: {best_entry.get('title')}")
-                        return {
-                            'title': best_entry.get('title', 'Unknown Track'),
-                            'url': best_entry.get('url'),
-                            'webpage_url': best_entry.get('permalink_url', best_entry.get('webpage_url', best_entry.get('url'))),
-                            'duration': dur_sec,
-                            'thumbnail': best_entry.get('thumbnail'),
-                            'age_limit': 0,
-                            'uploader': best_entry.get('uploader', ''),
-                            'channel': 'SoundCloud',
-                            'categories': ['Music']
-                        }
+                scored.sort(key=lambda x: x[0], reverse=True)
+                for _, cand in scored[:3]:
+                    target_u = cand.get('webpage_url') or cand.get('url')
+                    if not target_u:
+                        continue
+                    try:
+                        with yt_dlp.YoutubeDL(sc_stream_opts) as ydl_s:
+                            full = ydl_s.extract_info(target_u, download=False)
+                        if full and full.get('url') and not self._contains_url_spam(full.get('title', '')):
+                            dur = full.get('duration', 0)
+                            dur_sec = int(dur / 1000) if dur > 10000 else int(dur)
+                            if dur_sec and dur_sec < 55:
+                                continue
+                            print(f"[Music] SoundCloud resolved match: {full.get('title')}")
+                            return {
+                                'title': full.get('title', 'Unknown Track'),
+                                'url': full.get('url'),
+                                'webpage_url': full.get('permalink_url', full.get('webpage_url', target_u)),
+                                'duration': dur_sec,
+                                'thumbnail': full.get('thumbnail'),
+                                'age_limit': 0,
+                                'uploader': full.get('uploader', ''),
+                                'channel': 'SoundCloud',
+                                'categories': ['Music']
+                            }
+                    except Exception:
+                        continue
                 return None
 
-            def _extract_yt(target, use_cookies=False):
+            def _extract_yt(target, use_cookies=False, player_clients=None):
                 is_search = not (target.startswith("http://") or target.startswith("https://"))
                 base_opts = {
                     'format': format_chain,
@@ -2032,9 +2180,10 @@ class Music(commands.Cog):
                     'no_warnings': True,
                     'geo_bypass': True,
                     'nocheckcertificate': True,
-                    'http_headers': DEFAULT_HEADERS,
                     'socket_timeout': 6
                 }
+                if player_clients:
+                    base_opts['extractor_args'] = {'youtube': {'player_client': player_clients}}
                 if use_cookies and active_cookie_path:
                     base_opts['cookiefile'] = active_cookie_path
 
@@ -2058,88 +2207,82 @@ class Music(commands.Cog):
                     return None
 
                 clean_query = target.replace('ytsearch1:', '').replace('ytsearch5:', '').strip()
-                try:
-                    with yt_dlp.YoutubeDL(base_opts) as ydl_direct:
-                        res = ydl_direct.extract_info(f"ytsearch1:{clean_query}", download=False)
-                        entries = res.get('entries', []) if res else []
-                        if entries and entries[0] and entries[0].get('url'):
-                            e = entries[0]
-                            if not (e.get('age_limit', 0) and e.get('age_limit') > 0):
-                                return {
-                                    'title': e.get('title', 'Unknown Track'),
-                                    'url': e.get('url'),
-                                    'webpage_url': e.get('webpage_url') or f"https://www.youtube.com/watch?v={e.get('id')}",
-                                    'duration': e.get('duration', 0),
-                                    'thumbnail': e.get('thumbnail'),
-                                    'age_limit': e.get('age_limit', 0),
-                                    'uploader': e.get('uploader', ''),
-                                    'channel': e.get('channel', ''),
-                                    'categories': e.get('categories', []),
-                                }
-                except Exception as direct_err:
-                    print(f"[Music] Direct ytsearch1 note for '{clean_query}': {direct_err}")
-
                 flat_opts = {
                     'extract_flat': 'in_playlist',
                     'quiet': True,
                     'no_warnings': True,
                     'noplaylist': True,
-                    'http_headers': DEFAULT_HEADERS,
-                    'socket_timeout': 5
+                    'socket_timeout': 6
                 }
                 if use_cookies and active_cookie_path:
                     flat_opts['cookiefile'] = active_cookie_path
 
                 with yt_dlp.YoutubeDL(flat_opts) as ydl:
-                    res = ydl.extract_info(f"ytsearch5:{clean_query}", download=False)
+                    res = ydl.extract_info(f"ytsearch8:{clean_query}", download=False)
                     entries = res.get('entries', []) if res else []
                     if not entries:
                         return None
 
-                    q_lower = clean_query.lower()
-                    q_words = [w for w in re.findall(r'\w+', q_lower) if w not in ('song', 'video', 'audio', 'mp3', 'lyrics')]
-                    if not q_words:
-                        q_words = re.findall(r'\w+', q_lower)
+                q_lower = clean_query.lower()
+                q_words = [w for w in re.findall(r'\w+', q_lower) if w not in ('song', 'video', 'audio', 'mp3', 'lyrics')]
+                if not q_words:
+                    q_words = re.findall(r'\w+', q_lower)
 
-                    best_score = -999
-                    best_id = entries[0].get('id')
-                    best_entry = entries[0]
+                scored_yt = []
+                for entry in entries:
+                    if not entry or not entry.get('id'):
+                        continue
+                    raw_t = entry.get('title') or ''
+                    if self._contains_url_spam(raw_t):
+                        continue
+                    dur = entry.get('duration') or 0
+                    if dur and dur < 45 and 'short' not in q_lower:
+                        continue
+                    if dur and dur > 900 and not any(k in q_lower for k in ('hour', 'jukebox', 'mix', 'mashup', 'lofi')):
+                        continue
 
-                    for entry in entries:
-                        t = (entry.get('title') or '').lower()
-                        channel = (entry.get('channel') or entry.get('uploader') or '').lower()
-                        score = sum(25 for w in q_words if w in t)
-                        score += sum(15 for w in q_words if w in channel)
+                    t = raw_t.lower()
+                    channel = (entry.get('channel') or entry.get('uploader') or '').lower()
+                    score = sum(25 for w in q_words if w in t)
+                    score += sum(15 for w in q_words if w in channel)
 
-                        for good in ['official', 'vevo', 'audio', 'video', 'coke studio', 't-series', 'sony', 'zee', 'yrf', 'tips']:
-                            if good in t or good in channel:
-                                score += 20
-                        for bad in ['cover', 'remix', 'slowed', 'reverb', 'parody', 'reaction', 'karaoke', 'instrumental', 'status', 'shorts', 'ringtone', '18+', 'nsfw', 'sexy', 'hot scene', 'hot video', 'erotic', 'uncensored']:
-                            if bad in t or bad in channel:
-                                score -= 50
+                    # Prioritize highest view_count / trending releases
+                    views = 0
+                    try:
+                        views = int(entry.get('view_count') or 0)
+                    except Exception:
+                        views = 0
+                    if views > 0:
+                        score += min(110, int(math.log10(views) * 12))
 
-                        if score > best_score:
-                            best_score = score
-                            best_id = entry.get('id')
-                            best_entry = entry
+                    for good in ['official', 'vevo', 'topic', 'audio', 'video', 'coke studio', 't-series', 'sony', 'zee', 'yrf', 'tips']:
+                        if good in t or good in channel:
+                            score += 22
+                    for bad in ['cover', 'remix', 'slowed', 'reverb', 'sped up', 'nightcore', 'parody', 'reaction', 'karaoke', 'instrumental', 'status', 'shorts', 'ringtone', '1 hour', '18+', 'nsfw', 'sexy', 'hot scene', 'hot video', 'erotic', 'uncensored']:
+                        if (bad in t or bad in channel) and bad not in q_lower:
+                            score -= 75
+                    scored_yt.append((score, entry))
 
-                if not best_id:
-                    return None
-
-                with yt_dlp.YoutubeDL(base_opts) as ydl_stream:
-                    info = ydl_stream.extract_info(f"https://www.youtube.com/watch?v={best_id}", download=False)
-                    if info and info.get('url'):
-                        return {
-                            'title': info.get('title', best_entry.get('title', 'Unknown Track')),
-                            'url': info.get('url'),
-                            'webpage_url': info.get('webpage_url', f"https://www.youtube.com/watch?v={best_id}"),
-                            'duration': info.get('duration', 0),
-                            'thumbnail': info.get('thumbnail') or best_entry.get('thumbnail'),
-                            'age_limit': info.get('age_limit', 0),
-                            'uploader': info.get('uploader', ''),
-                            'channel': info.get('channel', ''),
-                            'categories': info.get('categories', []),
-                        }
+                scored_yt.sort(key=lambda x: x[0], reverse=True)
+                for _, best_entry in scored_yt[:2]:
+                    best_id = best_entry.get('id')
+                    try:
+                        with yt_dlp.YoutubeDL(base_opts) as ydl_stream:
+                            info = ydl_stream.extract_info(f"https://www.youtube.com/watch?v={best_id}", download=False)
+                        if info and info.get('url') and not ((info.get('age_limit') or 0) > 0):
+                            return {
+                                'title': info.get('title', best_entry.get('title', 'Unknown Track')),
+                                'url': info.get('url'),
+                                'webpage_url': info.get('webpage_url', f"https://www.youtube.com/watch?v={best_id}"),
+                                'duration': info.get('duration', 0),
+                                'thumbnail': info.get('thumbnail') or best_entry.get('thumbnail'),
+                                'age_limit': info.get('age_limit', 0),
+                                'uploader': info.get('uploader', ''),
+                                'channel': info.get('channel', ''),
+                                'categories': info.get('categories', []),
+                            }
+                    except Exception:
+                        continue
                 return None
 
             search_title = query
@@ -2181,6 +2324,15 @@ class Music(commands.Cog):
             except Exception as e1:
                 print(f"[Music] YouTube extraction note: {e1}")
 
+            # Try mobile/TV player clients without cookies when default client is blocked
+            try:
+                yt_alt = _extract_yt(search_target, use_cookies=False, player_clients=['android_vr', 'tv', 'ios', 'mweb'])
+                if yt_alt:
+                    print(f"[Music] Resolved via YouTube (alt client): {yt_alt.get('title')}")
+                    return yt_alt
+            except Exception as e_alt:
+                print(f"[Music] YouTube alt client note: {e_alt}")
+
             # CRITICAL: Never pass raw YouTube URLs into SoundCloud / JioSaavn keyword search
             fallback_text = title_hint.strip() if title_hint else search_title
             if is_yt_url and fallback_text.startswith(("http://", "https://")):
@@ -2197,42 +2349,30 @@ class Music(commands.Cog):
             if not fallback_text or fallback_text.startswith(("http://", "https://")):
                 raise Exception("YouTube stream unavailable right now and no fallback title could be resolved.")
 
-            indian_keywords = {
-                'arijit', 'shreya', 'kumar', 'singh', 'sonu', 'atif', 'badshah', 'neha', 'kakkar',
-                'jubin', 'nautiyal', 'diljit', 'dosanjh', 'sidhu', 'moosewala', 'ap dhillon',
-                'bollywood', 'hindi', 'punjabi', 'bhojpuri', 'tamil', 'telugu', 'malayalam',
-                'b praak', 'anuv jain', 'prateek kuhad', 'darshan raval', 'armaan malik', 'yo yo honey singh'
-            }
-            q_lower = fallback_text.lower()
-            is_indian = any(k in q_lower for k in indian_keywords) or self._detect_language(fallback_text) in ("hindi", "punjabi")
+            # Canonical global artist/track guard (stops 'snowman' from playing obscure Punjabi covers on VM fallback)
+            canonical = self._itunes_canonical_lookup(fallback_text)
+            req_artist = canonical[0] if canonical else None
+            exp_dur = canonical[2] if canonical else 0
+            canon_query = f"{canonical[0]} {canonical[1]}" if canonical else fallback_text
 
-            if is_spotify or not is_indian:
-                # For clean official English/Pop tracks, check JioSaavn first if popular, else SoundCloud
-                saavn_res = _extract_saavn(fallback_text)
-                if saavn_res:
-                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
-                    return saavn_res
+            saavn_res = _extract_saavn(canon_query, required_artist=req_artist)
+            if saavn_res:
+                print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
+                return saavn_res
 
-                try:
-                    sc_res = _extract_sc(fallback_text)
-                    if sc_res:
-                        print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
-                        return sc_res
-                except Exception as e2:
-                    print(f"[Music] SoundCloud extraction note: {e2}")
-            else:
-                saavn_res = _extract_saavn(fallback_text)
-                if saavn_res:
-                    print(f"[Music] Resolved via JioSaavn: {saavn_res.get('title')}")
-                    return saavn_res
+            try:
+                sc_res = _extract_sc(canon_query, required_artist=req_artist, expected_dur=exp_dur)
+                if sc_res:
+                    print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
+                    return sc_res
+            except Exception as e2:
+                print(f"[Music] SoundCloud extraction note: {e2}")
 
-                try:
-                    sc_res = _extract_sc(fallback_text)
-                    if sc_res:
-                        print(f"[Music] Resolved via SoundCloud: {sc_res.get('title')}")
-                        return sc_res
-                except Exception as e2:
-                    print(f"[Music] SoundCloud extraction note: {e2}")
+            # Only retry JioSaavn without artist lock if the user's query looks Indian/Desi (since US iTunes can differ on Hinglish titles)
+            if req_artist and self._detect_language(fallback_text) in ("hindi", "punjabi"):
+                saavn_fallback = _extract_saavn(fallback_text)
+                if saavn_fallback:
+                    return saavn_fallback
 
             raise Exception("Could not find an audio stream for this track. Please check the song name or provide a direct audio link.")
 
