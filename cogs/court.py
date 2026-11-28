@@ -734,7 +734,7 @@ class TrialRunner:
         self._record_case(verdict="GUILTY", rationale="Default judgment entered for contempt of court.", sentence="Fined and reprimanded for dodging summons.")
 
     async def proceed_to_trial(self):
-        # Deep evidence scanner (scans up to 250 messages back from the evidence channel!)
+        # Deep evidence scanner across all shared server text channels (where bot + both parties have read access!)
         evidence_limit = int(self.cfg.get("evidence_limit", 15))
         self.chat_evidence = await self.cog.fetch_filtered_evidence(
             channel=self.evidence_channel,
@@ -742,20 +742,27 @@ class TrialRunner:
             defendant_id=self.defendant.id,
             charges=self.charges,
             exhibit_msg=self.exhibit_msg,
-            limit=evidence_limit
+            limit=evidence_limit,
+            guild=self.guild,
+            plaintiff=self.plaintiff,
+            defendant=self.defendant,
         )
 
         evidence_summary_lines = []
+        found_channels = []
         if self.chat_evidence:
             for item in self.chat_evidence:
                 auth = f"@{item['author_name']}"
                 snippet = item['content'][:140]
-                evidence_summary_lines.append(f"`[{item['timestamp']}]` **{auth}:** {snippet}")
+                ch_tag = f" · {item['channel_name']}" if item.get("channel_name") else ""
+                if item.get("channel_name") and item["channel_name"] not in found_channels:
+                    found_channels.append(item["channel_name"])
+                evidence_summary_lines.append(f"`[{item['timestamp']}{ch_tag}]` **{auth}:** {snippet}")
         else:
-            evidence_summary_lines.append("*No recent direct dispute dialogue between the parties was found in channel history.*")
+            evidence_summary_lines.append("*No recent direct dispute dialogue between the parties was found across readable server channels.*")
 
         evidence_text = "\n".join(evidence_summary_lines)
-        channel_note = f" (Subpoenaed from #{self.evidence_channel.name})" if (self.evidence_channel and hasattr(self.evidence_channel, "id") and self.evidence_channel.id != self.channel.id) else ""
+        channel_note = f" (Subpoenaed from {', '.join(found_channels[:4])})" if found_channels else ""
 
         docket_embed = discord.Embed(
             title=f"📜 DOCKET {self.case_id}: EVIDENCE & STATEMENTS",
@@ -1050,15 +1057,18 @@ class Court(commands.Cog):
         defendant_id: int,
         charges: str = "",
         exhibit_msg: Optional[discord.Message] = None,
-        limit: int = 15
+        limit: int = 15,
+        guild: Optional[discord.Guild] = None,
+        plaintiff: Optional[discord.Member] = None,
+        defendant: Optional[discord.Member] = None,
     ) -> List[dict]:
         """
-        Deep scans recent channel history (up to 250 messages back), accurately isolating
-        the dispute dialogue between plaintiff and defendant even in high-volume (1000+ member) channels.
-        Leverages Exhibit A, Discord reply references (m.reference), user mentions, and charge keywords.
+        Deep scans recent channel history across ALL readable shared text channels in the server
+        (plus priority scan on origin/Exhibit A channel), isolating dialogue between plaintiff and defendant
+        while strictly respecting channel view permissions so private/staff channels are never leaked.
         """
         evidence = []
-        if not channel or not hasattr(channel, "history"):
+        if not channel and not guild:
             return evidence
 
         # Extract charge keywords for dispute relevance (ignore common stopwords)
@@ -1080,77 +1090,114 @@ class Court(commands.Cog):
             content = exhibit_msg.clean_content.strip() if exhibit_msg.clean_content else ""
             if not content and exhibit_msg.attachments:
                 content = f"[Attachment: {exhibit_msg.attachments[0].filename}]"
+            ex_ch_name = f"#{exhibit_msg.channel.name}" if getattr(exhibit_msg, "channel", None) and hasattr(exhibit_msg.channel, "name") else ""
             raw_candidates.append({
                 "message_id": exhibit_msg.id,
                 "author_id": exhibit_msg.author.id,
                 "author_name": exhibit_msg.author.display_name,
+                "channel_name": ex_ch_name,
                 "content": content or "[Empty message]",
                 "timestamp": exhibit_msg.created_at.strftime("%I:%M %p"),
-                "score": 100,  # Top priority
+                "score": 100,
                 "created_at": exhibit_msg.created_at,
                 "is_exhibit": True,
                 "is_reply": False
             })
 
-        # Deep scan up to 250 messages back
-        try:
-            async for m in channel.history(limit=250):
-                if m.author.bot or m.id in seen_ids:
+        # Collect priority primary channel + recently active readable server text channels
+        channels_to_scan = []
+        seen_ch_ids = set()
+        if channel and hasattr(channel, "history"):
+            channels_to_scan.append((channel, 200))
+            if hasattr(channel, "id"):
+                seen_ch_ids.add(channel.id)
+
+        if guild and hasattr(guild, "text_channels"):
+            bot_member = getattr(guild, "me", None)
+            extra_chs = []
+            for ch in guild.text_channels:
+                if ch.id in seen_ch_ids:
                     continue
+                if bot_member:
+                    b_perms = ch.permissions_for(bot_member)
+                    if not (b_perms.view_channel and b_perms.read_message_history):
+                        continue
+                # Privacy guard: only subpoena channels BOTH litigants can access
+                if plaintiff and not ch.permissions_for(plaintiff).view_channel:
+                    continue
+                if defendant and not ch.permissions_for(defendant).view_channel:
+                    continue
+                extra_chs.append(ch)
+            # Prioritize recently active channels first (highest last_message_id), cap at 15 extra channels
+            extra_chs.sort(key=lambda c: c.last_message_id or 0, reverse=True)
+            for ch in extra_chs[:15]:
+                channels_to_scan.append((ch, 100))
+                seen_ch_ids.add(ch.id)
 
-                is_plaintiff = (m.author.id == plaintiff_id)
-                is_defendant = (m.author.id == defendant_id)
+        sem = asyncio.Semaphore(5)
 
-                # Check if this message replies to the other litigant
-                is_reply_to_opponent = False
-                if m.reference and m.reference.resolved:
-                    ref_author = getattr(m.reference.resolved, "author", None)
-                    if ref_author:
-                        if is_plaintiff and ref_author.id == defendant_id:
-                            is_reply_to_opponent = True
-                        elif is_defendant and ref_author.id == plaintiff_id:
-                            is_reply_to_opponent = True
+        async def _scan_single_channel(ch_obj, hist_limit: int):
+            local_items = []
+            ch_label = f"#{ch_obj.name}" if hasattr(ch_obj, "name") else ""
+            async with sem:
+                try:
+                    async for m in ch_obj.history(limit=hist_limit):
+                        if m.author.bot:
+                            continue
+                        is_plaintiff = (m.author.id == plaintiff_id)
+                        is_defendant = (m.author.id == defendant_id)
+                        if not (is_plaintiff or is_defendant):
+                            continue
 
-                # Check mentions
-                mentions_opponent = False
-                if is_plaintiff and any(u.id == defendant_id for u in m.mentions):
-                    mentions_opponent = True
-                elif is_defendant and any(u.id == plaintiff_id for u in m.mentions):
-                    mentions_opponent = True
+                        is_reply_to_opponent = False
+                        if m.reference and m.reference.resolved:
+                            ref_author = getattr(m.reference.resolved, "author", None)
+                            if ref_author:
+                                if (is_plaintiff and ref_author.id == defendant_id) or (is_defendant and ref_author.id == plaintiff_id):
+                                    is_reply_to_opponent = True
 
-                # Only evaluate messages authored by the two parties
-                if is_plaintiff or is_defendant:
-                    score = 1
-                    content = m.clean_content.strip() if m.clean_content else ""
-                    if not content and m.attachments:
-                        content = f"[Attachment: {m.attachments[0].filename}]"
+                        mentions_opponent = (
+                            (is_plaintiff and any(u.id == defendant_id for u in m.mentions)) or
+                            (is_defendant and any(u.id == plaintiff_id for u in m.mentions))
+                        )
 
-                    content_lower = content.lower()
+                        score = 1
+                        content = m.clean_content.strip() if m.clean_content else ""
+                        if not content and m.attachments:
+                            content = f"[Attachment: {m.attachments[0].filename}]"
+                        content_lower = content.lower()
+                        if is_reply_to_opponent:
+                            score += 8
+                        if mentions_opponent:
+                            score += 6
+                        for kw in keywords:
+                            if kw in content_lower:
+                                score += 4
 
-                    if is_reply_to_opponent:
-                        score += 8
-                    if mentions_opponent:
-                        score += 6
+                        local_items.append({
+                            "message_id": m.id,
+                            "author_id": m.author.id,
+                            "author_name": m.author.display_name,
+                            "channel_name": ch_label,
+                            "content": content or "[Empty message]",
+                            "timestamp": m.created_at.strftime("%I:%M %p"),
+                            "score": score,
+                            "created_at": m.created_at,
+                            "is_exhibit": False,
+                            "is_reply": is_reply_to_opponent
+                        })
+                except Exception as ch_err:
+                    print(f"[Court] Channel scan note ({ch_label}): {ch_err}")
+            return local_items
 
-                    # Charge keyword matches
-                    for kw in keywords:
-                        if kw in content_lower:
-                            score += 4
-
-                    raw_candidates.append({
-                        "message_id": m.id,
-                        "author_id": m.author.id,
-                        "author_name": m.author.display_name,
-                        "content": content or "[Empty message]",
-                        "timestamp": m.created_at.strftime("%I:%M %p"),
-                        "score": score,
-                        "created_at": m.created_at,
-                        "is_exhibit": False,
-                        "is_reply": is_reply_to_opponent
-                    })
-                    seen_ids.add(m.id)
-        except Exception as e:
-            print(f"[Court] Error during deep evidence scan: {e}")
+        if channels_to_scan:
+            results = await asyncio.gather(*[_scan_single_channel(ch, lim) for ch, lim in channels_to_scan], return_exceptions=True)
+            for res in results:
+                if isinstance(res, list):
+                    for item in res:
+                        if item["message_id"] not in seen_ids:
+                            seen_ids.add(item["message_id"])
+                            raw_candidates.append(item)
 
         if not raw_candidates:
             return []
@@ -1173,6 +1220,7 @@ class Court(commands.Cog):
             final_evidence.append({
                 "author_id": item["author_id"],
                 "author_name": item["author_name"],
+                "channel_name": item.get("channel_name", ""),
                 "content": f"{prefix}{item['content']}",
                 "timestamp": item["timestamp"]
             })
@@ -1267,7 +1315,8 @@ class Court(commands.Cog):
         """Invokes Friday's existing LLM engine to render a witty, authoritative judicial decree."""
         chat_lines = []
         for item in chat_evidence:
-            chat_lines.append(f"[{item['timestamp']}] @{item['author_name']}: {item['content']}")
+            ch_tag = f" · {item['channel_name']}" if item.get("channel_name") else ""
+            chat_lines.append(f"[{item['timestamp']}{ch_tag}] @{item['author_name']}: {item['content']}")
         chat_transcript = "\n".join(chat_lines) if chat_lines else "No prior direct dialogue between the parties was found in channel history."
 
         g_votes = jury_votes.get("guilty", 0)

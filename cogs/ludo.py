@@ -255,6 +255,10 @@ def draw_corner_player_hud(
         draw.text((dx + 22, dy + 16), "?", fill=(120, 125, 135), font=get_bold_font(18))
 
     name = player_info["name"][:16]
+    if player_info.get("eliminated"):
+        draw.text((tx, y + 14), f"{theme['emoji']} {name}", fill=(140, 145, 155), font=get_bold_font(14))
+        draw.text((tx, y + 38), "Left / Kicked (OUT)", fill=(239, 68, 68), font=get_bold_font(12))
+        return
     home_cnt = sum(1 for p in player_info["tokens"] if p == 56)
     draw.text((tx, y + 14), f"{theme['emoji']} {name}", fill=(255, 255, 255), font=get_bold_font(14))
     if is_active:
@@ -348,11 +352,14 @@ class LudoGame:
                 "member_id": mem_id,
                 "name": p.get("name", "Player"),
                 "is_ai": p.get("is_ai", False),
-                "tokens": list(p.get("tokens") or ([-1] * tokens_per_player))
+                "tokens": list(p.get("tokens") or ([-1] * tokens_per_player)),
+                "missed_turns": int(p.get("missed_turns", 0) or 0),
+                "eliminated": bool(p.get("eliminated", False)),
             }
-            self.turn_order.append(col)
+            if not self.players[col]["eliminated"]:
+                self.turn_order.append(col)
 
-        self.current_turn = self.turn_order[0]
+        self.current_turn = self.turn_order[0] if self.turn_order else COLOR_CLOCKWISE[0]
         self.last_rolls: Dict[str, Optional[int]] = {col: None for col in self.turn_order}
         self.consecutive_sixes = 0
         self.game_over = False
@@ -385,6 +392,8 @@ class LudoGame:
                     "name": p["name"],
                     "is_ai": p.get("is_ai", False),
                     "tokens": list(p["tokens"]),
+                    "missed_turns": int(p.get("missed_turns", 0) or 0),
+                    "eliminated": bool(p.get("eliminated", False)),
                 }
                 for col, p in self.players.items()
             },
@@ -394,8 +403,12 @@ class LudoGame:
     def from_dict(cls, data: Dict[str, Any], bot: Optional[commands.Bot] = None) -> "LudoGame":
         guild = bot.get_guild(data["guild_id"]) if (bot and data.get("guild_id")) else None
         configs = []
-        for col in data.get("turn_order", []):
-            p = data["players"][col]
+        raw_players = data.get("players", {})
+        ordered_cols = list(dict.fromkeys(list(data.get("turn_order", [])) + list(raw_players.keys())))
+        for col in ordered_cols:
+            if col not in raw_players:
+                continue
+            p = raw_players[col]
             mid = p.get("member_id")
             mem = None
             if mid and not p.get("is_ai"):
@@ -409,6 +422,8 @@ class LudoGame:
                 "name": p.get("name", "Player"),
                 "is_ai": p.get("is_ai", False),
                 "tokens": p.get("tokens"),
+                "missed_turns": p.get("missed_turns", 0),
+                "eliminated": p.get("eliminated", False),
             })
         g = cls(configs, tokens_per_player=data.get("tokens_per_player", 4))
         g.guild_id = data.get("guild_id")
@@ -476,8 +491,13 @@ class LudoGame:
         }
 
     def check_win(self):
-        for col, pdata in self.players.items():
-            if all(p == 56 for p in pdata["tokens"]):
+        if len(self.turn_order) == 1:
+            self.game_over = True
+            self.winner = self.turn_order[0]
+            return
+        for col in self.turn_order:
+            pdata = self.players.get(col)
+            if pdata and all(p == 56 for p in pdata["tokens"]):
                 self.game_over = True
                 self.winner = col
                 break
@@ -693,8 +713,17 @@ class LudoView(discord.ui.View):
                 if not cur_p:
                     return
 
+                cur_p["missed_turns"] = int(cur_p.get("missed_turns", 0) or 0) + 1
                 self.consecutive_afk += 1
                 self.game.last_updated = time.time()
+
+                theme = COLOR_THEMES[color]
+                if cur_p["missed_turns"] >= 2:
+                    await self.eliminate_player(
+                        color,
+                        f"🚪 {theme['emoji']} **{cur_p['name']}** missed 2 consecutive turns (AFK) and was **kicked from the match**!"
+                    )
+                    return
 
                 if self.consecutive_afk >= 16:
                     self.game.game_over = True
@@ -712,20 +741,20 @@ class LudoView(discord.ui.View):
                             self.game.bet_pot = 0
                         except Exception as ex:
                             print(f"[Ludo] Timeout refund error: {ex}")
-                    host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                    host_id = self.game.host_id or (list(self.game.players.values())[0].get("member_id"))
                     if host_id:
                         ACTIVE_LUDO_GAMES.pop(host_id, None)
                     return await self.update_view()
 
-                theme = COLOR_THEMES[color]
                 if stage == "roll":
-                    self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out (45s elapsed)! Turn passed.")
+                    self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out (45s • Strike 1/2)! Turn passed.")
                     self.game.advance_turn()
                     self.setup_buttons_for_roll()
                     await self.update_view()
                     await self.check_and_run_ai_turn()
                 elif stage == "pick":
                     if not legal_moves:
+                        self.game.log_history.append(f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out (45s • Strike 1/2)! Turn passed.")
                         self.game.advance_turn()
                         self.setup_buttons_for_roll()
                         await self.update_view()
@@ -740,7 +769,7 @@ class LudoView(discord.ui.View):
                     elif ev["captured"]: extra_str = f" (CAPTURED {ev['captured_name']}! 💥)"
 
                     self.game.log_history.append(
-                        f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out choosing token (45s)! "
+                        f"⏰ ⏳ {theme['emoji']} **{cur_p['name']}** timed out choosing token (Strike 1/2)! "
                         f"Auto-moved **Token {chosen_t+1}** by **[ {roll or 6} ]**{extra_str}"
                     )
 
@@ -885,9 +914,14 @@ class LudoView(discord.ui.View):
             color = discord.Color.green()
 
         standings_lines = []
-        for col in g.turn_order:
+        for col in COLOR_CLOCKWISE:
+            if col not in g.players:
+                continue
             p = g.players[col]
             t = COLOR_THEMES[col]
+            if p.get("eliminated"):
+                standings_lines.append(f"🏳️ **{p['name']}**: `Left / Kicked (OUT)`")
+                continue
             home_cnt = sum(1 for pos in p["tokens"] if pos == 56)
             base_cnt = sum(1 for pos in p["tokens"] if pos == -1)
             track_cnt = sum(1 for pos in p["tokens"] if 0 <= pos < 56)
@@ -1031,6 +1065,7 @@ class LudoView(discord.ui.View):
 
                 self._cancel_turn_timer()
                 self.consecutive_afk = 0
+                cur_p["missed_turns"] = 0
                 self.game.last_updated = time.time()
                 self.bind_message(interaction.message)
 
@@ -1102,6 +1137,7 @@ class LudoView(discord.ui.View):
 
                 self._cancel_turn_timer()
                 self.consecutive_afk = 0
+                cur_p["missed_turns"] = 0
                 self.game.last_updated = time.time()
                 self.bind_message(interaction.message)
 
@@ -1216,15 +1252,80 @@ class LudoView(discord.ui.View):
             except Exception:
                 pass
 
+    async def eliminate_player(self, color: str, reason_log: str) -> bool:
+        """Removes a player on Forfeit or 2-AFK strikes; continues match if >=2 players remain, else crowns winner."""
+        if self.game.game_over or color not in self.game.turn_order:
+            return False
+
+        self._cancel_turn_timer()
+        if self.ai_task and not self.ai_task.done():
+            self.ai_task.cancel()
+
+        idx = self.game.turn_order.index(color)
+        next_col = self.game.turn_order[(idx + 1) % len(self.game.turn_order)]
+        was_their_turn = (self.game.current_turn == color)
+
+        self.game.turn_order.remove(color)
+        p_data = self.game.players[color]
+        p_data["eliminated"] = True
+        p_data["tokens"] = [-1] * self.game.tokens_per_player
+        self.game.last_rolls[color] = None
+        self.game.log_history.append(reason_log)
+        self.game.last_updated = time.time()
+
+        elim_uid = p_data.get("member_id") or (p_data["member"].id if p_data.get("member") else None)
+        if elim_uid and self.game.host_id == elim_uid:
+            ACTIVE_LUDO_GAMES.pop(elim_uid, None)
+            next_human = next(
+                (self.game.players[c].get("member_id") for c in self.game.turn_order if not self.game.players[c].get("is_ai")),
+                None
+            )
+            self.game.host_id = next_human
+            if next_human and len(self.game.turn_order) > 1:
+                ACTIVE_LUDO_GAMES[next_human] = self.game
+
+        if len(self.game.turn_order) <= 1:
+            self.game.game_over = True
+            self.game.winner = self.game.turn_order[0] if self.game.turn_order else color
+            if self.game.host_id:
+                ACTIVE_LUDO_GAMES.pop(self.game.host_id, None)
+            await self.settle_economy()
+            self.setup_buttons_game_over()
+            await self.update_view()
+            return True
+
+        if was_their_turn:
+            self.game.current_turn = next_col
+            self.game.consecutive_sixes = 0
+            self.setup_buttons_for_roll()
+        else:
+            if self._turn_stage == "pick" and self.movable_tokens:
+                self.setup_buttons_for_token_pick(self.movable_tokens, self._pending_roll or 6)
+            else:
+                self.setup_buttons_for_roll()
+        await self.update_view()
+        await self.check_and_run_ai_turn()
+        return False
+
     async def handle_forfeit(self, interaction: discord.Interaction):
         try:
             author = interaction.user
-            if not any(p["member"] and p["member"].id == author.id for p in self.game.players.values()):
-                return await interaction.response.send_message("❌ You are not part of this match.", ephemeral=True)
+            active_player = any(
+                col in self.game.turn_order and (self.game.players[col].get("member_id") == author.id or (self.game.players[col].get("member") and self.game.players[col]["member"].id == author.id))
+                for col in self.game.turn_order
+            )
+            if not active_player:
+                return await self._safe_ephemeral_notice(interaction, "❌ You are not an active player in this match.")
             if self.game.game_over:
-                return await interaction.response.send_message("The game is already over.", ephemeral=True)
+                return await self._safe_ephemeral_notice(interaction, "The game is already over.")
+            rem_after = len(self.game.turn_order) - 1
+            warn_desc = (
+                "You will be **removed from this match**, while the remaining players keep playing!"
+                if rem_after >= 2 else
+                "Only 1 opponent remains, so surrendering will conclude the match and award them victory."
+            )
             await interaction.response.send_message(
-                f"⚠️ **Are you sure you want to forfeit and exit the match, {author.mention}?**\nSurrendering will immediately concede victory to your opponents.",
+                f"⚠️ **Are you sure you want to forfeit and leave the match, {author.mention}?**\n{warn_desc}",
                 view=LudoForfeitConfirmView(self, author.id),
                 ephemeral=True
             )
@@ -1234,32 +1335,30 @@ class LudoView(discord.ui.View):
     async def execute_forfeit(self, author: discord.User):
         try:
             async with self._lock:
-                user_color = next((col for col, p in self.game.players.items() if p["member"] and p["member"].id == author.id), None)
+                user_color = next(
+                    (
+                        col for col in self.game.turn_order
+                        if self.game.players[col].get("member_id") == author.id or (self.game.players[col].get("member") and self.game.players[col]["member"].id == author.id)
+                    ),
+                    None
+                )
                 if not user_color or self.game.game_over:
                     return
-                self.game.game_over = True
-                idx = self.game.turn_order.index(user_color)
-                self.game.winner = self.game.turn_order[(idx + 1) % len(self.game.turn_order)]
-                host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
-                if host_id:
-                    ACTIVE_LUDO_GAMES.pop(host_id, None)
-                await self.settle_economy()
-                self.setup_buttons_game_over()
-                self.game.log_history.append(f"🏳️ **{author.display_name}** surrendered the match.")
-                await self.update_view()
+                theme = COLOR_THEMES[user_color]
+                await self.eliminate_player(user_color, f"🏳️ {theme['emoji']} **{author.display_name}** forfeited and left the match.")
         except Exception as e:
             print(f"[Ludo] Error in execute_forfeit: {e}")
 
     async def handle_rematch(self, interaction: discord.Interaction):
         try:
             author = interaction.user
-            if not any(p["member"] and p["member"].id == author.id for p in self.game.players.values()):
+            if not any((p.get("member_id") == author.id or (p.get("member") and p["member"].id == author.id)) for p in self.game.players.values()):
                 return await interaction.response.send_message("❌ Only players from this match can start a rematch.", ephemeral=True)
 
             await interaction.response.defer()
             new_configs = [
-                {"color": col, "member": self.game.players[col]["member"], "name": self.game.players[col]["name"], "is_ai": self.game.players[col]["is_ai"]}
-                for col in self.game.turn_order
+                {"color": col, "member": self.game.players[col]["member"], "member_id": self.game.players[col].get("member_id"), "name": self.game.players[col]["name"], "is_ai": self.game.players[col]["is_ai"]}
+                for col in COLOR_CLOCKWISE if col in self.game.players
             ]
             new_game = LudoGame(new_configs, tokens_per_player=self.game.tokens_per_player)
             new_game.guild_id = self.game.guild_id
