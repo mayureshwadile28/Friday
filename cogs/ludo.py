@@ -6,14 +6,17 @@ import time
 import random
 import asyncio
 from datetime import datetime
+from functools import lru_cache
+from types import SimpleNamespace
 import pytz
 from typing import Optional, List, Tuple, Dict, Any
 from PIL import Image, ImageDraw, ImageFont
 import os
 from database import db
 
+@lru_cache(maxsize=16)
 def get_bold_font(size: int):
-    """Loads clean bold system font across Windows & Linux platforms with fallback."""
+    """Loads clean bold system font across Windows & Linux platforms with RAM caching."""
     for fn in ["arialbd.ttf", "segoeuib.ttf", "DejaVuSans-Bold.ttf", "calibrib.ttf", "arial.ttf"]:
         try:
             return ImageFont.truetype(fn, size)
@@ -308,7 +311,12 @@ def render_board_image(
             draw.text((px, py), str(num), fill=(20, 20, 20), font=cur_font, anchor="mm")
 
     buf = io.BytesIO()
-    canvas.save(buf, format="PNG", compress_level=1)
+    # Palette-quantize flat vector board to ~128 colors for ~5x smaller/faster Discord uploads
+    try:
+        q_img = canvas.convert("P", palette=Image.Palette.ADAPTIVE, colors=128)
+        q_img.save(buf, format="PNG", optimize=True)
+    except Exception:
+        canvas.save(buf, format="PNG", compress_level=4)
     buf.seek(0)
     return buf
 
@@ -332,12 +340,15 @@ class LudoGame:
 
         for p in players_config:
             col = p["color"]
+            mem = p.get("member")
+            mem_id = p.get("member_id") or (getattr(mem, "id", None) if mem else None)
             self.players[col] = {
                 "color": col,
-                "member": p.get("member"),
+                "member": mem,
+                "member_id": mem_id,
                 "name": p.get("name", "Player"),
                 "is_ai": p.get("is_ai", False),
-                "tokens": [-1] * tokens_per_player
+                "tokens": list(p.get("tokens") or ([-1] * tokens_per_player))
             }
             self.turn_order.append(col)
 
@@ -348,6 +359,73 @@ class LudoGame:
         self.winner: Optional[str] = None
         self.last_updated = time.time()
         self.log_history: List[str] = ["🎲 **Match initialized!** Click **Roll Dice** to begin."]
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "tokens_per_player": self.tokens_per_player,
+            "turn_order": list(self.turn_order),
+            "guild_id": self.guild_id,
+            "host_id": self.host_id,
+            "bet_pot": self.bet_pot,
+            "bet_per_player": self.bet_per_player,
+            "bet_participants": list(self.bet_participants),
+            "bounty_awarded": self.bounty_awarded,
+            "pot_awarded": self.pot_awarded,
+            "current_turn": self.current_turn,
+            "last_rolls": dict(self.last_rolls),
+            "consecutive_sixes": self.consecutive_sixes,
+            "game_over": self.game_over,
+            "winner": self.winner,
+            "last_updated": self.last_updated,
+            "log_history": list(self.log_history[-8:]),
+            "players": {
+                col: {
+                    "color": p["color"],
+                    "member_id": p.get("member_id") or (p["member"].id if p.get("member") else None),
+                    "name": p["name"],
+                    "is_ai": p.get("is_ai", False),
+                    "tokens": list(p["tokens"]),
+                }
+                for col, p in self.players.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any], bot: Optional[commands.Bot] = None) -> "LudoGame":
+        guild = bot.get_guild(data["guild_id"]) if (bot and data.get("guild_id")) else None
+        configs = []
+        for col in data.get("turn_order", []):
+            p = data["players"][col]
+            mid = p.get("member_id")
+            mem = None
+            if mid and not p.get("is_ai"):
+                mem = (guild.get_member(mid) if guild else None) or SimpleNamespace(
+                    id=mid, display_name=p.get("name", "Player"), mention=f"<@{mid}>"
+                )
+            configs.append({
+                "color": col,
+                "member": mem,
+                "member_id": mid,
+                "name": p.get("name", "Player"),
+                "is_ai": p.get("is_ai", False),
+                "tokens": p.get("tokens"),
+            })
+        g = cls(configs, tokens_per_player=data.get("tokens_per_player", 4))
+        g.guild_id = data.get("guild_id")
+        g.host_id = data.get("host_id")
+        g.bet_pot = data.get("bet_pot", 0)
+        g.bet_per_player = data.get("bet_per_player", 0)
+        g.bet_participants = list(data.get("bet_participants", []))
+        g.bounty_awarded = data.get("bounty_awarded", False)
+        g.pot_awarded = data.get("pot_awarded", False)
+        g.current_turn = data.get("current_turn", g.turn_order[0])
+        g.last_rolls = dict(data.get("last_rolls", {}))
+        g.consecutive_sixes = data.get("consecutive_sixes", 0)
+        g.game_over = data.get("game_over", False)
+        g.winner = data.get("winner")
+        g.last_updated = data.get("last_updated", time.time())
+        g.log_history = list(data.get("log_history") or g.log_history)
+        return g
 
     def is_expired(self) -> bool:
         return (time.time() - self.last_updated) > 180
@@ -447,7 +525,7 @@ class LudoRollButton(discord.ui.Button):
         btn_style = discord.ButtonStyle.danger if color_name == "red" else (
             discord.ButtonStyle.success if color_name == "green" else discord.ButtonStyle.primary
         )
-        super().__init__(style=btn_style, label=f"Roll Dice ({theme['name']}: {player_name[:10]}) [45s]", emoji="🎲", row=0)
+        super().__init__(style=btn_style, label=f"Roll Dice ({theme['name']}: {player_name[:10]}) [45s]", emoji="🎲", custom_id="ludo:roll", row=0)
 
     async def callback(self, interaction: discord.Interaction):
         await self.view.handle_human_roll(interaction)
@@ -459,7 +537,7 @@ class LudoTokenSelectButton(discord.ui.Button):
         btn_style = discord.ButtonStyle.danger if color_name == "red" else (
             discord.ButtonStyle.success if color_name == "green" else discord.ButtonStyle.primary
         )
-        super().__init__(style=btn_style, label=label, emoji=theme["emoji"], row=0 if token_idx < 2 else 1)
+        super().__init__(style=btn_style, label=label, emoji=theme["emoji"], custom_id=f"ludo:tok:{token_idx}", row=0 if token_idx < 2 else 1)
         self.token_idx = token_idx
 
     async def callback(self, interaction: discord.Interaction):
@@ -490,7 +568,7 @@ class LudoForfeitConfirmView(discord.ui.View):
 
 class LudoForfeitButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(style=discord.ButtonStyle.secondary, label="Forfeit", emoji="🏳️", row=2)
+        super().__init__(style=discord.ButtonStyle.secondary, label="Forfeit", emoji="🏳️", custom_id="ludo:forfeit", row=2)
 
     async def callback(self, interaction: discord.Interaction):
         await self.view.handle_forfeit(interaction)
@@ -498,31 +576,71 @@ class LudoForfeitButton(discord.ui.Button):
 
 class LudoRematchButton(discord.ui.Button):
     def __init__(self):
-        super().__init__(style=discord.ButtonStyle.primary, label="Play Rematch", emoji="🔄", row=0)
+        super().__init__(style=discord.ButtonStyle.primary, label="Play Rematch", emoji="🔄", custom_id="ludo:rematch", row=0)
 
     async def callback(self, interaction: discord.Interaction):
         await self.view.handle_rematch(interaction)
 
 
 class LudoView(discord.ui.View):
-    def __init__(self, game: LudoGame):
+    def __init__(self, game: LudoGame, bot: Optional[commands.Bot] = None):
         super().__init__(timeout=None)
         self.game = game
+        self.bot = bot
         self.channel: Optional[discord.abc.Messageable] = None
         self.message_id: Optional[int] = None
+        self._registered_msg_id: Optional[int] = None
         self.movable_tokens: List[int] = []
+        self._turn_stage: str = "roll"
+        self._pending_roll: Optional[int] = None
         self.turn_timer_task: Optional[asyncio.Task] = None
+        self.ai_task: Optional[asyncio.Task] = None
         self.turn_deadline: float = 0
         self.consecutive_afk: int = 0
         self._lock = asyncio.Lock()
-        self.setup_buttons_for_roll()
+        self.setup_buttons_for_roll(start_timer=False)
 
     def bind_message(self, msg: Optional[discord.Message]):
-        """Stores permanent channel + message_id so edits use the bot token and never expire after 15 min."""
+        """Stores permanent channel + message_id and registers view with bot ViewStore for restart durability."""
         if msg:
             self.message_id = msg.id
             if msg.channel:
                 self.channel = msg.channel
+            if self.bot and self.message_id and self._registered_msg_id != self.message_id:
+                try:
+                    self.bot.add_view(self, message_id=self.message_id)
+                    self._registered_msg_id = self.message_id
+                except Exception as ex:
+                    print(f"[Ludo] ViewStore register note: {ex}")
+
+    def _persist_state(self):
+        """Persist active match snapshot so bot restarts or reconnects never kill an ongoing Ludo game."""
+        if not self.message_id or not self.channel:
+            return
+        try:
+            games_map = getattr(db, "ludo_games", None)
+            if not isinstance(games_map, dict):
+                db.ludo_games = {}
+                games_map = db.ludo_games
+            now = time.time()
+            # Prune stale snapshots older than 2 hours
+            stale_keys = [k for k, v in games_map.items() if now - float(v.get("last_updated", 0)) > 7200]
+            for sk in stale_keys:
+                games_map.pop(sk, None)
+
+            if self.game.game_over:
+                games_map.pop(str(self.message_id), None)
+            else:
+                snap = self.game.to_dict()
+                snap["channel_id"] = getattr(self.channel, "id", None)
+                snap["message_id"] = self.message_id
+                snap["turn_stage"] = self._turn_stage
+                snap["movable_tokens"] = list(self.movable_tokens)
+                snap["pending_roll"] = self._pending_roll
+                games_map[str(self.message_id)] = snap
+            db.save_data()
+        except Exception as ex:
+            print(f"[Ludo] Persist state note: {ex}")
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item) -> None:
         print(f"[Ludo] View interaction error on {item}: {error}")
@@ -538,6 +656,21 @@ class LudoView(discord.ui.View):
         if self.turn_timer_task and not self.turn_timer_task.done():
             self.turn_timer_task.cancel()
         self.turn_timer_task = None
+
+    def _sync_turn_timer(self):
+        """Starts the 45s AFK timer ONLY after UI update completes so upload latency never steals player time."""
+        if self.game.game_over:
+            self._cancel_turn_timer()
+            return
+        cur_col = self.game.current_turn
+        cur_p = self.game.players.get(cur_col)
+        if not cur_p or cur_p.get("is_ai"):
+            self._cancel_turn_timer()
+            return
+        if self._turn_stage == "pick" and self.movable_tokens:
+            self._start_turn_timer(stage="pick", legal_moves=list(self.movable_tokens), roll=self._pending_roll)
+        else:
+            self._start_turn_timer(stage="roll")
 
     def _start_turn_timer(self, stage: str, legal_moves: Optional[List[int]] = None, roll: Optional[int] = None):
         self._cancel_turn_timer()
@@ -632,19 +765,23 @@ class LudoView(discord.ui.View):
         except Exception as e:
             print(f"[Ludo] Error in turn timeout worker: {e}")
 
-    def setup_buttons_for_roll(self):
+    def setup_buttons_for_roll(self, start_timer: bool = False):
         self.clear_items()
         self.movable_tokens = []
+        self._turn_stage = "roll"
+        self._pending_roll = None
         cur_col = self.game.current_turn
         cur_p = self.game.players[cur_col]
         self.add_item(LudoRollButton(cur_col, cur_p["name"]))
         self.add_item(LudoForfeitButton())
-        if not cur_p.get("is_ai") and not self.game.game_over:
+        if start_timer and not cur_p.get("is_ai") and not self.game.game_over:
             self._start_turn_timer(stage="roll")
 
-    def setup_buttons_for_token_pick(self, legal_moves: List[int], roll: int):
+    def setup_buttons_for_token_pick(self, legal_moves: List[int], roll: int, start_timer: bool = False):
         self.clear_items()
-        self.movable_tokens = legal_moves
+        self.movable_tokens = list(legal_moves)
+        self._turn_stage = "pick"
+        self._pending_roll = roll
         g = self.game
         current_col = g.current_turn
         pdata = g.players[current_col]
@@ -673,13 +810,15 @@ class LudoView(discord.ui.View):
                     label = f"Token {idx+1}: Advance {roll} Steps 🏃"
             self.add_item(LudoTokenSelectButton(idx, label=label[:80], color_name=current_col))
         self.add_item(LudoForfeitButton())
-        if not pdata.get("is_ai") and not g.game_over:
+        if start_timer and not pdata.get("is_ai") and not g.game_over:
             self._start_turn_timer(stage="pick", legal_moves=legal_moves, roll=roll)
 
     def setup_buttons_game_over(self):
         self._cancel_turn_timer()
         self.clear_items()
         self.movable_tokens = []
+        self._turn_stage = "over"
+        self._pending_roll = None
         self.add_item(LudoRematchButton())
 
     async def settle_economy(self) -> Optional[str]:
@@ -780,7 +919,7 @@ class LudoView(discord.ui.View):
         return embed
 
     async def update_view(self, interaction: Optional[discord.Interaction] = None, status_text: Optional[str] = None):
-        """Renders board and edits via permanent channel message (bot token) so matches never expire after 15 mins."""
+        """Renders board and edits via permanent channel message (bot token) with retry + timeout & state persistence."""
         try:
             buf = await asyncio.to_thread(
                 render_board_image,
@@ -798,13 +937,25 @@ class LudoView(discord.ui.View):
 
             # 1. Primary: Edit via permanent PartialMessage (uses Bot Token — NEVER expires after 15 min)
             if self.channel and self.message_id:
-                try:
-                    buf.seek(0)
-                    partial_msg = self.channel.get_partial_message(self.message_id)
-                    await partial_msg.edit(content=None, embed=embed, view=self, attachments=[discord.File(buf, filename="ludo_board.png")])
-                    updated = True
-                except Exception as e:
-                    print(f"[Ludo] PartialMessage edit error: {e}")
+                partial_msg = self.channel.get_partial_message(self.message_id)
+                for attempt in range(2):
+                    try:
+                        buf.seek(0)
+                        await asyncio.wait_for(
+                            partial_msg.edit(
+                                content=None,
+                                embed=embed,
+                                view=self,
+                                attachments=[discord.File(buf, filename="ludo_board.png")]
+                            ),
+                            timeout=12.0
+                        )
+                        updated = True
+                        break
+                    except Exception as e:
+                        print(f"[Ludo] PartialMessage edit attempt {attempt+1} note: {e}")
+                        if attempt == 0:
+                            await asyncio.sleep(0.5)
 
             # 2. Fallback: Direct interaction response if not yet updated
             if not updated and interaction:
@@ -812,9 +963,15 @@ class LudoView(discord.ui.View):
                     buf.seek(0)
                     file = discord.File(buf, filename="ludo_board.png")
                     if not interaction.response.is_done():
-                        await interaction.response.edit_message(content=None, embed=embed, view=self, attachments=[file])
+                        await asyncio.wait_for(
+                            interaction.response.edit_message(content=None, embed=embed, view=self, attachments=[file]),
+                            timeout=10.0
+                        )
                     else:
-                        msg = await interaction.edit_original_response(content=None, embed=embed, view=self, attachments=[file])
+                        msg = await asyncio.wait_for(
+                            interaction.edit_original_response(content=None, embed=embed, view=self, attachments=[file]),
+                            timeout=10.0
+                        )
                         self.bind_message(msg)
                     updated = True
                 except Exception as ex:
@@ -824,12 +981,29 @@ class LudoView(discord.ui.View):
             if not updated and self.channel:
                 try:
                     buf.seek(0)
-                    msg = await self.channel.send(embed=embed, view=self, file=discord.File(buf, filename="ludo_board.png"))
+                    msg = await asyncio.wait_for(
+                        self.channel.send(embed=embed, view=self, file=discord.File(buf, filename="ludo_board.png")),
+                        timeout=10.0
+                    )
                     self.bind_message(msg)
+                    updated = True
                 except Exception as e:
                     print(f"[Ludo] Channel send fallback error: {e}")
+
+            self._persist_state()
+            self._sync_turn_timer()
         except Exception as e:
             print(f"[Ludo] Critical update_view failure: {e}")
+
+    @staticmethod
+    async def _safe_ephemeral_notice(interaction: discord.Interaction, message: str):
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(message, ephemeral=True)
+            else:
+                await interaction.followup.send(message, ephemeral=True)
+        except Exception:
+            pass
 
     async def handle_human_roll(self, interaction: discord.Interaction):
         try:
@@ -837,16 +1011,24 @@ class LudoView(discord.ui.View):
             cur_p = self.game.players[cur_col]
 
             if cur_p.get("is_ai"):
-                return await interaction.response.send_message("🤖 It is Friday AI's turn!", ephemeral=True)
-            if not cur_p.get("member") or interaction.user.id != cur_p["member"].id:
-                return await interaction.response.send_message(f"❌ It is currently {cur_p['name']}'s turn!", ephemeral=True)
+                return await self._safe_ephemeral_notice(interaction, "🤖 It is Friday AI's turn!")
+            pid = cur_p.get("member_id") or (cur_p["member"].id if cur_p.get("member") else None)
+            if not pid or interaction.user.id != pid:
+                return await self._safe_ephemeral_notice(interaction, f"❌ It is currently {cur_p['name']}'s turn!")
             if self.game.game_over:
-                return await interaction.response.send_message("🏁 This match has already ended!", ephemeral=True)
+                return await self._safe_ephemeral_notice(interaction, "🏁 This match has already ended!")
 
-            await interaction.response.defer()
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+
             async with self._lock:
-                if self.game.game_over or self.game.current_turn != cur_col:
-                    return
+                if self.game.game_over:
+                    return await self._safe_ephemeral_notice(interaction, "🏁 This match has already ended!")
+                if self.game.current_turn != cur_col:
+                    return await self._safe_ephemeral_notice(interaction, "⏳ Turn already passed! Wait for your next turn.")
+                if self.movable_tokens:
+                    return await self._safe_ephemeral_notice(interaction, "🎲 You already rolled! Click one of your token buttons below.")
+
                 self._cancel_turn_timer()
                 self.consecutive_afk = 0
                 self.game.last_updated = time.time()
@@ -885,8 +1067,14 @@ class LudoView(discord.ui.View):
                 await self.update_view(interaction)
         except Exception as e:
             print(f"[Ludo] Error in handle_human_roll: {e}")
-            self.setup_buttons_for_roll()
-            await self.update_view(interaction)
+            await self._safe_ephemeral_notice(interaction, "⚠️ Network hiccup processing your roll—syncing board now, please click again if needed.")
+            try:
+                if not self.game.game_over:
+                    if not self.movable_tokens:
+                        self.setup_buttons_for_roll()
+                    await self.update_view(interaction)
+            except Exception:
+                pass
 
     async def handle_human_token_pick(self, interaction: discord.Interaction, token_idx: int):
         try:
@@ -894,22 +1082,30 @@ class LudoView(discord.ui.View):
             cur_p = self.game.players[cur_col]
 
             if cur_p.get("is_ai"):
-                return await interaction.response.send_message("🤖 It is Friday AI's turn!", ephemeral=True)
-            if not cur_p.get("member") or interaction.user.id != cur_p["member"].id:
-                return await interaction.response.send_message(f"❌ It is currently {cur_p['name']}'s turn!", ephemeral=True)
+                return await self._safe_ephemeral_notice(interaction, "🤖 It is Friday AI's turn!")
+            pid = cur_p.get("member_id") or (cur_p["member"].id if cur_p.get("member") else None)
+            if not pid or interaction.user.id != pid:
+                return await self._safe_ephemeral_notice(interaction, f"❌ It is currently {cur_p['name']}'s turn!")
             if self.game.game_over:
-                return await interaction.response.send_message("🏁 This match has already ended!", ephemeral=True)
+                return await self._safe_ephemeral_notice(interaction, "🏁 This match has already ended!")
 
-            await interaction.response.defer()
+            if not interaction.response.is_done():
+                await interaction.response.defer()
+
             async with self._lock:
-                if self.game.game_over or self.game.current_turn != cur_col:
-                    return
+                if self.game.game_over:
+                    return await self._safe_ephemeral_notice(interaction, "🏁 This match has already ended!")
+                if self.game.current_turn != cur_col:
+                    return await self._safe_ephemeral_notice(interaction, "⏳ Turn already passed!")
+                if token_idx not in self.movable_tokens:
+                    return await self._safe_ephemeral_notice(interaction, "⚠️ That token cannot be moved right now.")
+
                 self._cancel_turn_timer()
                 self.consecutive_afk = 0
                 self.game.last_updated = time.time()
                 self.bind_message(interaction.message)
 
-                roll = self.game.last_rolls.get(cur_col) or 6
+                roll = self._pending_roll or self.game.last_rolls.get(cur_col) or 6
                 theme = COLOR_THEMES[cur_col]
 
                 ev = self.game.apply_move(cur_col, token_idx, roll)
@@ -923,7 +1119,7 @@ class LudoView(discord.ui.View):
                 if self.game.game_over:
                     await self.settle_economy()
                     self.setup_buttons_game_over()
-                    host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                    host_id = self.game.host_id or (list(self.game.players.values())[0].get("member_id"))
                     if host_id:
                         ACTIVE_LUDO_GAMES.pop(host_id, None)
                     return await self.update_view(interaction)
@@ -938,17 +1134,23 @@ class LudoView(discord.ui.View):
                     await self.check_and_run_ai_turn()
         except Exception as e:
             print(f"[Ludo] Error in handle_human_token_pick: {e}")
-            self.setup_buttons_for_roll()
-            await self.update_view(interaction)
+            await self._safe_ephemeral_notice(interaction, "⚠️ Network hiccup moving your token—syncing board now, please try again.")
+            try:
+                if not self.game.game_over:
+                    await self.update_view(interaction)
+            except Exception:
+                pass
 
     async def check_and_run_ai_turn(self):
         cur_p = self.game.players[self.game.current_turn]
         if cur_p["is_ai"] and not self.game.game_over:
-            asyncio.create_task(self.run_ai_turn())
+            if self.ai_task and not self.ai_task.done():
+                return
+            self.ai_task = asyncio.create_task(self.run_ai_turn())
 
     async def run_ai_turn(self):
         try:
-            await asyncio.sleep(1.6)
+            await asyncio.sleep(1.5)
             async with self._lock:
                 if self.game.game_over:
                     return
@@ -965,12 +1167,13 @@ class LudoView(discord.ui.View):
                     self.game.log_history.append(f"🤖 **{cur_p['name']}** rolled a **[ {roll} ]** (no legal moves).")
                     if roll == 6:
                         await self.update_view()
-                        asyncio.create_task(self.run_ai_turn())
+                        self.ai_task = asyncio.create_task(self.run_ai_turn())
                         return
                     self.game.advance_turn()
                     self.setup_buttons_for_roll()
                     await self.update_view()
-                    await self.check_and_run_ai_turn()
+                    if self.game.players[self.game.current_turn]["is_ai"]:
+                        self.ai_task = asyncio.create_task(self.run_ai_turn())
                     return
 
                 chosen_t = self.game.choose_ai_move(cur_col, roll, legal)
@@ -985,21 +1188,33 @@ class LudoView(discord.ui.View):
                 if self.game.game_over:
                     await self.settle_economy()
                     self.setup_buttons_game_over()
-                    host_id = self.game.host_id or (list(self.game.players.values())[0]["member"].id if list(self.game.players.values())[0]["member"] else None)
+                    host_id = self.game.host_id or (list(self.game.players.values())[0].get("member_id"))
                     if host_id:
                         ACTIVE_LUDO_GAMES.pop(host_id, None)
                     return await self.update_view()
 
                 if roll == 6 or ev["captured"]:
                     await self.update_view()
-                    asyncio.create_task(self.run_ai_turn())
+                    self.ai_task = asyncio.create_task(self.run_ai_turn())
                 else:
                     self.game.advance_turn()
                     self.setup_buttons_for_roll()
                     await self.update_view()
-                    await self.check_and_run_ai_turn()
+                    if self.game.players[self.game.current_turn]["is_ai"]:
+                        self.ai_task = asyncio.create_task(self.run_ai_turn())
+        except asyncio.CancelledError:
+            pass
         except Exception as e:
             print(f"[Ludo] Error in run_ai_turn: {e}")
+            try:
+                async with self._lock:
+                    if not self.game.game_over and self.game.players[self.game.current_turn]["is_ai"]:
+                        self.game.log_history.append("🤖 **Friday (AI)** recovered from a connection hiccup and passed turn.")
+                        self.game.advance_turn()
+                        self.setup_buttons_for_roll()
+                        await self.update_view()
+            except Exception:
+                pass
 
     async def handle_forfeit(self, interaction: discord.Interaction):
         try:
@@ -1053,9 +1268,14 @@ class LudoView(discord.ui.View):
             new_game.log_history = ["🎲 **Rematch started!** (Friendly mode — start a new game to wager)"]
             ACTIVE_LUDO_GAMES[host_id] = new_game
 
-            new_view = LudoView(new_game)
-            new_view.bind_message(interaction.message)
+            new_view = LudoView(new_game, bot=self.bot)
+            new_view.channel = self.channel
+            new_view.message_id = self.message_id
+            if interaction.message:
+                new_view.bind_message(interaction.message)
+            self.stop()
             await new_view.update_view(interaction)
+            await new_view.check_and_run_ai_turn()
         except Exception as e:
             print(f"[Ludo] Error in handle_rematch: {e}")
 
@@ -1298,9 +1518,15 @@ class LudoLobbyView(discord.ui.View):
         game.bet_participants = bet_participants
         ACTIVE_LUDO_GAMES[self.host.id] = game
 
-        game_view = LudoView(game)
+        game_view = LudoView(game, bot=self.bot)
         game_view.channel = self.channel
         game_view.message_id = self.message_id
+        if self.bot and self.message_id:
+            try:
+                self.bot.add_view(game_view, message_id=self.message_id)
+                game_view._registered_msg_id = self.message_id
+            except Exception as ex:
+                print(f"[Ludo] Launch ViewStore register note: {ex}")
 
         try:
             await game_view.update_view(interaction, status_text="🎉 **Match Started!** May the best tactician reach Center Home!")
@@ -1321,6 +1547,53 @@ class LudoLobbyView(discord.ui.View):
 class Ludo(commands.Cog, name="Ludo"):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+
+    async def cog_load(self):
+        """Rehydrate active Ludo matches from disk after restarts so in-progress games never freeze."""
+        try:
+            games_map = getattr(db, "ludo_games", None)
+            if not isinstance(games_map, dict) or not games_map:
+                return
+            now = time.time()
+            restored = 0
+            stale = []
+            for mid_str, snap in list(games_map.items()):
+                try:
+                    if not isinstance(snap, dict) or snap.get("game_over") or (now - float(snap.get("last_updated", 0))) > 7200:
+                        stale.append(mid_str)
+                        continue
+                    game = LudoGame.from_dict(snap, bot=self.bot)
+                    view = LudoView(game, bot=self.bot)
+                    ch_id = snap.get("channel_id")
+                    msg_id = int(snap.get("message_id") or mid_str)
+                    if ch_id:
+                        view.channel = self.bot.get_channel(ch_id) or discord.Object(id=ch_id)
+                        if hasattr(view.channel, "id") and not hasattr(view.channel, "get_partial_message"):
+                            view.channel = self.bot.get_partial_messageable(ch_id)
+                    view.message_id = msg_id
+                    stage = snap.get("turn_stage", "roll")
+                    mov = list(snap.get("movable_tokens") or [])
+                    pend = snap.get("pending_roll")
+                    if stage == "pick" and mov:
+                        view.setup_buttons_for_token_pick(mov, pend or 6)
+                    else:
+                        view.setup_buttons_for_roll()
+                    self.bot.add_view(view, message_id=msg_id)
+                    view._registered_msg_id = msg_id
+                    if game.host_id:
+                        ACTIVE_LUDO_GAMES[game.host_id] = game
+                    restored += 1
+                except Exception as inner_e:
+                    print(f"[Ludo] Failed restoring match {mid_str}: {inner_e}")
+                    stale.append(mid_str)
+            for sk in stale:
+                games_map.pop(sk, None)
+            if stale:
+                db.save_data()
+            if restored:
+                print(f"[Ludo] 🎲 Restored {restored} active Ludo Royale match(es) cleanly.")
+        except Exception as ex:
+            print(f"[Ludo] cog_load restore note: {ex}")
 
     @app_commands.command(name="ludo", description="Play authentic 4-token Ludo Royale with friends or Friday AI (supports coin wagers)!")
     @app_commands.describe(

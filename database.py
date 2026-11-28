@@ -40,6 +40,7 @@ class Database:
         self.liked_songs = self.data.get("liked_songs", {})
         self.playlists = self.data.get("playlists", {})
         self.active_playlists = self.data.get("active_playlists", {})
+        self.ludo_games = self.data.get("ludo_games", {})
         self.warnings = self.data.get("warnings", {})
         self.first_welcome = self.data.get("first_welcome", {})
         self.first_chat_welcomes = self.data.get("first_chat_welcomes", {})
@@ -149,6 +150,7 @@ class Database:
                 "liked_songs": {},
                 "playlists": {},
                 "active_playlists": {},
+                "ludo_games": {},
                 "warnings": {},
                 "first_welcome": {},
                 "first_chat_welcomes": {},
